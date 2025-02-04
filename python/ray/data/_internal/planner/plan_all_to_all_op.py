@@ -43,6 +43,7 @@ def plan_all_to_all_op(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )
         fn = generate_random_shuffle_fn(
+            data_context,
             op._seed,
             op._num_outputs,
             op._ray_remote_args,
@@ -59,6 +60,7 @@ def plan_all_to_all_op(
         fn = generate_repartition_fn(
             op._num_outputs,
             op._shuffle,
+            data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
     elif isinstance(op, Sort):
@@ -66,7 +68,10 @@ def plan_all_to_all_op(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )
         fn = generate_sort_fn(
-            op._sort_key, op._batch_format, debug_limit_shuffle_execution_to_num_blocks
+            op._sort_key,
+            op._batch_format,
+            data_context,
+            debug_limit_shuffle_execution_to_num_blocks,
         )
         target_max_block_size = data_context.target_shuffle_max_block_size
     elif isinstance(op, Aggregate):
@@ -77,6 +82,7 @@ def plan_all_to_all_op(
             op._key,
             op._aggs,
             op._batch_format,
+            data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
         target_max_block_size = data_context.target_shuffle_max_block_size

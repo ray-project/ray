@@ -25,6 +25,7 @@ def generate_aggregate_fn(
     key: Optional[Union[str, List[str]]],
     aggs: List[AggregateFn],
     batch_format: str,
+    data_context: DataContext,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to aggregate blocks by the specified key column or key
