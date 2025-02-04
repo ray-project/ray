@@ -336,7 +336,8 @@ class ShufflingBatcher(BatcherInterface):
         # as much as possible to amortize the concatenation overhead. Compaction is
         # only necessary when the materialized buffer size falls below the min size.
         if self._num_uncompacted_rows() > 0 and (
-            self._done_adding or self._num_compacted_rows() <= self._buffer_min_size
+            self._done_adding
+            or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
             if self._shuffle_buffer is not None:
                 if self._batch_head > 0:
