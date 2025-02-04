@@ -5,14 +5,15 @@ from collections.abc import Iterable
 import ray
 from ray.util.annotations import PublicAPI
 
+import queue
 
 @PublicAPI(stability="beta")
-class Empty(Exception):
+class Empty(queue.Empty):
     pass
 
 
 @PublicAPI(stability="beta")
-class Full(Exception):
+class Full(queue.Full):
     pass
 
 
