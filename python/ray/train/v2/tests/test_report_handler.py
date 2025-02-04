@@ -38,7 +38,7 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
     )
     random.shuffle(worker_statuses)
 
-    return WorkerGroupPollStatus(num_workers, 0.0, dict(enumerate(worker_statuses)))
+    return WorkerGroupPollStatus(dict(enumerate(worker_statuses)))
 
 
 @pytest.mark.parametrize(

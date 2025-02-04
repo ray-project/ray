@@ -50,9 +50,9 @@ class ReportCallbackHandler(WorkerGroupCallback):
             self._num_workers and self._training_result_queues
         ), "Need to call initialize state with `after_worker_group_start` first."
 
-        assert self._num_workers == worker_group_status.num_workers, (
+        assert self._num_workers == len(worker_group_status.worker_statuses), (
             f"The number of workers in the worker group has changed unexpectedly. "
-            f"Expected: {self._num_workers}, got: {worker_group_status.num_workers}"
+            f"Expected: {self._num_workers}, got: {len(worker_group_status.worker_statuses)}"
         )
 
         # Step 2: Update training_results_queues with poll_results.

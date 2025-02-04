@@ -117,7 +117,6 @@ class WorkerGroup:
 
         self._worker_group_context: Optional[WorkerGroupContext] = None
         self._worker_group_state: Optional[WorkerGroupState] = None
-        self._worker_group_state_builder: Optional[WorkerGroupStateBuilder] = None
 
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
@@ -167,8 +166,13 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If the worker group fails to start
                 due to actors dying/failing during initialization.
         """
+        assert not self.has_started(), "Worker group already started."
+
+        worker_group_state_builder = WorkerGroupStateBuilder()
+
         try:
             self._start(
+                worker_group_state_builder,
                 train_fn,
                 num_workers,
                 resources_per_worker,
@@ -176,11 +180,15 @@ class WorkerGroup:
                 checkpoint,
             )
         except Exception as e:
-            self._cleanup_partial_start_state()
+            if not self.has_started():
+                worker_group_state_builder.shutdown()
             raise e
+
+        assert self.has_started(), "Worker group failed to start."
 
     def _start(
         self,
+        worker_group_state_builder: WorkerGroupStateBuilder,
         train_fn: Callable[[], None],
         num_workers: int,
         resources_per_worker: dict,
@@ -196,8 +204,6 @@ class WorkerGroup:
             resources_per_worker=resources_per_worker,
         )
         self._worker_group_context = worker_group_context
-
-        self._worker_group_state_builder = WorkerGroupStateBuilder()
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
@@ -229,7 +235,7 @@ class WorkerGroup:
                 ) from timeout_exc
 
             # TODO: Figure out ordering between these different calls/callbacks.
-            self._worker_group_state_builder.with_placement_group(pg)
+            worker_group_state_builder.with_placement_group(pg)
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
@@ -241,10 +247,10 @@ class WorkerGroup:
                 timeout_s=self._report_barrier_timeout_s,
                 warn_interval_s=self._report_barrier_warn_interval_s,
             )
-            self._worker_group_state_builder.with_sync_actor(sync_actor)
+            worker_group_state_builder.with_sync_actor(sync_actor)
 
             workers = self._create_workers(num_workers, pg, resources_per_worker)
-            self._worker_group_state_builder.with_workers(workers)
+            worker_group_state_builder.with_workers(workers)
 
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
@@ -284,17 +290,8 @@ class WorkerGroup:
                 error_msg = "At least one of the worker actors failed to initialize."
                 raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
-            self._worker_group_state_builder.with_start_time(time_monotonic())
-            self._worker_group_state = self._worker_group_state_builder.build()
-            self._worker_group_state_builder = None
-
-    def _cleanup_partial_start_state(self):
-        if self._worker_group_context:
-            self._worker_group_context = None
-
-        if self._worker_group_state_builder:
-            self._worker_group_state_builder.shutdown()
-            self._worker_group_state_builder = None
+            worker_group_state_builder.with_start_time(time_monotonic())
+            self._worker_group_state = worker_group_state_builder.build()
 
     def _create_workers(
         self,
