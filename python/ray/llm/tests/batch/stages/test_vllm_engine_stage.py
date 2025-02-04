@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 import math
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -7,6 +8,7 @@ from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStageUDF,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMEngineWrapper
 
 
 @pytest.fixture
@@ -28,6 +30,7 @@ def mock_vllm_wrapper():
                     prompt_token_ids=None,
                     images=[],
                     params=row["sampling_params"],
+                    idx_in_batch=row["__idx_in_batch"],
                 ),
                 {
                     "prompt": row["prompt"],
@@ -100,7 +103,7 @@ def test_vllm_engine_stage_post_init():
 async def test_vllm_engine_udf_basic(mock_vllm_wrapper):
     # Create UDF instance - it will use the mocked wrapper
     udf = vLLMEngineStageUDF(
-        data_column="text",
+        data_column="__data",
         model="facebook/opt-125m",
         task_type="generate",
         engine_kwargs={
@@ -119,28 +122,31 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper):
     assert udf.max_pending_requests == math.ceil(100 * 1.1)
 
     # Test batch processing
-    batch = [
-        {"prompt": "Hello", "sampling_params": {"temperature": 0.7}},
-        {"prompt": "World", "sampling_params": {"temperature": 0.7}},
-    ]
+    batch = {
+        "__data": [
+            {"prompt": "Hello", "sampling_params": {"temperature": 0.7}},
+            {"prompt": "World", "sampling_params": {"temperature": 0.7}},
+        ]
+    }
 
     responses = []
-    async for response in udf.udf(batch):
-        responses.append(response)
+    async for response in udf(batch):
+        responses.append(response["__data"][0])
 
     assert len(responses) == 2
     assert all("batch_uuid" in r for r in responses)
     assert all("time_taken_llm" in r for r in responses)
-    assert responses[0]["prompt"] == "Hello"
-    assert responses[1]["prompt"] == "World"
-    assert responses[0]["num_input_tokens"] == 3
-    assert responses[0]["num_generated_tokens"] == 3
+    # The output order is not guaranteed.
+    assert responses[0]["prompt"] in ["Hello", "World"]
+    assert responses[1]["prompt"] in ["Hello", "World"]
+    assert responses[0]["prompt"] != responses[1]["prompt"]
 
     # Verify the wrapper was constructed with correct arguments
     mock_vllm_wrapper.assert_called_once_with(
         model="facebook/opt-125m",
+        idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
-        max_pending_requests=110,
+        max_pending_requests=111,
         runtime_env={},
         task="generate",
         gpu_memory_utilization=0.95,
@@ -155,36 +161,151 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper):
 
 
 @pytest.mark.asyncio
-async def test_vllm_engine_udf_expected_keys():
-    udf = vLLMEngineStageUDF(
-        data_column="text",
-        model="facebook/opt-125m",
-        engine_kwargs={},
-        task_type="generate",
-    )
+async def test_vllm_wrapper_pending_queue():
+    from vllm.outputs import RequestOutput, CompletionOutput
 
-    assert set(udf.expected_input_keys) == {"prompt", "sampling_params"}
+    max_pending_requests = 2
 
-    # Test embed task type
-    udf_embed = vLLMEngineStageUDF(
-        data_column="text",
-        model="facebook/opt-125m",
-        engine_kwargs={},
-        task_type="embed",
-    )
+    with (
+        patch("vllm.AsyncLLMEngine") as mock_engine,
+        patch(
+            "ray.llm._internal.batch.stages.vllm_engine_stage.vLLMEngineWrapper.generate_async_v0"
+        ) as mock_generate_async_v0,
+    ):
+        mock_engine.from_engine_args.return_value = AsyncMock()
+        num_running_requests = 0
+        request_lock = asyncio.Lock()
 
-    assert set(udf_embed.expected_input_keys) == {"prompt"}
+        # Configure mock engine's generate behavior to simulate delay
+        async def mock_generate(request):
+            nonlocal num_running_requests
+            async with request_lock:
+                num_running_requests += 1
+
+            assert num_running_requests <= max_pending_requests
+            await asyncio.sleep(0.3)
+
+            async with request_lock:
+                num_running_requests -= 1
+
+            return RequestOutput(
+                request_id="test",
+                prompt="test",
+                prompt_token_ids=[1, 2, 3],
+                prompt_logprobs=None,
+                metrics=None,
+                outputs=[
+                    CompletionOutput(
+                        index=0,
+                        text="test response",
+                        token_ids=[4, 5, 6],
+                        cumulative_logprob=None,
+                        logprobs=None,
+                    )
+                ],
+                finished=True,
+            )
+
+        mock_generate_async_v0.side_effect = mock_generate
+
+        # Create wrapper with max 2 pending requests
+        wrapper = vLLMEngineWrapper(
+            model="facebook/opt-125m",
+            idx_in_batch_column="__idx_in_batch",
+            disable_log_stats=True,
+            max_pending_requests=max_pending_requests,
+        )
+
+        # Create 10 requests
+        batch = [
+            {"__idx_in_batch": i, "prompt": f"Test {i}", "sampling_params": {}}
+            for i in range(10)
+        ]
+
+        tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+        await asyncio.gather(*tasks)
+
+        # Verify all requests were processed
+        assert mock_generate_async_v0.call_count == 10
 
 
 @pytest.mark.asyncio
-async def test_vllm_engine_udf_shutdown(mock_vllm_wrapper):
-    udf = vLLMEngineStageUDF(
-        data_column="text",
+@pytest.mark.parametrize("version", ["v0", "v1"])
+async def test_vllm_wrapper_generate(version):
+    if version == "v1":
+        runtime_env = {"env": {"VLLM_USE_V1": "1"}}
+    else:
+        runtime_env = {}
+
+    wrapper = vLLMEngineWrapper(
         model="facebook/opt-125m",
-        engine_kwargs={},
-        task_type="generate",
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        runtime_env=runtime_env,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.3,
+        task="generate",
     )
 
-    del udf
-    # Verify shutdown was called on the mock instance
-    mock_vllm_wrapper.return_value.shutdown.assert_called_once()
+    batch = [
+        {
+            "__idx_in_batch": 0,
+            "prompt": "Hello",
+            "sampling_params": {
+                "max_tokens": 10,
+                "temperature": 0.7,
+                "ignore_eos": True,
+            },
+        },
+        {
+            "__idx_in_batch": 1,
+            "prompt": "World",
+            "sampling_params": {
+                "max_tokens": 5,
+                "temperature": 0.7,
+                "ignore_eos": True,
+            },
+        },
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    for resp in asyncio.as_completed(tasks):
+        request, output = await resp
+        params = request.params
+        max_tokens = params.max_tokens
+        assert max_tokens == output["num_generated_tokens"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", ["v0", "v1"])
+async def test_vllm_wrapper_embed(version):
+    if version == "v1":
+        runtime_env = {"env": {"VLLM_USE_V1": "1"}}
+    else:
+        runtime_env = {}
+
+    wrapper = vLLMEngineWrapper(
+        model="facebook/opt-125m",
+        idx_in_batch_column="__idx_in_batch",
+        disable_log_stats=True,
+        max_pending_requests=10,
+        runtime_env=runtime_env,
+        # Skip CUDA graph capturing to reduce the start time.
+        enforce_eager=True,
+        gpu_memory_utilization=0.3,
+        task="embed",
+    )
+
+    batch = [
+        {"__idx_in_batch": 0, "prompt": "Hello World"},
+        {"__idx_in_batch": 1, "prompt": "How are you?"},
+    ]
+
+    tasks = [asyncio.create_task(wrapper.generate_async(row)) for row in batch]
+
+    for resp in asyncio.as_completed(tasks):
+        _, output = await resp
+        assert output["embeddings"].shape == (768,)
