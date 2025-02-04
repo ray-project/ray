@@ -17,8 +17,8 @@ def with_uv():
     import tarfile
     from urllib import request
 
-    arch = "aarch64" if platform.machine() == "arm64" else "i686-unknown"
-    system = "linux-gnu" if platform.system() == "Linux" else "apple-darwin"
+    arch = "aarch64" if platform.machine() == "arm64" else "i686"
+    system = "unknown-linux-gnu" if platform.system() == "Linux" else "apple-darwin"
     name = f"uv-{arch}-{system}"
     url = f"https://github.com/astral-sh/uv/releases/download/0.5.27/{name}.tar.gz"
     with tempfile.TemporaryDirectory() as tmp_dir:
