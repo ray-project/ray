@@ -232,7 +232,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
     async def _get_all_actors(self) -> Dict[str, dict]:
         actors = await self.gcs_aio_client.get_all_actor_info(
-            timeout=GCS_RPC_TIMEOUT_SECONDS
+            timeout=float(GCS_RPC_TIMEOUT_SECONDS)
         )
 
         # NOTE: We're offloading conversion to a TPE to make sure we're not
