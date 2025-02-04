@@ -1458,7 +1458,7 @@ def test_random_shuffle_spread(ray_start_cluster, configure_shuffle_method):
         locations.extend(location_data[block]["node_ids"])
     assert "2 nodes used" in ds.stats()
 
-    if configure_shuffle_method == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
+    if configure_shuffle_method != ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
         # We don't check this for push-based shuffle since it will try to
         # colocate reduce tasks to improve locality.
         assert set(locations) == {node1_id, node2_id}
