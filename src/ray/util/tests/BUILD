@@ -6,6 +6,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:array",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -53,6 +54,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:counter_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -67,11 +69,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:event",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/common:ray_config",
     ],
 )
 
@@ -82,6 +85,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:exponential_backoff",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -127,6 +131,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_common",
+        "//src/ray/util:sample",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -138,6 +143,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:sequencer",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -160,6 +166,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:throttler",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
@@ -217,6 +224,7 @@ ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
+        "//src/ray/util:temporary_directory",
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
@@ -237,7 +245,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
-    tags = ["team:core"],
+    tags = [
+        "team:core",
+        # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
+        # ostream concurrently at pipe dumper thread and main thread, which we have ordered
+        # properly. Disable the complete test suite here since it always contains exactly one test
+        # case.
+        "no_tsan",
+    ],
 )
 
 ray_cc_test(
@@ -245,6 +260,28 @@ ray_cc_test(
     srcs = ["cmd_line_utils_test.cc"],
     deps = [
         "//src/ray/util:cmd_line_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "spdlog_fd_sink_test",
+    srcs = ["spdlog_fd_sink_test.cc"],
+    deps = [
+        "//src/ray/util:spdlog_fd_sink",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "temporary_directory_test",
+    srcs = ["temporary_directory_test.cc"],
+    deps = [
+        "//src/ray/util:temporary_directory",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
