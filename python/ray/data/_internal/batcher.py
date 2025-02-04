@@ -1,11 +1,11 @@
 import warnings
 from typing import Optional
 
-import ray
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import get_total_obj_store_mem_on_node
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
 
@@ -212,14 +212,17 @@ class ShufflingBatcher(BatcherInterface):
             # Round it up internally to `batch_size` since our algorithm requires it.
             # This is harmless since it only offers extra randomization.
             shuffle_buffer_min_size = batch_size
-        self._buffer_min_size = shuffle_buffer_min_size
+        self._min_rows_to_yield_batch = shuffle_buffer_min_size
+        self._min_rows_to_trigger_compaction = int(
+            shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_RATIO
+        )
         self._builder = DelegatingBlockBuilder()
         self._shuffle_buffer: Block = None
         self._batch_head = 0
         self._done_adding = False
 
-        self._total_object_store_nbytes = _get_total_obj_store_mem_on_node()
-        self._total_rows_added = 0
+        self._total_object_store_nbytes = get_total_obj_store_mem_on_node()
+        self._total_num_rows_added = 0
         self._total_nbytes_added = 0
 
     def add(self, block: Block):
@@ -235,45 +238,44 @@ class ShufflingBatcher(BatcherInterface):
         # large buffer size and there isn't enough object store memory on the node, you
         # encounter spilling.
         if (
-            self._estimated_max_buffer_nbytes is not None
-            and self._estimated_max_buffer_nbytes > self._total_object_store_nbytes
+            self._estimated_min_nbytes_in_buffers is not None
+            and self._estimated_min_nbytes_in_buffers > self._total_object_store_nbytes
             and log_once("shuffle_buffer_mem_warning")
         ):
             warnings.warn(
                 "The node you're iterating on has "
                 f"{memory_string(self._total_object_store_nbytes)} object "
                 "store memory, but the shuffle buffer is estimated to use "
-                f"{memory_string(self._estimated_max_buffer_nbytes)}. If you don't "
+                f"{memory_string(self._estimated_min_nbytes_in_buffers)}. If you don't "
                 f"decrease the shuffle buffer size from {self._buffer_min_size} rows, "
                 "you might encounter spilling."
             )
 
         block_accessor = BlockAccessor.for_block(block)
-        self._total_rows_added += block_accessor.num_rows()
-        self._total_nbytes_added += block_accessor.size_bytes()
         if block_accessor.num_rows() > 0:
             self._builder.add_block(block)
+            self._total_num_rows_added += block_accessor.num_rows()
+            self._total_nbytes_added += block_accessor.size_bytes()
 
     @property
     def _average_row_nbytes(self) -> Optional[int]:
-        """Return the average number of bytes per row added to the shuffle buffer."""
+        """Return the average number of bytes per row added to this batcher."""
         return (
-            self._total_nbytes_added // self._total_rows_added
-            if self._total_rows_added > 0
+            self._total_nbytes_added // self._total_num_rows_added
+            if self._total_num_rows_added > 0
             else None
         )
 
     @property
-    def _estimated_max_buffer_nbytes(self) -> Optional[int]:
-        """Return the estimated maximum number of bytes in the shuffle buffer."""
+    def _estimated_min_nbytes_in_buffers(self) -> Optional[int]:
+        """Return the estimated minimum number of bytes across all buffers.
+
+        This includes data in both the compacted and uncompacted buffers.
+        """
         if self._average_row_nbytes is None:
             return None
 
-        return (
-            self._average_row_nbytes
-            * self._buffer_min_size
-            * SHUFFLE_BUFFER_COMPACTION_RATIO
-        )
+        return self._average_row_nbytes * self._min_rows_to_trigger_compaction
 
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the batcher.
@@ -284,30 +286,31 @@ class ShufflingBatcher(BatcherInterface):
 
     def has_any(self) -> bool:
         """Whether this batcher has any data."""
-        return self._buffer_size() > 0
+        return self._num_rows() > 0
 
     def has_batch(self) -> bool:
         """Whether this batcher has any batches."""
-        buffer_size = self._buffer_size()
+        num_rows = self._num_rows()
 
         if not self._done_adding:
             # Delay pulling of batches until the buffer is large enough in order to
             # amortize compaction overhead.
-            return self._materialized_buffer_size() >= self._buffer_min_size or (
-                buffer_size - self._batch_size
-                >= self._buffer_min_size * SHUFFLE_BUFFER_COMPACTION_RATIO
+            return (
+                self._num_compacted_rows() >= self._min_rows_to_yield_batch
+                or num_rows - self._batch_size >= self._min_rows_to_trigger_compaction
             )
         else:
-            return buffer_size >= self._batch_size
+            return num_rows >= self._batch_size
 
-    def _buffer_size(self) -> int:
-        """Return number of rows in shuffle buffer."""
-        buffer_size = self._builder.num_rows()
-        buffer_size += self._materialized_buffer_size()
-        return buffer_size
+    def _num_rows(self) -> int:
+        """Return the total number of rows that haven't been yielded yet.
 
-    def _materialized_buffer_size(self) -> int:
-        """Return materialized (compacted portion of) shuffle buffer size."""
+        This includes rows in both the compacted and uncompacted buffers.
+        """
+        return self._num_compacted_rows() + self._num_uncompacted_rows()
+
+    def _num_compacted_rows(self) -> int:
+        """Return number of unyielded rows in the compacted (shuffle) buffer."""
         if self._shuffle_buffer is None:
             return 0
         # The size of the concrete (materialized) shuffle buffer, adjusting
@@ -317,6 +320,10 @@ class ShufflingBatcher(BatcherInterface):
             0,
             BlockAccessor.for_block(self._shuffle_buffer).num_rows() - self._batch_head,
         )
+
+    def _num_uncompacted_rows(self) -> int:
+        """Return number of unyielded rows in the uncompacted buffer."""
+        return self._builder.num_rows()
 
     def next_batch(self) -> Block:
         """Get the next shuffled batch from the shuffle buffer.
@@ -328,9 +335,8 @@ class ShufflingBatcher(BatcherInterface):
         # Add rows in the builder to the shuffle buffer. Note that we delay compaction
         # as much as possible to amortize the concatenation overhead. Compaction is
         # only necessary when the materialized buffer size falls below the min size.
-        if self._builder.num_rows() > 0 and (
-            self._done_adding
-            or self._materialized_buffer_size() <= self._buffer_min_size
+        if self._num_uncompacted_rows() > 0 and (
+            self._done_adding or self._num_compacted_rows() <= self._buffer_min_size
         ):
             if self._shuffle_buffer is not None:
                 if self._batch_head > 0:
@@ -373,12 +379,3 @@ class ShufflingBatcher(BatcherInterface):
         return BlockAccessor.for_block(self._shuffle_buffer).slice(
             slice_start, self._batch_head
         )
-
-
-def _get_total_obj_store_mem_on_node() -> int:
-    node_id = ray.get_runtime_context().get_node_id()
-    total_resources_per_node = ray._private.state.total_resources_per_node()
-    assert (
-        node_id in total_resources_per_node
-    ), "Expected node '{node_id}' to be in resources: {total_resources_per_node}"
-    return total_resources_per_node[node_id]["object_store_memory"]

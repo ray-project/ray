@@ -48,7 +48,7 @@ def test_shuffling_batcher():
             assert batcher._batch_head == 0
 
         assert batcher._builder.num_rows() == pending_buffer_size
-        assert batcher._materialized_buffer_size() == materialized_buffer_size
+        assert batcher._num_compacted_rows() == materialized_buffer_size
 
     def next_and_check(
         current_cursor,
@@ -71,7 +71,7 @@ def test_shuffling_batcher():
             assert len(batch) == batch_size
 
         assert batcher._builder.num_rows() == pending_buffer_size
-        assert batcher._materialized_buffer_size() == materialized_buffer_size
+        assert batcher._num_compacted_rows() == materialized_buffer_size
 
         if should_have_batch_after:
             assert batcher.has_batch()
