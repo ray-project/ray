@@ -21,7 +21,7 @@ class AllReduceOp(ReduceOp):
     AVG = 4
 
     def __str__(self):
-        return f"{self.name.lower()}"
+        return f"AllReduce.{self.name.lower()}"
 
 
 @PublicAPI
@@ -33,4 +33,4 @@ class ReduceScatterOp(ReduceOp):
     AVG = 4
 
     def __str__(self):
-        return f"{self.name.lower()}"
+        return f"ReduceScatter.{self.name.lower()}"

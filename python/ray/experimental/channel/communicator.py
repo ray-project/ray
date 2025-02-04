@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
-from ray.experimental.util.types import AllReduceOp
+from ray.experimental.util.types import AllReduceOp, ReduceScatterOp
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -136,6 +136,41 @@ class Communicator(ABC):
             send_buf: The input torch.tensor to allreduce. It should already be
                 on this actor's default device.
             recv_buf: The output torch.tensor to store the allreduce result.
+            op: The reduce operation.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceScatterOp,
+    ) -> None:
+        """
+        Collectively reducescatter the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to reducescatter. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the reducescatter result.
+            op: The reduce operation.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        """
+        Collectively allgather the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to allgather. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allgather result.
             op: The reduce operation.
         """
         raise NotImplementedError

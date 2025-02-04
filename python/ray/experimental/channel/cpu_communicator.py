@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import ray
 from ray.experimental.channel.communicator import (
     AllReduceOp,
+    ReduceScatterOp,
     Communicator,
     TorchTensorAllocator,
 )
@@ -143,6 +144,21 @@ class CPUCommunicator(Communicator):
         assert recv_buf is not None, "Receiving buffer required for CPUCommunicator"
         recv_buf[:] = result[:]
         self.num_ops[barrier_key] += 1
+
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceScatterOp = ReduceScatterOp.SUM,
+    ):
+        raise NotImplementedError
+
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        raise NotImplementedError
 
     def destroy(self) -> None:
         for barrier in self.barriers:
