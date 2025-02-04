@@ -14,6 +14,9 @@
 
 #include "ray/util/pipe_logger.h"
 
+#include <asm/termbits.h> /* Definition of constants */
+#include <sys/ioctl.h>
+
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -33,6 +36,8 @@
 namespace ray {
 
 namespace {
+
+int pipe_readfd = -1;
 
 struct StreamDumper {
   absl::Mutex mu;
@@ -60,6 +65,12 @@ void StartStreamDump(
 
     // Exit at pipe read EOF.
     while (std::getline(*pipe_instream, newline)) {
+      int bytes_available = 0;
+      RAY_CHECK_EQ(ioctl(pipe_readfd, FIONREAD, &bytes_available), 0);
+      if (bytes_available >= 65536 / 4 * 3 /*pipe buffer size*/) {
+        std::exit(-1);
+      }
+
       // Backfill newliner for current segment.
       if (!pipe_instream->eof()) {
         newline += '\n';
@@ -237,6 +248,7 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   RAY_CHECK_EQ(pipe(pipefd), 0);
   int read_handle = pipefd[0];
   int write_handle = pipefd[1];
+  pipe_readfd = read_handle;
 #elif defined(_WIN32)
   HANDLE read_handle = nullptr;
   HANDLE write_handle = nullptr;
