@@ -44,7 +44,7 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
         }));
   };
 
-  if (!reference_counter_->AddObjectPrimaryCopyDeleteCallback(
+  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(
           actor_creation_return_id,
           [actor_out_of_scope_callback](const ObjectID &object_id) {
             actor_out_of_scope_callback(object_id);

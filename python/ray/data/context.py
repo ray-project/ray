@@ -80,8 +80,6 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 #       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
 DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 
-DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE = True
-
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
@@ -301,9 +299,7 @@ class DataContext:
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
-    enable_fallback_to_arrow_object_ext_type = (
-        DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE
-    )
+    enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
@@ -340,6 +336,8 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+
+    override_object_store_memory_limit_fraction: float = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -393,10 +391,31 @@ class DataContext:
 
     @staticmethod
     def get_current() -> "DataContext":
-        """Get or create a singleton context.
+        """Get or create the current DataContext.
 
-        If the context has not yet been created in this process, it will be
-        initialized with default settings.
+        When a Dataset is created, the current DataContext will be sealed.
+        Changes to `DataContext.get_current()` will not impact existing Datasets.
+
+        Examples:
+
+            .. testcode::
+                import ray
+
+                context = ray.data.DataContext.get_current()
+
+                context.target_max_block_size = 100 * 1024 ** 2
+                ds1 = ray.data.range(1)
+                context.target_max_block_size = 1 * 1024 ** 2
+                ds2 = ray.data.range(1)
+
+                # ds1's target_max_block_size will be 100MB
+                ds1.take_all()
+                # ds2's target_max_block_size will be 1MB
+                ds2.take_all()
+
+        Developer notes: Avoid using `DataContext.get_current()` in data
+        internal components, use the DataContext object captured in the
+        Dataset and pass it around as arguments.
         """
 
         global _default_context

@@ -33,6 +33,9 @@ class ProfileEvent {
                const std::string &node_ip_address,
                const std::string &event_type);
 
+  ProfileEvent(const ProfileEvent &) = delete;
+  ProfileEvent &operator=(const ProfileEvent &) = delete;
+
   // Set the end time for the event and add it to the profiler.
   ~ProfileEvent();
 

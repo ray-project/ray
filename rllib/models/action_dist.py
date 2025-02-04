@@ -22,7 +22,7 @@ class ActionDistribution:
             inputs: input vector to compute samples from.
             model (ModelV2): reference to model producing the inputs. This
                 is mainly useful if you want to use model variables to compute
-                action outputs (i.e., for auto-regressive action distributions,
+                action outputs (i.e., for autoregressive action distributions,
                 see examples/autoregressive_action_dist.py).
         """
         self.inputs = inputs

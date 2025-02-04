@@ -14,6 +14,9 @@
 
 #include "ray/util/event.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <boost/range.hpp>
 #include <csignal>
 #include <filesystem>
@@ -23,7 +26,10 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/event_label.h"
+#include "ray/util/random.h"
+#include "ray/util/string_utils.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 using json = nlohmann::json;
@@ -531,6 +537,32 @@ TEST_F(EventTest, TestExportEvent) {
   EXPECT_EQ(raylet_event_as_json["message"].get<std::string>(), "test warning");
 }
 
+TEST_F(EventTest, TestIsExportAPIEnabledSourceType) {
+  EXPECT_EQ(
+      IsExportAPIEnabledSourceType(
+          "EXPORT_TASK", false, std::vector<std::string>{"EXPORT_TASK", "EXPORT_ACTOR"}),
+      true);
+  EXPECT_EQ(
+      IsExportAPIEnabledSourceType(
+          "EXPORT_TASK", true, std::vector<std::string>{"EXPORT_TASK", "EXPORT_ACTOR"}),
+      true);
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", false, std::vector<std::string>{"EXPORT_ACTOR"}),
+            false);
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", true, std::vector<std::string>{"EXPORT_ACTOR"}),
+            true);
+
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", false, std::vector<std::string>{"invalid resource type"}),
+            false);
+
+  const std::string input = "EXPORT_TASK,EXPORT_ACTOR";
+  const std::vector<std::string> expected_output{"EXPORT_TASK", "EXPORT_ACTOR"};
+  auto output = ConvertValue<std::vector<std::string>>("std::vector<std::string>", input);
+  ASSERT_EQ(output, expected_output);
+}
+
 TEST_F(EventTest, TestRayCheckAbort) {
   auto custom_fields = absl::flat_hash_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
@@ -650,7 +682,9 @@ TEST_F(EventTest, TestLogLevel) {
 TEST_F(EventTest, TestLogEvent) {
   ray::RayEvent::SetEmitToLogFile(true);
   // Initialize log level to error
-  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR, log_dir);
+  const std::string app_name = "event_test";
+  const std::string log_filepath = RayLog::GetLogFilepathFromDirectory(log_dir, app_name);
+  ray::RayLog::StartRayLog(app_name, ray::RayLogLevel::ERROR, log_filepath);
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_CORE_WORKER, {});
@@ -678,7 +712,7 @@ TEST_F(EventTest, TestLogEvent) {
   std::filesystem::remove_all(log_dir.c_str());
 
   // Set log level smaller than event level.
-  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::INFO, log_dir);
+  ray::RayLog::StartRayLog(app_name, ray::RayLogLevel::INFO, log_filepath);
   ray::RayEvent::SetLevel("error");
 
   // Add some events. All events would be printed in general log.
@@ -737,6 +771,9 @@ TEST_F(EventTest, VerifyOnlyNthOccurenceEventLogged) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   // Use ERROR type logger by default to avoid printing large scale logs in current test.
-  ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::ERROR);
+  const std::string app_name = "event_test";
+  const std::string log_filepath =
+      ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", app_name);
+  ray::RayLog::StartRayLog(app_name, ray::RayLogLevel::INFO, log_filepath);
   return RUN_ALL_TESTS();
 }

@@ -2,12 +2,12 @@ from collections import defaultdict
 
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
-class SelfPlayCallback(DefaultCallbacks):
+class SelfPlayCallback(RLlibCallback):
     def __init__(self, win_rate_threshold):
         super().__init__()
         # 0=RandomPolicy, 1=1st main policy snapshot,
@@ -19,20 +19,30 @@ class SelfPlayCallback(DefaultCallbacks):
         # Report the matchup counters (who played against whom?).
         self._matching_stats = defaultdict(int)
 
+    def on_episode_end(
+        self,
+        *,
+        episode,
+        env_runner,
+        metrics_logger,
+        env,
+        env_index,
+        rl_module,
+        **kwargs,
+    ) -> None:
+        # Compute the win rate for this episode and log it with a window of 100.
+        main_agent = 0 if episode.module_for(0) == "main" else 1
+        rewards = episode.get_rewards()
+        if main_agent in rewards:
+            main_won = rewards[main_agent][-1] == 1.0
+            metrics_logger.log_value(
+                "win_rate",
+                main_won,
+                window=100,
+            )
+
     def on_train_result(self, *, algorithm, metrics_logger=None, result, **kwargs):
-        # Get the win rate for the train batch.
-        # Note that normally, one should set up a proper evaluation config,
-        # such that evaluation always happens on the already updated policy,
-        # instead of on the already used train_batch.
-        main_rew = result[ENV_RUNNER_RESULTS]["hist_stats"].pop("policy_main_reward")
-        opponent_rew = list(result[ENV_RUNNER_RESULTS]["hist_stats"].values())[0]
-        assert len(main_rew) == len(opponent_rew)
-        won = 0
-        for r_main, r_opponent in zip(main_rew, opponent_rew):
-            if r_main > r_opponent:
-                won += 1
-        win_rate = won / len(main_rew)
-        result["win_rate"] = win_rate
+        win_rate = result[ENV_RUNNER_RESULTS]["win_rate"]
         print(f"Iter={algorithm.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
@@ -62,8 +72,20 @@ class SelfPlayCallback(DefaultCallbacks):
             algorithm.add_module(
                 module_id=new_module_id,
                 module_spec=RLModuleSpec.from_module(main_module),
-                module_state=main_module.get_state(),
                 new_agent_to_module_mapping_fn=agent_to_module_mapping_fn,
+            )
+            # TODO (sven): Maybe we should move this convenience step back into
+            #  `Algorithm.add_module()`? Would be less explicit, but also easier.
+            algorithm.set_state(
+                {
+                    "learner_group": {
+                        "learner": {
+                            "rl_module": {
+                                new_module_id: main_module.get_state(),
+                            }
+                        }
+                    }
+                }
             )
         else:
             print("not good enough; will keep learning ...")

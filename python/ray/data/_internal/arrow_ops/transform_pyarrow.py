@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, List, Union, Dict
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -186,23 +186,193 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
 
     tensor_types = get_arrow_extension_tensor_types()
 
-    # Single flat list of chunks across all chunked arrays.
-    chunks = []
+    # Infer the type as the first non-null type.
     type_ = None
     for arr in arrs:
-        if type_ is None:
+        assert not isinstance(arr.type, tensor_types), (
+            "'_concatenate_chunked_arrays' should only be used on non-tensor "
+            f"extension types, but got a chunked array of type {type_}."
+        )
+        if type_ is None and not pyarrow.types.is_null(arr.type):
             type_ = arr.type
-        else:
-            if isinstance(type_, tensor_types):
-                raise ValueError(
-                    "_concatenate_chunked_arrays should only be used on non-tensor "
-                    f"extension types, but got a chunked array of type {type_}."
-                )
-            assert type_ == arr.type, f"Types mismatch: {type_} != {arr.type}"
+            break
+
+    if type_ is None:
+        # All arrays are null, so the inferred type is null.
+        type_ = pyarrow.null()
+
+    # Single flat list of chunks across all chunked arrays.
+    chunks = []
+    for arr in arrs:
+        if pyarrow.types.is_null(arr.type) and not pyarrow.types.is_null(type_):
+            # If the type is null, we need to cast the array to the inferred type.
+            arr = arr.cast(type_)
+        elif not pyarrow.types.is_null(arr.type) and type_ != arr.type:
+            raise RuntimeError(f"Types mismatch: {type_} != {arr.type}")
+
         # Add chunks for this chunked array to flat chunk list.
         chunks.extend(arr.chunks)
+
     # Construct chunked array on flat list of chunks.
     return pyarrow.chunked_array(chunks, type=type_)
+
+
+def _extract_unified_struct_types(
+    schema: "pyarrow.Schema",
+) -> Dict[str, "pyarrow.StructType"]:
+    """
+    Extract all struct fields from a schema and map their names to types.
+
+    Args:
+        schema: Arrow schema to extract struct types from.
+
+    Returns:
+        Dict[str, pa.StructType]: Mapping of struct field names to their types.
+    """
+    import pyarrow as pa
+
+    return {
+        field.name: field.type for field in schema if pa.types.is_struct(field.type)
+    }
+
+
+def _backfill_missing_fields(
+    column: "pyarrow.ChunkedArray",
+    unified_struct_type: "pyarrow.StructType",
+    block_length: int,
+) -> "pyarrow.StructArray":
+    """
+    Align a struct column's fields to match the unified schema's struct type.
+
+    Args:
+        column: The column data to align.
+        unified_struct_type: The unified struct type to align to.
+        block_length: The number of rows in the block.
+
+    Returns:
+        pa.StructArray: The aligned struct array.
+    """
+    import pyarrow as pa
+
+    # Flatten chunked arrays into a single array if necessary
+    if isinstance(column, pa.ChunkedArray):
+        column = pa.concat_arrays(column.chunks)
+
+    # Extract the current struct field names and their corresponding data
+    current_fields = {
+        field.name: column.field(i) for i, field in enumerate(column.type)
+    }
+
+    # Assert that the current fields are a subset of the unified struct type's field names
+    unified_field_names = {field.name for field in unified_struct_type}
+    assert set(current_fields.keys()).issubset(
+        unified_field_names
+    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
+
+    # Early exit if no fields are missing in the schema
+    if column.type == unified_struct_type:
+        return column
+
+    aligned_fields = []
+
+    # Iterate over the fields in the unified struct type schema
+    for field in unified_struct_type:
+        field_name = field.name
+        field_type = field.type
+
+        if field_name in current_fields:
+            # If the field exists in the current column, align it
+            current_array = current_fields[field_name]
+            if pa.types.is_struct(field_type):
+                # Recursively align nested struct fields
+                current_array = _backfill_missing_fields(
+                    column=current_array,
+                    unified_struct_type=field_type,
+                    block_length=block_length,
+                )
+            aligned_fields.append(current_array)
+        else:
+            # If the field is missing, fill with nulls
+            aligned_fields.append(pa.nulls(block_length, type=field_type))
+
+    # Reconstruct the struct column with aligned fields
+    return pa.StructArray.from_arrays(
+        aligned_fields,
+        fields=unified_struct_type,
+    )
+
+
+def _align_struct_fields(
+    blocks: List["pyarrow.Table"], schema: "pyarrow.Schema"
+) -> List["pyarrow.Table"]:
+    """
+    Align struct columns across blocks to match the provided schema.
+
+    Args:
+        blocks: List of Arrow tables to align.
+        schema: Unified schema with desired struct column alignment.
+
+    Returns:
+        List[pa.Table]: List of aligned Arrow tables.
+    """
+    import pyarrow as pa
+
+    # Check if all block schemas are already aligned
+    if all(block.schema == schema for block in blocks):
+        return blocks
+
+    # Extract all struct column types from the provided schema
+    unified_struct_types = _extract_unified_struct_types(schema)
+
+    # If there are no struct columns in the schema, return blocks as is
+    if not unified_struct_types:
+        return blocks
+
+    aligned_blocks = []
+
+    # Iterate over each block (table) in the list
+    for block in blocks:
+        # Store aligned struct columns
+        aligned_columns = {}
+
+        # Get the number of rows in the block
+        block_length = len(block)
+
+        # Process each struct column defined in the unified schema
+        for column_name, unified_struct_type in unified_struct_types.items():
+            # If the column exists in the block, align its fields
+            if column_name in block.schema.names:
+                column = block[column_name]
+
+                # Check if the column type matches a struct type
+                if isinstance(column.type, pa.StructType):
+                    aligned_columns[column_name] = _backfill_missing_fields(
+                        column, unified_struct_type, block_length
+                    )
+                else:
+                    # If the column is not a struct, simply keep the original column
+                    aligned_columns[column_name] = column
+            else:
+                # If the column is missing, create a null-filled column with the same
+                # length as the block
+                aligned_columns[column_name] = pa.array(
+                    [None] * block_length, type=unified_struct_type
+                )
+
+        # Create a new aligned block with the updated columns and the unified schema.
+        new_columns = []
+        for column_name in schema.names:
+            if column_name in aligned_columns:
+                # Use the aligned column if available
+                new_columns.append(aligned_columns[column_name])
+            else:
+                # Use the original column if not aligned
+                assert column_name in block.schema.names
+                new_columns.append(block[column_name])
+        aligned_blocks.append(pa.table(new_columns, schema=schema))
+
+    # Return the list of aligned blocks
+    return aligned_blocks
 
 
 def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
@@ -228,6 +398,16 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     if len(blocks) == 1:
         return blocks[0]
 
+    # If the result contains pyarrow schemas, unify them
+    schemas_to_unify = [b.schema for b in blocks]
+    try:
+        schema = unify_schemas(schemas_to_unify)
+    except Exception as e:
+        raise ArrowConversionError(str(blocks)) from e
+
+    # Handle alignment of struct type columns.
+    blocks = _align_struct_fields(blocks, schema)
+
     # Rollup columns with opaque (null-typed) lists, to process in following for-loop.
     cols_with_null_list = set()
     for b in blocks:
@@ -235,13 +415,6 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             col_type = b.schema.field(col_name).type
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
-
-    # If the result contains pyarrow schemas, unify them
-    schemas_to_unify = [b.schema for b in blocks]
-    try:
-        schema = unify_schemas(schemas_to_unify)
-    except Exception as e:
-        raise ArrowConversionError(str(blocks)) from e
 
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)

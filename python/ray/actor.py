@@ -135,6 +135,8 @@ class ActorMethod:
             a actor task stop pausing.
         enable_task_events: True if task events is enabled, i.e., task events from
             the actor should be reported. Defaults to True.
+        _signature: The signature of the actor method. It is None only when cross
+            language feature is used.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
@@ -155,6 +157,7 @@ class ActorMethod:
         generator_backpressure_num_objects: int,
         enable_task_events: bool,
         decorator=None,
+        signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
     ):
         self._actor_ref = weakref.ref(actor)
@@ -173,6 +176,7 @@ class ActorMethod:
         self._is_generator = is_generator
         self._generator_backpressure_num_objects = generator_backpressure_num_objects
         self._enable_task_events = enable_task_events
+        self._signature = signature
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -265,6 +269,23 @@ class ActorMethod:
         }
         actor._ray_dag_bind_index += 1
 
+        assert (
+            self._signature is not None
+        ), "self._signature should be set for .bind API."
+        try:
+            signature.validate_args(self._signature, args, kwargs)
+        except TypeError as e:
+            signature_copy = self._signature.copy()
+            if len(signature_copy) > 0 and signature_copy[-1].name == "_ray_trace_ctx":
+                # Remove the trace context arg for readability.
+                signature_copy.pop(-1)
+            signature_copy = inspect.Signature(parameters=signature_copy)
+            raise TypeError(
+                f"{str(e)}. The function `{self._method_name}` has a signature "
+                f"`{signature_copy}`, but the given arguments to `bind` doesn't "
+                f"match. args: {args}. kwargs: {kwargs}."
+            ) from None
+
         node = ClassMethodNode(
             self._method_name,
             args,
@@ -281,7 +302,7 @@ class ActorMethod:
                     (node, i),
                     dict(),
                     dict(),
-                    {IS_CLASS_METHOD_OUTPUT_KEY: True},
+                    {IS_CLASS_METHOD_OUTPUT_KEY: True, PARENT_CLASS_NODE_KEY: actor},
                 )
                 output_nodes.append(output_node)
             return tuple(output_nodes)
@@ -1371,6 +1392,7 @@ class ActorHandle:
                         self._ray_enable_task_events,  # Use actor's default value
                     ),
                     decorator=self._ray_method_decorators.get(method_name),
+                    signature=self._ray_method_signatures[method_name],
                 )
                 setattr(self, method_name, method)
 
@@ -1541,6 +1563,7 @@ class ActorHandle:
             self._ray_enable_task_events,  # enable_task_events
             # Currently, cross-lang actor method not support decorator
             decorator=None,
+            signature=None,
         )
 
     # Make tab completion work.

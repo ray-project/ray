@@ -2,7 +2,7 @@ import logging
 import numpy as np
 import os
 import sys
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 import tree  # pip install dm_tree
 
@@ -13,6 +13,9 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,53 @@ def convert_to_tensor(
     raise NotImplementedError(
         f"framework={framework} not supported in `convert_to_tensor()`!"
     )
+
+
+@PublicAPI
+def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1):
+    """Returns a single device (CPU or some GPU) depending on a config.
+
+    Args:
+        config: An AlgorithmConfig to extract information from about the device to use.
+        num_gpus_requested: The number of GPUs actually requested. This may be the value
+            of `config.num_gpus_per_env_runner` when for example calling this function
+            from an EnvRunner.
+
+    Returns:
+        A single device (or name) given `config` and `num_gpus_requested`.
+    """
+    if config.framework_str == "torch":
+        torch, _ = try_import_torch()
+
+        # TODO (Kourosh): How do we handle model parallelism?
+        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
+        #  API in ray.train but allow for session to be None without any errors raised.
+        if num_gpus_requested > 0:
+            from ray.air._internal.torch_utils import get_devices
+
+            # `get_devices()` returns a list that contains the 0th device if
+            # it is called from outside a Ray Train session. It's necessary to give
+            # the user the option to run on the gpu of their choice, so we enable that
+            # option here through `config.local_gpu_idx`.
+            devices = get_devices()
+            if len(devices) == 1:
+                return devices[0]
+            else:
+                assert config.local_gpu_idx < torch.cuda.device_count(), (
+                    f"local_gpu_idx {config.local_gpu_idx} is not a valid GPU ID "
+                    "or is not available."
+                )
+                # This is an index into the available CUDA devices. For example, if
+                # `os.environ["CUDA_VISIBLE_DEVICES"] = "1"` then
+                # `torch.cuda.device_count() = 1` and torch.device(0) maps to that GPU
+                # with ID=1 on the node.
+                return torch.device(config.local_gpu_idx)
+        else:
+            return torch.device("cpu")
+    else:
+        raise NotImplementedError(
+            f"`framework_str` {config.framework_str} not supported!"
+        )
 
 
 @PublicAPI

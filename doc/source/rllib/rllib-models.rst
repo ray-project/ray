@@ -390,29 +390,6 @@ Take a look at this model example that does exactly that:
    :end-before: __sphinx_doc_end__
 
 
-**Using the Trajectory View API: Passing in the last n actions (or rewards or observations) as inputs to a custom Model**
-
-It is sometimes helpful for learning not only to look at the current observation
-in order to calculate the next action, but also at the past n observations.
-In other cases, you may want to provide the most recent rewards or actions to the model as well
-(like our LSTM wrapper does if you specify: ``use_lstm=True`` and ``lstm_use_prev_action/reward=True``).
-All this may even be useful when not working with partially observable environments (PO-MDPs)
-and/or RNN/Attention models, as for example in classic Atari runs, where we usually use framestacking of
-the last four observed images.
-
-The trajectory view API allows your models to specify these more complex "view requirements".
-
-Here is a simple (non-RNN/Attention) example of a Model that takes as input
-the last 3 observations (very similar to the recommended "framestacking" for
-learning in Atari environments):
-
-.. literalinclude:: ../../../rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-A PyTorch version of the above model is also `given in the same file <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__.
-
 
 Custom Action Distributions
 ---------------------------

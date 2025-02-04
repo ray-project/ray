@@ -9,11 +9,16 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+    OverrideToImplementCustomLogic,
+)
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.spaces.space_utils import to_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.debug import log_once
+from ray.util.annotations import PublicAPI
 
 logger = logging.Logger(__file__)
 
@@ -21,13 +26,22 @@ logger = logging.Logger(__file__)
 #  calls only get_state.
 
 
+@PublicAPI(stability="alpha")
 class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
     """The environment runner to record the single agent case."""
 
     @override(SingleAgentEnvRunner)
-    def __init__(self, config: AlgorithmConfig, **kwargs):
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def __init__(self, *, config: AlgorithmConfig, **kwargs):
         # Initialize the parent.
-        super().__init__(config, **kwargs)
+        super().__init__(config=config, **kwargs)
+
+        # Get the data context for this `EnvRunner`.
+        data_context = ray.data.DataContext.get_current()
+        # Limit the resources for Ray Data to the CPUs given to this `EnvRunner`.
+        data_context.execution_options.resource_limits.cpu = (
+            config.num_cpus_per_env_runner
+        )
 
         # Set the output write method.
         self.output_write_method = self.config.output_write_method
@@ -92,6 +106,10 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         else:
             self.write_data_this_iter = True
 
+        # If the remaining data should be stored. Note, this is only
+        # relevant in case `output_max_rows_per_file` is defined.
+        self.write_remaining_data = self.config.output_write_remaining_data
+
         # Counts how often `sample` is called to define the output path for
         # each file.
         self._sample_counter = 0
@@ -100,6 +118,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         self._samples = []
 
     @override(SingleAgentEnvRunner)
+    @OverrideToImplementCustomLogic
     def sample(
         self,
         *,
@@ -155,15 +174,18 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             if self.output_max_rows_per_file:
                 # Reset the event.
                 self.write_data_this_iter = False
-
-                # Extract the number of samples to be written to disk this iteration.
-                samples_to_write = self._samples[: self.output_max_rows_per_file]
-                # Reset the buffer to the remaining data. This only makes sense, if
-                # `rollout_fragment_length` is smaller `output_max_rows_per_file` or
-                # a 2 x `output_max_rows_per_file`.
-                # TODO (simon): Find a better way to write these data.
-                self._samples = self._samples[self.output_max_rows_per_file :]
-                samples_ds = ray.data.from_items(samples_to_write)
+                # Ensure that all data ready to be written is released from
+                # the buffer. Note, this is important in case we have many
+                # episodes sampled and a relatively small `output_max_rows_per_file`.
+                while len(self._samples) >= self.output_max_rows_per_file:
+                    # Extract the number of samples to be written to disk this
+                    # iteration.
+                    samples_to_write = self._samples[: self.output_max_rows_per_file]
+                    # Reset the buffer to the remaining data. This only makes sense, if
+                    # `rollout_fragment_length` is smaller `output_max_rows_per_file` or
+                    # a 2 x `output_max_rows_per_file`.
+                    self._samples = self._samples[self.output_max_rows_per_file :]
+                    samples_ds = ray.data.from_items(samples_to_write)
             # Otherwise, write the complete data.
             else:
                 samples_ds = ray.data.from_items(self._samples)
@@ -183,10 +205,16 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             except Exception as e:
                 logger.error(e)
 
+        self.metrics.log_value(
+            key="recording_buffer_size",
+            value=len(self._samples),
+        )
+
         # Finally return the samples as usual.
         return samples
 
     @override(EnvRunner)
+    @OverrideToImplementCustomLogic
     def stop(self) -> None:
         """Writes the reamining samples to disk
 
@@ -196,11 +224,11 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         """
         # If there are samples left over we have to write htem to disk. them
         # to a dataset.
-        if self._samples:
+        if self._samples and self.write_remaining_data:
             # Convert them to a `ray.data.Dataset`.
             samples_ds = ray.data.from_items(self._samples)
             # Increase the sample counter for the folder/file name.
-            self._sample_counter += 1.0
+            self._sample_counter += 1
             # Try to write the dataset to disk/cloud storage.
             try:
                 # Setup the path for writing data. Each run will be written to
@@ -224,6 +252,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         logger.debug(f"Experience buffer length: {len(self._samples)}")
 
+    @OverrideToImplementCustomLogic
     def _map_episodes_to_data(self, samples: List[EpisodeType]) -> None:
         """Converts list of episodes to list of single dict experiences.
 

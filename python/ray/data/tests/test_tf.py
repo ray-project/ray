@@ -10,10 +10,21 @@ from ray.data.preprocessors import Concatenator
 from ray.train import ScalingConfig
 
 if sys.version_info <= (3, 12):
-    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    # Skip this test for Python 3.12+ due to tensorflow incompatibility
     import tensorflow as tf
 
+    # if tf version is > 2.16, errors cannot be imported as functions
+    # parse version with packaging
+    from packaging import version
+
     from ray.train.tensorflow import TensorflowTrainer
+
+    if version.parse(tf.__version__) >= version.parse("2.16"):
+        mse = tf.keras.losses.MeanSquaredError()
+        mae = tf.keras.losses.MeanAbsoluteError()
+    else:
+        mse = tf.keras.losses.mean_squared_error
+        mae = tf.keras.losses.mean_absolute_error
 
 
 class TestToTF:
@@ -204,12 +215,13 @@ class TestToTF:
 
     @pytest.mark.parametrize(
         "data, expected_dtype",
-        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        # Skip this test for Python 3.12+ due to tensorflow incompatibility
         [
             (0, tf.int64),
             (0.0, tf.double),
             (False, tf.bool),
             ("eggs", tf.string),
+            ([1.0, 2.0], tf.float64),
             (np.zeros([2, 2], dtype=np.float32), tf.float32),
         ]
         if sys.version_info <= (3, 12)
@@ -353,8 +365,8 @@ class TestToTF:
                 multi_worker_model = build_model()
                 multi_worker_model.compile(
                     optimizer=tf.keras.optimizers.SGD(),
-                    loss=tf.keras.losses.mean_absolute_error,
-                    metrics=[tf.keras.metrics.mean_squared_error],
+                    loss=mae,
+                    metrics=[mse],
                 )
 
             if include_additional_columns:

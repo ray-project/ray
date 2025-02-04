@@ -1,32 +1,32 @@
 {
-    "_dashboard_memory_usage_mb": 404.76672,
+    "_dashboard_memory_usage_mb": 425.73824,
     "_dashboard_test_success": true,
-    "_peak_memory": 3.67,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n6527\t1.78GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n8101\t0.93GiB\tpython distributed/test_many_actors.py\n2545\t0.34GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n1279\t0.25GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n6643\t0.22GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n1026\t0.12GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n2450\t0.09GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n6810\t0.09GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n6812\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n6891\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-",
-    "actors_per_second": 591.3539212974848,
+    "_peak_memory": 3.78,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n1110\t8.12GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3495\t1.79GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n5107\t0.89GiB\tpython distributed/test_many_actors.py\n3611\t0.37GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n2744\t0.35GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n583\t0.14GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n3121\t0.09GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n3805\t0.09GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n3807\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n3835\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-",
+    "actors_per_second": 605.527621831549,
     "num_actors": 10000,
     "perf_metrics": [
         {
             "perf_metric_name": "actors_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 591.3539212974848
+            "perf_metric_value": 605.527621831549
         },
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 94.771
+            "perf_metric_value": 138.675
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 2548.0
+            "perf_metric_value": 3213.567
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 4095.457
+            "perf_metric_value": 4703.106
         }
     ],
     "success": "1",
-    "time": 16.91034698486328
+    "time": 16.51452326774597
 }

@@ -168,6 +168,10 @@ class TableBlockAccessor(BlockAccessor):
         return row
 
     @staticmethod
+    def _munge_conflict(name, count):
+        return f"{name}_{count+1}"
+
+    @staticmethod
     def _build_tensor_row(row: TableRow) -> np.ndarray:
         raise NotImplementedError
 

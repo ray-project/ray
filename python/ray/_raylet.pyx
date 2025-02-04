@@ -261,6 +261,9 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
+async_task_name = contextvars.ContextVar('async_task_name', default=None)
+async_task_function_name = contextvars.ContextVar('async_task_function_name',
+                                                  default=None)
 
 
 class DynamicObjectRefGenerator:
@@ -1815,7 +1818,8 @@ cdef void execute_task(
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
                         name_of_concurrency_group_to_execute, task_id=task_id,
-                        func_args=(actor, *arguments), func_kwargs=kwarguments)
+                        task_name=task_name, func_args=(actor, *arguments),
+                        func_kwargs=kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -1927,7 +1931,8 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id=task_id)
+                                task_id=task_id,
+                                task_name=task_name)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -2357,6 +2362,10 @@ cdef CRayStatus check_signals() nogil:
         # The Python exceptions are not handled if it is raised from cdef,
         # so we have to handle it here.
         try:
+            if sys.is_finalizing():
+                return CRayStatus.IntentionalSystemExit(
+                    "Python is exiting.".encode("utf-8")
+                )
             PyErr_CheckSignals()
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
@@ -2690,387 +2699,32 @@ def _auto_reconnect(f):
 
 cdef class GcsClient:
     """
-    Client to the GCS server. Only contains synchronous methods.
+    Client to the GCS server. Only contains synchronous methods. For async methods,
+    see GcsAioClient.
 
-    This class is in transition to use the new C++ GcsClient binding. The old
-    PythonGcsClient binding is not deleted until we are confident that the new
-    binding is stable.
-
-    Defaults to the new binding. If you want to use the old binding, please
-    set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
+    This is a thin wrapper around InnerGcsClient with only call frequency collection.
     """
 
-    cdef object inner  # OldGcsClient or NewGcsClient
-    cdef c_bool use_old_client
+    cdef InnerGcsClient inner
 
     def __cinit__(self, address,
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
                   cluster_id: str = None):
-        self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
-        if self.use_old_client:
-            self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
-        else:
-            # For timeout (DEADLINE_EXCEEDED): Both OldGcsClient and NewGcsClient
-            # tries once with timeout_ms.
-            #
-            # For other RpcError (UNAVAILABLE, UNKNOWN): OldGcsClient tries this for
-            # (nums_reconnect_retry + 1) times, each time for timeous_ms (+1s sleep
-            # between each retry). NewGcsClient tries indefinitely until it thinks GCS
-            # is down and kills itself.
-            timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
-            self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
-        logger.debug(f"Created GcsClient. inner {self.inner}")
+        # For timeout (DEADLINE_EXCEEDED): retries once with timeout_ms.
+        #
+        # For other RpcError (UNAVAILABLE, UNKNOWN): retries indefinitely until it
+        # thinks GCS is down and kills the whole process.
+        timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
+        self.inner = InnerGcsClient.standalone(address, cluster_id, timeout_ms)
 
     def __getattr__(self, name):
-        if self.use_old_client:
-            return getattr(self.inner, name)
-        # For new client, we collect the frequency of each method call.
-        # For old client, that is done in @_auto_reconnect.
+        # We collect the frequency of each method call.
         if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
             with ray._private.utils._CALLED_FREQ_LOCK:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
 
-cdef class OldGcsClient:
-    """Old Cython wrapper class of C++ `ray::gcs::PythonGcsClient`."""
-    cdef:
-        shared_ptr[CPythonGcsClient] inner
-        object address
-        object _nums_reconnect_retry
-        ClusterID cluster_id
-
-    def __cinit__(self, address,
-                  nums_reconnect_retry,
-                  cluster_id: str = None):
-        cdef GcsClientOptions gcs_options
-        if cluster_id:
-            gcs_options = GcsClientOptions.create(
-                address, cluster_id, allow_cluster_id_nil=False,
-                fetch_cluster_id_if_nil=False)
-        else:
-            gcs_options = GcsClientOptions.create(
-                address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True)
-        self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
-        self.address = address
-        self._nums_reconnect_retry = nums_reconnect_retry
-        if cluster_id is None:
-            self.cluster_id = ClusterID.nil()
-        else:
-            self.cluster_id = ClusterID.from_hex(cluster_id)
-        self._connect(RayConfig.instance().py_gcs_connect_timeout_s())
-
-    def _connect(self, timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-            size_t num_retries = self._nums_reconnect_retry
-        with nogil:
-            status = self.inner.get().Connect(timeout_ms, num_retries)
-
-        check_status(status)
-
-        result_c_cluster_id = self.inner.get().GetClusterId()
-        result_cluster_id = ClusterID(result_c_cluster_id.Binary())
-        if self.cluster_id.is_nil():
-            self.cluster_id = result_cluster_id
-        else:
-            assert self.cluster_id == result_cluster_id
-
-    @property
-    def cluster_id(self):
-        return self.cluster_id
-
-    @property
-    def address(self):
-        return self.address
-
-    @property
-    def _nums_reconnect_retry(self):
-        return self._nums_reconnect_retry
-
-    @_auto_reconnect
-    def check_alive(
-        self, node_ips: c_vector[c_string], timeout: Optional[float] = None
-    ):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_bool] c_result
-        with nogil:
-            check_status(self.inner.get().CheckAlive(node_ips, timeout_ms, c_result))
-        result = []
-        for r in c_result:
-            result.append(r)
-        return result
-
-    @_auto_reconnect
-    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string value
-            CRayStatus status
-        with nogil:
-            status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
-        if status.IsKeyError():
-            return None
-        else:
-            check_status(status)
-            return value
-
-    @_auto_reconnect
-    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            c_vector[c_string] c_keys
-            c_string c_key
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            unordered_map[c_string, c_string] c_result
-            unordered_map[c_string, c_string].iterator it
-
-        for c_key in keys:
-            c_keys.push_back(c_key)
-        with nogil:
-            check_status(self.inner.get().InternalKVMultiGet(
-                ns, c_keys, timeout_ms, c_result))
-
-        result = {}
-        it = c_result.begin()
-        while it != c_result.end():
-            key = dereference(it).first
-            value = dereference(it).second
-            result[key] = value
-            postincrement(it)
-        return result
-
-    @_auto_reconnect
-    def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
-                        namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_added = 0
-        with nogil:
-            check_status(self.inner.get().InternalKVPut(
-                ns, key, value, overwrite, timeout_ms, num_added))
-
-        return num_added
-
-    @_auto_reconnect
-    def internal_kv_del(self, c_string key, c_bool del_by_prefix,
-                        namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_deleted = 0
-        with nogil:
-            check_status(self.inner.get().InternalKVDel(
-                ns, key, del_by_prefix, timeout_ms, num_deleted))
-
-        return num_deleted
-
-    @_auto_reconnect
-    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] keys
-            c_string key
-
-        with nogil:
-            check_status(self.inner.get().InternalKVKeys(
-                ns, prefix, timeout_ms, keys))
-
-        result = []
-
-        for key in keys:
-            result.append(key)
-
-        return result
-
-    @_auto_reconnect
-    def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool exists = False
-        with nogil:
-            check_status(self.inner.get().InternalKVExists(
-                ns, key, timeout_ms, exists))
-        return exists
-
-    @_auto_reconnect
-    def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string c_uri = uri.encode()
-        with nogil:
-            check_status(self.inner.get().PinRuntimeEnvUri(
-                c_uri, expiration_s, timeout_ms))
-
-    @_auto_reconnect
-    def get_all_node_info(self, timeout=None) -> Dict[NodeID, GcsNodeInfo]:
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CGcsNodeInfo c_node_info
-            c_vector[CGcsNodeInfo] c_node_infos
-            c_vector[c_string] serialized_node_infos
-        with nogil:
-            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, c_node_infos))
-            for c_node_info in c_node_infos:
-                serialized_node_infos.push_back(c_node_info.SerializeAsString())
-
-        result = {}
-        for serialized in serialized_node_infos:
-            node_info = GcsNodeInfo()
-            node_info.ParseFromString(serialized)
-            result[NodeID.from_binary(node_info.node_id)] = node_info
-        return result
-
-    @_auto_reconnect
-    def get_all_job_info(
-        self, *, job_or_submission_id: str = None, skip_submission_job_info_field=False,
-        skip_is_running_tasks_field=False, timeout=None
-    ) -> Dict[JobID, JobTableData]:
-        # Ideally we should use json_format.MessageToDict(job_info),
-        # but `job_info` is a cpp pb message not a python one.
-        # Manually converting each and every protobuf field is out of question,
-        # so we serialize the pb to string to cross the FFI interface.
-        cdef:
-            c_string c_job_or_submission_id
-            optional[c_string] c_optional_job_or_submission_id = nullopt
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
-            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
-            CJobTableData c_job_info
-            c_vector[CJobTableData] c_job_infos
-            c_vector[c_string] serialized_job_infos
-        if job_or_submission_id:
-            c_job_or_submission_id = job_or_submission_id
-            c_optional_job_or_submission_id = \
-                make_optional[c_string](c_job_or_submission_id)
-        with nogil:
-            check_status(self.inner.get().GetAllJobInfo(
-                c_optional_job_or_submission_id, c_skip_submission_job_info_field,
-                c_skip_is_running_tasks_field, timeout_ms, c_job_infos))
-            for c_job_info in c_job_infos:
-                serialized_job_infos.push_back(c_job_info.SerializeAsString())
-        result = {}
-        for serialized in serialized_job_infos:
-            job_info = JobTableData()
-            job_info.ParseFromString(serialized)
-            result[JobID.from_binary(job_info.job_id)] = job_info
-        return result
-
-    @_auto_reconnect
-    def get_all_resource_usage(self, timeout=None) -> GetAllResourceUsageReply:
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string serialized_reply
-
-        with nogil:
-            check_status(self.inner.get().GetAllResourceUsage(
-                timeout_ms, serialized_reply))
-
-        reply = GetAllResourceUsageReply()
-        reply.ParseFromString(serialized_reply)
-        return reply
-    ########################################################
-    # Interface for rpc::autoscaler::AutoscalerStateService
-    ########################################################
-
-    @_auto_reconnect
-    def request_cluster_resource_constraint(
-            self,
-            bundles: c_vector[unordered_map[c_string, double]],
-            count_array: c_vector[int64_t],
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-        with nogil:
-            check_status(self.inner.get().RequestClusterResourceConstraint(
-                timeout_ms, bundles, count_array))
-
-    @_auto_reconnect
-    def get_cluster_resource_state(
-            self,
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-            c_string serialized_reply
-        with nogil:
-            check_status(self.inner.get().GetClusterResourceState(timeout_ms,
-                         serialized_reply))
-
-        return serialized_reply
-
-    @_auto_reconnect
-    def get_cluster_status(
-            self,
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-            c_string serialized_reply
-        with nogil:
-            check_status(self.inner.get().GetClusterStatus(timeout_ms,
-                         serialized_reply))
-
-        return serialized_reply
-
-    @_auto_reconnect
-    def report_autoscaling_state(
-        self,
-        serialzied_state: c_string,
-        timeout_s=None
-    ):
-        """Report autoscaling state to GCS"""
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-        with nogil:
-            check_status(self.inner.get().ReportAutoscalingState(
-                timeout_ms, serialzied_state))
-
-    @_auto_reconnect
-    def drain_node(
-            self,
-            node_id: c_string,
-            reason: int32_t,
-            reason_message: c_string,
-            deadline_timestamp_ms: int64_t):
-        """Send the DrainNode request to GCS.
-
-        This is only for testing.
-        """
-        cdef:
-            int64_t timeout_ms = -1
-            c_bool is_accepted = False
-            c_string rejection_reason_message
-        with nogil:
-            check_status(self.inner.get().DrainNode(
-                node_id, reason, reason_message,
-                deadline_timestamp_ms, timeout_ms, is_accepted,
-                rejection_reason_message))
-
-        return (is_accepted, rejection_reason_message.decode())
-
-    @_auto_reconnect
-    def drain_nodes(self, node_ids, timeout=None):
-        cdef:
-            c_vector[c_string] c_node_ids
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_drained_node_ids
-        for node_id in node_ids:
-            c_node_ids.push_back(node_id)
-        with nogil:
-            check_status(self.inner.get().DrainNodes(
-                c_node_ids, timeout_ms, c_drained_node_ids))
-        result = []
-        for drain_node_id in c_drained_node_ids:
-            result.append(drain_node_id)
-        return result
-
-    #############################################################
-    # Interface for rpc::autoscaler::AutoscalerStateService ends
-    #############################################################
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:
@@ -3352,7 +3006,6 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
-        options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
         options.session_name = session_name
@@ -3379,10 +3032,6 @@ cdef class CoreWorker:
         assert self.is_driver
         with nogil:
             CCoreWorkerProcess.Shutdown()
-
-    def notify_raylet(self):
-        with nogil:
-            CCoreWorkerProcess.GetCoreWorker().ConnectToRaylet()
 
     def run_task_loop(self):
         with nogil:
@@ -3414,6 +3063,48 @@ cdef class CoreWorker:
         assert not self.is_driver
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
+
+    def get_current_task_name(self) -> str:
+        """Return the current task name.
+
+        If it is a normal task, it returns the task name from the main thread.
+        If it is a threaded actor, it returns the task name for the current thread.
+        If it is async actor, it returns the task name stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task name within asyncio task
+        # via async_task_name contextvar. We try this first.
+        # It is needed because the core worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task name.
+        task_name = async_task_name.get()
+        if task_name is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName() \
+                .decode("utf-8")
+        return task_name
+
+    def get_current_task_function_name(self) -> str:
+        """Return the current task function.
+
+        If it is a normal task, it returns the task function from the main thread.
+        If it is a threaded actor, it returns the task function for the current thread.
+        If it is async actor, it returns the task function stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task function within asyncio task
+        # via async_task_function_name contextvar. We try this first.
+        # It is needed because the core Worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task function.
+        task_function_name = async_task_function_name.get()
+        if task_function_name is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_function_name = CCoreWorkerProcess.GetCoreWorker() \
+                .GetCurrentTaskFunctionName().decode("utf-8")
+        return task_function_name
 
     def get_current_task_id(self) -> TaskID:
         """Return the current task ID.
@@ -3489,11 +3180,9 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1):
+    def get_objects(self, object_refs, int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
-            CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
@@ -3720,22 +3409,6 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
 
-    def experimental_channel_read_release(self, object_refs):
-        """
-        For experimental.channel.Channel.
-
-        Signal to the writer that the channel is ready to write again. The read
-        began when the caller calls ray.get and a written value is available. If
-        ray.get is not called first, then this call will block until a value is
-        written, then drop the value.
-        """
-        cdef:
-            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-        with nogil:
-            op_status = (CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelReadRelease(c_object_ids))
-        check_status(op_status)
-
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,
             ObjectRef object_ref=None,
@@ -3802,12 +3475,14 @@ cdef class CoreWorker:
 
         return c_object_id.Binary()
 
-    def wait(self, object_refs_or_generators, int num_returns, int64_t timeout_ms,
-             TaskID current_task_id, c_bool fetch_local):
+    def wait(self,
+             object_refs_or_generators,
+             int num_returns,
+             int64_t timeout_ms,
+             c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
-            CTaskID c_task_id = current_task_id.native()
 
         object_refs = []
         for ref_or_generator in object_refs_or_generators:
@@ -4039,6 +3714,7 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             CTaskID current_c_task_id
             TaskID current_task = self.get_current_task_id()
+            c_string call_site
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4046,6 +3722,10 @@ cdef class CoreWorker:
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
             function_descriptor)
+
+        if RayConfig.instance().record_task_actor_creation_sites():
+            # TODO(ryw): unify with get_py_stack used by record_ref_creation_sites.
+            call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -4074,6 +3754,7 @@ cdef class CoreWorker:
                     c_scheduling_strategy,
                     debugger_breakpoint,
                     serialized_retry_exception_allowlist,
+                    call_site,
                     current_c_task_id,
                 )
 
@@ -4123,9 +3804,14 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
+            c_string call_site
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
+
+        if RayConfig.instance().record_task_actor_creation_sites():
+            # TODO(ryw): unify with get_py_stack used by record_ref_creation_sites.
+            call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -4162,7 +3848,9 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels),
                     extension_data,
-                    &c_actor_id)
+                    call_site,
+                    &c_actor_id,
+                )
 
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
@@ -4272,10 +3960,14 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
+            c_string call_site
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
             function_descriptor)
+
+        if RayConfig.instance().record_task_actor_creation_sites():
+            call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -4305,8 +3997,10 @@ cdef class CoreWorker:
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
+                    call_site,
                     return_refs,
-                    current_c_task_id)
+                    current_c_task_id,
+                )
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
@@ -4822,6 +4516,7 @@ cdef class CoreWorker:
           specified_cgname: str,
           *,
           task_id: Optional[TaskID] = None,
+          task_name: Optional[str] = None,
           func_args: Optional[Tuple] = None,
           func_kwargs: Optional[Dict] = None,
     ):
@@ -4868,6 +4563,9 @@ cdef class CoreWorker:
             try:
                 if task_id:
                     async_task_id.set(task_id)
+                if task_name is not None:
+                    async_task_name.set(task_name)
+                async_task_function_name.set(function_descriptor.repr)
 
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro
@@ -5198,7 +4896,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         user_callback = <object>user_callback_ptr
         user_callback(result)
     except Exception:
-        # Only log the error here because this calllback is called from Cpp
+        # Only log the error here because this callback is called from Cpp
         # and Cython will ignore the exception anyway
         logger.exception(f"failed to run async callback (user func)")
     finally:
@@ -5209,11 +4907,11 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 # Note this deletes keys with prefix `RAY{key_prefix}@`
 # Example: with key_prefix = `default`, we remove all `RAYdefault@...` keys.
-def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
-    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
+def del_key_prefix_from_storage(host, port, username, password, use_ssl, key_prefix):
+    return RedisDelKeyPrefixSync(host, port, username, password, use_ssl, key_prefix)
 
 
-def get_session_key_from_storage(host, port, password, use_ssl, config, key):
+def get_session_key_from_storage(host, port, username, password, use_ssl, config, key):
     """
     Get the session key from the storage.
     Intended to be used for session_name only.
@@ -5221,14 +4919,16 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
         host: The address of the owner (caller) of the
             generator task.
         port: The task ID of the generator task.
-        password: The redis password.
+        username: The Redis username.
+        password: The Redis password.
         use_ssl: Whether to use SSL.
         config: The Ray config. Used to get storage namespace.
         key: The key to retrieve.
     """
     cdef:
         c_string data
-    result = RedisGetKeySync(host, port, password, use_ssl, config, key, &data)
+    result = RedisGetKeySync(
+        host, port, username, password, use_ssl, config, key, &data)
     if result:
         return data
     else:

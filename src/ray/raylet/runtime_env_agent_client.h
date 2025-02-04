@@ -45,7 +45,7 @@ class RuntimeEnvAgentClient {
  public:
   // Creates a concrete Client that can make HTTP requests to address:port.
   // Retries all requests every `agent_manager_retry_interval_ms` on NotFound.
-  static std::shared_ptr<RuntimeEnvAgentClient> Create(
+  static std::unique_ptr<RuntimeEnvAgentClient> Create(
       instrumented_io_context &io_context,
       const std::string &address,
       int port,

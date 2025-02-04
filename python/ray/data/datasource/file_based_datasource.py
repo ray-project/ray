@@ -1,5 +1,6 @@
 import io
 import logging
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -62,6 +63,39 @@ OPEN_FILE_MAX_ATTEMPTS = 10
 
 
 @DeveloperAPI
+@dataclass
+class FileShuffleConfig:
+    """Configuration for file shuffling.
+
+    This configuration object controls how files are shuffled while reading file-based
+    datasets.
+
+    .. note::
+        Even if you provided a seed, you might still observe a non-deterministic row
+        order. This is because tasks are executed in parallel and their completion
+        order might vary. If you need to preserve the order of rows, set
+        `DataContext.get_current().execution_options.preserve_order`.
+
+    Args:
+        seed: An optional integer seed for the file shuffler. If provided, Ray Data
+            shuffles files deterministically based on this seed.
+
+    Example:
+        >>> import ray
+        >>> from ray.data import FileShuffleConfig
+        >>> shuffle = FileShuffleConfig(seed=42)
+        >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
+    """  # noqa: E501
+
+    seed: Optional[int] = None
+
+    def __post_init__(self):
+        """Ensure that the seed is either None or an integer."""
+        if self.seed is not None and not isinstance(self.seed, int):
+            raise ValueError("Seed must be an integer or None.")
+
+
+@DeveloperAPI
 class FileBasedDatasource(Datasource):
     """File-based datasource for reading files.
 
@@ -88,7 +122,7 @@ class FileBasedDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
-        shuffle: Union[Literal["files"], None] = None,
+        shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -154,6 +188,9 @@ class FileBasedDatasource(Datasource):
         self._file_metadata_shuffler = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
+        elif isinstance(shuffle, FileShuffleConfig):
+            # Create a NumPy random generator with a fixed seed if provided
+            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
@@ -526,8 +563,10 @@ def _open_file_with_retry(
 
 
 def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
-    if shuffle not in [None, "files"]:
+    if not (
+        shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
+    ):
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files'."
+            "Valid values are None, 'files', `FileShuffleConfig`."
         )

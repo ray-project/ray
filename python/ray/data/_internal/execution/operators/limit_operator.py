@@ -10,6 +10,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
@@ -20,6 +21,7 @@ class LimitOperator(OneToOneOperator):
         self,
         limit: int,
         input_op: PhysicalOperator,
+        data_context: DataContext,
     ):
         self._limit = limit
         self._consumed_rows = 0
@@ -27,7 +29,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_metadata: List[BlockMetadata] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op, target_max_block_size=None)
+        super().__init__(self._name, input_op, data_context, target_max_block_size=None)
         if self._limit <= 0:
             self.mark_execution_completed()
 

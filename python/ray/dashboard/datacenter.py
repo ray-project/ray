@@ -37,8 +37,6 @@ class DataSource:
     node_actors = MutableNotificationDict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
-    # {job id hex(str): {event id(str): event dict}}
-    events = Dict()
 
 
 class DataOrganizer:
@@ -214,8 +212,7 @@ class DataOrganizer:
             return {}
 
         def _create_agent_info(node_id: str):
-            (http_port, grpc_port) = DataSource.agents[node_id]
-            node_ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+            (node_ip, http_port, grpc_port) = DataSource.agents[node_id]
 
             return dict(
                 ipAddress=node_ip,

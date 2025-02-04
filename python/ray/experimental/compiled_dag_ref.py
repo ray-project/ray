@@ -2,7 +2,12 @@ import asyncio
 from typing import Any, List, Optional
 
 import ray
-from ray.exceptions import RayTaskError
+from ray.exceptions import (
+    GetTimeoutError,
+    RayChannelError,
+    RayChannelTimeoutError,
+    RayTaskError,
+)
 from ray.util.annotations import PublicAPI
 
 
@@ -54,11 +59,15 @@ class CompiledDAGRef:
             execution_index: The index of the execution for the DAG.
                 A DAG can be executed multiple times, and execution index
                 indicates which execution this CompiledDAGRef corresponds to.
+            actor_execution_loop_refs: The actor execution loop refs that
+                are used to execute the DAG. This can be used internally to
+                check the task execution errors in case of exceptions.
             channel_index: The index of the DAG's output channel to fetch
                 the result from. A DAG can have multiple output channels, and
                 channel index indicates which channel this CompiledDAGRef
                 corresponds to. If channel index is not provided, this CompiledDAGRef
                 wraps the results from all output channels.
+
         """
         self._dag = dag
         self._execution_index = execution_index
@@ -88,9 +97,20 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If not yet, get the result and discard to avoid execution result leak.
+        # If we've already cached the result in the buffer, get it to remove it
+        # from the buffer. Else add this CompiledDAGRef's execution and channel indices
+        # to the dag's _destructed_ref_idxs, and try to release any buffers we
+        # can based on the dag's current max_finished_execution_index.
         if not self._ray_get_called:
-            self.get()
+            if self._execution_index in self._dag._result_buffer:
+                self._dag._get_execution_results(
+                    self._execution_index, self._channel_index
+                )
+            else:
+                self._dag._destructed_ref_idxs[self._execution_index].add(
+                    self._channel_index
+                )
+                self._dag._try_release_buffers()
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
@@ -100,9 +120,42 @@ class CompiledDAGRef:
             )
 
         self._ray_get_called = True
-        return_vals = self._dag._execute_until(
-            self._execution_index, self._channel_index, timeout
-        )
+        try:
+            self._dag._execute_until(
+                self._execution_index, self._channel_index, timeout
+            )
+            return_vals = self._dag._get_execution_results(
+                self._execution_index, self._channel_index
+            )
+        except RayChannelTimeoutError:
+            raise
+        except RayChannelError as channel_error:
+            # If we get a channel error, we'd like to call ray.get() on
+            # the actor execution loop refs to check if this is a result
+            # of task execution error which could not be passed down
+            # (e.g., when a pure NCCL channel is used, it is only
+            # able to send tensors, but not the wrapped exceptions).
+            # In this case, we'd like to raise the task execution error
+            # (which is the actual cause of the channel error) instead
+            # of the channel error itself.
+            # TODO(rui): determine which error to raise if multiple
+            # actor task refs have errors.
+            actor_execution_loop_refs = list(self._dag.worker_task_refs.values())
+            try:
+                ray.get(actor_execution_loop_refs, timeout=10)
+            except GetTimeoutError as timeout_error:
+                raise Exception(
+                    "Timed out when getting the actor execution loop exception. "
+                    "This should not happen, please file a GitHub issue."
+                ) from timeout_error
+            except Exception as execution_error:
+                # Use 'from None' to suppress the context of the original
+                # channel error, which is not useful to the user.
+                raise execution_error from None
+            else:
+                raise channel_error
+        except Exception:
+            raise
         return _process_return_vals(return_vals, True)
 
 
@@ -165,8 +218,8 @@ class CompiledDAGFuture:
 
         if not self._dag._has_execution_results(self._execution_index):
             result = yield from fut.__await__()
+            self._dag._max_finished_execution_index += 1
             self._dag._cache_execution_results(self._execution_index, result)
-            self._dag.increment_max_finished_execution_index()
 
         return_vals = self._dag._get_execution_results(
             self._execution_index, self._channel_index
