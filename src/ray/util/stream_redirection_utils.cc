@@ -32,14 +32,6 @@ namespace ray {
 
 namespace {
 
-#if defined(__APPLE__) || defined(__linux__)
-int GetStdoutHandle() { return STDOUT_FILENO; }
-int GetStderrHandle() { return STDERR_FILENO; }
-#elif defined(_WIN32)
-int GetStdoutHandle() { return _fileno(stdout); }
-int GetStderrHandle() { return _fileno(stderr); }
-#endif
-
 // TODO(hjiang): Revisit later, should be able to save some heap allocation with
 // absl::InlinedVector.
 //
@@ -89,12 +81,12 @@ void FlushOnRedirectedStream(int stream_fd) {
 }  // namespace
 
 void RedirectStdout(const StreamRedirectionOption &opt) {
-  RedirectStream(GetStdoutHandle(), opt);
+  RedirectStream(GetStdoutFd(), opt);
 }
 void RedirectStderr(const StreamRedirectionOption &opt) {
-  RedirectStream(GetStderrHandle(), opt);
+  RedirectStream(GetStderrFd(), opt);
 }
-void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutHandle()); }
-void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrHandle()); }
+void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutFd()); }
+void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrFd()); }
 
 }  // namespace ray
