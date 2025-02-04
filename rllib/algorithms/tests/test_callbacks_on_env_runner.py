@@ -4,7 +4,7 @@ import unittest
 import gymnasium as gym
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.env_runner import EnvRunner
@@ -198,7 +198,7 @@ class TestCallbacksOnEnvRunners(unittest.TestCase):
         tune.Tuner(
             trainable=config.algo_class,
             param_space=config,
-            run_config=train.RunConfig(stop={"training_iteration": 1}),
+            run_config=tune.RunConfig(stop={"training_iteration": 1}),
         ).fit()
 
 
