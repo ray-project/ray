@@ -242,11 +242,6 @@ ray_cc_library(
 ray_cc_library(
     name = "compat",
     hdrs = ["compat.h"],
-    srcs = ["compat.cc"],
-    deps = [
-        ":logging",
-        "//src/ray/common:status",
-    ],
 )
 
 ray_cc_library(
