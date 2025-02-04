@@ -56,7 +56,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             new_ref = ray.ObjectRef.from_random()
             c.peek_object_ref_stream.return_value = (new_ref, False)
             mocked_ray_wait.return_value = [], [new_ref]
-            ref = generator._next_sync(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0.0)
             assert ref.is_nil()
 
             # When the new ref is available, next should return it.
@@ -65,7 +65,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             new_ref = ray.ObjectRef.from_random()
             c.peek_object_ref_stream.return_value = (new_ref, True)
             c.try_read_next_object_ref_stream.return_value = new_ref
-            ref = generator._next_sync(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0.0)
             assert new_ref == ref
 
             # When the new ref is available, next should return it.
@@ -76,7 +76,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 c.peek_object_ref_stream.return_value = (new_ref, False)
                 mocked_ray_wait.return_value = [new_ref], []
                 c.try_read_next_object_ref_stream.return_value = new_ref
-                ref = generator._next_sync(timeout_s=0)
+                ref = generator._next_sync(timeout_s=0.0)
                 assert new_ref == ref
 
             # When try_read_next_object_ref_stream raises a
@@ -88,7 +88,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             )  # noqa
             mocked_ray_get.return_value = None
             with pytest.raises(StopIteration):
-                ref = generator._next_sync(timeout_s=0)
+                ref = generator._next_sync(timeout_s=0.0)
             # Make sure we cannot serialize the generator.
             with pytest.raises(TypeError):
                 dumps(generator)
@@ -117,7 +117,7 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
             c.try_read_next_object_ref_stream.side_effect = (
                 ObjectRefStreamEndOfStreamError("")
             )  # noqa
-            ref = generator._next_sync(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0.0)
             # If the generator task fails by a systsem error,
             # meaning the ref will raise an exception
             # it should be returned.
@@ -127,7 +127,7 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
             # raise stopIteration regardless of what
             # the ref contains now.
             with pytest.raises(StopIteration):
-                ref = generator._next_sync(timeout_s=0)
+                ref = generator._next_sync(timeout_s=0.0)
 
 
 def test_generator_basic(shutdown_only):
