@@ -118,18 +118,16 @@ ray_cc_library(
         "src/ray/rpc/rpc_chaos.cc",
         "src/ray/rpc/server_call.cc",
     ],
-    hdrs = glob([
-        "src/ray/rpc/rpc_chaos.h",
+    hdrs = [
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
         "src/ray/rpc/grpc_client.h",
-        "src/ray/rpc/retryable_grpc_client.h",
         "src/ray/rpc/grpc_server.h",
         "src/ray/rpc/metrics_agent_client.h",
+        "src/ray/rpc/retryable_grpc_client.h",
+        "src/ray/rpc/rpc_chaos.h",
         "src/ray/rpc/server_call.h",
-        "src/ray/rpc/grpc_util.h",
-        "src/ray/raylet_client/*.h",
-    ]),
+    ] + glob(["src/ray/raylet_client/*.h"]),
     deps = [
         ":stats_metric",
         "//src/ray/common:asio",
@@ -1977,8 +1975,8 @@ ray_cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
-        "//src/ray/util:sequencer",
         "//src/ray/protobuf:usage_cc_proto",
+        "//src/ray/util:sequencer",
     ],
 )
 
