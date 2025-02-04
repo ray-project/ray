@@ -120,7 +120,8 @@ def test_repartition_max_rows_per_block(
     max_num_rows_per_block,
 ):
     ds = ray.data.range(total_rows).repartition(
-        max_num_rows_per_block=max_num_rows_per_block
+        num_blocks=None,
+        max_num_rows_per_block=max_num_rows_per_block,
     )
     rows_count = 0
     all_data = []
