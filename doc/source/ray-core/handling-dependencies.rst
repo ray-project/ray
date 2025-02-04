@@ -315,7 +315,7 @@ Additionally, it provides full support for `pyproject.toml` including editable
 packages. It also allows you to lock package versions using `uv lock`.
 For more details, see the `UV scripts documentation <https://docs.astral.sh/uv/guides/scripts/>`_.
 
-Create a file `pyproject.toml` in your working directory like this:
+Create a file `pyproject.toml` in your working directory like the following:
 
 .. code-block:: toml
 
