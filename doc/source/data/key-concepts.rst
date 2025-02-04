@@ -18,12 +18,12 @@ There are two main concepts in Ray Data:
 2. Apply transformations to the data.
 3. Write the outputs to external storage or feed the outputs to training workers.
 
-The Dataset API is lazy, meaning that operations aren't executed until you call an action
+The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset,
 like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
 and execute operations in parallel.
 
-*Blocks* are the basic unit of data that Ray Data operates on. A block is a contiguous
-subset of rows from a dataset.
+Each *Dataset* is made up of *Blocks*. A *Block* is a contiguous subset of rows from a dataset,
+which are distributed across the cluster and processed independently in parallel.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
@@ -48,11 +48,11 @@ Here is an example of a Ray Data program and its corresponding logical plan:
 
 .. code-block:: python
 
-    dataset = ray.data.read_csv("s3://my-bucket/my-file.csv")
+    dataset = ray.data.range(100)
     dataset = dataset.map(lambda x: x + 1)
-    dataset = dataset.select_columns("col1")
+    dataset = dataset.select_columns("id")
 
-The logical plan for this program, which you can expect by calling ``print(dataset)``, is:
+You can inspect the logical plan by doing ``print(dataset)``:
 
 .. code-block::
 
@@ -85,18 +85,18 @@ This is useful for inference and training workloads where the dataset can be too
 
 Here is an example of how the streaming execution model works. Below we create a dataset with 1K rows, apply a map and filter transformation, and then call the ``show`` action to trigger the pipeline:
 
-.. code-block:: python
+.. testcode::
 
     import ray
 
     # Create a dataset with 1K rows
-    ds = ray.data.read_csv("s3://my-bucket/my-file.csv")
+    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
     # Define a pipeline of operations
-    ds = ds.map(lambda x: {"col1": x["col1"] * 2})
-    ds = ds.map(lambda x: {"col2": x["col2"] * 2})
-    ds = ds.map(lambda x: {"col3": x["col3"] * 2})
-    ds = ds.filter(lambda x: x["col1"] % 4 == 0)
+    ds = ds.map(lambda x: {"target1": x["target"] * 2})
+    ds = ds.map(lambda x: {"target2": x["target1"] * 2})
+    ds = ds.map(lambda x: {"target3": x["target2"] * 2})
+    ds = ds.filter(lambda x: x["target3"] % 4 == 0)
 
     # Data starts flowing when you call an action like show()
     ds.show(5)
