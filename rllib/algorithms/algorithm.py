@@ -807,7 +807,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state,
+                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
                 )
             elif self.eval_env_runner_group:
                 self.eval_env_runner.set_state(rl_module_state)
@@ -816,7 +816,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state,
+                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
                 )
             # TODO (simon): Update modules in DataWorkers.
 
