@@ -331,7 +331,7 @@ Create a file `pyproject.toml` in your working directory like the following:
   ]
 
 
-And then a `test.py` like this:
+And then a `test.py` like the following:
 
 .. testcode::
   :skipif: True
