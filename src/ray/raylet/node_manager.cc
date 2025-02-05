@@ -1906,9 +1906,7 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  rpc::Task task_message;
-  task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
-  RayTask task(std::move(task_message));
+  RayTask task{std::move(*request.mutable_resource_spec())};
 
   const auto caller_worker =
       WorkerID::FromBinary(task.GetTaskSpecification().CallerAddress().worker_id());
@@ -1934,7 +1932,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
     actor_id = task.GetTaskSpecification().ActorCreationId();
   }
 
-  auto task_spec = task.GetTaskSpecification();
+  const auto &task_spec = task.GetTaskSpecification();
   worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
   auto send_reply_callback_wrapper =
@@ -1967,11 +1965,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
         send_reply_callback(status, success, failure);
       };
 
-  cluster_task_manager_->QueueAndScheduleTask(task,
+  cluster_task_manager_->QueueAndScheduleTask(std::move(task),
                                               request.grant_or_reject(),
                                               request.is_selected_based_on_locality(),
                                               reply,
-                                              send_reply_callback_wrapper);
+                                              std::move(send_reply_callback_wrapper));
 }
 
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,

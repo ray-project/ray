@@ -63,7 +63,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         for _ in range(20):
             buffer.add(batch)
             sample = buffer.sample(2)
-            assert type(sample) == MultiAgentBatch
+            assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
         # One sample in the episode does not belong the the episode on thus
         # gets dropped. Full episodes are of length two.
@@ -88,7 +88,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         for _ in range(400):
             buffer.add(batch)
             sample = buffer.sample(10)
-            assert type(sample) == MultiAgentBatch
+            assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
         self.assertAlmostEqual(np.mean(results), 2 * len(batch), delta=0.1)
 
@@ -113,7 +113,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             buffer.add(batch)
             buffer.add(batch)
             sample = buffer.sample(3)
-            assert type(sample) == MultiAgentBatch
+            assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
         self.assertAlmostEqual(np.mean(results), 3.0, delta=0.2)
 
@@ -125,7 +125,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         for _ in range(100):
             buffer.add(batch)
             sample = buffer.sample(5)
-            assert type(sample) == MultiAgentBatch
+            assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
         self.assertAlmostEqual(np.mean(results), 1.5, delta=0.2)
 
@@ -142,7 +142,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         for _ in range(100):
             buffer.add(batch)
             sample = buffer.sample(10)
-            assert type(sample) == MultiAgentBatch
+            assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
         self.assertAlmostEqual(np.mean(results), 10.0, delta=0.2)
 
@@ -156,12 +156,12 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         buffer.add(batch)
         # Expect exactly 1 batch to be returned.
         sample = buffer.sample(1)
-        assert type(sample) == MultiAgentBatch
+        assert type(sample) is MultiAgentBatch
         self.assertTrue(len(sample) == 1)
         # Expect exactly 0 sample to be returned (nothing new to be returned;
         # no replay allowed (replay_ratio=0.0)).
         sample = buffer.sample(1)
-        assert type(sample) == MultiAgentBatch
+        assert type(sample) is MultiAgentBatch
         assert len(sample.policy_batches) == 0
         # If we insert and replay n times, expect roughly return batches of
         # len 1 (replay_ratio=0.0 -> 0% replayed samples -> 1 new and 0 old samples
@@ -170,7 +170,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         for _ in range(100):
             buffer.add(batch)
             sample = buffer.sample(1)
-            assert type(sample) == MultiAgentBatch
+            assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
         self.assertAlmostEqual(np.mean(results), 1.0, delta=0.2)
 
@@ -187,11 +187,11 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         buffer.add(batch)
         # Expect exactly 1 sample to be returned (the new batch).
         sample = buffer.sample(1)
-        assert type(sample) == MultiAgentBatch
+        assert type(sample) is MultiAgentBatch
         self.assertTrue(len(sample) == 1)
         # Another replay -> Expect exactly 1 sample to be returned.
         sample = buffer.sample(1)
-        assert type(sample) == MultiAgentBatch
+        assert type(sample) is MultiAgentBatch
         self.assertTrue(len(sample) == 1)
         # If we replay n times, expect roughly return batches of
         # len 1 (replay_ratio=1.0 -> 100% replayed samples -> 0 new and 1 old samples
@@ -199,7 +199,7 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         results = []
         for _ in range(100):
             sample = buffer.sample(1)
-            assert type(sample) == MultiAgentBatch
+            assert type(sample) is MultiAgentBatch
             results.append(len(sample.policy_batches[DEFAULT_POLICY_ID]))
         self.assertAlmostEqual(np.mean(results), 1.0)
 

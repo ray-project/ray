@@ -66,7 +66,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
         gcs_virtual_cluster_manager_(gcs_virtual_cluster_manager),
         internal_kv_(internal_kv),
         io_context_(io_context),
-        core_worker_clients_(client_factory) {}
+        core_worker_clients_(client_factory) {
+    export_event_write_enabled_ = IsExportAPIEnabledDriverJob();
+  }
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -101,6 +103,14 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void OnNodeDead(const NodeID &node_id);
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
+
+  // Verify if export events should be written for EXPORT_DRIVER_JOB source types
+  bool IsExportAPIEnabledDriverJob() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_DRIVER_JOB",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   /// Record metrics.
   /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
@@ -139,6 +149,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
   instrumented_io_context &io_context_;
   /// The cached core worker clients which are used to communicate with workers.
   rpc::CoreWorkerClientPool core_worker_clients_;
+
+  /// If true, driver job events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
 }  // namespace gcs

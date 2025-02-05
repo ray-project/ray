@@ -21,6 +21,7 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
         [0 or more user defined ConnectorV2 pieces],
         AddObservationsFromEpisodesToBatch,
         AddColumnsFromEpisodesToTrainBatch,
+        AddTimeDimToBatchAndZeroPad,
         AddStatesFromEpisodesToBatch,
         AgentToModuleMapping,  # only in multi-agent setups!
         BatchIndividualItems,
