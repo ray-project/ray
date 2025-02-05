@@ -1321,6 +1321,7 @@ class Dataset:
         num_blocks: int,
         *,
         shuffle: bool = False,
+        keys: Optional[List[str]] = None,
     ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
@@ -1359,6 +1360,11 @@ class Dataset:
                 requires all-to-all data movement. When shuffle is disabled,
                 output blocks are created from adjacent input blocks,
                 minimizing data movement.
+            keys: List of key columns repartitioning will use to determine which
+                partition will row belong to after repartitioning (by applying
+                hash-partitioning algorithm to the whole dataset). Note that, this
+                config is only relevant when `DataContext.use_hash_based_shuffle`
+                is set to True.
 
         Returns:
             The repartitioned :class:`Dataset`.
@@ -1368,6 +1374,7 @@ class Dataset:
             self._logical_plan.dag,
             num_outputs=num_blocks,
             shuffle=shuffle,
+            keys=keys,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)

@@ -90,6 +90,7 @@ class Repartition(AbstractAllToAll):
         input_op: LogicalOperator,
         num_outputs: int,
         shuffle: bool,
+        keys: Optional[List[str]] = None,
     ):
         if shuffle:
             sub_progress_bar_names = [
@@ -107,6 +108,7 @@ class Repartition(AbstractAllToAll):
             sub_progress_bar_names=sub_progress_bar_names,
         )
         self._shuffle = shuffle
+        self._keys = keys
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)

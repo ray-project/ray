@@ -187,6 +187,7 @@ class GroupedData:
         # Note that sort() will ensure that records of the same key partitioned
         # into the same block.
         if self._key is not None:
+            # TODO rebase onto groupby
             sorted_ds = self._dataset.sort(self._key)
         else:
             sorted_ds = self._dataset.repartition(1)
