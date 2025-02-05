@@ -8,9 +8,9 @@ on:
         required: false
         type: string
         default: 'main'
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - 'ant-ray-*'
 
 jobs:
   build_linux_wheels_aarch64:

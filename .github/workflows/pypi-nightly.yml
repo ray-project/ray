@@ -122,6 +122,7 @@ jobs:
         env:
           CIBW_BEFORE_BUILD: brew install node && pip install "cython>=0.29.32" wheel && sudo ./ci/env/install-bazel.sh && python -m ensurepip --upgrade && sudo chmod a+x /Users/runner/bin/bazel && sudo chown -R runner /Users/runner/Library/Caches/bazelisk && pushd python/ray/dashboard/client && npm ci && npm run build && popd
           CIBW_BUILD: cp${{ matrix.python-version }}-macosx_*
+          MACOSX_DEPLOYMENT_TARGET: 14.5
           CIBW_ENVIRONMENT: RAY_DEBUG_BUILD=nightly
         with:
           package-dir: ./python
