@@ -20,7 +20,7 @@ There are two main concepts in Ray Data:
 
 The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset,
 like :meth:`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan
-and execute operations in parallel.
+and execute operations in a pipelined streaming fashion.
 
 Each *Dataset* is made up of *blocks*. A *block* is a contiguous subset of rows from a dataset,
 which are distributed across the cluster and processed independently in parallel.
