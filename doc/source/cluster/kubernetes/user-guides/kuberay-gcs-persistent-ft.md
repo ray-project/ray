@@ -143,7 +143,8 @@ all your pods:
 $ kubectl delete pods --all
 ```
 
-Wait for the ray head to be provisioned again and enter ready state. Then
-restart your port forwarding and view the ray dashboard. You should find the
-job's metadata has been persisted, despite the loss of the ray head as well as
-the redis replica.
+
+Wait for Kubernetes to provision the Ray head and enter a ready state. Then
+restart your port forwarding and view the Ray dashboard. You should find that
+Ray and Redis has persisted your job's metadata, despite the loss of the ray
+head as well as the Redis replica.
