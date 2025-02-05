@@ -12,6 +12,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    estimate_object_store_memory_per_node,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -117,46 +120,6 @@ class ResourceManager:
 
         return mem_op_internal + mem_op_outputs
 
-    def _estimate_object_store_memory_per_node(
-        self, op: PhysicalOperator, state: "OpState"
-    ) -> Dict[str, int]:
-        usage_per_node = defaultdict(int)
-
-        # iterate through inqueue
-        for bundle in op._metrics._internal_inqueue._bundle_to_nodes:
-            for _, meta in bundle.blocks:
-                node_id = (
-                    meta.exec_stats.node_id
-                    if meta.exec_stats and meta.exec_stats.node_id
-                    else "UNKNOWN"
-                )
-                usage_per_node[node_id] += meta.size_bytes
-
-        # iterate through outqueue
-        for bundle in op._metrics._internal_outqueue._bundle_to_nodes:
-            for _, meta in bundle.blocks:
-                node_id = (
-                    meta.exec_stats.node_id
-                    if meta.exec_stats and meta.exec_stats.node_id
-                    else "UNKNOWN"
-                )
-                usage_per_node[node_id] += meta.size_bytes
-
-        # iterate through input buffers of the downstream operators
-        for next_op in op.output_dependencies:
-            for bundle in next_op._metrics._internal_inqueue._bundle_to_nodes:
-                for _, meta in bundle.blocks:
-                    node_id = (
-                        meta.exec_stats.node_id
-                        if meta.exec_stats and meta.exec_stats.node_id
-                        else "UNKNOWN"
-                    )
-                    usage_per_node[node_id] += meta.size_bytes
-                    # TODO(mowen): Do we need something akin to
-                    # next_op.metrics.obj_store_mem_pending_task_inputs here?
-
-        return usage_per_node
-
     def update_usages(self):
         """Recalculate resource usages."""
         # TODO(hchen): This method will be called frequently during the execution loop.
@@ -217,11 +180,10 @@ class ResourceManager:
             op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
             # Update the per node metrics
-            memory_usage_per_node = self._estimate_object_store_memory_per_node(
-                op, state
-            )
-            for node_id, usage in memory_usage_per_node.items():
-                op._metrics._per_node_metrics[node_id].obj_store_mem_used = usage
+            if DataContext.get_current().enable_per_node_metrics:
+                memory_usage_per_node = estimate_object_store_memory_per_node(op, state)
+                for node_id, usage in memory_usage_per_node.items():
+                    op._metrics._per_node_metrics[node_id].obj_store_mem_used = usage
 
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_usages()

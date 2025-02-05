@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+    from ray.data._internal.execution.streaming_executor_state import OpState
 
 
 # A metadata key used to mark a dataclass field as a metric.
@@ -137,6 +138,58 @@ class OpRuntimesMetricsMeta(type):
                     map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
+
+
+def estimate_object_store_memory_per_node(
+    op: PhysicalOperator, state: "OpState"
+) -> Dict[str, int]:
+    usage_per_node = defaultdict(int)
+
+    # iterate through inqueue
+    for bundle in op._metrics._internal_inqueue._bundle_to_nodes:
+        for _, meta in bundle.blocks:
+            node_id = (
+                meta.exec_stats.node_id
+                if meta.exec_stats and meta.exec_stats.node_id
+                else _NODE_UNKNOWN
+            )
+            usage_per_node[node_id] += meta.size_bytes
+
+    # iterate through outqueue
+    for bundle in op._metrics._internal_outqueue._bundle_to_nodes:
+        for _, meta in bundle.blocks:
+            node_id = (
+                meta.exec_stats.node_id
+                if meta.exec_stats and meta.exec_stats.node_id
+                else _NODE_UNKNOWN
+            )
+            usage_per_node[node_id] += meta.size_bytes
+
+    # iterate through input buffers of the downstream operators
+    for next_op in op.output_dependencies:
+        for bundle in next_op._metrics._internal_inqueue._bundle_to_nodes:
+            for _, meta in bundle.blocks:
+                node_id = (
+                    meta.exec_stats.node_id
+                    if meta.exec_stats and meta.exec_stats.node_id
+                    else _NODE_UNKNOWN
+                )
+                usage_per_node[node_id] += meta.size_bytes
+                # TODO(mowen): Do we need something akin to
+                # next_op.metrics.obj_store_mem_pending_task_inputs here?
+
+    return usage_per_node
+
+
+def iter_meta_and_node_metrics(output, per_node_metrics):
+    for _, meta in output.blocks:
+        if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
+            node_id = meta.exec_stats.node_id
+        else:
+            node_id = _NODE_UNKNOWN
+
+        node_metrics = per_node_metrics[node_id]
+        yield meta, node_metrics, node_id
 
 
 @dataclass
@@ -536,15 +589,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         if self._per_node_metrics_enabled:
             node_ids = set()
-            for block, meta in inputs.blocks:
-                # collect node ids
-                if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
-                    node_ids.add(meta.exec_stats.node_id)
-
-            for node_id in node_ids:
-                node_metrics = self._per_node_metrics[node_id]
-                node_metrics.num_tasks_submitted += 1
-                node_metrics.num_tasks_running += 1
+            for meta, node_metrics, node_id in iter_meta_and_node_metrics(
+                inputs, self._per_node_metrics
+            ):
+                if node_id not in node_ids:
+                    node_metrics.num_tasks_submitted += 1
+                    node_metrics.num_tasks_running += 1
+                # keep track of node ids to ensure we don't double count
+                node_ids.add(meta.exec_stats.node_id)
 
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self._pending_task_inputs.add(inputs)
@@ -559,7 +611,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_task_outputs_generated += output_bytes
 
         task_info = self._running_tasks[task_index]
-        # TODO(mowen): Shouldn't this be `if task_info.num_outputs != 0`?
         if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
         task_info.num_outputs += num_outputs
@@ -574,13 +625,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         # update per node metrics
         if self._per_node_metrics_enabled:
-            for _, meta in output.blocks:
-                if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
-                    node_id = meta.exec_stats.node_id
-                else:
-                    node_id = _NODE_UNKNOWN
-
-                node_metrics = node_metrics = self._per_node_metrics[node_id]
+            for meta, node_metrics, _ in iter_meta_and_node_metrics(
+                output, self._per_node_metrics
+            ):
                 node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
                 node_metrics.blocks_outputs_of_finished_tasks += 1
 
@@ -629,14 +676,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # update per node metrics
         if self._per_node_metrics_enabled:
             node_ids_seen = set()
-            for block, meta in inputs.blocks:
-                if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
-                    node_id = meta.exec_stats.node_id
-                else:
-                    node_id = _NODE_UNKNOWN
-
-                node_metrics = node_metrics = self._per_node_metrics[node_id]
-
+            for meta, node_metrics, node_id in iter_meta_and_node_metrics(
+                inputs, self._per_node_metrics
+            ):
                 # stats to update once per node id or if node id is unknown
                 if node_id not in node_ids_seen or node_id == _NODE_UNKNOWN:
                     node_metrics.num_tasks_finished += 1

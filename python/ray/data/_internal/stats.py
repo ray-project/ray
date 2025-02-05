@@ -611,28 +611,9 @@ class _StatsManager:
         for metrics in op_metrics:
             for node_id, node_metrics in metrics._per_node_metrics.items():
                 agg_node_metrics = aggregated_by_node[node_id]
-                agg_node_metrics[
-                    "num_tasks_submitted"
-                ] += node_metrics.num_tasks_submitted
-                agg_node_metrics["num_tasks_running"] += node_metrics.num_tasks_running
-                agg_node_metrics[
-                    "num_tasks_finished"
-                ] += node_metrics.num_tasks_finished
-                agg_node_metrics[
-                    "obj_store_mem_used"
-                ] += node_metrics.obj_store_mem_used
-                agg_node_metrics[
-                    "obj_store_mem_spilled"
-                ] += node_metrics.obj_store_mem_spilled
-                agg_node_metrics[
-                    "obj_store_mem_freed"
-                ] += node_metrics.obj_store_mem_freed
-                agg_node_metrics[
-                    "bytes_outputs_of_finished_tasks"
-                ] += node_metrics.bytes_outputs_of_finished_tasks
-                agg_node_metrics[
-                    "blocks_outputs_of_finished_tasks"
-                ] += node_metrics.blocks_outputs_of_finished_tasks
+                for f in fields(NodeMetrics):
+                    agg_node_metrics[f.name] += getattr(node_metrics, f.name)
+
         return aggregated_by_node
 
     def update_execution_metrics(

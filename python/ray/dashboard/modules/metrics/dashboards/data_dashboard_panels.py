@@ -345,7 +345,7 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=43,
+        id=48,
         title="Blocks from Finished Tasks / Second (by Node)",
         description=(
             "Number of output blocks from finished tasks per second, grouped by node."
