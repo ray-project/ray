@@ -27,13 +27,14 @@ from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
+    AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     LEARNER_GROUP,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     MEAN_NUM_EPISODE_LISTS_RECEIVED,
-    MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
+    MEAN_NUM_LEARNER_RESULTS_RECEIVED,
     MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -54,12 +55,10 @@ from ray.rllib.utils.replay_buffers.replay_buffer import _ALL_POLICIES
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     LearningRateOrSchedule,
-    PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
     SampleBatchType,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 logger = logging.getLogger(__name__)
@@ -90,7 +89,6 @@ class IMPALAConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.impala import IMPALAConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -104,7 +102,7 @@ class IMPALAConfig(AlgorithmConfig):
         tune.Tuner(
             "IMPALA",
             param_space=config,
-            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            run_config=tune.RunConfig(stop={"training_iteration": 1}),
         ).fit()
     """
 
@@ -609,7 +607,10 @@ class IMPALA(Algorithm):
             )
 
             # Log the average number of sample results (list of episodes) received.
-            self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
+            self.metrics.log_value(
+                (ENV_RUNNER_RESULTS, MEAN_NUM_EPISODE_LISTS_RECEIVED),
+                len(episode_refs),
+            )
 
         time.sleep(0.01)
 
@@ -620,6 +621,11 @@ class IMPALA(Algorithm):
             data_packages_for_aggregators = self._pre_queue_episode_refs(
                 episode_refs, package_size=self.config.train_batch_size_per_learner
             )
+            self.metrics.log_value(
+                (AGGREGATOR_ACTOR_RESULTS, "mean_num_input_packages"),
+                len(episode_refs),
+            )
+
             ma_batches_refs_remote_results = (
                 self._aggregator_actor_manager.fetch_ready_async_reqs(
                     timeout_seconds=0.0,
@@ -630,6 +636,10 @@ class IMPALA(Algorithm):
             ma_batches_refs = []
             for call_result in ma_batches_refs_remote_results:
                 ma_batches_refs.append((call_result.actor_id, call_result.get()))
+            self.metrics.log_value(
+                (AGGREGATOR_ACTOR_RESULTS, "mean_num_output_batches"),
+                len(ma_batches_refs),
+            )
 
             while data_packages_for_aggregators:
 
@@ -639,17 +649,32 @@ class IMPALA(Algorithm):
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
-                packs = data_packages_for_aggregators[:num_agg]
-                self._aggregator_actor_manager.foreach_actor_async(
+                packs, data_packages_for_aggregators = (
+                    data_packages_for_aggregators[:num_agg],
+                    data_packages_for_aggregators[num_agg:],
+                )
+                sent = self._aggregator_actor_manager.foreach_actor_async(
                     func=[functools.partial(_func, p=p) for p in packs],
                     tag="batches",
                 )
-                data_packages_for_aggregators = data_packages_for_aggregators[num_agg:]
+                self.metrics.log_value(
+                    (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
+                    self.config.train_batch_size_per_learner * (len(packs) - sent),
+                    reduce="sum",
+                )
 
             # Get n lists of m ObjRef[MABatch] (m=num_learners) to perform n calls to
             # all learner workers with the already GPU-located batches.
             data_packages_for_learner_group = self._pre_queue_batch_refs(
                 ma_batches_refs
+            )
+            self.metrics.log_value(
+                (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_aggregated_lifetime"),
+                self.config.train_batch_size_per_learner
+                * (self.config.num_learners or 1)
+                * len(data_packages_for_learner_group),
+                reduce="sum",
+                with_throughput=True,
             )
 
         else:
@@ -686,6 +711,9 @@ class IMPALA(Algorithm):
                     ),
                 }
                 if self.config.num_aggregator_actors_per_learner > 0:
+                    assert len(batch_ref_or_episode_list_ref) == (
+                        self.config.num_learners or 1
+                    )
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
@@ -706,29 +734,24 @@ class IMPALA(Algorithm):
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 # TODO (sven): Rename this metric into a more fitting name: ex.
-                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
+                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`.
                 self.metrics.log_value(
                     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
                     1,
                     reduce="sum",
                 )
-                if not do_async_updates:
-                    learner_results = [learner_results]
 
-                for results_from_n_learners in learner_results:
-                    if not results_from_n_learners[0]:
-                        continue
-                    num_learner_group_results_received += 1
-                    for r in results_from_n_learners:
-                        rl_module_state = r.pop(
-                            "_rl_module_state_after_update", rl_module_state
-                        )
-                    self.metrics.merge_and_log_n_dicts(
-                        stats_dicts=results_from_n_learners,
-                        key=LEARNER_RESULTS,
+                num_learner_group_results_received += len(learner_results)
+                for result_from_1_learner in learner_results:
+                    rl_module_state = result_from_1_learner.pop(
+                        "_rl_module_state_after_update", rl_module_state
                     )
+                self.metrics.merge_and_log_n_dicts(
+                    stats_dicts=learner_results,
+                    key=LEARNER_RESULTS,
+                )
             self.metrics.log_value(
-                key=MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
+                key=(LEARNER_GROUP, MEAN_NUM_LEARNER_RESULTS_RECEIVED),
                 value=num_learner_group_results_received,
             )
 
@@ -844,8 +867,10 @@ class IMPALA(Algorithm):
         # `batch_refs` is a list of tuple(aggregator_actor_id, ObjRef[MABatch]).
 
         # Each ObjRef[MABatch] was returned by one AggregatorActor from a single
-        # `get_batch()` call and the underlying MABatch is already located on a
-        # particular GPU (matching one particular Learner).
+        # `get_batch()` call.
+        # TODO (sven): Add this comment, once valid:
+        #  .. and the underlying MABatch is already located on a particular GPU
+        #  (matching one particular Learner).
         for agg_actor_id, ma_batch_ref in batch_refs:
             learner_actor_id = self._aggregator_actor_to_learner[agg_actor_id]
             self._ma_batches_being_built[learner_actor_id].append(ma_batch_ref)
@@ -864,92 +889,6 @@ class IMPALA(Algorithm):
             )
 
         return batch_refs_for_learner_group
-
-    @classmethod
-    @override(Algorithm)
-    def default_resource_request(
-        cls,
-        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
-    ):
-        if isinstance(config, AlgorithmConfig):
-            cf: IMPALAConfig = config
-        else:
-            cf: IMPALAConfig = cls.get_default_config().update_from_dict(config)
-
-        eval_config = cf.get_evaluation_config_object()
-
-        bundles = []
-
-        # Main process (old API stack).
-        if not cf.enable_rl_module_and_learner:
-            bundles.append(
-                {
-                    "CPU": cf.num_cpus_for_main_process,
-                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
-                }
-            )
-        # Main process (no local learner).
-        elif cf.num_learners > 0:
-            bundles.append({"CPU": cf.num_cpus_for_main_process})
-        # Main process (local learner).
-        else:
-            bundles.append(
-                {
-                    "CPU": max(
-                        cf.num_cpus_for_main_process,
-                        cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0,
-                    ),
-                    "GPU": max(
-                        0,
-                        cf.num_gpus_per_learner
-                        - 0.01 * cf.num_aggregator_actors_per_learner,
-                    ),
-                }
-            )
-            # Aggregation actors (for the local learner).
-            bundles += [
-                {"CPU": 1, "GPU": 0.01 if cf.num_gpus_per_learner > 0 else 0}
-                for _ in range(cf.num_aggregator_actors_per_learner)
-            ]
-
-        # EnvRunners.
-        bundles += [
-            {
-                "CPU": cf.num_cpus_per_env_runner,
-                "GPU": cf.num_gpus_per_env_runner,
-                **cf.custom_resources_per_env_runner,
-            }
-            for _ in range(cf.num_env_runners)
-        ]
-
-        # Evaluation (remote) workers.
-        bundles += (
-            [
-                {
-                    # Note: The local eval worker is located on the driver
-                    # CPU or not even created iff >0 eval workers.
-                    "CPU": eval_config.num_cpus_per_env_runner,
-                    "GPU": eval_config.num_gpus_per_env_runner,
-                    **eval_config.custom_resources_per_env_runner,
-                }
-                for _ in range(cf.evaluation_num_env_runners)
-            ]
-            if cf.evaluation_interval
-            else []
-        )
-        # TODO (avnishn): Remove this once we have a way to extend placement group
-        #  factories.
-        # Only if we have actual (remote) learner workers. In case of a local learner,
-        # the resource has already been taken care of above.
-        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
-            bundles += cls._get_learner_bundles(cf)
-
-        # Return PlacementGroupFactory containing all needed resources
-        # (already properly defined as device bundles).
-        return PlacementGroupFactory(
-            bundles=bundles,
-            strategy=cf.placement_strategy,
-        )
 
     @OldAPIStack
     def _training_step_old_api_stack(self):

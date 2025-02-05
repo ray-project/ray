@@ -150,6 +150,11 @@ test:asan-buildkite --test_env=LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libasan.so.
 # CI configuration:
 aquery:ci --color=no
 aquery:ci --noshow_progress
+
+test:ci-base --test_output=errors
+test:ci-base --test_verbose_timeout_warnings
+test:ci-base --flaky_test_attempts=3
+
 build:ci --color=yes
 build:ci --curses=no
 build:ci --keep_going
@@ -157,23 +162,20 @@ build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
-test:ci --flaky_test_attempts=3
 # Disable test result caching because py_test under Bazel can import from outside of sandbox, but Bazel only looks at
 # declared dependencies to determine if a result should be cached. More details at:
 # https://github.com/bazelbuild/bazel/issues/7091, https://github.com/bazelbuild/rules_python/issues/382
+test:ci --config=ci-base
 test:ci --nocache_test_results
 test:ci --spawn_strategy=local
-test:ci --test_output=errors
 test:ci --experimental_ui_max_stdouterr_bytes=-1
-test:ci --test_verbose_timeout_warnings
+
+test:ci-debug --config=ci-base
 test:ci-debug -c dbg
 test:ci-debug --copt="-g"
-test:ci-debug --flaky_test_attempts=3
 # Disable test result caching for the same reason above.
 test:ci-debug --nocache_test_results
 test:ci-debug --spawn_strategy=local
-test:ci-debug --test_output=errors
-test:ci-debug --test_verbose_timeout_warnings
 
 aquery:get-toolchain --include_commandline=false
 aquery:get-toolchain --noimplicit_deps

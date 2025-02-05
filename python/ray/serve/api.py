@@ -490,8 +490,8 @@ def _run_many(
         configure_component_logger(
             component_name="local_test",
             component_id="-",
-            logging_config=t.logging_config  # implicitly uses the last target
-            or LoggingConfig(),
+            logging_config=t.logging_config
+            or LoggingConfig(),  # implicitly uses the last target
             stream_handler_only=True,
         )
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]

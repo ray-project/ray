@@ -37,26 +37,29 @@ ray_cc_library(
     ],
 )
 
-# TODO(hjiang): filesystem and logging has interdependency, we should split them into three targets: filesystem, logging, ray_check_macros.
 ray_cc_library(
     name = "logging",
-    hdrs = [
-        "filesystem.h",
-        "logging.h",
-    ],
-    srcs = [
-        "filesystem.cc",
-        "logging.cc",
-    ],
+    hdrs = ["logging.h"],
+    srcs = ["logging.cc"],
     deps = [
         ":event_label",
         ":macros",
+        ":string_utils",
         ":thread_utils",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "filesystem",
+    hdrs = ["filesystem.h"],
+    srcs = ["filesystem.cc"],
+    deps = [
+        "//src/ray/common:status_or",
     ],
 )
 
@@ -82,6 +85,7 @@ ray_cc_library(
     ],
     deps = [
         ":cmd_line_utils",
+        ":filesystem",
         ":logging",
         ":macros",
         "@boost//:asio",
@@ -188,36 +192,19 @@ ray_cc_library(
     ],
 )
 
-# A giant 'util' target is split since PR https://github.com/ray-project/ray/pull/49938, here we keep the 'util' target for API compatibility.
-#
-# TODO(hjiang): We include a bunch of misc util function/class inside of the class, should split into multiple files and build targets.
+# TODO(hjiang): Split URL related functions into a separate util target.
 ray_cc_library(
     name = "util",
     hdrs = ["util.h"],
     srcs = ["util.cc"],
     deps = [
-        ":array",
-        ":cmd_line_utils",
-        ":container_util",
-        ":counter_map",
-        ":event",
-        ":event_label",
-        ":exponential_backoff",
-        ":function_traits",
+        ":filesystem",
         ":logging",
         ":macros",
-        ":memory",
         ":process",
-        ":random",
-        ":sample",
-        ":sequencer",
-        ":string_utils",
-        ":timestamp_utils",
-        ":throttler",
-        ":thread_utils",
-        ":type_traits",
-        ":visibility",
         "//:sha256",
+        "@boost//:asio",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -251,6 +238,11 @@ ray_cc_library(
 ray_cc_library(
     name = "compat",
     hdrs = ["compat.h"],
+    srcs = ["compat.cc"],
+    deps = [
+        ":logging",
+        "//src/ray/common:status",
+    ],
 )
 
 ray_cc_library(
@@ -264,9 +256,11 @@ ray_cc_library(
     srcs = ["pipe_logger.cc"],
     deps = [
         ":compat",
+        ":spdlog_fd_sink",
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
+        "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/strings",
     ],
@@ -280,5 +274,25 @@ ray_cc_library(
         ":pipe_logger",
         ":stream_redirection_options",
         ":util",
+    ],
+)
+
+ray_cc_library(
+    name = "spdlog_fd_sink",
+    hdrs = ["spdlog_fd_sink.h"],
+    deps = [
+        ":compat",
+        ":util",
+        "@com_github_spdlog//:spdlog",
+    ],
+)
+
+ray_cc_library(
+    name = "temporary_directory",
+    hdrs = ["temporary_directory.h"],
+    srcs = ["temporary_directory.cc"],
+    deps = [
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )

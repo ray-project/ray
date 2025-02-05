@@ -11,8 +11,15 @@ from ray.train.v2._internal.exceptions import (
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
-from ray.train.v2._internal.execution.controller import (
-    TrainController,
+from ray.train.v2._internal.execution.controller import TrainController
+from ray.train.v2._internal.execution.controller.state import (
+    InitializingState,
+    SchedulingState,
+    ReschedulingState,
+    RunningState,
+    RestartingState,
+    ResizingState,
+    ErroredState,
     TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import (
@@ -94,9 +101,7 @@ class MockScalingPolicy(ScalingPolicy):
 
         super().__init__(scaling_config)
 
-    def make_decision_for_non_running_worker_group(
-        self, worker_group_status: WorkerGroupStatus
-    ) -> ScalingDecision:
+    def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         if self._recovery_decision_queue:
             return self._recovery_decision_queue.pop(0)
         return NoopDecision()
@@ -158,8 +163,6 @@ def test_resize():
     )
     worker_group = controller.get_worker_group()
 
-    controller._checkpoint_handler = MagicMock()
-
     decisions = [
         NoopDecision(),
         ResizeDecision(num_workers=2, resources_per_worker={}),
@@ -173,27 +176,45 @@ def test_resize():
         ResizeDecision(num_workers=5, resources_per_worker={}),
     ]
 
+    assert isinstance(controller.get_state(), InitializingState)
+    worker_group_status = worker_group.poll_status()
+    assert worker_group_status.num_workers == 0
+
     # Start with 1 worker
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=1, resources_per_worker={})
     )
     controller._run_control_loop_iteration()
-    prev_worker_group_status = worker_group.poll_status()
-    assert prev_worker_group_status.num_workers == 1
+    assert isinstance(controller.get_state(), SchedulingState)
+    worker_group_status = worker_group.poll_status()
+    assert worker_group_status.num_workers == 0
+
+    controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
+    worker_group_status = worker_group.poll_status()
+    assert worker_group_status.num_workers == 1
 
     for decision in decisions:
+        prev_worker_group_status = worker_group_status
+
         scaling_policy.queue_monitor_decision(decision)
-        controller._run_control_loop_iteration()
-        worker_group_status = worker_group.poll_status()
 
         if isinstance(decision, NoopDecision):
+            controller._run_control_loop_iteration()
+            assert isinstance(controller.get_state(), RunningState)
+            worker_group_status = worker_group.poll_status()
             assert (
                 worker_group_status.num_workers == prev_worker_group_status.num_workers
             )
         else:
+            controller._run_control_loop_iteration()
+            assert isinstance(controller.get_state(), ResizingState)
+            controller._run_control_loop_iteration()
+            assert isinstance(controller.get_state(), SchedulingState)
+            controller._run_control_loop_iteration()
+            assert isinstance(controller.get_state(), RunningState)
+            worker_group_status = worker_group.poll_status()
             assert worker_group_status.num_workers == decision.num_workers
-
-        prev_worker_group_status = worker_group_status
 
 
 def test_failure_handling():
@@ -208,30 +229,32 @@ def test_failure_handling():
     )
     worker_group = controller.get_worker_group()
 
-    controller._checkpoint_handler = MagicMock()
-
-    assert controller.get_state() == TrainControllerState.INITIALIZING
+    assert isinstance(controller.get_state(), InitializingState)
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
     controller._run_control_loop_iteration()
-    assert controller.get_state() == TrainControllerState.RUNNING
+    assert isinstance(controller.get_state(), SchedulingState)
+    controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
 
     worker_group.error_worker(1)
     failure_policy.queue_decision(FailureDecision.RESTART)
     controller._run_control_loop_iteration()
-    assert controller.get_state() == TrainControllerState.RECOVERING
+    assert isinstance(controller.get_state(), RestartingState)
 
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=4, resources_per_worker={})
     )
     controller._run_control_loop_iteration()
-    assert controller.get_state() == TrainControllerState.RUNNING
+    assert isinstance(controller.get_state(), SchedulingState)
+    controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
 
     worker_group.error_worker(3)
     failure_policy.queue_decision(FailureDecision.RAISE)
     controller._run_control_loop_iteration()
-    assert controller.get_state() == TrainControllerState.ERRORED
+    assert isinstance(controller.get_state(), ErroredState)
 
 
 @pytest.mark.parametrize(
@@ -248,26 +271,35 @@ def test_worker_group_start_failure(error_type):
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
     )
-    controller._checkpoint_handler = MagicMock()
 
     worker_group: DummyWorkerGroup = controller.get_worker_group()
     worker_group.set_start_failure(error_type)
 
+    assert isinstance(controller.get_state(), InitializingState)
+
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
-    # Worker group will fail to start, but controller should not raise
-    # and should go into RECOVERING state.
+
     controller._run_control_loop_iteration()
-    assert controller.get_state() == TrainControllerState.RECOVERING
+    assert isinstance(controller.get_state(), SchedulingState)
+
+    # Worker group will fail to start, but controller should not raise
+    # and should go into RESCHEDULING state.
+    controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ReschedulingState)
 
     # Let the worker group start successfully the 2nd time.
     worker_group.set_start_failure(None)
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
+
     controller._run_control_loop_iteration()
-    assert controller.get_state() == TrainControllerState.RUNNING
+    assert isinstance(controller.get_state(), SchedulingState)
+
+    controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), RunningState)
 
 
 def test_poll_frequency(monkeypatch):
@@ -322,7 +354,6 @@ def test_controller_callback():
         def before_controller_execute_scaling_decision(
             self,
             scaling_decision: ScalingDecision,
-            worker_group_status: WorkerGroupStatus,
         ):
             self.scaling_decision_called = True
 
@@ -342,7 +373,6 @@ def test_controller_callback():
         failure_policy=failure_policy,
         callbacks=[callback],
     )
-    controller._checkpoint_handler = MagicMock()
     worker_group = controller.get_worker_group()
 
     controller._start()
@@ -351,21 +381,25 @@ def test_controller_callback():
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
+
+    controller._run_control_loop_iteration()
+    assert not callback.scaling_decision_called
+    assert isinstance(callback.latest_state_update[0], InitializingState)
+    assert isinstance(callback.latest_state_update[1], SchedulingState)
+
     controller._run_control_loop_iteration()
     assert callback.scaling_decision_called
-    assert callback.latest_state_update == (
-        TrainControllerState.INITIALIZING,
-        TrainControllerState.RUNNING,
-    )
+    assert isinstance(callback.latest_state_update[0], SchedulingState)
+    assert isinstance(callback.latest_state_update[1], RunningState)
 
     worker_group.error_worker(1)
     failure_policy.queue_decision(FailureDecision.RAISE)
+
+    assert not callback.failure_decision_called
     controller._run_control_loop_iteration()
     assert callback.failure_decision_called
-    assert callback.latest_state_update == (
-        TrainControllerState.RUNNING,
-        TrainControllerState.ERRORED,
-    )
+    assert isinstance(callback.latest_state_update[0], RunningState)
+    assert isinstance(callback.latest_state_update[1], ErroredState)
 
     controller._shutdown()
     assert callback.shutdown_called

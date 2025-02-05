@@ -196,17 +196,26 @@ class DashboardAgent:
                     "disable the http service."
                 )
 
-        # Write the dashboard agent port to kv.
-        # TODO: Use async version if performance is an issue
+        # Writes agent address to kv.
+        # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+        # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
         grpc_port = -1 if not self.server else self.grpc_port
-        await self.gcs_aio_client.internal_kv_put(
-            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
-            json.dumps([http_port, grpc_port]).encode(),
+        put_by_node_id = self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+            json.dumps([self.ip, http_port, grpc_port]).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
+        put_by_ip = self.gcs_aio_client.internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+            json.dumps([self.node_id, http_port, grpc_port]).encode(),
+            True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+
+        await asyncio.gather(put_by_node_id, put_by_ip)
 
         tasks = [m.run(self.server) for m in modules]
 
