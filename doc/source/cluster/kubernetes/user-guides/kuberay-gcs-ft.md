@@ -17,8 +17,8 @@ See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide
 ```
 
 ```{seealso}
-If you need fault tolerance for Redis as well, see [](kuberay-gcs-persistent-ft)
-for tuning Redis.
+If you need fault tolerance for Redis as well, see {ref}`Tuning Redis for a
+Persistent Fault Tolerant GCS <kuberay-gcs-persistent-ft>`.
 ```
 
 ## Use cases

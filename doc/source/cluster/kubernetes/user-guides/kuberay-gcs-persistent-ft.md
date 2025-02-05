@@ -129,8 +129,8 @@ head pod as well as the redis pod without data loss.
 
 ## Verifying
 
-Forward connections to the ray cluster you just created with the [Ray Kubectl
-plugin](kubectl-plugin):
+Forward connections to the ray cluster you just created with the {ref}`Ray
+kubectl plugin <kubectl-plugin>`:
 
 ```
 $ kubectl ray session raycluster-external-redis
