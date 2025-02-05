@@ -19,7 +19,7 @@ from ray.data._internal.numpy_support import is_array_like
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import MiB
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockAccessor, BlockType
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -266,7 +266,7 @@ class TableBlockAccessor(BlockAccessor):
     def normalize_block_types(
         cls,
         blocks: List[Block],
-        normalize_type: Optional[str] = None,
+        normalize_type: Optional[BlockType] = None,
     ) -> List[Block]:
         """Normalize input blocks to the specified `normalize_type`. If the blocks
         are already all of the same type, returns the original blocks.
@@ -293,12 +293,9 @@ class TableBlockAccessor(BlockAccessor):
         if len(seen_types) <= 1:
             return blocks
 
-        if normalize_type == "arrow":
-            results = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
-        elif normalize_type == "pandas":
-            results = [BlockAccessor.for_block(block).to_pandas() for block in blocks]
-        else:
-            results = [BlockAccessor.for_block(block).to_default() for block in blocks]
+        results = [
+            cls.try_convert_block_type(block, normalize_type) for block in blocks
+        ]
 
         if any(not isinstance(block, type(results[0])) for block in results):
             raise ValueError(
@@ -308,3 +305,12 @@ class TableBlockAccessor(BlockAccessor):
                 "with block normalization."
             )
         return results
+
+    @classmethod
+    def try_convert_block_type(cls, block: Block, block_type: BlockType):
+        if block_type == BlockType.ARROW:
+            return BlockAccessor.for_block(block).to_arrow()
+        elif block_type == BlockType.PANDAS:
+            return BlockAccessor.for_block(block).to_pandas()
+        else:
+            return BlockAccessor.for_block(block).to_default()

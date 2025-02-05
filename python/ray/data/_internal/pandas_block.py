@@ -500,17 +500,27 @@ class PandasBlockAccessor(TableBlockAccessor):
             on,
         )
 
+    def sort(self, sort_key: "SortKey"):
+        assert (
+            sort_key.get_columns()
+        ), f"Sorting columns couldn't be empty (got {sort_key.get_columns()})"
+
+        if self._table.shape[0] == 0:
+            return self._empty_table()
+
+        columns, ascending = sort_key.to_pandas_sort_args()
+        return self._table.sort_values(by=columns, ascending=ascending)
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
-        if self._table.shape[0] == 0:
+        table = self.sort(sort_key)
+
+        if table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
-
-        columns, ascending = sort_key.to_pandas_sort_args()
-        table = self._table.sort_values(by=columns, ascending=ascending)
-        if len(boundaries) == 0:
+        elif len(boundaries) == 0:
             return [table]
 
         return find_partitions(table, boundaries, sort_key)
