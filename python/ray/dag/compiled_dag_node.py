@@ -1268,7 +1268,7 @@ class CompiledDAG:
 
         # Then, create communicators for collective operations.
         # Reuse an already created communicator for the same set of actors.
-        for collective_op in self._pending_collective_ops:
+        for collective_op in self._collective_ops_with_unresolved_communicators:
             if not self._create_default_communicator:
                 raise ValueError(
                     "Communicator creation is not allowed for collective operations."
@@ -1303,7 +1303,7 @@ class CompiledDAG:
                     None,
                     self._overlap_gpu_communication,
                 )
-            for dag_node in self._pending_p2p_communicator_dag_nodes:
+            for dag_node in self._p2p_dag_nodes_with_unresolved_communicators:
                 dag_node.type_hint.set_communicator_id(p2p_communicator_id)
 
     def _track_communicator_usage(
@@ -1361,9 +1361,11 @@ class CompiledDAG:
 
         if communicator is None:
             if collective_op:
-                self._pending_collective_ops.add(dag_node._collective_op)
+                self._collective_ops_with_unresolved_communicators.add(
+                    dag_node._collective_op
+                )
             else:
-                self._pending_p2p_communicator_dag_nodes.add(dag_node)
+                self._p2p_dag_nodes_with_unresolved_communicators.add(dag_node)
                 self._p2p_actors_with_unresolved_communicators.update(actors)
         else:
             if collective_op:

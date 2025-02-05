@@ -194,10 +194,6 @@ def check_nccl_group_init(
         "ray.dag.compiled_dag_node._init_communicator",
         mock_nccl_group_set,
     )
-    monkeypatch.setattr(
-        "ray.dag.collective_node._init_communicator",
-        mock_nccl_group_set,
-    )
 
     compiled_dag = dag.experimental_compile()
     assert (
