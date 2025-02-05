@@ -35,7 +35,18 @@ namespace {
 constexpr std::string_view kLogLine1 = "hello\n";
 constexpr std::string_view kLogLine2 = "world\n";
 
-TEST(PipeLoggerTest, RedirectionTest) {
+class PipeReadBufferSizeSetter {
+ public:
+  PipeReadBufferSizeSetter(size_t pipe_buffer_size) {
+    setEnv(kPipeLogReadBufSizeEnv.data(), absl::StrFormat("%d", pipe_buffer_size).data());
+  }
+  ~PipeReadBufferSizeSetter() { unsetEnv(kPipeLogReadBufSizeEnv.data()); }
+};
+
+class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
+
+TEST_P(PipeLoggerTest, RedirectionTest) {
+  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
   ScopedTemporaryDirectory scoped_directory;
   const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
@@ -59,7 +70,8 @@ TEST(PipeLoggerTest, RedirectionTest) {
   EXPECT_EQ(*actual_content, expected_content);
 }
 
-TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
+TEST_P(PipeLoggerTest, RedirectionWithTee) {
+  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
   ScopedTemporaryDirectory scoped_directory;
   const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
@@ -90,7 +102,8 @@ TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   EXPECT_EQ(*actual_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 }
 
-TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
+TEST_P(PipeLoggerTest, RotatedRedirectionWithTee) {
+  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
   ScopedTemporaryDirectory scoped_directory;
   const auto uuid = GenerateUUIDV4();
   const auto test_file_path = scoped_directory.GetDirectory() / uuid;
@@ -134,7 +147,9 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
 
 // Testing senario: log to stdout and file; check whether these two sinks generate
 // expected output.
-TEST(PipeLoggerCompatTest, CompatibilityTest) {
+TEST_P(PipeLoggerTest, CompatibilityTest) {
+  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
+
   // Testing-1: No newliner in the middle nor at the end.
   {
     constexpr std::string_view kContent = "hello";
@@ -314,6 +329,8 @@ TEST(PipeLoggerCompatTest, CompatibilityTest) {
     EXPECT_TRUE(std::filesystem::remove(test_file_path));
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3));
 
 }  // namespace
 
