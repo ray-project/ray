@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
+from ray.types import ObjectRef
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.data.iterator import DataIterator
@@ -82,6 +83,17 @@ class Worker:
 
     def __repr__(self) -> str:
         return self._repr
+
+    def execute_async(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> ObjectRef:
+        """Execute ``func`` on worker.
+
+        Returns:
+            (ObjectRef) An ObjectRef representing the output of func.
+
+        """
+        return self.actor.execute.options(name=f"execute.{fn.__name__}").remote(
+            fn, *fn_args, **fn_kwargs
+        )
 
 
 class RayTrainWorker:

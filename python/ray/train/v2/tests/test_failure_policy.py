@@ -13,8 +13,6 @@ from ray.train.v2._internal.execution.worker_group import (
 
 def _worker_group_status_from_errors(errors):
     return WorkerGroupPollStatus(
-        num_workers=len(errors),
-        latest_start_time=0,
         worker_statuses={
             i: WorkerStatus(running=False, error=errors[i]) for i in range(len(errors))
         },

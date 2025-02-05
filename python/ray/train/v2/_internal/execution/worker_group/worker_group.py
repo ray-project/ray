@@ -275,24 +275,22 @@ class WorkerGroup:
                     workers, sync_actor, train_context_args
                 )
 
+                worker_group_state_builder.with_start_time(time_monotonic())
+                self._worker_group_state = worker_group_state_builder.build()
+
                 for callback in self._callbacks:
                     callback.after_worker_group_start(self)
-
-                # Launch the training function on each worker.
-                # This task should start a worker thread and return immediately.
-                ray_get_safe(
-                    [worker.actor.run_train_fn.remote(train_fn) for worker in workers]
-                )
-
-                for callback in self._callbacks:
-                    callback.after_worker_group_training_start(self)
 
             except RayActorError as actor_error:
                 error_msg = "At least one of the worker actors failed to initialize."
                 raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
-            worker_group_state_builder.with_start_time(time_monotonic())
-            self._worker_group_state = worker_group_state_builder.build()
+        # Launch the training function on each worker.
+        # This task should start a worker thread and return immediately.
+        ray_get_safe([worker.actor.run_train_fn.remote(train_fn) for worker in workers])
+
+        for callback in self._callbacks:
+            callback.after_worker_group_training_start(self)
 
     def _create_workers(
         self,
@@ -535,12 +533,7 @@ class WorkerGroup:
         self._assert_worker_group_started()
         workers = self.get_workers()
 
-        return [
-            worker.actor.execute.options(name=f"execute.{fn.__name__}").remote(
-                fn, *fn_args, **fn_kwargs
-            )
-            for worker in workers
-        ]
+        return [worker.execute_async(fn, *fn_args, **fn_kwargs) for worker in workers]
 
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
@@ -569,11 +562,7 @@ class WorkerGroup:
                 f"The provided {rank=} is " f"not valid for {len(workers)} workers."
             )
 
-        return (
-            workers[rank]
-            .actor.execute.options(name=f"execute.{fn.__name__}")
-            .remote(fn, *fn_args, **fn_kwargs)
-        )
+        return workers[rank].execute_async(fn, *fn_args, **fn_kwargs)
 
     def execute_single(
         self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
