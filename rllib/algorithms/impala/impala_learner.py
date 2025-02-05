@@ -109,8 +109,7 @@ class IMPALALearner(Learner):
         _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
         if isinstance(batch, ray.ObjectRef):
-            with self.metrics.log_time((ALL_MODULES, "_learner_actor_main_thread_ray_get_timer")):
-                batch = ray.get(batch)
+            batch = ray.get(batch)
 
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_in_queue.put(batch)

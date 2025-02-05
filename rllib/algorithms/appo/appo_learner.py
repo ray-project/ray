@@ -112,16 +112,16 @@ class APPOLearner(IMPALALearner):
                         tau=config.tau,
                     )
                 # Increase lifetime target network update counter by one.
-                #self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+                self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.
                 self.metrics.log_value(last_update_ts_key, curr_timestep, window=1)
 
-            #if (
-            #    config.use_kl_loss
-            #    and self.metrics.peek((module_id, NUM_MODULE_STEPS_TRAINED), default=0)
-            #    > 0
-            #):
-            #    self._update_module_kl_coeff(module_id=module_id, config=config)
+            if (
+                config.use_kl_loss
+                and self.metrics.peek((module_id, NUM_MODULE_STEPS_TRAINED), default=0)
+                > 0
+            ):
+                self._update_module_kl_coeff(module_id=module_id, config=config)
 
     @classmethod
     @override(Learner)
