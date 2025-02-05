@@ -29,7 +29,7 @@ The following figure visualizes a dataset with three blocks, each holding 1000 r
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
 (which is usually the entrypoint of the program, referred to as the *driver*)
 and stores the blocks as objects in Ray's shared-memory
-:ref:`object store <objects-in-ray>`. Underneath the hood, blocks are represented as
+:ref:`object store <objects-in-ray>`. Internally, Ray Data represents blocks with
 Pandas Dataframes or Arrow tables.
 
 .. image:: images/dataset-arch-with-blocks.svg
