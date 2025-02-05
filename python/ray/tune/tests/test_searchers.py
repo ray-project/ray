@@ -298,8 +298,8 @@ class InvalidValuesTest(unittest.TestCase):
 
         searcher.on_trial_complete("trial_1", {"training_iteration": 4, "metric": 1})
 
-    @pytest.mark.skipif(
-        sys.version_info <= (3, 9), reason="Vizier doesn't support py39"
+    @unittest.skipIf(
+        sys.version_info < (3, 10), reason="Vizier requires Python 3.10 or higher"
     )
     def testVizier(self):
         from ray.tune.search.vizier import VizierSearch

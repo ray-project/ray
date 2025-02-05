@@ -228,10 +228,10 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@unittest.skipIf(
+    sys.version_info < (3, 10), reason="Vizier requires Python 3.10 or higher"
+)
 class VizierWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    @pytest.mark.skipif(
-        sys.version_info <= (3, 9), reason="Vizier doesn't support py39"
-    )
     def set_basic_conf(self):
         from ray.tune.search.vizier import VizierSearch
 
