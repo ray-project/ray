@@ -9,6 +9,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.util import is_nan
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -21,7 +22,7 @@ from ray.tests.conftest import *  # noqa
 RANDOM_SEED = 123
 
 
-def test_empty_shuffle(ray_start_regular_shared):
+def test_empty_shuffle(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(100, override_num_blocks=100)
     ds = ds.filter(lambda x: x)
     ds = ds.map_batches(lambda x: x)
@@ -29,7 +30,7 @@ def test_empty_shuffle(ray_start_regular_shared):
     ds.show()
 
 
-def test_repartition_shuffle(ray_start_regular_shared):
+def test_repartition_shuffle(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
@@ -50,7 +51,7 @@ def test_repartition_shuffle(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_repartition_noshuffle(ray_start_regular_shared):
+def test_repartition_noshuffle(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
@@ -82,7 +83,7 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_repartition_shuffle_arrow(ray_start_regular_shared):
+def test_repartition_shuffle_arrow(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(20, override_num_blocks=10)
     assert ds._plan.initial_num_blocks() == 10
     assert ds.count() == 20
@@ -103,7 +104,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_unique(ray_start_regular_shared):
+def test_unique(ray_start_regular_shared_2_cpus):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3])
     assert set(ds.unique("item")) == {1, 2, 3}
 
@@ -117,7 +118,7 @@ def test_unique(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
-def test_unique_with_nulls(ray_start_regular_shared, batch_format):
+def test_unique_with_nulls(ray_start_regular_shared_2_cpus, batch_format):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3, None])
     assert set(ds.unique("item")) == {1, 2, 3, None}
     assert len(ds.unique("item")) == 4
@@ -175,24 +176,24 @@ def test_unique_with_nulls(ray_start_regular_shared, batch_format):
     assert len(ds3.unique("col3")) == 3
 
 
-def test_grouped_dataset_repr(ray_start_regular_shared):
+def test_grouped_dataset_repr(ray_start_regular_shared_2_cpus):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
     assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
 
 
-def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
+def test_groupby_arrow(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     # Test empty dataset.
     agg_ds = ray.data.range(10).filter(lambda r: r["id"] > 10).groupby("value").count()
     assert agg_ds.count() == 0
 
 
-def test_groupby_none(ray_start_regular_shared):
+def test_groupby_none(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(10)
     assert ds.groupby(None).min().take_all() == [{"min(id)": 0}]
     assert ds.groupby(None).max().take_all() == [{"max(id)": 9}]
 
 
-def test_groupby_errors(ray_start_regular_shared):
+def test_groupby_errors(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK
     with pytest.raises(ValueError):
@@ -201,7 +202,7 @@ def test_groupby_errors(ray_start_regular_shared):
         ds.groupby("foo").count().show()
 
 
-def test_map_groups_with_gpus(shutdown_only):
+def test_map_groups_with_gpus(shutdown_only, configure_shuffle_method):
     ray.shutdown()
     ray.init(num_gpus=1)
 
@@ -212,7 +213,9 @@ def test_map_groups_with_gpus(shutdown_only):
     assert rows == [{"id": 0}]
 
 
-def test_map_groups_with_actors(ray_start_regular_shared):
+def test_map_groups_with_actors(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     class Identity:
         def __call__(self, batch):
             return batch
@@ -224,7 +227,9 @@ def test_map_groups_with_actors(ray_start_regular_shared):
     assert rows == [{"id": 0}]
 
 
-def test_map_groups_with_actors_and_args(ray_start_regular_shared):
+def test_map_groups_with_actors_and_args(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     class Fn:
         def __init__(self, x: int, y: Optional[int] = None):
             self.x = x
@@ -250,7 +255,9 @@ def test_map_groups_with_actors_and_args(ray_start_regular_shared):
     assert rows == [{"x": 0, "y": 1, "q": 2, "r": 3}]
 
 
-def test_groupby_large_udf_returns(ray_start_regular_shared):
+def test_groupby_large_udf_returns(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     # Test for https://github.com/ray-project/ray/issues/44861.
 
     # Each UDF return is 128 MiB. If Ray Data doesn't incrementally yield outputs, the
@@ -267,7 +274,7 @@ def test_groupby_large_udf_returns(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("keys", ["A", ["A", "B"]])
-def test_agg_inputs(ray_start_regular_shared, keys):
+def test_agg_inputs(ray_start_regular_shared_2_cpus, keys, configure_shuffle_method):
     xs = list(range(100))
     ds = ray.data.from_items([{"A": (x % 3), "B": x, "C": (x % 2)} for x in xs])
 
@@ -304,7 +311,7 @@ def test_agg_inputs(ray_start_regular_shared, keys):
     output.take_all()
 
 
-def test_agg_errors(ray_start_regular_shared):
+def test_agg_errors(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     from ray.data.aggregate import Max
 
     ds = ray.data.range(100)
@@ -318,7 +325,9 @@ def test_agg_errors(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
+def test_groupby_agg_name_conflict(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
     # Test aggregation name conflict.
     xs = list(range(100))
     grouped_ds = (
@@ -351,7 +360,9 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 
 
 @pytest.mark.parametrize("ds_format", ["pyarrow", "numpy", "pandas"])
-def test_groupby_nans(ray_start_regular_shared, ds_format):
+def test_groupby_nans(
+    ray_start_regular_shared_2_cpus, ds_format, configure_shuffle_method
+):
     ds = ray.data.from_items(
         [
             1.0,
@@ -363,15 +374,22 @@ def test_groupby_nans(ray_start_regular_shared, ds_format):
     )
     ds = ds.map_batches(lambda x: x, batch_format=ds_format)
     ds = ds.groupby("item").count()
-    ds = ds.filter(lambda v: np.isnan(v["item"]))
+
+    # NOTE: Hash-based shuffling will convert the block to Arrow, which
+    #       in turn convert NaNs into Nones
+    ds = ds.filter(lambda v: v["item"] is None or is_nan(v["item"]))
+
     result = ds.take_all()
     assert result[0]["count()"] == 2
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
 def test_groupby_tabular_count(
-    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+    ray_start_regular_shared_2_cpus,
+    ds_format,
+    num_parts,
+    configure_shuffle_method,
 ):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -380,14 +398,12 @@ def test_groupby_tabular_count(
     xs = list(range(100))
     random.shuffle(xs)
 
-    def _to_pandas(ds):
-        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
-
     ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
         num_parts
     )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
+
     agg_ds = ds.groupby("A").count()
     assert agg_ds.count() == 3
     assert list(agg_ds.sort("A").iter_rows()) == [
@@ -400,7 +416,10 @@ def test_groupby_tabular_count(
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
 def test_groupby_multiple_keys_tabular_count(
-    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+    ray_start_regular_shared_2_cpus,
+    ds_format,
+    num_parts,
+    configure_shuffle_method,
 ):
     # Test built-in count aggregation
     print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
@@ -426,9 +445,12 @@ def test_groupby_multiple_keys_tabular_count(
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
 def test_groupby_tabular_sum(
-    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+    ray_start_regular_shared_2_cpus,
+    ds_format,
+    num_parts,
+    configure_shuffle_method,
 ):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -437,14 +459,13 @@ def test_groupby_tabular_sum(
     xs = list(range(100))
     random.shuffle(xs)
 
-    def _to_pandas(ds):
-        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+    def _to_batch_format(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
 
     ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
         num_parts
     )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+    ds = _to_batch_format(ds)
 
     agg_ds = ds.groupby("A").sum("B")
     assert agg_ds.count() == 3
@@ -458,8 +479,7 @@ def test_groupby_tabular_sum(
     ds = ray.data.from_items(
         [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
     ).repartition(num_parts)
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+    ds = _to_batch_format(ds)
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.sum("B")
     assert nan_agg_ds.count() == 3
@@ -485,8 +505,7 @@ def test_groupby_tabular_sum(
     ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
         num_parts
     )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+    ds = _to_batch_format(ds)
     nan_agg_ds = ds.groupby("A").sum("B")
     assert nan_agg_ds.count() == 3
     pd.testing.assert_frame_equal(
@@ -502,7 +521,9 @@ def test_groupby_tabular_sum(
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
+def test_global_tabular_sum(
+    ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
+):
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_sum with: {seed}")
     random.seed(seed)
@@ -543,7 +564,9 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_min(
+    ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
+):
     # Test built-in min aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_min with: {seed}")
@@ -617,7 +640,9 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_max(
+    ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
+):
     # Test built-in max aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_max with: {seed}")
@@ -691,7 +716,9 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_mean(
+    ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
+):
     # Test built-in mean aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_mean with: {seed}")
@@ -765,7 +792,9 @@ def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
+def test_groupby_tabular_std(
+    ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
+):
     # Test built-in std aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_std with: {seed}")
@@ -778,21 +807,29 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
 
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     ds = ray.data.from_pandas(df).repartition(num_parts)
+
     if ds_format == "arrow":
         ds = _to_arrow(ds)
+
     agg_ds = ds.groupby("A").std("B")
     assert agg_ds.count() == 3
-    result = agg_ds.to_pandas()["std(B)"].to_numpy()
+
+    result = agg_ds.to_pandas().sort_values("A")["std(B)"].to_numpy()
     expected = df.groupby("A")["B"].std().to_numpy()
+
     np.testing.assert_array_almost_equal(result, expected)
+
     # ddof of 0
     ds = ray.data.from_pandas(df).repartition(num_parts)
     if ds_format == "arrow":
         ds = _to_arrow(ds)
+
     agg_ds = ds.groupby("A").std("B", ddof=0)
     assert agg_ds.count() == 3
-    result = agg_ds.to_pandas()["std(B)"].to_numpy()
+
+    result = agg_ds.to_pandas().sort_values("A")["std(B)"].to_numpy()
     expected = df.groupby("A")["B"].std(ddof=0).to_numpy()
+
     np.testing.assert_array_almost_equal(result, expected)
 
     # Test built-in std aggregation with nans
@@ -803,30 +840,43 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.std("B")
     assert nan_agg_ds.count() == 3
-    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+
+    result = nan_agg_ds.to_pandas().sort_values("A")["std(B)"].to_numpy()
     expected = nan_df.groupby("A")["B"].std().to_numpy()
+
     np.testing.assert_array_almost_equal(result, expected)
+
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+
+    result = nan_agg_ds.to_pandas().sort_values("A")["std(B)"].to_numpy()
     expected = nan_df.groupby("A")["B"].std().to_numpy()
+
     assert result[0] is None or np.isnan(result[0])
+
     np.testing.assert_array_almost_equal(result[1:], expected[1:])
+
     # Test all nans
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
     ds = ray.data.from_pandas(nan_df).repartition(num_parts)
+
     if ds_format == "arrow":
         ds = _to_arrow(ds)
+
     nan_agg_ds = ds.groupby("A").std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
+
+    result = nan_agg_ds.to_pandas().sort_values("A")["std(B)"].to_numpy()
     expected = pd.Series([None] * 3)
+
     np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
+def test_groupby_arrow_multicolumn(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
     # Test built-in mean aggregation on multiple columns
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_multicolumn with: {seed}")
@@ -861,51 +911,116 @@ def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
     assert result_row["mean(B)"] == df["B"].mean()
 
 
-def test_groupby_agg_bad_on(ray_start_regular_shared):
+def test_groupby_agg_bad_on(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     # Test bad on for groupby aggregation
     xs = list(range(100))
-    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs, "C": [2 * x for x in xs]})
+    df = pd.DataFrame(
+        np.array([[x % 3 for x in xs], xs, [2 * x for x in xs]]).T,
+        columns=["A", "B", "C"],
+    )
+
     # Wrong type.
-    with pytest.raises(Exception):
+    with pytest.raises(Exception) as exc_info:
         ray.data.from_pandas(df).groupby("A").mean(5).materialize()
-    with pytest.raises(Exception):
+
+    assert "Key must be a string or a list of strings, but got 5." in str(
+        exc_info.value
+    )
+
+    with pytest.raises(Exception) as exc_info:
         ray.data.from_pandas(df).groupby("A").mean([5]).materialize()
+
+    assert "Key must be a string or a list of strings, but got 5." in str(
+        exc_info.value
+    )
+
     # Empty list.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_pandas(df).groupby("A").mean([]).materialize()
+
+    assert "At least 1 column to aggregate on has to be provided" in str(exc_info.value)
+
     # Nonexistent column.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_pandas(df).groupby("A").mean("D").materialize()
-    with pytest.raises(ValueError):
+
+    assert (
+        "You specified the column 'D', but there's no such column in the dataset. The dataset has columns: ['A', 'B', 'C']"
+        in str(exc_info.value)
+    )
+
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_pandas(df).groupby("A").mean(["B", "D"]).materialize()
+
+    assert (
+        "You specified the column 'D', but there's no such column in the dataset. The dataset has columns: ['A', 'B', 'C']"
+        in str(exc_info.value)
+    )
+
     # Columns for simple Dataset.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A").materialize()
+
+    assert "Key must be a string or a list of strings, but got <function" in str(
+        exc_info.value
+    )
 
     # Test bad on for global aggregation
     # Wrong type.
-    with pytest.raises(Exception):
+    with pytest.raises(Exception) as exc_info:
         ray.data.from_pandas(df).mean(5).materialize()
-    with pytest.raises(Exception):
+
+    assert "Key must be a string or a list of strings, but got 5." in str(
+        exc_info.value
+    )
+
+    with pytest.raises(Exception) as exc_info:
         ray.data.from_pandas(df).mean([5]).materialize()
+
+    assert "Key must be a string or a list of strings, but got 5." in str(
+        exc_info.value
+    )
+
     # Empty list.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_pandas(df).mean([]).materialize()
+
+    assert "At least 1 column to aggregate on has to be provided" in str(exc_info.value)
+
     # Nonexistent column.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_pandas(df).mean("D").materialize()
-    with pytest.raises(ValueError):
+
+    assert (
+        "You specified the column 'D', but there's no such column in the dataset. The dataset has columns: ['A', 'B', 'C']"
+        in str(exc_info.value)
+    )
+
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_pandas(df).mean(["B", "D"]).materialize()
+
+    assert (
+        "You specified the column 'D', but there's no such column in the dataset. The dataset has columns: ['A', 'B', 'C']"
+        in str(exc_info.value)
+    )
+
     # Columns for simple Dataset.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         ray.data.from_items(xs).mean("A").materialize()
+
+    assert (
+        "You specified the column 'A', but there's no such column in the dataset. The dataset has columns: ['item']"
+        in str(exc_info.value)
+    )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
-    random.seed(seed)
+def test_groupby_arrow_multi_agg(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
+    # NOTE: Do not change the seed
+    random.seed(1738379113)
+
     xs = list(range(100))
     random.shuffle(xs)
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
@@ -924,8 +1039,12 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
         )
     )
     assert agg_ds.count() == 3
-    agg_df = agg_ds.to_pandas()
+
+    # NOTE: Make sure resulting dataset is sorted by the grouped column
+    agg_df = agg_ds.to_pandas().sort_values(by="A")
+
     expected_grouped = df.groupby("A")["B"]
+
     np.testing.assert_array_equal(agg_df["count()"].to_numpy(), [34, 33, 33])
     for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
         result = agg_df[f"{agg}(B)"].to_numpy()
@@ -959,10 +1078,12 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_multi_agg_alias(ray_start_regular_shared, num_parts):
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
-    random.seed(seed)
+def test_groupby_arrow_multi_agg_alias(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
+    # NOTE: Do not change the seed
+    random.seed(1738379859)
+
     xs = list(range(100))
     random.shuffle(xs)
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
@@ -980,8 +1101,11 @@ def test_groupby_arrow_multi_agg_alias(ray_start_regular_shared, num_parts):
         )
     )
 
-    agg_df = agg_ds.to_pandas()
+    # NOTE: Make sure resulting dataset is sorted by the grouped column
+    agg_df = agg_ds.to_pandas().sort_values(by=["A"])
+
     expected_grouped = df.groupby("A")["B"]
+
     for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
         result = agg_df[f"{agg}_b"].to_numpy()
         print(agg)
@@ -1018,7 +1142,9 @@ def test_groupby_arrow_multi_agg_alias(ray_start_regular_shared, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
-def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
+def test_groupby_map_groups_for_none_groupkey(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
     ds = ray.data.from_items(list(range(100)))
     mapped = (
         ds.repartition(num_parts)
@@ -1029,7 +1155,9 @@ def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_part
     assert mapped.take_all() == named_values("out", [99])
 
 
-def test_groupby_map_groups_perf(ray_start_regular_shared):
+def test_groupby_map_groups_perf(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     data_list = [x % 100 for x in range(5000000)]
     ds = ray.data.from_pandas(pd.DataFrame({"A": data_list}))
     start = time.perf_counter()
@@ -1040,8 +1168,10 @@ def test_groupby_map_groups_perf(ray_start_regular_shared):
     assert end - start < 60
 
 
-@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
-def test_groupby_map_groups_for_pandas(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
+def test_groupby_map_groups_for_pandas(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
     df = pd.DataFrame({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
     grouped = ray.data.from_pandas(df).repartition(num_parts).groupby("A")
 
@@ -1061,8 +1191,10 @@ def test_groupby_map_groups_for_pandas(ray_start_regular_shared, num_parts):
     assert mapped.to_pandas().equals(expected)
 
 
-@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
-def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
+def test_groupby_map_groups_for_arrow(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
     at = pa.Table.from_pydict({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
     grouped = ray.data.from_arrow(at).repartition(num_parts).groupby("A")
 
@@ -1087,7 +1219,9 @@ def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
     assert result.equals(expected)
 
 
-def test_groupby_map_groups_for_numpy(ray_start_regular_shared):
+def test_groupby_map_groups_for_numpy(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     ds = ray.data.from_items(
         [
             {"group": 1, "value": 1},
@@ -1107,7 +1241,9 @@ def test_groupby_map_groups_for_numpy(ray_start_regular_shared):
     assert result.equals(expected)
 
 
-def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
+def test_groupby_map_groups_with_different_types(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     ds = ray.data.from_items(
         [
             {"group": 1, "value": 1},
@@ -1127,7 +1263,9 @@ def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_map_groups_multiple_batch_formats(ray_start_regular_shared, num_parts):
+def test_groupby_map_groups_multiple_batch_formats(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+):
     # Reproduces https://github.com/ray-project/ray/issues/39206
     def identity(batch):
         return batch
@@ -1150,7 +1288,9 @@ def test_groupby_map_groups_multiple_batch_formats(ray_start_regular_shared, num
     ]
 
 
-def test_groupby_map_groups_extra_args(ray_start_regular_shared):
+def test_groupby_map_groups_extra_args(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
     ds = ray.data.from_items(
         [
             {"group": 1, "value": 1},
@@ -1175,7 +1315,10 @@ def test_groupby_map_groups_extra_args(ray_start_regular_shared):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
 def test_groupby_map_groups_multicolumn(
-    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+    ray_start_regular_shared_2_cpus,
+    ds_format,
+    num_parts,
+    configure_shuffle_method,
 ):
     # Test built-in count aggregation
     random.seed(RANDOM_SEED)
@@ -1203,7 +1346,10 @@ def test_groupby_map_groups_multicolumn(
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
 def test_groupby_map_groups_multicolumn_with_nan(
-    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+    ray_start_regular_shared_2_cpus,
+    ds_format,
+    num_parts,
+    configure_shuffle_method,
 ):
     # Test with some NaN values
     rng = np.random.default_rng(RANDOM_SEED)
@@ -1263,13 +1409,13 @@ def test_groupby_map_groups_with_partial():
     assert "MapBatches(func)" in ds.__repr__()
 
 
-def test_random_block_order_schema(ray_start_regular_shared):
+def test_random_block_order_schema(ray_start_regular_shared_2_cpus):
     df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
     ds = ray.data.from_pandas(df).randomize_block_order()
     ds.schema().names == ["a", "b"]
 
 
-def test_random_block_order(ray_start_regular_shared, restore_data_context):
+def test_random_block_order(ray_start_regular_shared_2_cpus, restore_data_context):
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
@@ -1293,7 +1439,7 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_random_shuffle(shutdown_only, use_push_based_shuffle):
+def test_random_shuffle(shutdown_only, configure_shuffle_method):
     r1 = ray.data.range(100).random_shuffle().take(999)
     r2 = ray.data.range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
@@ -1388,7 +1534,9 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_shuffle):
+def test_random_shuffle_with_custom_resource(
+    ray_start_cluster, configure_shuffle_method
+):
     cluster = ray_start_cluster
     # Create two nodes which have different custom resources.
     cluster.add_node(
@@ -1410,7 +1558,7 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_s
     assert "2 nodes used" not in ds.stats()
 
 
-def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
+def test_random_shuffle_spread(ray_start_cluster, configure_shuffle_method):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -1439,7 +1587,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
         locations.extend(location_data[block]["node_ids"])
     assert "2 nodes used" in ds.stats()
 
-    if not use_push_based_shuffle:
+    if not configure_shuffle_method:
         # We don't check this for push-based shuffle since it will try to
         # colocate reduce tasks to improve locality.
         assert set(locations) == {node1_id, node2_id}

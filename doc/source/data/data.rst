@@ -9,6 +9,7 @@ Ray Data: Scalable Datasets for ML
 
     Overview <overview>
     quickstart
+    key-concepts
     user-guide
     examples
     api/api
@@ -58,8 +59,7 @@ Learn more
         **Quickstart**
         ^^^
 
-        Understand the key concepts behind Ray Data. Learn what
-        Datasets are and how they're used.
+        Get started with Ray Data with a simple example.
 
         +++
         .. button-ref:: data_quickstart
@@ -68,6 +68,22 @@ Learn more
             :expand:
 
             Quickstart
+
+    .. grid-item-card::
+
+        **Key Concepts**
+        ^^^
+
+        Learn the key concepts behind Ray Data. Learn what
+        Datasets are and how they're used.
+
+        +++
+        .. button-ref:: data_key_concepts
+            :color: primary
+            :outline:
+            :expand:
+
+            Key Concepts
 
     .. grid-item-card::
 
@@ -113,18 +129,3 @@ Learn more
             :expand:
 
             Read the API Reference
-
-    .. grid-item-card::
-
-        **Ray Blogs**
-        ^^^
-
-        Get the latest on engineering updates from the Ray team and how companies are using Ray Data.
-
-        +++
-        .. button-link:: https://www.anyscale.com/blog?tag=ray-datasets
-            :color: primary
-            :outline:
-            :expand:
-
-            Read the Ray blogs
