@@ -74,12 +74,21 @@ class HttpRequestUDF(StatefulStageUDF):
                     headers=headers,
                     json=json_body,
                 )
-                pending_requests.append(request)
+                pending_requests.append((row[self.IDX_IN_BATCH_COLUMN], request))
 
             # Now receive all responses
-            for request in pending_requests:
+            for idx_in_batch, request in pending_requests:
                 async with await request as response:
-                    yield await response.json()
+                    resp_json = await response.json()
+                    if self.IDX_IN_BATCH_COLUMN in resp_json:
+                        raise ValueError(
+                            "The response of the HTTP request must not contain "
+                            f"the column {self.IDX_IN_BATCH_COLUMN}."
+                        )
+                    yield {
+                        self.IDX_IN_BATCH_COLUMN: idx_in_batch,
+                        **resp_json,
+                    }
 
 
 class HttpRequestStage(StatefulStage):
