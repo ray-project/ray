@@ -503,7 +503,7 @@ py_test(
 
 py_test(
     name = "test_sort",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_sort.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
