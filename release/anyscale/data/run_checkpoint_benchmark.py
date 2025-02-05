@@ -52,33 +52,29 @@ for workload_type in ["small", "large"]:
         data_dir = f"{DATA_DIR}/{backend}"
 
         if backend is None:
-            checkpoint_config = CheckpointConfig(enabled=False)
+            checkpoint_config = None
         elif backend == "DISK_BATCH":
             checkpoint_config = CheckpointConfig(
-                enabled=True,
                 backend=CheckpointBackend.DISK_BATCH,
-                id_col="id",
+                id_column="id",
                 output_path=f"{CHECKPOINT_DIR_DISK}/{backend}",
             )
         elif backend == "DISK_ROW":
             checkpoint_config = CheckpointConfig(
-                enabled=True,
                 backend=CheckpointBackend.DISK_ROW,
-                id_col="id",
+                id_column="id",
                 output_path=f"{CHECKPOINT_DIR_DISK}/{backend}",
             )
         elif backend == "S3_BATCH":
             checkpoint_config = CheckpointConfig(
-                enabled=True,
                 backend=CheckpointBackend.S3_BATCH,
-                id_col="id",
+                id_column="id",
                 output_path=f"{CHECKPOINT_DIR_S3}/{backend}",
             )
         elif backend == "S3_ROW":
             checkpoint_config = CheckpointConfig(
-                enabled=True,
                 backend=CheckpointBackend.S3_ROW,
-                id_col="id",
+                id_column="id",
                 output_path=f"{CHECKPOINT_DIR_S3}/{backend}",
             )
         else:

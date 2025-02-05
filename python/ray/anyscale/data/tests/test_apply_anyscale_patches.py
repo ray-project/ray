@@ -23,7 +23,6 @@ def test__patch_class_with_dataclass_mixin(ray_start_regular_shared):
 
     # Check that DataContext has custom rayturbo methods and attributes.
     assert hasattr(ray.data.DataContext, "checkpoint_config")
-    assert hasattr(ray.data.DataContext, "_skip_checkpoint_temp")
 
 
 if __name__ == "__main__":

@@ -8,10 +8,8 @@ import ray
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data.checkpoint.interfaces import (
     BatchBasedCheckpointFilter,
-    CheckpointBackend,
     CheckpointConfig,
     CheckpointWriter,
-    InvalidCheckpointingConfig,
     InvalidCheckpointingOperators,
     RowBasedCheckpointFilter,
 )
@@ -81,11 +79,12 @@ class CheckpointExecutionCallback(ExecutionCallback):
         remove_execution_callback(self, self._context)
         # Delete checkpoint data.
         try:
-            self._ckpt_filter.delete_checkpoint()
+            if self._context.checkpoint_config.delete_checkpoint_on_success:
+                self._ckpt_filter.delete_checkpoint()
         except Exception:
-            logger.warn("Failed to delete checkpoint data.", exc_info=True)
+            logger.warning("Failed to delete checkpoint data.", exc_info=True)
 
-    def after_execution_fails(self, _: Exception):
+    def after_execution_fails(self, error: Exception):
         # Remove the callback from the DataContext.
         remove_execution_callback(self, self._context)
 
@@ -118,7 +117,6 @@ def filter_checkpointed_rows_for_blocks(
             return ckpt_filter.filter_rows_for_block(block)
 
     for block in blocks:
-        block = ckpt_filter.generate_id_column_for_block(block)
         filtered_block = filter_fn(block)
         ba = BlockAccessor.for_block(filtered_block)
         if ba.num_rows() > 0:
@@ -148,7 +146,6 @@ def filter_checkpointed_rows_for_batches(
             return ckpt_filter.filter_rows_for_batch(batch)
 
     for batch in batches:
-        batch = ckpt_filter.generate_id_column_for_batch(batch)
         filtered_batch = filter_fn(batch)
         yield filtered_batch
 
@@ -166,49 +163,27 @@ class InsertCheckpointingLayerRule(Rule):
     ALLOWED_PHYSICAL_OPS = (MapOperator,)
 
     def apply(self, plan: Plan) -> Plan:
-        assert isinstance(
-            plan._context, DataContext
-        ), f"Invalid DataContext found: {type(plan._context)}"
         config = plan._context.checkpoint_config
-
-        if not config:
+        if config is None:
             return plan
-
-        # Set the boolean to False before we check the DAG for any
-        # operators which indicate we should temporarily skip checkpointing.
-        # For example, if the user is calling `ds.schema()` or `ds.count()`,
-        # this should return information for the full dataset, and skip
-        # checkpointing mechanisms (both filtering and writing).
-        plan._context._skip_checkpoint_temp = False
-
-        if not config.enabled:
-            # Checkpointing is not enabled, simply return the original plan.
-            return plan
-
-        self._check_valid_checkpoint_config(config)
-        plan = self._insert_write_checkpoint(plan, config)
+        plan, checkpoint_supported = self._insert_write_checkpoint(plan, config)
 
         # If the plan doesn't terminate in a `Write` op,
         # skip inserting the checkpoint filter step.
-        if not plan._context._skip_checkpoint_temp:
+        if checkpoint_supported:
             plan = self._insert_read_filter_checkpoint(plan, config)
         return plan
 
-    def _check_valid_checkpoint_config(self, config: CheckpointConfig):
-        if not isinstance(config.backend, CheckpointBackend):
-            raise InvalidCheckpointingConfig(
-                f"{config.backend} is not a valid backend for row-based checkpointing. "
-                f"Available options: {[backend.value for backend in CheckpointBackend]}"
-            )
-        if config.id_col is None:
-            raise InvalidCheckpointingConfig(
-                "Checkpoint ID column is required for row-based checkpointing, but "
-                "none was configured in `DataContext.checkpoint_config.id_col`."
-            )
-
-    def _insert_write_checkpoint(self, plan: Plan, config: CheckpointConfig):
+    def _insert_write_checkpoint(
+        self, plan: Plan, config: CheckpointConfig
+    ) -> Tuple[Plan, bool]:
         """Check that the final operator is a Write op, and insert
-        the MapTransformFn which writes the checkpoint file."""
+        the MapTransformFn which writes the checkpoint file.
+
+        Returns:
+            Tuple[Plan, bool]: The modified plan and a boolean indicating
+            whether the given plan supports checkpointing.
+        """
         sink_physical_op = plan.dag
         assert isinstance(sink_physical_op, PhysicalOperator)
         sink_logical_op = sink_physical_op._logical_operators[0]
@@ -216,8 +191,7 @@ class InsertCheckpointingLayerRule(Rule):
         if not isinstance(sink_logical_op, Write):
             # The final op is not a Write op, so we skip checkpointing
             # and return the original plan.
-            plan._context._skip_checkpoint_temp = True
-            return plan
+            return plan, False
 
         datasink = sink_logical_op._datasink_or_legacy_datasource
         if not isinstance(datasink, Datasink):
@@ -259,7 +233,7 @@ class InsertCheckpointingLayerRule(Rule):
         transform_fns.insert(1, BlockMapTransformFn(write_checkpoint_for_block))
         sink_physical_op._map_transformer.set_transform_fns(transform_fns)
 
-        return plan
+        return plan, True
 
     def _insert_read_filter_checkpoint(
         self, plan: Plan, checkpoint_config: CheckpointConfig

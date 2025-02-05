@@ -44,7 +44,7 @@ class RowBasedDiskCheckpointFilter(RowBasedCheckpointFilter, DiskCheckpointIO):
         block_accessor = BlockAccessor.for_block(block)
         files = []
         for row in block_accessor.iter_rows(False):
-            _id = row[self.id_col]
+            _id = row[self.id_column]
             files.append(f"{_id}.jsonl")
 
         # Check if each checkpoint file exists, and re-build

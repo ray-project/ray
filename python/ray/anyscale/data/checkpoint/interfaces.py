@@ -56,32 +56,39 @@ class CheckpointBackend(Enum):
 
 @dataclass
 class CheckpointConfig:
-    """Configuration for row-level checkpointing."""
+    """Configuration for row-level checkpointing.
 
-    # These parameters MUST be specified by the user prior to using checkpointing.
-    enabled: bool = False
-    backend: Optional[CheckpointBackend] = None
-    id_col: Optional[str] = None
+    Attribute:
+        backend: The storage backend to use for checkpointing.
+        id_column: Name of the ID column in the input dataset.
+            ID values must the unique across all rows in the dataset and must persist
+            during all operators.
+        delete_checkpoint_on_success: If true, automatically delete checkpoint
+            data when the dataset execution succeeds. Only supported for
+            batch-based backend currently.
+        fs: Optional filesystem object used to read/write checkpoint files.
+            If not specified, constructs a Pyarrow FileSystem when necessary.
+        output_path: Optional path where checkpoint files are written.
+            If not specified, use default paths configured for each backend.
+        filter_num_threads: Number of threads used to filter checkpointed rows.
+            Only used for row-based backends.
+        write_num_threads: Number of threads used to write checkpoint files for
+            completed rows.
+    """
 
-    # Optional filesystem object used to read/write checkpoint files.
-    # If not specified, constructs a Pyarrow FileSystem when necessary.
+    backend: CheckpointBackend
+
+    id_column: str
+
+    delete_checkpoint_on_success: bool = True
+
     fs: Optional[pyarrow.fs.FileSystem] = None
 
-    # Optional function which takes an input row and generates an
-    # ID value "on the fly", to be used in the `id_col` column.
-    # This function MUST deterministically generate a ID value from the row.
-    generate_id_column_fn: Optional[Callable[[Row], str]] = None
-
-    # Optional path where checkpoint files are written.
-    # If not specified, use default paths configured for each backend.
     output_path: Optional[str] = None
 
-    # Number of threads used to filter checkpointed rows.
     filter_num_threads: int = 3
-    # Number of threads used to write checkpoint files for completed rows.
-    write_num_threads: int = 3
 
-    _skip_ckpt: bool = False
+    write_num_threads: int = 3
 
     def is_row_based(self):
         """Whether the checkpoint backend is row-based."""
@@ -96,6 +103,30 @@ class CheckpointConfig:
             CheckpointBackend.DISK_BATCH,
             CheckpointBackend.S3_BATCH,
         ]
+
+    def id_column_name(self) -> Optional[str]:
+        """Returns the name of the ID column, if `id_col` is a string."""
+        return self.id_column if isinstance(self.id_column, str) else None
+
+    def id_column_function(self) -> Optional[Callable[[Row], str]]:
+        """Returns the ID generation function, if `id_col` is a function."""
+        return self.id_column if callable(self.id_column) else None
+
+    def __post_init__(self):
+        if not isinstance(self.backend, CheckpointBackend):
+            raise InvalidCheckpointingConfig(
+                f"Checkpoint backend is invalid {self.backend}, "
+                f"available options: {[backend.value for backend in CheckpointBackend]}"
+            )
+        if (
+            self.id_column is None
+            or not isinstance(self.id_column, str)
+            or len(self.id_column) == 0
+        ):
+            raise InvalidCheckpointingConfig(
+                "Checkpoint ID column must be as an non-empty string, "
+                f"but got {self.id_column}"
+            )
 
 
 class InvalidCheckpointingConfig(Exception):
@@ -156,47 +187,14 @@ class DiskCheckpointIO(CheckpointIO):
 class CheckpointFilter(CheckpointIO, abc.ABC):
     """Abstract class which defines the interface for filtering checkpointed rows
     based on varying backends.
-
-    Subclasses must implement `.filter_rows_for_block()`."""
+    """
 
     def __init__(self, config: CheckpointConfig):
         self.ckpt_config = config
         self.output_path = self.get_output_path(config)
-        self.id_col = self.ckpt_config.id_col
+        self.id_column = self.ckpt_config.id_column
         self.fs = self.ckpt_config.fs
         self.filter_num_threads = self.ckpt_config.filter_num_threads
-        self.generate_id_column_fn = self.ckpt_config.generate_id_column_fn
-
-        if self.id_col is None:
-            raise InvalidCheckpointingConfig("Checkpoint ID column must be specified")
-
-    def generate_id_column_for_block(self, block: Block) -> Block:
-        """For the given block, add a new column containing a deterministically
-        generated ID for each row, and return the resulting block.
-
-        This is useful for generating IDs 'on the fly' if the input dataset
-        does not already have an ID column."""
-        if not self.generate_id_column_fn:
-            return block
-
-        block_accessor = BlockAccessor.for_block(block)
-        ids = []
-        for row in block_accessor.iter_rows(False):
-            ids.append(self.generate_id_column_fn(row))
-        arrow_block = block_accessor.to_arrow()
-        id_block = arrow_block.append_column(self.id_col, [ids])
-        return id_block
-
-    def generate_id_column_for_batch(self, batch: DataBatch) -> DataBatch:
-        """For the given block, add a new column containing a deterministically
-        generated ID for each row, and return the resulting block.
-
-        Note that this method calls `generate_id_column_for_block()` under the hood,
-        so it is preferred to call that method directly if you already have a block."""
-        arrow_block = BlockAccessor.batch_to_block(batch)
-        id_block = self.generate_id_column_for_block(arrow_block)
-        id_batch = BlockAccessor.for_block(id_block).to_batch_format(None)
-        return id_batch
 
 
 class RowBasedCheckpointFilter(CheckpointFilter):
@@ -221,7 +219,7 @@ class RowBasedCheckpointFilter(CheckpointFilter):
 
             return RowBasedDiskCheckpointFilter(config)
 
-        raise InvalidCheckpointingConfig(f"Backend {backend} not implemented")
+        raise NotImplementedError(f"Backend {backend} not implemented")
 
     @abc.abstractmethod
     def filter_rows_for_block(self, block: Block) -> Block:
@@ -270,7 +268,7 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
 
             return DiskCheckpointFilter(config)
 
-        raise InvalidCheckpointingConfig(f"Backend {backend} not implemented")
+        raise NotImplementedError(f"Backend {backend} not implemented")
 
     @abc.abstractmethod
     def load_checkpoint(self) -> Block:
@@ -306,7 +304,9 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         assert isinstance(block, pyarrow.Table)
         assert isinstance(checkpointed_ids, pyarrow.Table)
 
-        mask = pc.is_in(block[self.id_col], value_set=checkpointed_ids[self.id_col])
+        mask = pc.is_in(
+            block[self.id_column], value_set=checkpointed_ids[self.id_column]
+        )
         mask = pc.invert(mask)
         return block.filter(mask)
 
@@ -335,10 +335,7 @@ class CheckpointWriter(CheckpointIO):
     def __init__(self, config: CheckpointConfig):
         self.ckpt_config = config
         self.output_path = self.get_output_path(config)
-        self.id_col = self.ckpt_config.id_col
-        if self.id_col is None:
-            raise InvalidCheckpointingConfig("Checkpoint ID column must be specified")
-
+        self.id_col = self.ckpt_config.id_column
         self.fs = self.ckpt_config.fs
         self.write_num_threads = self.ckpt_config.write_num_threads
 
@@ -379,4 +376,4 @@ class CheckpointWriter(CheckpointIO):
 
             return RowBasedDiskCheckpointWriter(config)
 
-        raise InvalidCheckpointingConfig(f"Backend {backend} not implemented")
+        raise NotImplementedError(f"Backend {backend} not implemented")

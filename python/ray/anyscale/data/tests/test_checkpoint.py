@@ -1,4 +1,3 @@
-import copy
 import csv
 import os
 import random
@@ -82,13 +81,15 @@ def generate_sample_physical_plan(generate_sample_data_csv, tmp_path):
     yield physical_plan
 
 
-def generate_ckpt_config(backend, output_path, id_col, fs):
+def generate_ckpt_config(
+    backend, output_path, id_col, fs, delete_checkpoint_on_success=True
+):
     return CheckpointConfig(
-        enabled=True,
         backend=backend,
         output_path=output_path,
-        id_col=id_col,
+        id_column=id_col,
         fs=fs,
+        delete_checkpoint_on_success=delete_checkpoint_on_success,
     )
 
 
@@ -159,36 +160,23 @@ def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[int]:
     raise Exception(f"Invalid backend: {backend}")
 
 
+@pytest.mark.parametrize("backend", [None, 1])
+def test_config_invalid_backend(backend):
+    with pytest.raises(InvalidCheckpointingConfig, match="Checkpoint backend"):
+        generate_ckpt_config(backend, "", "id", None)
+
+
+@pytest.mark.parametrize("id_column", [None, "", 1])
+def test_config_invalid_id_column(id_column):
+    with pytest.raises(
+        InvalidCheckpointingConfig,
+        match="Checkpoint ID column",
+    ):
+        generate_ckpt_config(CheckpointBackend.DISK_BATCH, "", id_column, None)
+
+
 class TestInsertCheckpointingLayerRule:
     """Unit tests for `InsertCheckpointingLayerRule`."""
-
-    def test_invalid_config(
-        self, ray_start_10_cpus_shared, generate_sample_physical_plan, tmp_path
-    ):
-        ctx = ray.data.DataContext.get_current()
-        physical_plan = generate_sample_physical_plan
-        physical_plan._context = ctx
-        ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
-        base_checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.DISK_ROW, ckpt_path, "id", None
-        )
-
-        # Backend must be configured.
-        no_backend_config = copy.copy(base_checkpoint_config)
-        no_backend_config.backend = None
-        ctx.checkpoint_config = no_backend_config
-        with pytest.raises(InvalidCheckpointingConfig):
-            InsertCheckpointingLayerRule().apply(physical_plan)
-
-        # id column must be configured.
-        no_id_config = copy.copy(base_checkpoint_config)
-        no_id_config.id_col = None
-        ctx.checkpoint_config = no_id_config
-        with pytest.raises(
-            InvalidCheckpointingConfig,
-            match="Checkpoint ID column is required",
-        ):
-            InsertCheckpointingLayerRule().apply(physical_plan)
 
     def test_disallowed_op(
         self, ray_start_10_cpus_shared, generate_sample_data_csv, tmp_path
@@ -259,7 +247,11 @@ class TestInsertCheckpointingLayerRule:
         physical_plan._context = ctx
 
         rule = InsertCheckpointingLayerRule()
-        new_plan = rule._insert_write_checkpoint(physical_plan, ctx.checkpoint_config)
+        new_plan, checkpoint_supported = rule._insert_write_checkpoint(
+            physical_plan, ctx.checkpoint_config
+        )
+
+        assert checkpoint_supported
 
         # Check that a MapTransform was inserted with
         # write_checkpoint_for_block.
@@ -588,7 +580,13 @@ def test_skip_checkpoint_flag(
 
     ctx = ray.data.DataContext.get_current()
     ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
+    ctx.checkpoint_config = generate_ckpt_config(
+        backend,
+        ckpt_path,
+        ID_COL,
+        fs,
+        delete_checkpoint_on_success=False,
+    )
 
     def generate_ds():
         if read_code_path == "runtime":
@@ -600,27 +598,19 @@ def test_skip_checkpoint_flag(
         return ds
 
     ds = generate_ds()
-    assert not ds._plan._context._skip_checkpoint_temp
 
     # Calling `ds.schema()` should skip checkpointing.
     assert ds.schema() is not None
-    assert ds._plan._context._skip_checkpoint_temp
     assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 0
 
     # Calling `ds.count()` should skip checkpointing.
     ds = generate_ds()
     assert ds.count() is not None
-    assert ds._plan._context._skip_checkpoint_temp
     assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 0
 
     # Calling `ds.write_xxx()` afterwards should enable checkpointing.
     ds.write_parquet(os.path.join(data_path, "output"), filesystem=fs)
-    # When execution succeeds, checkpoint data should be automatically deleted.
-    # TODO(haochen): Also delete checkpoint for row-based backends.
-    if ctx.checkpoint_config.is_batch_based():
-        assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 0
-    else:
-        assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 5
+    assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 5
 
 
 if __name__ == "__main__":

@@ -16,10 +16,10 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 logger = logging.Logger(__name__)
 
 
-def _parse_checkpoint_config(args: argparse.Namespace) -> CheckpointConfig:
+def _parse_checkpoint_config(args: argparse.Namespace) -> Optional[CheckpointConfig]:
     backend_str = args.checkpoint_backend.lower()
     if backend_str == "none":
-        return CheckpointConfig(enabled=False)
+        return None
     elif backend_str == "disk_batch":
         backend = CheckpointBackend.DISK_BATCH
     elif backend_str == "disk_row":
@@ -32,15 +32,14 @@ def _parse_checkpoint_config(args: argparse.Namespace) -> CheckpointConfig:
         raise ValueError(f"Unknown checkpoint backend: {backend_str}")
 
     return CheckpointConfig(
-        enabled=True,
         backend=backend,
-        id_col="id",
+        id_column="id",
         output_path=args.checkpoint_output_path,
     )
 
 
 def run_dataset(
-    checkpoint_config: CheckpointConfig,
+    checkpoint_config: Optional[CheckpointConfig],
     num_rows: int,
     size_bytes_per_row: int,
     transform_sleep_s: float,
@@ -114,7 +113,7 @@ def run_dataset(
 
 def run_checkpoints_benchmark(
     benchmark: Benchmark,
-    checkpoint_config: CheckpointConfig,
+    checkpoint_config: Optional[CheckpointConfig],
     num_rows: int,
     size_bytes_per_row: int,
     transform_sleep_s: float,
@@ -167,12 +166,12 @@ def run_checkpoints_benchmark(
 
 
 def clean_up_output_files(
-    checkpoint_config: CheckpointConfig,
+    checkpoint_config: Optional[CheckpointConfig],
     data_output_path: str,
 ):
     logger.info("Cleaning up output files")
     output_paths = [data_output_path]
-    if checkpoint_config.enabled:
+    if checkpoint_config is not None:
         assert checkpoint_config.output_path is not None
         output_paths.append(checkpoint_config.output_path)
     for output_path in output_paths:
