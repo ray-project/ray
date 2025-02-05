@@ -59,6 +59,7 @@ def test_processor_with_stages(has_extra: bool):
                 yield {
                     # Use the same name to chain multiple dummy stages.
                     "val": answer,
+                    self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                 }
 
         @property
