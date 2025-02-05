@@ -1023,16 +1023,6 @@ def test_groupby_agg_bad_on(ray_start_regular_shared_2_cpus, configure_shuffle_m
 def test_groupby_arrow_multi_agg(
     ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
 ):
-    current = DataContext.get_current()
-    if (
-        current.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
-        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
-    ):
-        pytest.skip(
-            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
-            "promoting from int64 to double)"
-        )
-
     # NOTE: Do not change the seed
     random.seed(1738379113)
 
@@ -1096,16 +1086,6 @@ def test_groupby_arrow_multi_agg(
 def test_groupby_arrow_multi_agg_alias(
     ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
 ):
-    current = DataContext.get_current()
-    if (
-        current.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
-        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
-    ):
-        pytest.skip(
-            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
-            "promoting from int64 to double)"
-        )
-
     # NOTE: Do not change the seed
     random.seed(1738379859)
 
