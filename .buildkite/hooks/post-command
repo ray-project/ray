@@ -26,8 +26,8 @@ if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summ
     docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/test-summaries' || true
 fi
 
-# clean up bazel logs if any, this only has effect when the bazel test runs in the same 
-# environment as the buildkite job commands, and has no effect when the tests run 
+# clean up bazel logs if any, this only has effect when the bazel test runs in the same
+# environment as the buildkite job commands, and has no effect when the tests run
 # inside another test container
 rm -rf /tmp/bazel_event_logs
 rm -rf /tmp/artifacts/test-summaries
