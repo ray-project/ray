@@ -1,5 +1,5 @@
 # NOTE: Make sure to run this with OMP_NUM_THREADS=64, otherwise the put gigabytes per
-# seconds will be reduced. Put latency was reduced due to extra ipc call to raylet 
+# seconds will be reduced. Put latency was reduced due to extra ipc call to raylet
 # for ref counting.
 
 single client get calls (Plasma Store) per second 11743.14 +- 2062.85
