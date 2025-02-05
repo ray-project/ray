@@ -22,7 +22,6 @@
 #include <future>
 #include <string_view>
 
-#include "absl/cleanup/cleanup.h"
 #include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/temporary_directory.h"
@@ -38,11 +37,6 @@ constexpr std::string_view kLogLine2 = "world\n";
 TEST(PipeLoggerTest, RedirectionTest) {
   ScopedTemporaryDirectory scoped_directory;
   const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
-
-  // Delete temporary file.
-  absl::Cleanup cleanup_test_file = [&test_file_path]() {
-    EXPECT_TRUE(std::filesystem::remove(test_file_path));
-  };
 
   // Take the default option, which doesn't have rotation enabled.
   StreamRedirectionOption stream_redirection_opt{};
@@ -62,11 +56,6 @@ TEST(PipeLoggerTest, RedirectionTest) {
 TEST(PipeLoggerTestWithTee, RedirectionWithTee) {
   ScopedTemporaryDirectory scoped_directory;
   const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
-
-  // Delete temporary file.
-  absl::Cleanup cleanup_test_file = [&test_file_path]() {
-    EXPECT_TRUE(std::filesystem::remove(test_file_path));
-  };
 
   StreamRedirectionOption stream_redirection_opt{};
   stream_redirection_opt.file_path = test_file_path.string();
@@ -97,12 +86,6 @@ TEST(PipeLoggerTestWithTee, RotatedRedirectionWithTee) {
   const auto log_file_path1 = test_file_path;
   const auto log_file_path2 =
       scoped_directory.GetDirectory() / absl::StrFormat("%s.1", uuid);
-
-  // Delete temporary file.
-  absl::Cleanup cleanup_test_file = [&log_file_path1, &log_file_path2]() {
-    EXPECT_TRUE(std::filesystem::remove(log_file_path1));
-    EXPECT_TRUE(std::filesystem::remove(log_file_path2));
-  };
 
   StreamRedirectionOption stream_redirection_opt{};
   stream_redirection_opt.file_path = test_file_path.string();
