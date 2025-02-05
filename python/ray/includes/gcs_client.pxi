@@ -16,7 +16,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
 from asyncio import Future
-from typing import List
+from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
 from ray.includes.common cimport (
@@ -307,7 +307,7 @@ cdef class InnerGcsClient:
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
-        self, node_ids: List[bytes], timeout: Optional[int | float] = None
+        self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
     ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         cdef:
