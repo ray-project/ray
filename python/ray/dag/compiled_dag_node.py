@@ -2121,7 +2121,7 @@ class CompiledDAG:
                         self.wait_teardown(kill_actors=kill_actors)
                     except ReferenceError:
                         # Python destruction order is not guaranteed, so we may
-                        # when accessing attributes of `outer` when it is being destroyed.
+                        # access attributes of `outer` which are already destroyed.
                         logger.info("Compiled DAG is already destroyed")
                     logger.info("Teardown complete")
                     self._teardown_done = True
