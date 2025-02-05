@@ -26,6 +26,9 @@ _context_lock = threading.Lock()
 
 @PublicAPI(stability="alpha")
 class ShuffleStrategy(str, enum.Enum):
+    """Shuffle strategy determines shuffling algorithm employed by operations
+    like aggregate, repartition, etc"""
+
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
 
