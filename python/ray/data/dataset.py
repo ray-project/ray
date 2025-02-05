@@ -33,7 +33,6 @@ from ray.air.util.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum, Unique
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
@@ -88,7 +87,7 @@ from ray.data._internal.util import (
     _validate_rows_per_file_args,
     get_compute_strategy,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -2103,6 +2102,7 @@ class Dataset:
     def groupby(
         self,
         key: Union[str, List[str], None],
+        num_partitions: Optional[int] = None,
     ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
@@ -2131,7 +2131,11 @@ class Dataset:
 
         Args:
             key: A column name or list of column names.
-            If this is ``None``, place all rows in a single group.
+                If this is ``None``, place all rows in a single group.
+
+            num_partitions: Number of partitions data will be partitioned into (only
+                relevant if hash-shuffling strategy is used). When not set defaults
+                to `DataContext.min_parallelism`.
 
         Returns:
             A lazy :class:`~ray.data.grouped_data.GroupedData`.
@@ -2150,7 +2154,10 @@ class Dataset:
             # input validation.
             SortKey(key).validate_schema(self.schema(fetch_if_missing=False))
 
-        return GroupedData(self, key)
+        if num_partitions is not None and num_partitions <= 0:
+            raise ValueError("`num_partitions` must be a positive integer")
+
+        return GroupedData(self, key, num_partitions=num_partitions)
 
     @AllToAllAPI
     @ConsumptionAPI
@@ -3957,7 +3964,6 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
@@ -5554,7 +5560,6 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-
                 if self._context.use_arrow_tensor_v2:
                     pa_tensor_type_class = ArrowTensorTypeV2
                 else:
