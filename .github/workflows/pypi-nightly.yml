@@ -30,6 +30,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
@@ -59,6 +61,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
