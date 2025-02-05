@@ -231,8 +231,7 @@ include "includes/metric.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
-# OPTIMIZED = __OPTIMIZE__
-OPTIMIZED = True
+OPTIMIZED = __OPTIMIZE__
 
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
