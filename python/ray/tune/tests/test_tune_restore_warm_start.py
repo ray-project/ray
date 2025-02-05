@@ -236,9 +236,9 @@ class VizierWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         from ray.tune.search.vizier import VizierSearch
 
         space = {
-            "x": tune.uniform("x", 0, 10),
-            "y": tune.uniform("y", -10, 10),
-            "z": tune.uniform("z", -10, 0),
+            "x": tune.uniform(0, 10),
+            "y": tune.uniform(-10, 10),
+            "z": tune.uniform(-10, 0),
         }
 
         def cost(space):
