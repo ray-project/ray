@@ -29,4 +29,4 @@ class BenchmarkConfig(pydantic.BaseModel):
     validation_batch_size: int = 256
 
     # Logging
-    log_metrics_every_n_steps: int = 0
+    log_metrics_every_n_steps: int = 512
