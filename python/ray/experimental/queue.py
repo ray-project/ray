@@ -1,6 +1,7 @@
 import warnings
+from queue import Empty, Full
 
-from ray.util.queue import Empty, Full, Queue
+from ray.util.queue import Queue
 
 warnings.warn(
     DeprecationWarning(

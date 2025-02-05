@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 from typing import Any, Dict, Optional
+from queue import Empty
 
 import yaml
 
@@ -18,7 +19,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import (
     FAKE_DOCKER_DEFAULT_CLIENT_PORT,
     FAKE_DOCKER_DEFAULT_GCS_PORT,
 )
-from ray.util.queue import Empty, Queue
+from ray.util.queue import Queue
 
 logger = logging.getLogger(__name__)
 

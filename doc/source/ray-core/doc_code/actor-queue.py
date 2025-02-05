@@ -1,5 +1,7 @@
+from queue import Empty
+
 import ray
-from ray.util.queue import Queue, Empty
+from ray.util.queue import Queue
 
 ray.init()
 # You can pass this object around to different tasks/actors
