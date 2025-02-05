@@ -229,7 +229,8 @@ message GetAllNodeInfoRequest {
     optional bytes node_id = 1;
     optional GcsNodeInfo.GcsNodeState state = 2;
     optional string node_name = 3;
-    optional string virtual_cluster_id = 4;
+    optional string node_ip_address = 4;
+    optional string virtual_cluster_id = 5;
   }
 
   // Maximum number to return.

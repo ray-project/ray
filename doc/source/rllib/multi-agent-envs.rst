@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-multi-agent-environments-doc:
 
 Multi-Agent Environments
 ========================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 In a multi-agent environment, multiple "agents" act simultaneously, in a turn-based
 sequence, or through an arbitrary combination of both.

@@ -39,7 +39,19 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data9build
-        --except-tags data_integration,doctest
+        --except-tags data_integration,doctest,data_non_parallel
+    depends_on: data9build
+
+  - label: ":database: data: arrow v9 tests (data_non_parallel)"
+    tags:
+      - python
+      - data
+      - data_non_parallel
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --build-name data9build
+        --only-tags data_non_parallel
     depends_on: data9build
 
   - label: ":database: data: arrow v17 tests"
@@ -53,7 +65,19 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild
-        --except-tags data_integration,doctest
+        --except-tags data_integration,doctest,data_non_parallel
+    depends_on: datalbuild
+
+  - label: ":database: data: arrow v17 tests (data_non_parallel)"
+    tags:
+      - python
+      - data
+      - data_non_parallel
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --build-name datalbuild
+        --only-tags data_non_parallel
     depends_on: datalbuild
 
   - label: ":database: data: arrow v17 {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -67,12 +91,29 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags data_integration,doctest
+        --except-tags data_integration,doctest,data_non_parallel
     depends_on: databuild-multipy
     matrix:
       setup:
         python: ["3.12"]
         worker_id: ["0", "1"]
+
+  - label: ":database: data: arrow v17 {{matrix.python}} tests (data_non_parallel)"
+    key: datal_python_non_parallel_tests
+    if: build.pull_request.labels includes "continuous-build" || pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
+    tags:
+      - python
+      - data
+      - data_non_parallel
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --python-version {{matrix.python}}
+        --only-tags data_non_parallel
+    depends_on: databuild-multipy
+    matrix:
+      setup:
+        python: ["3.12"]
 
   - label: ":database: data: arrow nightly tests"
     if: pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
@@ -86,7 +127,20 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild
-        --except-tags data_integration,doctest
+        --except-tags data_integration,doctest,data_non_parallel
+    depends_on: datanbuild
+
+  - label: ":database: data: arrow nightly tests (data_non_parallel)"
+    if: pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
+    tags:
+      - python
+      - data
+      - data_non_parallel
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --build-name datanbuild
+        --only-tags data_non_parallel
     depends_on: datanbuild
 
   - label: ":database: data: TFRecords (tfx-bsl) tests"

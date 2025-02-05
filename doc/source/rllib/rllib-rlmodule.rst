@@ -1,11 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rlmodule-guide:
 
 RL Modules
 ==========
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 The :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class in RLlib's new API stack allows you to write custom
 models, including highly complex multi-network setups often found in multi-agent or model-based algorithms.

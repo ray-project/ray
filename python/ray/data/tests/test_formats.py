@@ -181,7 +181,7 @@ def test_from_tf(ray_start_regular_shared):
 
 @pytest.mark.parametrize("local_read", [True, False])
 def test_from_torch(shutdown_only, local_read, tmp_path):
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
+    torch_dataset = torchvision.datasets.FashionMNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
     ray_dataset = ray.data.from_torch(torch_dataset, local_read=local_read)
@@ -191,14 +191,14 @@ def test_from_torch(shutdown_only, local_read, tmp_path):
 
     import torch
 
-    class IterMNIST(torch.utils.data.IterableDataset):
+    class IterFashionMNIST(torch.utils.data.IterableDataset):
         def __len__(self):
             return len(torch_dataset)
 
         def __iter__(self):
             return iter(torch_dataset)
 
-    iter_torch_dataset = IterMNIST()
+    iter_torch_dataset = IterFashionMNIST()
     ray_dataset = ray.data.from_torch(iter_torch_dataset)
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))

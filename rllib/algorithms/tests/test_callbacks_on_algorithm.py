@@ -75,7 +75,7 @@ class TestCallbacks(unittest.TestCase):
             print(algo.train())
             time.sleep(15.0)
 
-        algo.restore_workers(algo.env_runner_group)
+        algo.restore_env_runners(algo.env_runner_group)
         # After training, the `on_workers_recreated` callback should have captured
         # the exact worker IDs recreated (the exact number of times) as the actor
         # manager itself. This confirms that the callback is triggered correctly,

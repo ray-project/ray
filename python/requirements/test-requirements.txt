@@ -51,6 +51,7 @@ pymongo==4.3.2
 pyspark==3.4.1
 pytest==7.4.4
 pytest-asyncio==0.17.0
+pytest-aiohttp==0.3.0
 pytest-httpserver==1.0.6
 pytest-rerunfailures==11.1.2
 pytest-sugar==0.9.5

@@ -1,13 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rlmodule-reference-docs:
 
 RLModule APIs
 =============
 
+.. include:: /_includes/rllib/new_api_stack.rst
 
 RLModule specifications and configurations
 -------------------------------------------
@@ -102,8 +100,8 @@ Override these private methods to define your custom model's forward behavior.
     ~RLModule._forward_train
 
 
-Saving and Loading
-++++++++++++++++++++++
+Saving and restoring
+++++++++++++++++++++
 
 .. autosummary::
     :nosignatures:
