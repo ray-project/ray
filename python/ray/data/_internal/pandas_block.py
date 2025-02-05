@@ -23,7 +23,7 @@ from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
 from ray.data._internal.numpy_support import convert_to_numpy, validate_numpy_batch
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions, keys_equal
+from ray.data._internal.util import find_partitions, keys_equal, NULL_SENTINEL, is_nan
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -653,35 +653,46 @@ class PandasBlockAccessor(TableBlockAccessor):
         stats = BlockExecStats.builder()
         keys = sort_key.get_columns()
 
-        def key_fn(r):
+        def _key_fn(r):
             if keys:
                 return tuple(r[keys])
             else:
                 return (0,)
 
+        # Replace `None`s and `np.nan` with NULL_SENTINEL to make sure
+        # we can order the elements (both of these are incomparable)
+        def safe_key_fn(r):
+            values = _key_fn(r)
+            return tuple(
+                [NULL_SENTINEL if v is None or is_nan(v) else v for v in values]
+            )
+
         # Handle blocks of different types.
-        blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
+        blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.PANDAS)
 
         iter = heapq.merge(
             *[
                 PandasBlockAccessor(block).iter_rows(public_row_format=False)
                 for block in blocks
             ],
-            key=key_fn,
+            key=safe_key_fn,
         )
+
         next_row = None
         builder = PandasBlockBuilder()
+
         while True:
             try:
                 if next_row is None:
                     next_row = next(iter)
-                next_keys = key_fn(next_row)
+
+                next_keys = _key_fn(next_row)
                 next_key_columns = keys
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while keys_equal(key_fn(next_row), next_keys):
+                    while keys_equal(_key_fn(next_row), next_keys):
                         yield next_row
                         try:
                             next_row = next(iter)
