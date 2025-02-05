@@ -28,7 +28,7 @@ from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import NULL_SENTINEL, find_partitions, keys_equal
+from ray.data._internal.util import NULL_SENTINEL, find_partitions, keys_equal, is_nan
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -570,40 +570,46 @@ class ArrowBlockAccessor(TableBlockAccessor):
         stats = BlockExecStats.builder()
         keys = sort_key.get_columns()
 
-        def key_fn(r):
+        def _key_fn(r):
             if keys:
                 return tuple(r[keys])
             else:
                 return (0,)
 
-        # Replace Nones with NULL_SENTINEL to ensure safe sorting.
-        def key_fn_with_null_sentinel(r):
-            values = key_fn(r)
-            return [NULL_SENTINEL if v is None else v for v in values]
+        # Replace `None`s and `np.nan` with NULL_SENTINEL to make sure
+        # we can order the elements (both of these are incomparable)
+        def safe_key_fn(r):
+            values = _key_fn(r)
+            return tuple(
+                [NULL_SENTINEL if v is None or is_nan(v) else v for v in values]
+            )
 
         # Handle blocks of different types.
-        blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
+        blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
 
         iter = heapq.merge(
             *[
                 ArrowBlockAccessor(block).iter_rows(public_row_format=False)
                 for block in blocks
             ],
-            key=key_fn_with_null_sentinel,
+            key=safe_key_fn,
         )
+
         next_row = None
         builder = ArrowBlockBuilder()
+
         while True:
             try:
                 if next_row is None:
                     next_row = next(iter)
-                next_keys = key_fn(next_row)
+
+                next_keys = _key_fn(next_row)
                 next_key_columns = keys
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while keys_equal(key_fn(next_row), next_keys):
+                    while keys_equal(_key_fn(next_row), next_keys):
                         yield next_row
                         try:
                             next_row = next(iter)

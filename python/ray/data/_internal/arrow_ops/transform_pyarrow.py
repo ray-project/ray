@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, List, Union, Dict
 
 import numpy as np
@@ -14,6 +15,20 @@ try:
     import pyarrow
 except ImportError:
     pyarrow = None
+
+
+MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
+
+
+# pyarrow.Table.slice is slow when the table has many chunks
+# so we combine chunks into a single one to make slice faster
+# with the cost of an extra copy.
+# See https://github.com/ray-project/ray/issues/31108 for more details.
+# TODO(jjyao): remove this once https://github.com/apache/arrow/issues/35126 is resolved
+MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 10
+
+
+logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
@@ -57,7 +72,7 @@ def take_table(
 
 
 def unify_schemas(
-    schemas: List["pyarrow.Schema"],
+    schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas.
@@ -174,8 +189,24 @@ def unify_schemas(
             schemas_to_unify.append(schema)
     else:
         schemas_to_unify = schemas
-    # Let Arrow unify the schema of non-tensor extension type columns.
-    return pyarrow.unify_schemas(schemas_to_unify)
+
+    try:
+        if parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+            return pyarrow.unify_schemas(schemas_to_unify)
+
+        # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
+        #       allowing only promotion b/w nullable and non-nullable ones
+        arrow_promote_types_mode = "permissive" if promote_types else "default"
+
+        return pyarrow.unify_schemas(
+            schemas_to_unify, promote_options=arrow_promote_types_mode
+        )
+    except Exception as e:
+        schemas_str = "\n-----\n".join([str(s) for s in schemas_to_unify])
+
+        logger.error(f"Failed to unify schemas: {schemas_str}", exc_info=e)
+
+        raise
 
 
 def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
@@ -487,6 +518,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         table.validate()
     else:
         # No extension array columns, so use built-in pyarrow.concat_tables.
+
         if parse_version(_get_pyarrow_version()) >= parse_version("14.0.0"):
             # `promote` was superseded by `promote_options='default'` in Arrow 14. To
             # prevent `FutureWarning`s, we manually check the Arrow version and use the
@@ -528,6 +560,33 @@ def to_numpy(
         raise ValueError(
             f"Either of `Array` or `ChunkedArray` was expected, got {type(array)}"
         )
+
+
+def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
+    """This method attempts to coalesce table by combining any of its
+    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
+    chunks in its `ChunkedArray`.
+
+    This is necessary to improve performance for some operations (like `take`, etc)
+    when dealing with `ChunkedArrays` w/ large number of chunks
+
+    For more details check out https://github.com/apache/arrow/issues/35126
+    """
+
+    if table.num_columns == 0:
+        return table
+
+    new_column_values_arrays = []
+
+    for col in table.columns:
+        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+            new_col = combine_chunked_array(col)
+        else:
+            new_col = col
+
+        new_column_values_arrays.append(new_col)
+
+    return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
 
 def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":

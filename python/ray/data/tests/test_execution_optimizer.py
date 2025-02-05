@@ -1035,7 +1035,7 @@ def test_read_map_batches_operator_fusion_with_sort_operator(
 
 
 def test_read_map_batches_operator_fusion_with_aggregate_operator(
-    ray_start_regular_shared_2_cpus,
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
 ):
     from ray.data.aggregate import AggregateFn
 

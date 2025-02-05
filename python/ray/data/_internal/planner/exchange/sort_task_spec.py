@@ -81,7 +81,7 @@ class SortKey:
                     raise ValueError(
                         f"You specified the column '{column}', but there's no such "
                         "column in the dataset. The dataset has columns: "
-                        f"{schema_names_set}"
+                        f"{schema.names}"
                     )
 
     @property
