@@ -216,9 +216,10 @@ cc_grpc_library(
 # Object manager rpc server and client.
 ray_cc_library(
     name = "object_manager_rpc",
-    hdrs = glob([
-        "src/ray/rpc/object_manager/*.h",
-    ]),
+    hdrs = [
+        "src/ray/rpc/object_manager/object_manager_client.h",
+        "src/ray/rpc/object_manager/object_manager_server.h",
+    ],
     deps = [
         ":grpc_common_lib",
         ":object_manager_cc_grpc",
@@ -513,20 +514,54 @@ ray_cc_library(
 
 ray_cc_library(
     name = "gcs_server_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_server/*.cc",
-        ],
-        exclude = [
-            "src/ray/gcs/gcs_server/gcs_server_main.cc",
-            "src/ray/gcs/gcs_server/test/*.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_server/*.h",
-        ],
-    ),
+    srcs = [
+        "src/ray/gcs/gcs_server/gcs_actor_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_actor_scheduler.cc",
+        "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_health_check_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_init_data.cc",
+        "src/ray/gcs/gcs_server/gcs_job_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_kv_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_node_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_placement_group_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.cc",
+        "src/ray/gcs/gcs_server/gcs_redis_failure_detector.cc",
+        "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_server.cc",
+        "src/ray/gcs/gcs_server/gcs_table_storage.cc",
+        "src/ray/gcs/gcs_server/gcs_task_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_worker_manager.cc",
+        "src/ray/gcs/gcs_server/pubsub_handler.cc",
+        "src/ray/gcs/gcs_server/runtime_env_handler.cc",
+        "src/ray/gcs/gcs_server/state_util.cc",
+        "src/ray/gcs/gcs_server/store_client_kv.cc",
+        "src/ray/gcs/gcs_server/usage_stats_client.cc",
+    ],
+    hdrs =[
+        "src/ray/gcs/gcs_server/gcs_actor_manager.h",
+        "src/ray/gcs/gcs_server/gcs_actor_scheduler.h",
+        "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h",
+        "src/ray/gcs/gcs_server/gcs_function_manager.h",
+        "src/ray/gcs/gcs_server/gcs_health_check_manager.h",
+        "src/ray/gcs/gcs_server/gcs_init_data.h",
+        "src/ray/gcs/gcs_server/gcs_job_manager.h",
+        "src/ray/gcs/gcs_server/gcs_kv_manager.h",
+        "src/ray/gcs/gcs_server/gcs_node_manager.h",
+        "src/ray/gcs/gcs_server/gcs_placement_group_manager.h",
+        "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.h",
+        "src/ray/gcs/gcs_server/gcs_redis_failure_detector.h",
+        "src/ray/gcs/gcs_server/gcs_resource_manager.h",
+        "src/ray/gcs/gcs_server/gcs_server.h",
+        "src/ray/gcs/gcs_server/gcs_server_io_context_policy.h",
+        "src/ray/gcs/gcs_server/gcs_table_storage.h",
+        "src/ray/gcs/gcs_server/gcs_task_manager.h",
+        "src/ray/gcs/gcs_server/gcs_worker_manager.h",
+        "src/ray/gcs/gcs_server/pubsub_handler.h",
+        "src/ray/gcs/gcs_server/runtime_env_handler.h",
+        "src/ray/gcs/gcs_server/state_util.h",
+        "src/ray/gcs/gcs_server/store_client_kv.h",
+        "src/ray/gcs/gcs_server/usage_stats_client.h",
+    ],
     deps = [
         ":autoscaler_rpc",
         ":gcs",
