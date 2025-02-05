@@ -18,6 +18,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:function_traits",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -41,6 +42,7 @@ ray_cc_test(
     linkstatic = True,
     deps = [
         "//src/ray/util",
+        "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
@@ -229,7 +231,6 @@ ray_cc_test(
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
         "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/cleanup",
     ],
     size = "small",
     tags = ["team:core"],
@@ -282,6 +283,18 @@ ray_cc_test(
     srcs = ["temporary_directory_test.cc"],
     deps = [
         "//src/ray/util:temporary_directory",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "compat_test",
+    srcs = ["compat_test.cc"],
+    deps = [
+        "//src/ray/util:compat",
+        "//src/ray/util:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
