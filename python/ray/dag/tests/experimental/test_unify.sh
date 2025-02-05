@@ -13,7 +13,7 @@ export RAY_PYTEST_USE_GPU=1
 # [UNIT]
 python -m pytest \
 	--log-level=INFO -v -s \
-	test_torch_tensor_dag.py::test_torch_tensor_exceptions \
+	test_torch_tensor_dag.py::test_torch_tensor_nccl_overlap_p2p \
 	>$log 2>&1
 
 # [OVERLAP]

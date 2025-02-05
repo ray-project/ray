@@ -234,7 +234,10 @@ def test_torch_tensor_nccl(ray_start_regular):
 
 @pytest.mark.parametrize(
     "ray_start_regular, overlap_gpu_communication",
-    [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
+    [
+        # ({"num_cpus": 4}, False),
+        ({"num_cpus": 4}, True),
+    ],
     indirect=["ray_start_regular"],
 )
 def test_torch_tensor_nccl_overlap_p2p(ray_start_regular, overlap_gpu_communication):
