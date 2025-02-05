@@ -111,8 +111,6 @@ class IMPALALearner(Learner):
         if isinstance(batch, ray.ObjectRef):
             batch = ray.get(batch)
 
-        self.before_gradient_based_update(timesteps=timesteps or {})
-
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_in_queue.put(batch)
             self.metrics.log_value(
