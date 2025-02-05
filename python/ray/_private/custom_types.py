@@ -11,7 +11,6 @@ from ray.core.generated.gcs_pb2 import (
     GcsNodeInfo,
     PlacementGroupTableData,
 )
-from ray.dashboard.memory_utils import ReferenceType
 
 from typing import Literal
 
@@ -72,9 +71,19 @@ TASK_TYPE = [
     "DRIVER_TASK",
 ]
 TypeTaskType = Literal[tuple(TASK_TYPE)]
-TypeReferenceType = Literal[
-    tuple(reference_type.value for reference_type in ReferenceType)
+# TODO(kevin85421): `class ReferenceType(Enum)` is defined in
+# `dashboard/memory_utils.py` to avoid complex dependencies. I redefined
+# it here. Eventually, we should remove the one in `dashboard/memory_utils.py`
+# and define it under `ray/_private`.
+REFERENCE_TYPE = [
+    "ACTOR_HANDLE",
+    "PINNED_IN_MEMORY",
+    "LOCAL_REFERENCE",
+    "USED_BY_PENDING_TASK",
+    "CAPTURED_IN_OBJECT",
+    "UNKNOWN_STATUS",
 ]
+TypeReferenceType = Literal[tuple(REFERENCE_TYPE)]
 # The ErrorType enum is used in the export API so it is public
 # and any modifications must be backward compatible.
 ERROR_TYPE = [
