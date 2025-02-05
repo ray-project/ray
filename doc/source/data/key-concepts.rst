@@ -12,7 +12,7 @@ There are two main concepts in Ray Data:
 * Datasets
 * Blocks
 
-`Datasets` is the main user-facing Python API. They represent a distributed data collection and define data loading and processing operations. Users typically use the API by:
+`Dataset` is the main user-facing Python API. It represents a distributed data collection and define data loading and processing operations. Users typically use the API by:
 
 1. Create a :class:`Dataset <ray.data.Dataset>` from external storage or in-memory data.
 2. Apply transformations to the data.
