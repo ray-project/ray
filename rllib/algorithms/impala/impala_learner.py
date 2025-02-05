@@ -113,8 +113,6 @@ class IMPALALearner(Learner):
             batch = ray.get(batch)
             #with self.metrics.log_time((ALL_MODULES, "_learner_actor_main_thread_torch_barrier_timer")):
 
-        self.before_gradient_based_update(timesteps=timesteps or {})
-
         self._gpu_loader_in_queue.put(batch)
         #self.metrics.log_value(
         #    (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
