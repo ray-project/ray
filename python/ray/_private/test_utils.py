@@ -20,7 +20,6 @@ import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
-# from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
 from dataclasses import dataclass
@@ -48,7 +47,7 @@ from ray.core.generated import (
     node_manager_pb2,
     gcs_service_pb2,
 )
-from ray.util.queue import Queue, _QueueActor
+from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 

@@ -1,10 +1,20 @@
 import asyncio
+import queue
 from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
-from queue import Empty, Full
 
 import ray
 from ray.util.annotations import PublicAPI
+
+
+@PublicAPI(stability="beta")
+class Empty(queue.Empty):
+    pass
+
+
+@PublicAPI(stability="beta")
+class Full(queue.Full):
+    pass
 
 
 @PublicAPI(stability="beta")

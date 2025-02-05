@@ -7,7 +7,6 @@ import sys
 import textwrap
 import time
 import warnings
-from queue import Empty
 from pathlib import Path
 from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Union
 
@@ -41,7 +40,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.queue import Queue
+from ray.util.queue import Empty, Queue
 from ray.widgets import Template
 
 try:
