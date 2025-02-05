@@ -1409,6 +1409,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         # Mixed configs are not supported
 
+    @unittest.skipIf(
+        sys.version_info < (3, 10), reason="Vizier requires Python 3.10 or higher"
+    )
     def testSampleBoundsVizier(self):
         from ray.tune.search.vizier import VizierSearch
 
