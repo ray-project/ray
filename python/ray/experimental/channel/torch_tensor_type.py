@@ -117,9 +117,6 @@ class TorchTensorType(ChannelOutputType):
             deserializer=deserialize,
         )
 
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        raise ValueError("TorchTensorType cannot contain other types")
-
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
