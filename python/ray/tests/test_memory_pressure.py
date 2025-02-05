@@ -42,7 +42,6 @@ def get_local_state_client():
         port = int(node["NodeManagerPort"])
         runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
         client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-        client.register_agent_client(node_id, ip, port)
 
     return client
 

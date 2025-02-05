@@ -158,7 +158,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   void RunIOService() { io_service_.poll(); }
 
-  ExponentialBackOff GetExpBackOff() { return ExponentialBackOff(0, 1); }
+  ExponentialBackoff GetExpBackOff() { return ExponentialBackoff(0, 1); }
 
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;

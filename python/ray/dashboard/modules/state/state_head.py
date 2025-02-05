@@ -3,15 +3,17 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
-from typing import AsyncIterable
+from typing import AsyncIterable, Optional
 
 import aiohttp.web
 from aiohttp.web import Response
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray import ActorID
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
@@ -73,7 +75,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         )
 
         DataSource.nodes.signal.append(self._update_raylet_stubs)
-        DataSource.agents.signal.append(self._update_agent_stubs)
 
     async def limit_handler_(self):
         return do_reply(
@@ -115,21 +116,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_info["nodeManagerAddress"],
                 int(node_info["nodeManagerPort"]),
                 int(node_info["runtimeEnvAgentPort"]),
-            )
-
-    async def _update_agent_stubs(self, change: Change):
-        """Callback that's called when a new agent is added to Datasource."""
-        if change.old:
-            node_id, _ = change.old
-            self._state_api_data_source_client.unregister_agent_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, ports = change.new
-            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-            self._state_api_data_source_client.register_agent_client(
-                node_id,
-                ip,
-                int(ports[1]),
             )
 
     @routes.get("/api/v0/actors")
@@ -273,6 +259,14 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         output_format = req.query.get("format", "leading_1")
         logger.info(f"Streaming logs with format {output_format} options: {options}")
 
+        async def get_actor_fn(actor_id: ActorID) -> Optional[ActorTableData]:
+            actor_info_dict = await self.gcs_aio_client.get_all_actor_info(
+                actor_id=actor_id
+            )
+            if len(actor_info_dict) == 0:
+                return None
+            return actor_info_dict[actor_id]
+
         async def formatter_text(response, async_gen: AsyncIterable[bytes]):
             try:
                 async for logs in async_gen:
@@ -312,7 +306,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         response.content_type = "text/plain"
         await response.prepare(req)
 
-        logs_gen = self._log_api.stream_logs(options)
+        logs_gen = self._log_api.stream_logs(options, get_actor_fn)
         if output_format == "text":
             await formatter_text(response, logs_gen)
         elif output_format == "leading_1":

@@ -6,6 +6,7 @@ from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
@@ -780,7 +781,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-                self.module.set_state(state[COMPONENT_RL_MODULE])
+                rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
+                self.module.set_state(rl_module_state)
 
             # Update weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:

@@ -12,18 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <chrono>
 #include <memory>
 #include <thread>
 
-// clang-format off
-#include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/util/event.h"
+#include "ray/util/string_utils.h"
+
+// clang-format off
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/util/event.h"
 // clang-format on
 
 using json = nlohmann::json;
