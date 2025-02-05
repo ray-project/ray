@@ -24,6 +24,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow
 
 import ray
 from ray._private.utils import _get_pyarrow_version
@@ -31,7 +32,6 @@ from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataCo
 
 if TYPE_CHECKING:
     import pandas
-    import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -77,10 +77,10 @@ class _NullSentinel:
         return isinstance(other, _NullSentinel)
 
     def __gt__(self, other):
-        return True
+        return not self.__le__(other)
 
     def __ge__(self, other):
-        return True
+        return not self.__lt__(other)
 
     def __hash__(self):
         return id(self)
@@ -718,7 +718,7 @@ def unify_block_metadata_schema(
             pa = None
         # If the result contains PyArrow schemas, unify them
         if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
-            return unify_schemas(schemas_to_unify)
+            return unify_schemas(schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
         return schemas_to_unify[0]
@@ -1088,10 +1088,6 @@ def make_async_gen(
                     non_empty_queues.append(output_queue)
                     yield item
 
-            assert (
-                non_empty_queues + empty_queues == remaining_output_queues
-            ), "Exhausted non-trailing queue!"
-
             remaining_output_queues = non_empty_queues
 
     finally:
@@ -1106,6 +1102,251 @@ def make_async_gen(
         #       `GeneratorExit`) and hence we can't join on either filling or
         #       transforming workers.
         interrupted_event.set()
+
+
+class RetryingContextManager:
+    def __init__(
+        self,
+        f: pyarrow.NativeFile,
+        context: DataContext,
+        max_attempts: int = 10,
+        max_backoff_s: int = 32,
+    ):
+        self._f = f
+        self._data_context = context
+        self._max_attempts = max_attempts
+        self._max_backoff_s = max_backoff_s
+
+    def _retry_operation(self, operation: Callable, description: str):
+        """Execute an operation with retries."""
+        return call_with_retry(
+            operation,
+            description=description,
+            match=self._data_context.retried_io_errors,
+            max_attempts=self._max_attempts,
+            max_backoff_s=self._max_backoff_s,
+        )
+
+    def __enter__(self):
+        return self._retry_operation(self._f.__enter__, "enter file context")
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._retry_operation(
+            lambda: self._f.__exit__(exc_type, exc_value, traceback),
+            "exit file context",
+        )
+
+
+class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
+    def __init__(self, handler: "RetryingPyFileSystemHandler"):
+        if not isinstance(handler, RetryingPyFileSystemHandler):
+            assert ValueError("handler must be a RetryingPyFileSystemHandler")
+        super().__init__(handler)
+
+    @property
+    def data_context(self):
+        return self.handler.data_context
+
+    def unwrap(self):
+        return self.handler.unwrap()
+
+    @classmethod
+    def wrap(
+        cls,
+        fs: "pyarrow.fs.FileSystem",
+        context: DataContext,
+        max_attempts: int = 10,
+        max_backoff_s: int = 32,
+    ):
+        if isinstance(fs, RetryingPyFileSystem):
+            return fs
+        handler = RetryingPyFileSystemHandler(fs, context, max_attempts, max_backoff_s)
+        return cls(handler)
+
+    def __reduce__(self):
+        # Serialization of this class breaks for some reason without this
+        return (self.__class__, (self.handler,))
+
+    @classmethod
+    def __setstate__(cls, state):
+        # Serialization of this class breaks for some reason without this
+        return cls(*state)
+
+
+class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
+    """Wrapper for filesystem objects that adds retry functionality for file operations.
+
+    This class wraps any filesystem object and adds automatic retries for common
+    file operations that may fail transiently.
+    """
+
+    def __init__(
+        self,
+        fs: "pyarrow.fs.FileSystem",
+        context: DataContext,
+        max_attempts: int = 10,
+        max_backoff_s: int = 32,
+    ):
+        """Initialize the retrying filesystem wrapper.
+
+        Args:
+            fs: The underlying filesystem to wrap
+            context: DataContext for retry settings
+            max_attempts: Maximum number of retry attempts
+            max_backoff_s: Maximum backoff time in seconds
+        """
+        assert not isinstance(
+            fs, RetryingPyFileSystem
+        ), "Cannot wrap a RetryingPyFileSystem"
+        self._fs = fs
+        self._data_context = context
+        self._max_attempts = max_attempts
+        self._max_backoff_s = max_backoff_s
+
+    @property
+    def data_context(self):
+        return self._data_context
+
+    def _retry_operation(self, operation: Callable, description: str):
+        """Execute an operation with retries."""
+        return call_with_retry(
+            operation,
+            description=description,
+            match=self._data_context.retried_io_errors,
+            max_attempts=self._max_attempts,
+            max_backoff_s=self._max_backoff_s,
+        )
+
+    def unwrap(self):
+        return self._fs
+
+    def copy_file(self, src: str, dest: str):
+        """Copy a file."""
+        return self._retry_operation(
+            lambda: self._fs.copy_file(src, dest), f"copy file from {src} to {dest}"
+        )
+
+    def create_dir(self, path: str, recursive: bool):
+        """Create a directory and subdirectories."""
+        return self._retry_operation(
+            lambda: self._fs.create_dir(path, recursive=recursive),
+            f"create directory {path}",
+        )
+
+    def delete_dir(self, path: str):
+        """Delete a directory and its contents, recursively."""
+        return self._retry_operation(
+            lambda: self._fs.delete_dir(path), f"delete directory {path}"
+        )
+
+    def delete_dir_contents(self, path: str, missing_dir_ok: bool = False):
+        """Delete a directory's contents, recursively."""
+        return self._retry_operation(
+            lambda: self._fs.delete_dir_contents(path, missing_dir_ok=missing_dir_ok),
+            f"delete directory contents {path}",
+        )
+
+    def delete_file(self, path: str):
+        """Delete a file."""
+        return self._retry_operation(
+            lambda: self._fs.delete_file(path), f"delete file {path}"
+        )
+
+    def delete_root_dir_contents(self):
+        return self._retry_operation(
+            lambda: self._fs.delete_dir_contents("/", accept_root_dir=True),
+            "delete root dir contents",
+        )
+
+    def equals(self, other: "pyarrow.fs.FileSystem") -> bool:
+        """Test if this filesystem equals another."""
+        return self._fs.equals(other)
+
+    def get_file_info(self, paths: List[str]):
+        """Get info for the given files."""
+        return self._retry_operation(
+            lambda: self._fs.get_file_info(paths),
+            f"get file info for {paths}",
+        )
+
+    def get_file_info_selector(self, selector):
+        return self._retry_operation(
+            lambda: self._fs.get_file_info(selector),
+            f"get file info for {selector}",
+        )
+
+    def get_type_name(self):
+        return "RetryingPyFileSystem"
+
+    def move(self, src: str, dest: str):
+        """Move / rename a file or directory."""
+        return self._retry_operation(
+            lambda: self._fs.move(src, dest), f"move from {src} to {dest}"
+        )
+
+    def normalize_path(self, path: str) -> str:
+        """Normalize filesystem path."""
+        return self._retry_operation(
+            lambda: self._fs.normalize_path(path), f"normalize path {path}"
+        )
+
+    def open_append_stream(
+        self,
+        path: str,
+        metadata=None,
+    ) -> "pyarrow.NativeFile":
+        """Open an output stream for appending.
+
+        Compression is disabled in this method because it is handled in the
+        PyFileSystem abstract class.
+        """
+        return self._retry_operation(
+            lambda: self._fs.open_append_stream(
+                path,
+                compression=None,
+                metadata=metadata,
+            ),
+            f"open append stream for {path}",
+        )
+
+    def open_input_stream(
+        self,
+        path: str,
+    ) -> "pyarrow.NativeFile":
+        """Open an input stream for sequential reading.
+
+        Compression is disabled in this method because it is handled in the
+        PyFileSystem abstract class.
+        """
+        return self._retry_operation(
+            lambda: self._fs.open_input_stream(path, compression=None),
+            f"open input stream for {path}",
+        )
+
+    def open_output_stream(
+        self,
+        path: str,
+        metadata=None,
+    ) -> "pyarrow.NativeFile":
+        """Open an output stream for sequential writing."
+
+        Compression is disabled in this method because it is handled in the
+        PyFileSystem abstract class.
+        """
+        return self._retry_operation(
+            lambda: self._fs.open_output_stream(
+                path,
+                compression=None,
+                metadata=metadata,
+            ),
+            f"open output stream for {path}",
+        )
+
+    def open_input_file(self, path: str) -> "pyarrow.NativeFile":
+        """Open an input file for random access reading."""
+        return self._retry_operation(
+            lambda: self._fs.open_input_file(path), f"open input file {path}"
+        )
 
 
 def call_with_retry(
@@ -1133,17 +1374,18 @@ def call_with_retry(
         try:
             return f()
         except Exception as e:
-            is_retryable = match is None or any(
-                [pattern in str(e) for pattern in match]
-            )
+            is_retryable = match is None or any(pattern in str(e) for pattern in match)
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
-                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                backoff = min((2 ** (i + 1)), max_backoff_s) * (random.random())
                 logger.debug(
                     f"Retrying {i+1} attempts to {description} after {backoff} seconds."
                 )
                 time.sleep(backoff)
             else:
+                logger.debug(
+                    f"Did not find a match for {str(e)}. Raising after {i+1} attempts."
+                )
                 raise e from None
 
 
@@ -1184,9 +1426,7 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            is_retryable = match is None or any(
-                [pattern in str(e) for pattern in match]
-            )
+            is_retryable = match is None or any(pattern in str(e) for pattern in match)
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
@@ -1260,3 +1500,16 @@ def keys_equal(keys1, keys2):
         if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
             return False
     return True
+
+
+def get_total_obj_store_mem_on_node() -> int:
+    """Return the total object store memory on the current node.
+
+    This function incurs an RPC. Use it cautiously.
+    """
+    node_id = ray.get_runtime_context().get_node_id()
+    total_resources_per_node = ray._private.state.total_resources_per_node()
+    assert (
+        node_id in total_resources_per_node
+    ), f"Expected node '{node_id}' to be in resources: {total_resources_per_node}"
+    return total_resources_per_node[node_id]["object_store_memory"]

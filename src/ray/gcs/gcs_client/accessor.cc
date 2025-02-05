@@ -19,6 +19,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 namespace gcs {
@@ -1491,6 +1492,26 @@ Status AutoscalerStateAccessor::GetClusterStatus(int64_t timeout_ms,
   if (!reply.SerializeToString(&serialized_reply)) {
     return Status::IOError("Failed to serialize GetClusterStatusReply");
   }
+  return Status::OK();
+}
+
+Status AutoscalerStateAccessor::AsyncGetClusterStatus(
+    int64_t timeout_ms,
+    const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusRequest reply;
+
+  client_impl_->GetGcsRpcClient().GetClusterStatus(
+      request,
+      [callback](const Status &status, rpc::autoscaler::GetClusterStatusReply &&reply) {
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(Status::OK(), std::move(reply));
+      },
+      timeout_ms);
+
   return Status::OK();
 }
 
