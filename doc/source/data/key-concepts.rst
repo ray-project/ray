@@ -43,7 +43,9 @@ Ray Data uses a two-phase planning process to execute operations efficiently. Wh
 
 This diagram illustrates the complete planning process:
 
-.. image:: images/get_execution_plan.png
+.. https://docs.google.com/drawings/d/1WrVAg3LwjPo44vjLsn17WLgc3ta2LeQGgRfE8UHrDA0/edit
+
+.. image:: images/get_execution_plan.svg
    :width: 600
    :align: center
 
@@ -126,6 +128,8 @@ This creates a logical plan like the following:
 
 
 The streaming topology looks like the following:
+
+.. https://docs.google.com/drawings/d/10myFIVtpI_ZNdvTSxsaHlOhA_gHRdUde_aHRC9zlfOw/edit
 
 .. image:: images/streaming-topology.svg
    :width: 1000
