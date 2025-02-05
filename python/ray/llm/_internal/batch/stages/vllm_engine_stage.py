@@ -334,7 +334,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         # Create an LLM engine.
         self.llm = vLLMEngineWrapper(
             model=self.model,
-            idx_in_batch_column=self.idx_in_batch_column,
+            idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             disable_log_stats=False,
             max_pending_requests=self.max_pending_requests,
             runtime_env=self.runtime_env,
@@ -423,7 +423,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             yield {
                 **output,
                 "request_id": request.request_id,
-                self.idx_in_batch_column: request.idx_in_batch,
+                self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken,
                 "params": str(request.params),
