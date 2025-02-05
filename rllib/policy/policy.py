@@ -24,7 +24,6 @@ from packaging import version
 import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
-from ray.train import Checkpoint
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -72,6 +71,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+from ray.tune import Checkpoint
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
