@@ -9,6 +9,11 @@ class _CollectiveOp(Enum):
 
 @PublicAPI
 class ReduceOp(_CollectiveOp):
+    pass
+
+
+@PublicAPI
+class AllReduceOp(ReduceOp):
     SUM = 0
     PRODUCT = 1
     MAX = 2
@@ -16,4 +21,16 @@ class ReduceOp(_CollectiveOp):
     AVG = 4
 
     def __str__(self):
-        return f"{self.name.lower()}"
+        return f"AllReduce.{self.name.lower()}"
+
+
+@PublicAPI
+class ReduceScatterOp(ReduceOp):
+    SUM = 0
+    PRODUCT = 1
+    MAX = 2
+    MIN = 3
+    AVG = 4
+
+    def __str__(self):
+        return f"ReduceScatter.{self.name.lower()}"

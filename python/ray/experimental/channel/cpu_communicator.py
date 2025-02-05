@@ -4,10 +4,12 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.communicator import (
+    AllReduceOp,
+    ReduceScatterOp,
     Communicator,
-    ReduceOp,
     TorchTensorAllocator,
 )
+from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import torch
@@ -70,19 +72,19 @@ class CPUCommBarrier:
         """Apply the specified reduction operation across a list of tensors."""
 
         result = tensors[0].clone()
-        if op == ReduceOp.SUM:
+        if op == AllReduceOp.SUM:
             for tensor in tensors[1:]:
                 result += tensor
-        elif op == ReduceOp.PRODUCT:
+        elif op == AllReduceOp.PRODUCT:
             for tensor in tensors[1:]:
                 result *= tensor
-        elif op == ReduceOp.MAX:
+        elif op == AllReduceOp.MAX:
             for tensor in tensors[1:]:
                 result = torch.max(result, tensor)
-        elif op == ReduceOp.MIN:
+        elif op == AllReduceOp.MIN:
             for tensor in tensors[1:]:
                 result = torch.min(result, tensor)
-        elif op == ReduceOp.AVG:
+        elif op == AllReduceOp.AVG:
             result = sum(tensors) / len(tensors)
         else:
             raise ValueError(f"Operation {op} not supported")
@@ -125,7 +127,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceOp = ReduceOp.SUM,
+        op: AllReduceOp = AllReduceOp.SUM,
     ):
         all_ranks = [
             self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
@@ -142,6 +144,21 @@ class CPUCommunicator(Communicator):
         assert recv_buf is not None, "Receiving buffer required for CPUCommunicator"
         recv_buf[:] = result[:]
         self.num_ops[barrier_key] += 1
+
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceScatterOp = ReduceScatterOp.SUM,
+    ):
+        raise NotImplementedError
+
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        raise NotImplementedError
 
     def destroy(self) -> None:
         for barrier in self.barriers:
