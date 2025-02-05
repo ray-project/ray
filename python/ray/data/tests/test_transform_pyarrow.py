@@ -15,9 +15,9 @@ from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
     hash_partition,
-    try_combine_chunked_columns,
-    unify_schemas,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    unify_schemas,
+    try_combine_chunked_columns,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (

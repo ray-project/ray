@@ -412,8 +412,6 @@ def test_groupby_nans(
     ds = ds.map_batches(lambda x: x, batch_format=ds_format)
     ds = ds.groupby("item").count()
 
-    print(ds.take_all())
-
     # NOTE: Hash-based shuffling will convert the block to Arrow, which
     #       in turn convert NaNs into Nones
     ds = ds.filter(lambda v: v["item"] is None or is_nan(v["item"]))
