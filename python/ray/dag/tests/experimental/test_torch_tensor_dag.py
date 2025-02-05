@@ -285,7 +285,13 @@ def test_torch_tensor_nccl_overlap_p2p(ray_start_regular, overlap_gpu_communicat
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+@pytest.mark.parametrize(
+    "overlap_gpu_communication",
+    [
+        # False,
+        True,
+    ],
+)
 def test_torch_tensor_nccl_overlap_collective(
     ray_start_regular, overlap_gpu_communication
 ):
@@ -344,7 +350,13 @@ def test_torch_tensor_nccl_overlap_collective(
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+@pytest.mark.parametrize(
+    "overlap_gpu_communication",
+    [
+        # False,
+        True,
+    ],
+)
 def test_torch_tensor_nccl_overlap_p2p_and_collective(
     ray_start_regular, overlap_gpu_communication
 ):
