@@ -6,7 +6,8 @@ from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 
 class BlockOutputBuffer:
-    """Generates output blocks of a given size and rows given a stream of inputs.
+    """Generates output blocks of a given size and number of rows given a stream of
+    inputs.
 
     This class is used to turn a stream of items / blocks of arbitrary size
     into a stream of blocks of ``target_max_block_size`` or

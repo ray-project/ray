@@ -141,9 +141,6 @@ class MapTransformer:
         """Get the transform functions."""
         return self._transform_fns
 
-    def get_target_max_block_size(self) -> int:
-        return self._target_max_block_size
-
     def set_target_max_block_size(self, target_max_block_size: int):
         self._target_max_block_size = target_max_block_size
 
