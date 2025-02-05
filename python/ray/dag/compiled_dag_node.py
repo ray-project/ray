@@ -872,6 +872,13 @@ class CompiledDAG:
                     "The only allowed string for default_communicator is 'create', "
                     f"got {default_communicator}"
                 )
+        elif default_communicator is not None and not isinstance(
+            default_communicator, Communicator
+        ):
+            raise ValueError(
+                "The default_communicator must be None, a string, or a Communicator, "
+                f"got {type(default_communicator)}"
+            )
         self._default_communicator: Optional[Communicator] = default_communicator
 
         # Dict from passed-in communicator to set of type hints that refer to it.
@@ -1215,6 +1222,9 @@ class CompiledDAG:
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
+                    # Here we are processing the args of the DAGNode, so track
+                    # downstream actors only, upstream actor is already tracked
+                    # when processing the DAGNode itself.
                     self._track_communicator_usage(
                         upstream_task.dag_node,
                         {downstream_actor_handle},

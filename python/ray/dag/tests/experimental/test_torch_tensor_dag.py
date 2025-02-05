@@ -839,7 +839,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
     ]
     ray.wait(refs)
 
-    class InitedNcclGroup(Communicator):
+    class UserCreatedNcclGroup(Communicator):
         """
         A custom NCCL group based on existing torch.distributed setup.
         """
@@ -916,8 +916,8 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
         def get_transport_name(self) -> str:
             return "nccl"
 
-    comm2 = InitedNcclGroup(2, [sender, receiver])
-    comm1 = InitedNcclGroup(1, [sender])
+    comm2 = UserCreatedNcclGroup(2, [sender, receiver])
+    comm1 = UserCreatedNcclGroup(1, [sender])
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
