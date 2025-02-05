@@ -44,6 +44,7 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -1026,8 +1027,7 @@ class Dataset:
 
             if len(names.values()) != len(set(names.values())):
                 raise ValueError(
-                    f"rename_columns received duplicate values in the 'names': "
-                    f"{names}"
+                    f"rename_columns received duplicate values in the 'names': {names}"
                 )
 
             if not all(
@@ -3914,6 +3914,56 @@ class Dataset:
             max_retry_cnt=max_retry_cnt,
             overwrite_table=overwrite_table,
         )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    def write_lance(
+        self,
+        path: str,
+        *,
+        schema: Optional["pyarrow.Schema"] = None,
+        mode: Literal["create", "append", "overwrite"] = "create",
+        max_rows_per_file: int = 1024 * 1024,
+        data_storage_version: Optional[str] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write the dataset to a Lance dataset.
+
+        Examples:
+             .. testcode::
+                import ray
+                import pandas as pd
+
+                docs = [{"title": "Lance data sink test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_lance("/tmp/data/")
+
+        Args:
+            path: The path to the destination Lance dataset.
+            schema: The schema of the dataset. If not provided, it is inferred from the data.
+            mode: The write mode. Can be "create", "append", or "overwrite".
+            max_rows_per_file: The maximum number of rows per file.
+            data_storage_version: The version of the data storage format to use. Newer versions are more
+                efficient but require newer versions of lance to read.  The default is
+                "legacy" which will use the legacy v1 version.  See the user guide
+                for more details.
+            storage_options: The storage options for the writer. Default is None.
+        """
+        datasink = LanceDatasink(
+            path,
+            schema=schema,
+            mode=mode,
+            max_rows_per_file=max_rows_per_file,
+            data_storage_version=data_storage_version,
+            storage_options=storage_options,
+        )
+
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,
