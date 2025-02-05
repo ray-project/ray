@@ -26,11 +26,11 @@ async def test_tokenize_udf_basic(mock_tokenizer_setup):
     ]
 
     udf = TokenizeUDF(data_column="__data", model="test-model")
-    batch = [{"prompt": "Hello"}, {"prompt": "World"}]
+    batch = {"__data": [{"prompt": "Hello"}, {"prompt": "World"}]}
 
     results = []
-    async for result in udf.udf(batch):
-        results.append(result)
+    async for result in udf(batch):
+        results.append(result["__data"][0])
 
     assert len(results) == 2
     assert all(result["tokenized_prompt"] == [1, 2, 3] for result in results)
@@ -46,14 +46,16 @@ async def test_detokenize_udf_basic(mock_tokenizer_setup):
     mock_tokenizer.batch_decode.return_value = ["Hello", "World"]
 
     udf = DetokenizeUDF(data_column="__data", model="test-model")
-    batch = [
-        {"generated_tokens": [1, 2, 3]},
-        {"generated_tokens": [4, 5, 6]},
-    ]
+    batch = {
+        "__data": [
+            {"generated_tokens": [1, 2, 3]},
+            {"generated_tokens": [4, 5, 6]},
+        ]
+    }
 
     results = []
-    async for result in udf.udf(batch):
-        results.append(result)
+    async for result in udf(batch):
+        results.append(result["__data"][0])
 
     assert len(results) == 2
     assert results[0]["generated_text"] == "Hello"
