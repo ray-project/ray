@@ -431,7 +431,7 @@ cc_proto_library(
 
 proto_library(
     name = "serve_proto",
-    srcs = ["serve.proto"],
+    srcs = ["serve.proto", "serve_proprietary.proto"],
     visibility = ["//java:__subpackages__"],
 )
 

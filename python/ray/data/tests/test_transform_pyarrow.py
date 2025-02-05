@@ -1,5 +1,6 @@
 import os
 import types
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,13 @@ from ray._private.utils import _get_pyarrow_version
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
-from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    concat,
+    hash_partition,
+    try_combine_chunked_columns,
+    unify_schemas,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -22,6 +29,77 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
 )
+
+
+def test_try_defragment_table():
+    chunks = np.array_split(np.arange(1000), 10)
+
+    t = pa.Table.from_pydict(
+        {
+            "id": pa.chunked_array([pa.array(c) for c in chunks]),
+        }
+    )
+
+    assert len(t["id"].chunks) == 10
+
+    dt = try_combine_chunked_columns(t)
+
+    assert len(dt["id"].chunks) == 1
+    assert dt == t
+
+
+def test_hash_partitioning():
+    # Test hash-partitioning of the empty table
+    empty_table = pa.Table.from_pydict({"idx": []})
+
+    assert {} == hash_partition(empty_table, hash_cols=["idx"], num_partitions=5)
+
+    # Test hash-partitioning of table into 1 partition (returns table itself)
+    t = pa.Table.from_pydict({"idx": list(range(10))})
+
+    assert {0: t} == hash_partition(t, hash_cols=["idx"], num_partitions=1)
+
+    # Test hash-partitioning of proper table
+    idx = list(range(100))
+
+    t = pa.Table.from_pydict(
+        {
+            "idx": pa.array(idx),
+            "ints": pa.array(idx),
+            "floats": pa.array([float(i) for i in idx]),
+            "strings": pa.array([str(i) for i in idx]),
+            "structs": pa.array(
+                [
+                    {
+                        "value": i,
+                    }
+                    for i in idx
+                ]
+            ),
+        }
+    )
+
+    single_partition_dict = hash_partition(t, hash_cols=["idx"], num_partitions=1)
+
+    # There's just 1 partition
+    assert len(single_partition_dict) == 1
+    assert t == single_partition_dict.get(0)
+
+    def _concat_and_sort_partitions(parts: Iterable[pa.Table]) -> pa.Table:
+        return pa.concat_tables(parts).sort_by("idx")
+
+    _5_partition_dict = hash_partition(t, hash_cols=["strings"], num_partitions=5)
+
+    assert len(_5_partition_dict) == 5
+    assert t == _concat_and_sort_partitions(_5_partition_dict.values())
+
+    # There could be no more partitions than elements
+    _structs_partition_dict = hash_partition(
+        t, hash_cols=["structs"], num_partitions=101
+    )
+
+    assert len(_structs_partition_dict) == 34
+    assert t == _concat_and_sort_partitions(_structs_partition_dict.values())
 
 
 def test_arrow_concat_empty():
@@ -707,6 +785,65 @@ def test_unify_schemas():
             ("col_fixed_tensor", ArrowVariableShapedTensorType(pa.int32(), 3)),
             ("col_var_tensor", ArrowVariableShapedTensorType(pa.int16(), 5)),
         ]
+    )
+
+
+@pytest.mark.skipif(
+    parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires Arrow version of at least 14.0.0",
+)
+def test_unify_schemas_type_promotion():
+    s_non_null = pa.schema(
+        [
+            pa.field("A", pa.int32()),
+        ]
+    )
+
+    s_nullable = pa.schema(
+        [
+            pa.field("A", pa.int32(), nullable=True),
+        ]
+    )
+
+    # No type promotion
+    assert (
+        unify_schemas(
+            [s_non_null, s_nullable],
+            promote_types=False,
+        )
+        == s_nullable
+    )
+
+    s1 = pa.schema(
+        [
+            pa.field("A", pa.int64()),
+        ]
+    )
+
+    s2 = pa.schema(
+        [
+            pa.field("A", pa.float64()),
+        ]
+    )
+
+    # No type promotion
+    with pytest.raises(pa.lib.ArrowTypeError) as exc_info:
+        unify_schemas(
+            [s1, s2],
+            promote_types=False,
+        )
+
+    assert "Unable to merge: Field A has incompatible types: int64 vs double" == str(
+        exc_info.value
+    )
+
+    # Type promoted
+    assert (
+        unify_schemas(
+            [s1, s2],
+            promote_types=True,
+        )
+        == s2
     )
 
 
