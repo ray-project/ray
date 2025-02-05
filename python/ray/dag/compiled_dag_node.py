@@ -893,12 +893,16 @@ class CompiledDAG:
             FrozenSet["ray.actor.ActorHandle"], str
         ] = {}
 
-        # Set of actors involved in P2P communication but pending creation of communicator.
-        self._pending_p2p_communicator_actors: Set["ray.actor.ActorHandle"] = set()
-        # Set of DAG nodes involved in P2P communication but pending creation of communicator.
-        self._pending_p2p_communicator_dag_nodes: Set["ray.dag.DAGNode"] = set()
-        # Set of collective operations pending creation of communicator.
-        self._pending_collective_ops: Set[
+        # Set of actors involved in P2P communication using an unresolved communicator.
+        self._p2p_actors_with_unresolved_communicators: Set[
+            "ray.actor.ActorHandle"
+        ] = set()
+        # Set of DAG nodes involved in P2P communication using an unresolved communicator.
+        self._p2p_dag_nodes_with_unresolved_communicators: Set[
+            "ray.dag.DAGNode"
+        ] = set()
+        # Set of collective operations using an unresolved communicator.
+        self._collective_ops_with_unresolved_communicators: Set[
             "ray.dag.collective_node._CollectiveOperation"
         ] = set()
 
@@ -1285,17 +1289,17 @@ class CompiledDAG:
         # Reuse an already created collective op communicator when p2p actors
         # are a subset of the actors in the collective op communicator.
         p2p_communicator_id = None
-        if self._pending_p2p_communicator_actors:
+        if self._p2p_actors_with_unresolved_communicators:
             for (
                 actors,
                 communicator_id,
             ) in self._actors_to_created_communicator_id.items():
-                if self._pending_p2p_communicator_actors.issubset(actors):
+                if self._p2p_actors_with_unresolved_communicators.issubset(actors):
                     p2p_communicator_id = communicator_id
                     break
             if p2p_communicator_id is None:
                 p2p_communicator_id = _init_communicator(
-                    list(self._pending_p2p_communicator_actors),
+                    list(self._p2p_actors_with_unresolved_communicators),
                     None,
                     self._overlap_gpu_communication,
                 )
@@ -1360,7 +1364,7 @@ class CompiledDAG:
                 self._pending_collective_ops.add(dag_node._collective_op)
             else:
                 self._pending_p2p_communicator_dag_nodes.add(dag_node)
-                self._pending_p2p_communicator_actors.update(actors)
+                self._p2p_actors_with_unresolved_communicators.update(actors)
         else:
             if collective_op:
                 if set(communicator.get_actor_handles()) != actors:
