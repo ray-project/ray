@@ -1157,8 +1157,6 @@ def test_map_with_memory_resources(method, shutdown_only):
         else:
             return row_or_batch
 
-    from ray.data import Dataset
-
     ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
     if method is Dataset.map:
         ds = ds.map(
