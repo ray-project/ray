@@ -30,23 +30,9 @@
 #include "ray/util/util.h"
 #include "spdlog/logger.h"
 
-#if defined(__APPLE__) || defined(__linux__)
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#endif
-
 namespace ray {
 
-// Environmenr variable, which indicates the pipe size of read.
-//
-// TODO(hjiang): Should document the env variable after end-to-end integration has
-// finished.
-inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
-
 // File handle requires active destruction via owner calling [Close].
-//
-// TODO(hjiang): Wrap fd with spdlog sink to manage stream flush and close.
 class RedirectionFileHandle {
  public:
   RedirectionFileHandle() = default;
@@ -100,17 +86,8 @@ class RedirectionFileHandle {
   MEMFD_TYPE_NON_UNIQUE GetWriteHandle() const { return write_handle_; }
 
   // Write the given data into redirection handle; currently only for testing usage.
-  //
-  // TODO(hjiang): Use platform compatible API, see
-  // https://github.com/ray-project/ray/pull/50170
   void CompleteWrite(const char *data, size_t len) {
-#if defined(__APPLE__) || defined(__linux__)
-    [[maybe_unused]] auto x = write(write_handle_, data, len);
-#elif defined(_WIN32)
-    DWORD bytes_written;
-    [[maybe_unused]] auto x =
-        WriteFile(write_handle_, data, (DWORD)len, &bytes_written, NULL);
-#endif
+    RAY_CHECK_OK(::ray::CompleteWrite(write_handle_, data, len));
   }
 
  private:
