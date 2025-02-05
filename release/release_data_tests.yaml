@@ -354,6 +354,17 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
+- name: batch_inference_from_metadata
+  # This benchmark errors because of the issues described in PLAN-383.
+  frequency: manual
+
+  cluster:
+    cluster_compute: autoscaling_hetero_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python batch_inference_benchmark.py
+
 - name: batch_inference_chaos
   stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run

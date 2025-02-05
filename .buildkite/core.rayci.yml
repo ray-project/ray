@@ -130,6 +130,8 @@ steps:
     tags:
       - python
       - workflow
+      - oss
+      - skip-on-premerge
     instance_type: medium
     parallelism: 2
     commands:
@@ -273,14 +275,14 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
-        --parallelism-per-worker 2
+        --cache-test-results --parallelism-per-worker 2
 
   - label: ":ray: core: cpp asan tests"
     tags: core_cpp
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
-        --parallelism-per-worker 2
+        --cache-test-results --parallelism-per-worker 2
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
@@ -288,7 +290,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
         --except-tags no_ubsan
-        --parallelism-per-worker 2
+        --cache-test-results --parallelism-per-worker 2
 
   - label: ":ray: core: cpp tsan tests"
     tags: core_cpp
@@ -296,7 +298,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type tsan-clang
         --except-tags no_tsan
-        --parallelism-per-worker 2
+        --cache-test-results --parallelism-per-worker 2
 
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
