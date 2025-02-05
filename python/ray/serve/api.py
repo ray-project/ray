@@ -482,16 +482,22 @@ def _run_many(
                 make_deployment_handle=make_local_deployment_handle
                 if _local_testing_mode
                 else None,
-                default_runtime_env=ray.get_runtime_context().runtime_env,
+                default_runtime_env=ray.get_runtime_context().runtime_env
+                if not _local_testing_mode
+                else None,
             )
         )
 
     if _local_testing_mode:
+        # implicitly use the last target's logging config (if provided) in local testing mode
+        logging_config = t.logging_config or LoggingConfig()
+        if not isinstance(logging_config, LoggingConfig):
+            logging_config = LoggingConfig(**(logging_config or {}))
+
         configure_component_logger(
             component_name="local_test",
             component_id="-",
-            logging_config=t.logging_config
-            or LoggingConfig(),  # implicitly uses the last target
+            logging_config=logging_config,
             stream_handler_only=True,
         )
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
