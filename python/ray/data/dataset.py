@@ -5314,6 +5314,10 @@ class Dataset:
 
         if not isinstance(on, list):
             on = [on]
+
+        if len(on) == 0:
+            raise ValueError("At least 1 column to aggregate on has to be provided")
+
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
     def _aggregate_result(self, result: Union[Tuple, Mapping]) -> U:
