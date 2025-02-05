@@ -2,10 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.ppo_learner import (
-    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
-)
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER, LR_KEY
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -27,28 +24,27 @@ def get_model_config(lstm=False):
     )
 
 
-class MyCallbacks(DefaultCallbacks):
-    def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result[LEARNER_RESULTS][DEFAULT_MODULE_ID]
-        # Entropy coeff goes to 0.05, then 0.0 (per iter).
-        check(
-            stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
-            0.05 if algorithm.iteration == 1 else 0.0,
-        )
+def on_train_result(algorithm, result: dict, **kwargs):
+    stats = result[LEARNER_RESULTS][DEFAULT_MODULE_ID]
+    # Entropy coeff goes to 0.05, then 0.0 (per iter).
+    check(
+        stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
+        0.05 if algorithm.iteration == 1 else 0.0,
+    )
 
-        # Learning rate should decrease by 0.0001/4 per iteration.
-        check(
-            stats[DEFAULT_OPTIMIZER + "_" + LR_KEY],
-            0.0000075 if algorithm.iteration == 1 else 0.000005,
-        )
-        # Compare reported curr lr vs the actual lr found in the optimizer object.
-        optim = algorithm.learner_group._learner.get_optimizer()
-        actual_optimizer_lr = (
-            optim.param_groups[0]["lr"]
-            if algorithm.config.framework_str == "torch"
-            else optim.lr
-        )
-        check(stats[DEFAULT_OPTIMIZER + "_" + LR_KEY], actual_optimizer_lr)
+    # Learning rate should decrease by 0.0001/4 per iteration.
+    check(
+        stats[DEFAULT_OPTIMIZER + "_" + LR_KEY],
+        0.0000075 if algorithm.iteration == 1 else 0.000005,
+    )
+    # Compare reported curr lr vs the actual lr found in the optimizer object.
+    optim = algorithm.learner_group._learner.get_optimizer()
+    actual_optimizer_lr = (
+        optim.param_groups[0]["lr"]
+        if algorithm.config.framework_str == "torch"
+        else optim.lr
+    )
+    check(stats[DEFAULT_OPTIMIZER + "_" + LR_KEY], actual_optimizer_lr)
 
 
 class TestPPO(unittest.TestCase):
@@ -76,7 +72,7 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=[[0, 0.1], [256, 0.0]],  # 256=2x128,
                 train_batch_size=128,
             )
-            .callbacks(MyCallbacks)
+            .callbacks(on_train_result=on_train_result)
             .evaluation(
                 # Also test evaluation with remote workers.
                 evaluation_num_env_runners=2,

@@ -1,6 +1,11 @@
 load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_library(
+    name = "compat",
+    hdrs = ["compat.h"],
+)
+
+ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
@@ -15,6 +20,7 @@ ray_cc_library(
         ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:cmd_line_utils",
         "@boost//:optional",
         "@com_google_googletest//:gtest",
     ],
@@ -69,15 +75,12 @@ ray_cc_library(
 
 ray_cc_library(
     name = "file_system_monitor",
-    srcs = [
-        "file_system_monitor.cc",
-    ],
-    hdrs = [
-        "file_system_monitor.h",
-    ],
+    srcs = ["file_system_monitor.cc"],
+    hdrs = ["file_system_monitor.h"],
     deps = [
         ":asio",
         "//src/ray/util",
+        "//src/ray/util:event",
         "@com_google_googletest//:gtest_prod",
     ],
 )
@@ -134,6 +137,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:random",
         "@com_github_google_flatbuffers//:flatbuffers",
         "@msgpack",
     ],
@@ -197,6 +201,7 @@ ray_cc_library(
     hdrs = [
         "asio/asio_chaos.h",
         "asio/asio_util.h",
+        "asio/postable.h",
         "asio/instrumented_io_context.h",
         "asio/io_service_pool.h",
         "asio/periodical_runner.h",
@@ -205,6 +210,8 @@ ray_cc_library(
         ":event_stats",
         ":ray_config",
         "//src/ray/util",
+        "//src/ray/util:array",
+        "//src/ray/util:function_traits",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
@@ -277,7 +284,27 @@ ray_cc_library(
     hdrs = ["status.h"],
     deps = [
         ":source_location",
-        "//src/ray/util",
+        "//src/ray/util:logging",
+        "//src/ray/util:macros",
+        "//src/ray/util:visibility",
+        "@boost//:system",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "macros",
+    hdrs = ["macros.h"],
+)
+
+ray_cc_library(
+    name = "status_or",
+    hdrs = ["status_or.h"],
+    deps = [
+        ":macros",
+        ":status",
+        "@com_google_absl//absl/base:core_headers"
     ],
 )
 

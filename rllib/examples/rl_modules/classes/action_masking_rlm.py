@@ -35,12 +35,14 @@ class ActionMaskingRLModule(RLModule):
     @override(RLModule)
     def __init__(
         self,
+        *,
         observation_space: Optional[gym.Space] = None,
         action_space: Optional[gym.Space] = None,
         inference_only: Optional[bool] = None,
         learner_only: bool = False,
         model_config: Optional[Union[dict, DefaultModelConfig]] = None,
         catalog_class=None,
+        **kwargs,
     ):
         # If observation space is not of type `Dict` raise an error.
         if not isinstance(observation_space, gym.spaces.dict.Dict):
@@ -61,8 +63,8 @@ class ActionMaskingRLModule(RLModule):
         # Keeps track if observation specs have been checked already.
         self._checked_observations = False
 
-        # The PPORLModule, in its constructor will build networks for the original
-        # observation space (i.e. without the action mask).
+        # The DefaultPPORLModule, in its constructor will build networks for the
+        # original observation space (i.e. without the action mask).
         super().__init__(
             observation_space=self.observation_space,
             action_space=action_space,
@@ -70,6 +72,7 @@ class ActionMaskingRLModule(RLModule):
             learner_only=learner_only,
             model_config=model_config,
             catalog_class=catalog_class,
+            **kwargs,
         )
 
 
@@ -144,7 +147,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         # Extract the available actions tensor from the observation.
         action_mask = batch[Columns.OBS].pop("action_mask")
 
-        # Modify the batch for the `PPORLModule`'s `forward` method, i.e.
+        # Modify the batch for the `DefaultPPORLModule`'s `forward` method, i.e.
         # pass only `"obs"` into the `forward` method.
         batch[Columns.OBS] = batch[Columns.OBS].pop("observations")
 

@@ -50,7 +50,7 @@ void GcsRedisFailureDetector::DetectRedis() {
       this->io_service_.dispatch(this->callback_, "GcsRedisFailureDetector.DetectRedis");
     }
   };
-  auto cxt = redis_client_->GetPrimaryContext();
+  auto *cxt = redis_client_->GetPrimaryContext();
   cxt->RunArgvAsync({"PING"}, redis_callback);
 }
 

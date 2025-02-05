@@ -74,8 +74,7 @@ LocalTaskManager::LocalTaskManager(
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
-  ASSERT_FALSE(
-      cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
+  RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
   WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
@@ -387,6 +386,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) -> bool {
+              // TODO(hjiang): After getting the ready-to-use worker and task id, we're
+              // able to get physical execution context.
+              //
+              // ownership chain: raylet has-a node manager, node manager has-a local task
+              // manager.
+              //
+              // - PID: could get from available worker
+              // - Attempt id: could pass a global attempt id generator from raylet
+              // - Cgroup application folder: could pass from raylet
+
               return PoppedWorkerHandler(worker,
                                          status,
                                          task_id,
@@ -729,6 +738,8 @@ void LocalTaskManager::RemoveFromRunningTasksIfExists(const RayTask &task) {
   auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
+    // TODO(hjiang): After remove the task id from `running_tasks`, corresponding cgroup
+    // will be updated.
     it->second.running_tasks.erase(task.GetTaskSpecification().TaskId());
     if (it->second.running_tasks.size() == 0) {
       info_by_sched_cls_.erase(it);

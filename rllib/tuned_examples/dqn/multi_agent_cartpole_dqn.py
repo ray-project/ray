@@ -38,7 +38,6 @@ config = (
         n_step=(2, 5),
         double_q=True,
         num_atoms=1,
-        noisy=False,
         dueling=True,
         epsilon=[(0, 1.0), (20000, 0.02)],
     )

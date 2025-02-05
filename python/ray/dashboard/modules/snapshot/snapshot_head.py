@@ -11,11 +11,9 @@ import aiohttp.web
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
-from ray._private.gcs_aio_client import GcsAioClient
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.storage import _load_class
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
-from ray.dashboard.modules.job.common import JobInfoStorageClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -74,10 +72,8 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
-        self._gcs_aio_client: GcsAioClient = dashboard_head.gcs_aio_client
-        self._job_info_client = None
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="api_head"
@@ -93,7 +89,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 success=False, message="actor_id is required."
             )
 
-        await self._gcs_aio_client.kill_actor(
+        await self.gcs_aio_client.kill_actor(
             ActorID.from_hex(actor_id),
             force_kill,
             no_restart,
@@ -176,7 +172,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # This includes the _ray_internal_dashboard job that gets automatically
         # created with every cluster
         try:
-            reply = await self._gcs_aio_client.get_all_job_info(
+            reply = await self.gcs_aio_client.get_all_job_info(
                 skip_submission_job_info_field=True,
                 skip_is_running_tasks_field=True,
                 timeout=timeout,
@@ -232,12 +228,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             )
 
     async def run(self, server):
-        # Lazily constructed because dashboard_head's gcs_aio_client
-        # is lazily constructed
-        if not self._job_info_client:
-            self._job_info_client = JobInfoStorageClient(
-                self._dashboard_head.gcs_aio_client
-            )
+        pass
 
     @staticmethod
     def is_minimal_module():

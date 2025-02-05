@@ -1,6 +1,8 @@
 import itertools
 from typing import Callable, Iterator, List, Union
 
+from pandas import DataFrame
+
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -16,19 +18,36 @@ from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.datasource import Datasource
 
 
+def gen_datasink_write_result(
+    write_result_blocks: List[Block],
+) -> WriteResult:
+    assert all(
+        isinstance(block, DataFrame) and len(block) == 1
+        for block in write_result_blocks
+    )
+    total_num_rows = sum(result["num_rows"].sum() for result in write_result_blocks)
+    total_size_bytes = sum(result["size_bytes"].sum() for result in write_result_blocks)
+
+    write_returns = [result["write_return"][0] for result in write_result_blocks]
+    return WriteResult(total_num_rows, total_size_bytes, write_returns)
+
+
 def generate_write_fn(
     datasink_or_legacy_datasource: Union[Datasink, Datasource], **write_args
 ) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
-    def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
+    def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Writes the blocks to the given datasink or legacy datasource.
 
         Outputs the original blocks to be written."""
         # Create a copy of the iterator, so we can return the original blocks.
         it1, it2 = itertools.tee(blocks, 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            datasink_or_legacy_datasource.write(it1, ctx)
+            ctx.kwargs["_datasink_write_return"] = datasink_or_legacy_datasource.write(
+                it1, ctx
+            )
         else:
             datasink_or_legacy_datasource.write(it1, ctx, **write_args)
+
         return it2
 
     return fn
@@ -41,7 +60,7 @@ def generate_collect_write_stats_fn() -> (
     # one Block which contain stats/metrics about the write.
     # Otherwise, an error will be raised. The Datasource can handle
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
-    def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
+    def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Handles stats collection for block writes."""
         block_accessors = [BlockAccessor.for_block(block) for block in blocks]
         total_num_rows = sum(ba.num_rows() for ba in block_accessors)
@@ -51,8 +70,13 @@ def generate_collect_write_stats_fn() -> (
         # type.
         import pandas as pd
 
-        write_result = WriteResult(num_rows=total_num_rows, size_bytes=total_size_bytes)
-        block = pd.DataFrame({"write_result": [write_result]})
+        block = pd.DataFrame(
+            {
+                "num_rows": [total_num_rows],
+                "size_bytes": [total_size_bytes],
+                "write_return": [ctx.kwargs.get("_datasink_write_return", None)],
+            }
+        )
         return iter([block])
 
     return fn

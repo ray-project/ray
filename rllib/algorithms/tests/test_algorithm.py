@@ -291,14 +291,14 @@ class TestAlgorithm(unittest.TestCase):
             # worker set and the eval worker set.
             self.assertTrue(
                 all(
-                    algo.env_runner_group.foreach_worker(
+                    algo.env_runner_group.foreach_env_runner(
                         func=lambda w, pid=pid: pid in w.policy_map
                     )
                 )
             )
             self.assertTrue(
                 all(
-                    algo.eval_env_runner_group.foreach_worker(
+                    algo.eval_env_runner_group.foreach_env_runner(
                         func=lambda w, pid=pid: pid in w.policy_map
                     )
                 )
@@ -316,14 +316,14 @@ class TestAlgorithm(unittest.TestCase):
 
             # Test restoring from the checkpoint (which has more policies
             # than what's defined in the config dict).
-            test = ppo.PPO.from_checkpoint(checkpoint=checkpoint)
+            test = ppo.PPO.from_checkpoint(checkpoint)
 
             # Make sure evaluation worker also got the restored, added policy.
             def _has_policies(w, pid=pid):
                 return w.get_policy("p0") is not None and w.get_policy(pid) is not None
 
             self.assertTrue(
-                all(test.eval_env_runner_group.foreach_worker(_has_policies))
+                all(test.eval_env_runner_group.foreach_env_runner(_has_policies))
             )
 
             # Make sure algorithm can continue training the restored policy.
@@ -360,7 +360,7 @@ class TestAlgorithm(unittest.TestCase):
                     )
 
                 self.assertTrue(
-                    all(test2.eval_env_runner_group.foreach_worker(_has_policies))
+                    all(test2.eval_env_runner_group.foreach_env_runner(_has_policies))
                 )
 
                 # Make sure algorithm can continue training the restored policy.
@@ -389,12 +389,12 @@ class TestAlgorithm(unittest.TestCase):
             # Make sure removed policy is no longer part of remote workers in the
             # worker set and the eval worker set.
             self.assertTrue(
-                algo.env_runner_group.foreach_worker(
+                algo.env_runner_group.foreach_env_runner(
                     func=lambda w, pid=pid: pid not in w.policy_map
                 )[0]
             )
             self.assertTrue(
-                algo.eval_env_runner_group.foreach_worker(
+                algo.eval_env_runner_group.foreach_env_runner(
                     func=lambda w, pid=pid: pid not in w.policy_map
                 )[0]
             )
@@ -599,14 +599,14 @@ class TestAlgorithm(unittest.TestCase):
         # EnvRunnerGroup and the eval EnvRunnerGroup.
         self.assertTrue(
             all(
-                algo.env_runner_group.foreach_worker(
+                algo.env_runner_group.foreach_env_runner(
                     lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )
         )
         self.assertTrue(
             all(
-                algo.eval_env_runner_group.foreach_worker(
+                algo.eval_env_runner_group.foreach_env_runner(
                     lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )

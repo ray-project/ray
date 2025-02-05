@@ -1,3 +1,4 @@
+import enum
 import logging
 import os
 import threading
@@ -20,6 +21,15 @@ logger = logging.getLogger(__name__)
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
+
+
+@DeveloperAPI(stability="alpha")
+class ShuffleStrategy(str, enum.Enum):
+    """Shuffle strategy determines shuffling algorithm employed by operations
+    like aggregate, repartition, etc"""
+
+    SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
+    SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -56,6 +66,10 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
+DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -70,7 +84,7 @@ DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
@@ -79,8 +93,6 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 #
 #       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
 DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
-
-DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE = True
 
 DEFAULT_AUTO_LOG_STATS = False
 
@@ -173,6 +185,25 @@ def _execution_options_factory() -> "ExecutionOptions":
     from ray.data._internal.execution.interfaces import ExecutionOptions
 
     return ExecutionOptions()
+
+
+def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
+    if DEFAULT_USE_PUSH_BASED_SHUFFLE:
+        logger.warning(
+            "RAY_DATA_PUSH_BASED_SHUFFLE is deprecated, please use "
+            "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY to set shuffling strategy"
+        )
+
+        return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+    else:
+        vs = [s for s in ShuffleStrategy]  # noqa: C416
+
+        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
+            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
+            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
+        )
+
+        return DEFAULT_SHUFFLE_STRATEGY
 
 
 @DeveloperAPI
@@ -287,8 +318,19 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+
+    ################################################################
+    # Sort-based shuffling configuration
+    ################################################################
+
     use_push_based_shuffle: bool = DEFAULT_USE_PUSH_BASED_SHUFFLE
+
+    _shuffle_strategy: ShuffleStrategy = _deduce_default_shuffle_algorithm()
+
     pipeline_push_based_shuffle_reduce_tasks: bool = True
+
+    ################################################################
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
@@ -301,9 +343,7 @@ class DataContext:
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
-    enable_fallback_to_arrow_object_ext_type = (
-        DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE
-    )
+    enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
@@ -340,6 +380,8 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+
+    override_object_store_memory_limit_fraction: float = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -386,6 +428,12 @@ class DataContext:
             warnings.warn(
                 "`write_file_retry_on_errors` is deprecated. Configure "
                 "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+        elif name == "use_push_based_shuffle":
+            warnings.warn(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
                 DeprecationWarning,
             )
 
@@ -437,6 +485,22 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    @property
+    def shuffle_strategy(self) -> ShuffleStrategy:
+        if self.use_push_based_shuffle:
+            logger.warning(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+            )
+
+            return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+
+        return self._shuffle_strategy
+
+    @shuffle_strategy.setter
+    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
+        self._shuffle_strategy = value
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.

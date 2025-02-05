@@ -51,8 +51,9 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             serialized_runtime_env,
                             depth,
-                            TaskID::Nil());
-  return builder.Build();
+                            TaskID::Nil(),
+                            "");
+  return std::move(builder).ConsumeAndBuild();
 }
 TaskSpecification BuildEmptyTaskSpec() {
   std::unordered_map<std::string, double> empty_resources;

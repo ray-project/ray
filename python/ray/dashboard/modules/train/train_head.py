@@ -19,8 +19,8 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
 class TrainHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
+    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
+        super().__init__(config)
         self._train_stats_actor = None
         self._job_info_client = None
         self._gcs_actor_info_stub = None
@@ -66,7 +66,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                     reverse=True,
                 )
                 job_details = await find_jobs_by_job_ids(
-                    self._dashboard_head.gcs_aio_client,
+                    self.gcs_aio_client,
                     self._job_info_client,
                     [run.job_id for run in train_runs_with_details],
                 )
@@ -183,11 +183,9 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         if not self._job_info_client:
-            self._job_info_client = JobInfoStorageClient(
-                self._dashboard_head.gcs_aio_client
-            )
+            self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
 
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+        gcs_channel = self.aiogrpc_gcs_channel
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
         )
