@@ -54,7 +54,7 @@ The building blocks of these plans are operators:
 
 Let's look at a simple example of how Ray Data builds a logical plan. As you chain operations together, Ray Data constructs the logical plan behind the scenes:
 
-.. code-block:: python
+.. testcode::
 
     dataset = ray.data.range(100)
     dataset = dataset.add_column("test", lambda x: x["id"] + 1)
@@ -110,7 +110,7 @@ Here is an example of how the streaming execution model works. The below code cr
     ds = ds.map(lambda x: {"target3": x["target2"] * 2})
     ds = ds.filter(lambda x: x["target3"] % 4 == 0)
 
-    # Data starts flowing when you call an action like show()
+    # Data starts flowing when you call a method like show()
     ds.show(5)
 
 This creates a logical plan like the following:
