@@ -292,7 +292,7 @@ def test_split_at_indices_coverage_complete(
     ds = ray.data.range(10, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.take_all()) for s in splits]
-    # Use np.array_split() semantics as our correctness ground-truth
+    # Use np.array_split() semantics as our correctness ground-truth.
     assert r == [arr.tolist() for arr in np.array_split(list(range(10)), indices)]
 
 
