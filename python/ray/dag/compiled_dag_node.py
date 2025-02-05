@@ -1270,11 +1270,16 @@ class CompiledDAG:
                     "Communicator creation is not allowed for collective operations."
                 )
             actors = frozenset(collective_op.actor_handles)
-            communicator_id = collective_op.init_communicator(
-                self._actors_to_created_communicator_id.get(actors, None)
-            )
-            if actors not in self._actors_to_created_communicator_id:
+            if actors in self._actors_to_created_communicator_id:
+                communicator_id = self._actors_to_created_communicator_id[actors]
+            else:
+                communicator_id = _init_communicator(
+                    list(actors),
+                    None,
+                    self._overlap_gpu_communication,
+                )
                 self._actors_to_created_communicator_id[actors] = communicator_id
+            collective_op.type_hint.set_communicator_id(communicator_id)
 
         # Finally, create a communicator for P2P operations.
         # Reuse an already created collective op communicator when p2p actors
