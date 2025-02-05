@@ -58,7 +58,7 @@ class TestStatefulStageUDF:
             for row in rows[::-1]:
                 ret = {"processed": row["value"] * 2}
                 if not self.udf_output_missing_idx_in_batch_column:
-                    ret[self.idx_in_batch_column] = row[self.idx_in_batch_column]
+                    ret[self.IDX_IN_BATCH_COLUMN] = row[self.IDX_IN_BATCH_COLUMN]
                 yield ret
 
         @property

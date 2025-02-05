@@ -46,7 +46,7 @@ class ChatTemplateUDF(StatefulStageUDF):
 
         for row, prompt in zip(batch, prompts):
             yield {
-                self.idx_in_batch_column: row[self.idx_in_batch_column],
+                self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                 "prompt": prompt,
             }
 

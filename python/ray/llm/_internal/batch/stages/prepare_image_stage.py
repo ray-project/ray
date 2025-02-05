@@ -350,7 +350,7 @@ class PrepareImageUDF(StatefulStageUDF):
         idx_in_batch = 0
         for image_info_per_req in all_image_info:
             num_images_in_req = len(image_info_per_req)
-            ret = {self.idx_in_batch_column: idx_in_batch}
+            ret = {self.IDX_IN_BATCH_COLUMN: idx_in_batch}
             idx_in_batch += 1
             if num_images_in_req > 0:
                 images = flat_all_images[
