@@ -135,13 +135,9 @@ def plan_streaming_repartition_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
-    transform_fns = [
-        BuildOutputBlocksMapTransformFn.for_blocks(),
-    ]
-    map_transformer = MapTransformer(transform_fns)
-    map_transformer.set_target_max_block_size(
-        target_max_block_size=op.max_num_rows_per_block
-    )
+    transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
+    transform_fn.set_target_max_rows_per_block(op.max_num_rows_per_block)
+    map_transformer = MapTransformer([transform_fn])
     return MapOperator.create(
         map_transformer,
         input_physical_dag,

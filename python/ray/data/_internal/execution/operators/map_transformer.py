@@ -63,6 +63,7 @@ class MapTransformFn:
         self._output_type = output_type
         self._category = category
         self._target_max_block_size = None
+        self._target_max_rows_per_block = None
         self._is_udf = is_udf
 
     @abstractmethod
@@ -87,6 +88,9 @@ class MapTransformFn:
 
     def set_target_max_block_size(self, target_max_block_size: int):
         self._target_max_block_size = target_max_block_size
+
+    def set_target_max_rows_per_block(self, target_max_rows_per_block: int):
+        self._target_max_rows_per_block = target_max_rows_per_block
 
 
 class MapTransformer:
@@ -440,7 +444,9 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         assert (
             self._target_max_block_size is not None
         ), "target_max_block_size must be set before running"
-        output_buffer = BlockOutputBuffer(self._target_max_block_size)
+        output_buffer = BlockOutputBuffer(
+            self._target_max_block_size, self._target_max_rows_per_block
+        )
         if self._input_type == MapTransformFnDataType.Block:
             add_fn = output_buffer.add_block
         elif self._input_type == MapTransformFnDataType.Batch:

@@ -6,12 +6,13 @@ from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 
 class BlockOutputBuffer:
-    """Generates output blocks of a given size given a stream of inputs.
+    """Generates output blocks of a given size and rows given a stream of inputs.
 
     This class is used to turn a stream of items / blocks of arbitrary size
-    into a stream of blocks of ``target_max_block_size``. The caller should
-    check ``has_next()`` after each ``add()`` call, and call ``next()`` to get
-    the next block when ``has_next()`` returns True.
+    into a stream of blocks of ``target_max_block_size`` or
+    ``target_max_rows_per_block``. The caller should check ``has_next()`` after each
+    ``add()`` call, and call ``next()`` to get the next block when ``has_next()``
+    returns True.
 
     When all items have been added, the caller must call ``finalize()`` and
     then check ``has_next()`` one last time.
@@ -21,7 +22,7 @@ class BlockOutputBuffer:
         >>> udf = ... # doctest: +SKIP
         >>> generator = ... # doctest: +SKIP
         >>> # Yield a stream of output blocks.
-        >>> output = BlockOutputBuffer(udf, 500 * 1024 * 1024) # doctest: +SKIP
+        >>> output = BlockOutputBuffer(500 * 1024 * 1024) # doctest: +SKIP
         >>> for item in generator(): # doctest: +SKIP
         ...     output.add(item) # doctest: +SKIP
         ...     if output.has_next(): # doctest: +SKIP
@@ -31,8 +32,11 @@ class BlockOutputBuffer:
         ...     yield output.next() # doctest: +SKIP
     """
 
-    def __init__(self, target_max_block_size: int):
+    def __init__(
+        self, target_max_block_size: int, target_max_rows_per_block: int = None
+    ):
         self._target_max_block_size = target_max_block_size
+        self._target_max_rows_per_block = target_max_rows_per_block
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = False
         self._finalized = False
@@ -57,14 +61,33 @@ class BlockOutputBuffer:
         assert not self._finalized
         self._finalized = True
 
+    def _buffer_row_limit(self) -> bool:
+        return (
+            self._target_max_rows_per_block is not None
+            and self._buffer.num_rows() > self._target_max_rows_per_block
+        )
+
+    def _buffer_size_limit(self) -> bool:
+        return self._buffer.get_estimated_memory_usage() > self._target_max_block_size
+
     def has_next(self) -> bool:
         """Returns true when a complete output block is produced."""
         if self._finalized:
             return not self._returned_at_least_one_block or self._buffer.num_rows() > 0
         else:
-            return (
-                self._buffer.get_estimated_memory_usage() > self._target_max_block_size
-            )
+            return self._buffer_row_limit() or self._buffer_size_limit()
+
+    def _block_size_limit(self, block: Block) -> bool:
+        return (
+            block.size_bytes()
+            >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._target_max_block_size
+        )
+
+    def _block_row_limit(self, block: Block) -> bool:
+        return (
+            self._target_max_rows_per_block is not None
+            and block.num_rows() > self._target_max_rows_per_block
+        )
 
     def next(self) -> Block:
         """Returns the next complete output block."""
@@ -73,16 +96,14 @@ class BlockOutputBuffer:
         block_to_yield = self._buffer.build()
         block_remainder = None
         block = BlockAccessor.for_block(block_to_yield)
-        if (
-            block.size_bytes()
-            >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._target_max_block_size
-        ):
-            # Slice a block to respect the target max block size.  We only do
-            # this if we are more than 50% above the target block size, because
-            # this ensures that the last block produced will be at least half
-            # the block size.
-            num_bytes_per_row = block.size_bytes() // block.num_rows()
-            target_num_rows = max(1, self._target_max_block_size // num_bytes_per_row)
+
+        if self._block_row_limit(block) or self._block_size_limit(block):
+            num_bytes_per_row = max(1, block.size_bytes() // block.num_rows())
+            target_num_rows_by_size = self._target_max_block_size // num_bytes_per_row
+            target_num_rows_by_rows = (
+                self._target_max_rows_per_block or block.num_rows()
+            )
+            target_num_rows = min(target_num_rows_by_size, target_num_rows_by_rows)
 
             if target_num_rows < block.num_rows():
                 # NOTE: We're maintaining following protocol of slicing underlying block

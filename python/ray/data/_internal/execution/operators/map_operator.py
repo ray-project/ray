@@ -510,8 +510,7 @@ def _map_task(
     DataContext._set_current(data_context)
     ctx.kwargs.update(kwargs)
     stats = BlockExecStats.builder()
-    if map_transformer.get_target_max_block_size() is None:
-        map_transformer.set_target_max_block_size(ctx.target_max_block_size)
+    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata()
