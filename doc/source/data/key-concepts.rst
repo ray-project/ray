@@ -27,7 +27,7 @@ which are distributed across the cluster and processed independently in parallel
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
 Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
-(which is usually the entrypoint of the program, referred to as the *driver*)
+(which is usually the entrypoint of the program, referred to as the :term:`driver`)
 and stores the blocks as objects in Ray's shared-memory
 :ref:`object store <objects-in-ray>`. Internally, Ray Data represents blocks with
 Pandas Dataframes or Arrow tables.
@@ -95,7 +95,7 @@ Ray Data can process data in a streaming fashion through a pipeline of operation
 
 This is useful for inference and training workloads where the dataset can be too large to fit in memory and the workload doesn't require the entire dataset to be in memory at once.
 
-Here is an example of how the streaming execution model works. Below we create a dataset with 1K rows, apply a map and filter transformation, and then call the ``show`` action to trigger the pipeline:
+Here is an example of how the streaming execution model works. The below code creates a dataset with 1K rows, applies a map and filter transformation, and then calls the ``show`` action to trigger the pipeline:
 
 .. testcode::
 
@@ -113,7 +113,7 @@ Here is an example of how the streaming execution model works. Below we create a
     # Data starts flowing when you call an action like show()
     ds.show(5)
 
-This will create a logical plan like the following:
+This creates a logical plan like the following:
 
 .. code-block::
 
@@ -124,7 +124,7 @@ This will create a logical plan like the following:
              +- Dataset(schema={...})
 
 
-The streaming topology will look like the following:
+The streaming topology looks like the following:
 
 .. image:: images/streaming-topology.svg
    :width: 1000
