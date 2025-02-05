@@ -65,7 +65,7 @@ def get_train_dataset(args, image_resolution=512):
                 antialias=True,
             ),
             transforms.RandomCrop(image_resolution),
-            transforms.Normalize([0.5], [0.5]),
+            transforms.Normalize([0.5], [0.5]),  # use appropriate mean and std for your dataset
         ]
     )
 
