@@ -2725,7 +2725,6 @@ cdef class GcsClient:
                 ray._private.utils._CALLED_FREQ[name] += 1
         return getattr(self.inner, name)
 
-
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:
