@@ -44,23 +44,12 @@
 #include <thread>
 #include <unordered_map>
 
-// TODO(hjiang): Revisit these inclusion when we split `util` dependency targets; keep
-// them here for backward compatibility and avoid breaking too much compilation.
 #include "absl/container/flat_hash_map.h"
-#include "ray/util/cmd_line_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
-#include "ray/util/process.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
-#endif
-
-// Portable code for unreachable
-#if defined(_MSC_VER)
-#define UNREACHABLE __assume(0)
-#else
-#define UNREACHABLE __builtin_unreachable()
 #endif
 
 // Boost forward-declarations (to avoid forcing slow header inclusions)
