@@ -157,7 +157,7 @@ class ActorReplicaResult(ReplicaResult):
         # See: https://github.com/ray-project/ray/issues/43879.
         with self._object_ref_or_gen_sync_lock:
             if self._obj_ref is None:
-                obj_ref = self._obj_ref_gen._next_sync(timeout_s=float(timeout_s) if timeout_s else None)
+                obj_ref = self._obj_ref_gen._next_sync(timeout_s=timeout_s)
                 if obj_ref.is_nil():
                     raise TimeoutError("Timed out resolving to ObjectRef.")
 
