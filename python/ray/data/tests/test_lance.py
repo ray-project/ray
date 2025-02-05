@@ -115,7 +115,7 @@ def test_lance_read_many_files(data_path):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
-def test_ray_sink(data_path):
+def test_lance_write(data_path):
     schema = pa.schema([pa.field("id", pa.int64()), pa.field("str", pa.string())])
 
     ray.data.range(10).map(
