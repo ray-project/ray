@@ -55,6 +55,7 @@ The building blocks of these plans are operators:
 Let's look at a simple example of how Ray Data builds a logical plan. As you chain operations together, Ray Data constructs the logical plan behind the scenes:
 
 .. testcode::
+    import ray
 
     dataset = ray.data.range(100)
     dataset = dataset.add_column("test", lambda x: x["id"] + 1)
