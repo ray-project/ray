@@ -557,7 +557,7 @@ def test_set_trace_status_error():
     assert trace_stack[0].status.description == error_message
 
 
-def test_set_trace_status_ok():
+def test_set_trace_status_ok(caplog):
     """test calling set_trace_status with ok status.
 
     When there is a trace stack, calling set_trace_status with ok updates
@@ -571,6 +571,11 @@ def test_set_trace_status_ok():
     assert trace_stack[0].status.status_code == StatusCode.OK
     # Note: when the status is OK, the description is not set.
     assert trace_stack[0].status.description is None
+    # Ensure we don't attempt to set the description when the status is OK.
+    assert (
+        "description should only be set when status_code is set to StatusCode.ERROR"
+        not in caplog.text
+    )
 
 
 def test_append_trace_stack_multithread():

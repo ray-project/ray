@@ -285,7 +285,12 @@ def set_trace_status(is_error: bool, description: str = ""):
     """Set the status for the current span in context."""
     trace_stack = TRACE_STACK.get([])
     if trace_stack:
-        status_code = StatusCode.ERROR if is_error else StatusCode.OK
+        if is_error:
+            status_code = StatusCode.ERROR
+        else:
+            status_code = StatusCode.OK
+            description = None
+
         trace_stack[-1].set_status(
             Status(status_code=status_code, description=description)
         )
