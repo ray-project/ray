@@ -24,7 +24,7 @@ Resource Pool is a logical abstraction that can be used to separate a group of V
 
 ## [Datastore](https://docs.vmware.com/en/VMware-vSphere/7.0/com.vmware.vsphere.storage.doc/GUID-3CC7078E-9C30-402C-B2E1-2542BEE67E8F.html)
 
-Datastores are logical containers that provide an uniform way to store the artifacts required by VMs. 
+Datastores are logical containers that provide an uniform way to store the artifacts required by VMs.
 
 ## VI Admin
 
@@ -54,21 +54,21 @@ Used to make sure that the user has created the YAML file with valid configs.
 ### Create Nodes ([node_provider.py](./node_provider.py))
 
 #### Call `create_node`
-Starts the creation of nodes with `create_node` function, which internally calls `_create_node`. The nodes are created in parallel. 
+Starts the creation of nodes with `create_node` function, which internally calls `_create_node`. The nodes are created in parallel.
 
 #### Fetch frozen VM
-The frozen VM can be setup by the [VI admin](#vi-admin) using [VM Packer for Ray](https://github.com/vmware-ai-labs/vm-packer-for-ray). That tool can help to deploy a single frozen VM on the vSphere environment. Or optionally, fully clone the frozen VM to every ESXi hosts under a given resource pool. 
+The frozen VM can be setup by the [VI admin](#vi-admin) using [VM Packer for Ray](https://github.com/vmware-ai-labs/vm-packer-for-ray). That tool can help to deploy a single frozen VM on the vSphere environment. Or optionally, fully clone the frozen VM to every ESXi hosts under a given resource pool.
 
 The vSphere Node Provider can take a frozen VM name or a resource pool name of a set of frozen VMs. If a resource pool name is given, the vSphere Node Provider will pick the most feasible frozen VM to do instant cloning.
 
 Optionally, the vSphere Node Provider can also take a content library item name, then deploy the frozen VM before creating the Ray nodes. Details can be checked [here](https://docs.ray.io/en/latest/cluster/vms/references/ray-cluster-configuration.html?highlight=Cluster%20YAML%20Configuration%20Options#vsphere-config-frozen-vm).
 
 #### Instant clone the nodes
-All the nodes are instantly cloned from the frozen VM. 
+All the nodes are instantly cloned from the frozen VM.
 
 #### Tag nodes with [vSphere Tags](#vsphere-tags)
 The nodes are tagged while their creation is in progress in an async way with `tag_new_vm_instantly` function.
-Post creation of the nodes, the tags on the nodes are updated. 
+Post creation of the nodes, the tags on the nodes are updated.
 
 ## Autoscaling
 
