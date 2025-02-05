@@ -205,7 +205,7 @@ class LanceDatasink(_BaseLanceDatasink):
         self.max_rows_per_file = max_rows_per_file
         self.data_storage_version = data_storage_version
         # if mode is append, read_version is read from existing dataset.
-        self.read_version: int | None = None
+        self.read_version: Optional[int] = None
 
     @property
     def num_rows_per_write(self) -> int:
