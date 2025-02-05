@@ -105,7 +105,7 @@ def df_equals(df1, df2):
     if isinstance(df1, pandas.DataFrame) and isinstance(df2, pandas.DataFrame):
         if (df1.empty and not df2.empty) or (df2.empty and not df1.empty):
             assert False, "One of the passed frames is empty, when other isn't"
-        elif df1.empty and df2.empty and type(df1) != type(df2):
+        elif df1.empty and df2.empty and type(df1) is not type(df2):
             assert (
                 False
             ), f"Empty frames have different types: {type(df1)} != {type(df2)}"

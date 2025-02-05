@@ -9,11 +9,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.aggregate import Count, Max, Mean, Min, Quantile, Std, Sum
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Quantile, Std, Sum
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -306,7 +305,7 @@ def test_agg_inputs(ray_start_regular_shared, keys):
 
 
 def test_agg_errors(ray_start_regular_shared):
-    from ray.data._internal.aggregate import Max
+    from ray.data.aggregate import Max
 
     ds = ray.data.range(100)
     ds.aggregate(Max("id"))  # OK
@@ -1198,6 +1197,42 @@ def test_groupby_map_groups_multicolumn(
         {"count": 17},
         {"count": 17},
         {"count": 16},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
+def test_groupby_map_groups_multicolumn_with_nan(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test with some NaN values
+    rng = np.random.default_rng(RANDOM_SEED)
+    xs = np.arange(100, dtype=np.float64)
+    xs[-5:] = np.nan
+    rng.shuffle(xs)
+
+    ds = ray.data.from_items(
+        [
+            {
+                "A": (x % 2) if np.isfinite(x) else x,
+                "B": (x % 3) if np.isfinite(x) else x,
+            }
+            for x in xs
+        ]
+    ).repartition(num_parts)
+
+    agg_ds = ds.groupby(["A", "B"]).map_groups(
+        lambda df: {"count": [len(df["A"])]}, batch_format=ds_format
+    )
+    assert agg_ds.count() == 7
+    assert agg_ds.take_all() == [
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 15},
+        {"count": 5},
     ]
 
 

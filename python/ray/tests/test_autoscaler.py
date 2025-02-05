@@ -1524,7 +1524,6 @@ class AutoscalingTest(unittest.TestCase):
                     FOREGROUND_NODE_LAUNCH_KEY: True,
                 },
                 cluster_name="test-cluster",
-                _allow_multiple=True,
             )
         else:
             self.provider = MockProvider()

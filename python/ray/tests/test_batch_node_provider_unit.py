@@ -40,11 +40,8 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
-        _allow_multiple: bool = False,
     ) -> None:
-        BatchingNodeProvider.__init__(
-            self, provider_config, cluster_name, _allow_multiple
-        )
+        BatchingNodeProvider.__init__(self, provider_config, cluster_name)
         # Fake cluster manager state:
         self._node_data_dict: Dict[NodeID, NodeData] = {}
 
@@ -117,7 +114,6 @@ class BatchingNodeProviderTester:
                 FOREGROUND_NODE_LAUNCH_KEY: True,
             },
             cluster_name="test-cluster",
-            _allow_multiple=True,
         )
         # Maps node types to expected node counts.
         self.expected_node_counts = defaultdict(int)
@@ -384,7 +380,6 @@ def test_terminate_safeguards():
             FOREGROUND_NODE_LAUNCH_KEY: True,
         },
         cluster_name="test-cluster",
-        _allow_multiple=True,
     )
     nodes = node_provider.non_terminated_nodes({})
     assert len(nodes) == 1
@@ -436,7 +431,6 @@ def test_terminate_node_in_multihost_replica():
             FOREGROUND_NODE_LAUNCH_KEY: True,
         },
         cluster_name="test-cluster",
-        _allow_multiple=True,
     )
 
     num_tpu_workers = 4

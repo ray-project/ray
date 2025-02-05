@@ -1,13 +1,11 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
-
-.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _learner-reference-docs:
 
-
 LearnerGroup API
 ================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 Configuring a LearnerGroup and Learner actors
 ---------------------------------------------
@@ -137,8 +135,8 @@ Gradient computation
     Learner.apply_gradients
     Learner._get_clip_function
 
-Saving, loading, checkpointing, and restoring states
-----------------------------------------------------
+Saving and restoring
+--------------------
 
 .. autosummary::
     :nosignatures:
