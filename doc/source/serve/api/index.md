@@ -120,6 +120,20 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.DeploymentUnavailableError
 ```
 
+#### Large Language Model (LLM) Serving APIs
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.LLMConfig
+   serve.llm.VLLMDeployment
+   serve.llm.LLMModelRouterDeployment
+   serve.llm.build_vllm_deployment
+   serve.llm.build_openai_app
+```
+
 (serve-cli)=
 
 ## Command Line Interface (CLI)
