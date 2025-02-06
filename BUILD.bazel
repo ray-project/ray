@@ -537,7 +537,7 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/store_client_kv.cc",
         "src/ray/gcs/gcs_server/usage_stats_client.cc",
     ],
-    hdrs =[
+    hdrs = [
         "src/ray/gcs/gcs_server/gcs_actor_manager.h",
         "src/ray/gcs/gcs_server/gcs_actor_scheduler.h",
         "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h",
@@ -849,6 +849,7 @@ ray_cc_library(
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
         "//src/ray/util:container_util",
+        "//src/ray/util:mutex_protected",
         "//src/ray/util:shared_lru",
         "@boost//:circular_buffer",
         "@boost//:fiber",
@@ -2034,9 +2035,9 @@ ray_cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
+        "//src/ray/protobuf:usage_cc_proto",
         "//src/ray/util:container_util",
         "//src/ray/util:sequencer",
-        "//src/ray/protobuf:usage_cc_proto",
     ],
 )
 

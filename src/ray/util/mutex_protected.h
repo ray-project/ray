@@ -30,11 +30,10 @@ namespace ray {
 template <typename T>
 class MutexProtected {
  public:
-  explicit MutexProtected(T initialValue) : value_(std::move(initialValue)) {}
+  template <typename... Args>
+  explicit MutexProtected(Args &&...args) : value_(std::forward(args)...) {}
 
-  // Default constructor enabled only if T is default-constructible
-  template <typename = typename std::enable_if_t<std::is_default_constructible_v<T>>>
-  explicit MutexProtected() {}
+  MutexProtected() = default;
 
   class ReadLocked {
    public:

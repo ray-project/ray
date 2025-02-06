@@ -137,8 +137,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   {
     // Initialize global worker instance.
     auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
-    auto write_lockeded = core_worker_.LockForWrite();
-    write_lockeded.Get() = worker;
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get() = worker;
   }
 
   // Initialize event framework.
