@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import Block, BlockAccessor, DataBatch
 
 # Allowed input/output data types for a MapTransformFn.
@@ -441,9 +441,15 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
         assert (
             self._target_max_block_size is not None
         ), "target_max_block_size must be set before running"
-        output_buffer = BlockOutputBuffer(
-            self._target_max_block_size, self._target_max_rows_per_block
-        )
+        if self._target_max_rows_per_block:
+            output_block_size_option = OutputBlockSizeOption(
+                target_max_rows_per_block=self._target_max_rows_per_block
+            )
+        else:
+            output_block_size_option = OutputBlockSizeOption(
+                target_max_rows_per_block=self._target_max_block_size
+            )
+        output_buffer = BlockOutputBuffer(output_block_size_option)
         if self._input_type == MapTransformFnDataType.Block:
             add_fn = output_buffer.add_block
         elif self._input_type == MapTransformFnDataType.Batch:

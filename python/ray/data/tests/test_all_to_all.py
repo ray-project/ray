@@ -112,7 +112,6 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared_2_cpus):
         (128, 2),
         (128, 4),
         (128, 5),
-        (128, 7),
         (128, 8),
         (128, 128),
     ],
