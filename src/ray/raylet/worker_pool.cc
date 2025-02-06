@@ -884,6 +884,8 @@ void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback)
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
+  
+  
   int port;
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   Status status = GetNextFreePort(&port);
@@ -897,9 +899,23 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   const auto job_id = driver->GetAssignedJobId();
   HandleJobStarted(job_id, job_config);
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-14" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
+    {
+      std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+      stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-16" << std::endl;
+      stdout_stderr_name.flush();
+      stdout_stderr_name.close();
+    }
+
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
@@ -911,6 +927,13 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
       PrestartWorkersInternal(task_spec, num_prestart_python_workers);
     }
 
+    {
+      std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+      stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-17" << std::endl;
+      stdout_stderr_name.flush();
+      stdout_stderr_name.close();
+    }
+
     // Invoke the `send_reply_callback` later to only finish driver
     // registration after all prestarted workers are registered to Raylet.
     // NOTE(clarng): prestart is only for python workers.
@@ -919,6 +942,14 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
           send_reply_callback(Status::OK(), port);
         });
   }
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-18" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   return Status::OK();
 }
 

@@ -1284,7 +1284,21 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
     const std::shared_ptr<ClientConnection> &client,
     const ray::protocol::RegisterClientRequest *message,
     std::optional<int> port) {
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-1" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+  
   client->Register();
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-2" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   Language language = static_cast<Language>(message->language());
   const JobID job_id = from_flatbuf<JobID>(*message->job_id());
@@ -1302,6 +1316,13 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
     RAY_CHECK(job_id.IsNil());
   }
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-3" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   auto worker = std::static_pointer_cast<WorkerInterface>(
       std::make_shared<Worker>(job_id,
                                runtime_env_hash,
@@ -1312,6 +1333,13 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                client,
                                client_call_manager_,
                                worker_startup_token));
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-4" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   std::function<void(Status, int)> send_reply_callback;
   if (port.has_value()) {
@@ -1326,6 +1354,14 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                                    to_flatbuf(fbb, self_node_id_),
                                                    assigned_port);
       fbb.Finish(reply);
+
+      {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-6" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
       client->WriteMessageAsync(
           static_cast<int64_t>(protocol::MessageType::RegisterClientReply),
           fbb.GetSize(),
@@ -1339,14 +1375,36 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
                                    status.ToString());
             }
           });
+
+      {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-7" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
     };
   }
 
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
+    
+    {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-8" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+    
     return RegisterForNewWorker(
         worker, pid, worker_startup_token, std::move(send_reply_callback));
+  }
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-9" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
   }
 
   // Register the new driver.
@@ -1385,6 +1443,14 @@ Status NodeManager::RegisterForNewDriver(
   RAY_CHECK_GE(pid, 0);
   RAY_CHECK(send_reply_callback);
 
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-11" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   worker->SetProcess(Process::FromPid(pid));
   // Compute a dummy driver task id from a given driver.
   // The task id set in the worker here should be consistent with the task
@@ -1393,6 +1459,13 @@ Status NodeManager::RegisterForNewDriver(
   worker->AssignTaskId(driver_task_id);
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0-12" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   return worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
 }

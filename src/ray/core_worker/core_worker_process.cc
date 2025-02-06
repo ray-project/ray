@@ -86,9 +86,11 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       app_name_ss << "-" << worker_id_;
     }
     const std::string app_name = app_name_ss.str();
+    const std::string log_filepath =
+        RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
     RayLog::StartRayLog(app_name,
                         RayLogLevel::INFO,
-                        /*log_filepath=*/"",
+                        log_filepath,
                         ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
                         ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     if (options_.install_failure_signal_handler) {

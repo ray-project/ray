@@ -16,7 +16,9 @@
 
 #include <cstring>
 #include <functional>
+#include <fstream>
 #include <mutex>
+#include <unistd.h>
 #include <vector>
 
 #include "ray/util/compat.h"
@@ -57,10 +59,24 @@ void SyncOnStreamRedirection() {
 
 // Redirect the given [stream_fd] based on the specified option.
 void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "before call once" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   std::call_once(stream_exit_once_flag, []() {
     RAY_CHECK_EQ(std::atexit(SyncOnStreamRedirection), 0)
         << "Fails to register stream redirection termination hook.";
   });
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "after call once" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
 
@@ -74,8 +90,23 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
       << "Fails to duplicate file descritor.";
 #endif
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "after dup" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle)).second;
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "redirection is new " << is_new << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+  
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
 

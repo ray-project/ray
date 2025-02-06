@@ -1114,6 +1114,8 @@ class Node:
             ]
 
     def start_log_monitor(self):
+        return
+
         """Start the log monitor."""
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.

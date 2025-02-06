@@ -683,6 +683,8 @@ class Worker:
 
     def get_current_out_offset(self) -> int:
         """Get the current file size for out file, 0 if out file is not assigned."""
+        return 0
+
         if self._out_file is None:
             return 0
         file_size = os.path.getsize(self._out_file)
@@ -690,6 +692,8 @@ class Worker:
 
     def get_current_err_offset(self) -> int:
         """Get the current file size for err file, 0 if err file is not assigned."""
+        return 0
+
         if self._err_file is None:
             return 0
         file_size = os.path.getsize(self._err_file)

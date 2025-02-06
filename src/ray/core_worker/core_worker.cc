@@ -15,6 +15,8 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <future>
+#include <unistd.h>
+#include <fstream>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -281,20 +283,59 @@ Status CoreWorker::RegisterWorkerToRaylet(raylet::RayletConnection &conn,
                                             /*port=*/0,
                                             fbb.CreateString(serialized_job_config));
   fbb.Finish(message);
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-0" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   std::vector<uint8_t> reply;
   auto request_status = conn.AtomicRequestReply(
       MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
   if (!request_status.ok()) {
+
+    {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-1" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
     return Status(request_status.code(),
                   std::string("[RayletClient] Unable to register worker with raylet. ") +
                       request_status.message());
   }
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-2" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
   bool success = reply_message->success();
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-3" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   if (!success) {
     return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  }
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8-4" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
   }
 
   *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
@@ -374,24 +415,59 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
-  if (!options_.stdout_file.empty()) {
-    ray::StreamRedirectionOption stdout_redirection_options;
-    stdout_redirection_options.file_path = options_.stdout_file;
-    stdout_redirection_options.rotation_max_size =
-        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
-    stdout_redirection_options.rotation_max_file_count =
-        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStdout(stdout_redirection_options);
+  
+  std::string stdout_file = options_.stdout_file;
+  if (stdout_file.empty()) {
+    stdout_file = ray::RayLog::GetLogFilepathFromDirectory(
+      /*log_dir=*/options_.log_dir,
+      /*app_name=*/"worker");
+  }
+  
+  
+  
+  std::string stderr_file = options_.stderr_file;
+  if (stderr_file.empty()) {
+    stderr_file = ray::RayLog::GetErrLogFilepathFromDirectory(
+      /*log_dir=*/options_.log_dir,
+      /*app_name=*/"worker");
   }
 
-  if (!options_.stderr_file.empty()) {
-    ray::StreamRedirectionOption stderr_redirection_options;
-    stderr_redirection_options.file_path = options_.stderr_file;
-    stderr_redirection_options.rotation_max_size =
-        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
-    stderr_redirection_options.rotation_max_file_count =
-        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStderr(stderr_redirection_options);
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out);
+    stdout_stderr_name << "stdout filename " << stdout_file << std::endl;
+    stdout_stderr_name << "stderr filename " << stderr_file << std::endl;
+
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
+
+  ray::StreamRedirectionOption stdout_redirection_options;
+  stdout_redirection_options.file_path = stdout_file;
+  // stdout_redirection_options.rotation_max_size =
+  //     ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+  stdout_redirection_options.rotation_max_size = 1000000000;
+  stdout_redirection_options.rotation_max_file_count = 1;
+  ray::RedirectStdout(stdout_redirection_options);
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << " -- redirect stdout finish" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
+  ray::StreamRedirectionOption stderr_redirection_options;
+  stderr_redirection_options.file_path = stderr_file;
+  stderr_redirection_options.rotation_max_size = 1000000000;
+  stderr_redirection_options.rotation_max_file_count = 1;
+  ray::RedirectStderr(stderr_redirection_options);
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- redirect stderr finish" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
   }
 
   // Notify that core worker is initialized.
@@ -484,6 +560,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
   }
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   auto raylet_conn = std::make_unique<raylet::RayletConnection>(
       io_service_, options_.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
 
@@ -496,9 +579,24 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   RAY_CHECK((raylet_id_assigned && worker_port_assigned) ||
             (!raylet_id_assigned && !worker_port_assigned));
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1-0" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   // TODO(hjiang): Use `is_worker` / `is_driver` boolean to replace repeated `has_value`
   // check.
   if (!options_.assigned_worker_port.has_value()) {
+
+    {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1-0-0" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
     // TODO(hjiang): In the next PR we will pass down port number and raylet id and use
     // them directly. Then we need to rename `RegisterWorkerToRaylet` to
     // `RegisterDriverToRaylet`.
@@ -514,13 +612,37 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                                options_.startup_token,
                                &local_raylet_id,
                                &assigned_port);
+    
+    {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1-0-1" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+    
     if (!raylet_client_status.ok()) {
+
+    {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1-0-2" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
+
       // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
       RAY_LOG(ERROR).WithField(worker_id)
           << "Failed to register worker to Raylet: " << raylet_client_status;
       QuickExit();
     }
     RAY_CHECK_GE(assigned_port, 0);
+  }
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1-1" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
   }
 
   local_raylet_client_ = std::make_shared<raylet::RayletClient>(
@@ -533,8 +655,23 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
+  
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1-2" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+  
   core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
   core_worker_server_->Run();
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1-3" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
@@ -547,6 +684,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       << rpc_address_.port();
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
@@ -613,6 +757,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         return core_worker_client_pool_->GetOrConnect(address);
       },
       /*callback_service*/ &io_service_);
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 1" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
@@ -689,6 +840,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
             },
             "CoreWorker.HandleException");
       });
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 3" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
 #if defined(__APPLE__) || defined(__linux__)
   // TODO(jhumphri): Combine with implementation in NodeManager.
@@ -791,6 +949,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     }
   }
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 4" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   auto raylet_client_factory = [this](const std::string &ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
@@ -838,6 +1003,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                           : std::unique_ptr<LeasePolicyInterface>(
                                 std::make_unique<LocalLeasePolicy>(rpc_address_));
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 5" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   normal_task_submitter_ = std::make_unique<NormalTaskSubmitter>(
       rpc_address_,
       local_raylet_client_,
@@ -878,6 +1050,14 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;
+
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 6" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
   object_lookup_fn = [this, node_addr_factory](const ObjectID &object_id,
                                                const ObjectLookupCallback &callback) {
@@ -943,6 +1123,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         "CoreWorker.PrintEventStats");
   }
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 7" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   // Set event context for current core worker thread.
   RayEventContext::Instance().SetEventContext(
       ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
@@ -988,6 +1175,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       RayConfig::instance().local_gc_min_interval_s() * 1000,
       "CoreWorker.GCStreamingGeneratorMetadata");
 
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 8" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
   // registering with Raylet can finish with higher priority.
@@ -1021,6 +1215,13 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     RAY_CHECK_OK(s);
   } else {
     ConnectToRayletInternal();
+  }
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/stream_name.out", std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- checkpoint 10" << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
   }
 }
 

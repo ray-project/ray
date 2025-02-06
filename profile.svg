@@ -1,0 +1,491 @@
+<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" width="1200" height="650" onload="init(evt)" viewBox="0 0 1200 650" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/jonhoo/inferno"><!--Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples.--><!--NOTES: --><defs><linearGradient id="background" y1="0" y2="1" x1="0" x2="0"><stop stop-color="#eeeeee" offset="5%"/><stop stop-color="#eeeeb0" offset="95%"/></linearGradient></defs><style type="text/css">
+text { font-family:monospace; font-size:12px }
+#title { text-anchor:middle; font-size:17px; }
+#matched { text-anchor:end; }
+#search { text-anchor:end; opacity:0.1; cursor:pointer; }
+#search:hover, #search.show { opacity:1; }
+#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+#unzoom { cursor:pointer; }
+#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+.hide { display:none; }
+.parent { opacity:0.5; }
+</style><script type="text/ecmascript"><![CDATA[
+        var nametype = 'Function:';
+        var fontsize = 12;
+        var fontwidth = 0.59;
+        var xpad = 10;
+        var inverted = true;
+        var searchcolor = 'rgb(230,0,230)';
+        var fluiddrawing = true;
+        var truncate_text_right = false;
+    ]]><![CDATA["use strict";
+var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, known_font_width;
+function init(evt) {
+    details = document.getElementById("details").firstChild;
+    searchbtn = document.getElementById("search");
+    unzoombtn = document.getElementById("unzoom");
+    matchedtxt = document.getElementById("matched");
+    svg = document.getElementsByTagName("svg")[0];
+    frames = document.getElementById("frames");
+    known_font_width = get_monospace_width(frames);
+    total_samples = parseInt(frames.attributes.total_samples.value);
+    searching = 0;
+
+    // Use GET parameters to restore a flamegraph's state.
+    var restore_state = function() {
+        var params = get_params();
+        if (params.x && params.y)
+            zoom(find_group(document.querySelector('[*|x="' + params.x + '"][y="' + params.y + '"]')));
+        if (params.s)
+            search(params.s);
+    };
+
+    if (fluiddrawing) {
+        // Make width dynamic so the SVG fits its parent's width.
+        svg.removeAttribute("width");
+        // Edge requires us to have a viewBox that gets updated with size changes.
+        var isEdge = /Edge\/\d./i.test(navigator.userAgent);
+        if (!isEdge) {
+            svg.removeAttribute("viewBox");
+        }
+        var update_for_width_change = function() {
+            if (isEdge) {
+                svg.attributes.viewBox.value = "0 0 " + svg.width.baseVal.value + " " + svg.height.baseVal.value;
+            }
+
+            // Keep consistent padding on left and right of frames container.
+            frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
+
+            // Text truncation needs to be adjusted for the current width.
+            update_text_for_elements(frames.children);
+
+            // Keep search elements at a fixed distance from right edge.
+            var svgWidth = svg.width.baseVal.value;
+            searchbtn.attributes.x.value = svgWidth - xpad;
+            matchedtxt.attributes.x.value = svgWidth - xpad;
+        };
+        window.addEventListener('resize', function() {
+            update_for_width_change();
+        });
+        // This needs to be done asynchronously for Safari to work.
+        setTimeout(function() {
+            unzoom();
+            update_for_width_change();
+            restore_state();
+        }, 0);
+    } else {
+        restore_state();
+    }
+}
+// event listeners
+window.addEventListener("click", function(e) {
+    var target = find_group(e.target);
+    if (target) {
+        if (target.nodeName == "a") {
+            if (e.ctrlKey === false) return;
+            e.preventDefault();
+        }
+        if (target.classList.contains("parent")) unzoom();
+        zoom(target);
+
+        // set parameters for zoom state
+        var el = target.querySelector("rect");
+        if (el && el.attributes && el.attributes.y && el.attributes["fg:x"]) {
+            var params = get_params()
+            params.x = el.attributes["fg:x"].value;
+            params.y = el.attributes.y.value;
+            history.replaceState(null, null, parse_params(params));
+        }
+    }
+    else if (e.target.id == "unzoom") {
+        unzoom();
+
+        // remove zoom state
+        var params = get_params();
+        if (params.x) delete params.x;
+        if (params.y) delete params.y;
+        history.replaceState(null, null, parse_params(params));
+    }
+    else if (e.target.id == "search") search_prompt();
+}, false)
+// mouse-over for info
+// show
+window.addEventListener("mouseover", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = nametype + " " + g_to_text(target);
+}, false)
+// clear
+window.addEventListener("mouseout", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = ' ';
+}, false)
+// ctrl-F for search
+window.addEventListener("keydown",function (e) {
+    if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+        e.preventDefault();
+        search_prompt();
+    }
+}, false)
+// functions
+function get_params() {
+    var params = {};
+    var paramsarr = window.location.search.substr(1).split('&');
+    for (var i = 0; i < paramsarr.length; ++i) {
+        var tmp = paramsarr[i].split("=");
+        if (!tmp[0] || !tmp[1]) continue;
+        params[tmp[0]]  = decodeURIComponent(tmp[1]);
+    }
+    return params;
+}
+function parse_params(params) {
+    var uri = "?";
+    for (var key in params) {
+        uri += key + '=' + encodeURIComponent(params[key]) + '&';
+    }
+    if (uri.slice(-1) == "&")
+        uri = uri.substring(0, uri.length - 1);
+    if (uri == '?')
+        uri = window.location.href.split('?')[0];
+    return uri;
+}
+function find_child(node, selector) {
+    var children = node.querySelectorAll(selector);
+    if (children.length) return children[0];
+    return;
+}
+function find_group(node) {
+    var parent = node.parentElement;
+    if (!parent) return;
+    if (parent.id == "frames") return node;
+    return find_group(parent);
+}
+function orig_save(e, attr, val) {
+    if (e.attributes["fg:orig_" + attr] != undefined) return;
+    if (e.attributes[attr] == undefined) return;
+    if (val == undefined) val = e.attributes[attr].value;
+    e.setAttribute("fg:orig_" + attr, val);
+}
+function orig_load(e, attr) {
+    if (e.attributes["fg:orig_"+attr] == undefined) return;
+    e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
+    e.removeAttribute("fg:orig_" + attr);
+}
+function g_to_text(e) {
+    var text = find_child(e, "title").firstChild.nodeValue;
+    return (text)
+}
+function g_to_func(e) {
+    var func = g_to_text(e);
+    // if there's any manipulation we want to do to the function
+    // name before it's searched, do it here before returning.
+    return (func);
+}
+function get_monospace_width(frames) {
+    // Given the id="frames" element, return the width of text characters if
+    // this is a monospace font, otherwise return 0.
+    text = find_child(frames.children[0], "text");
+    originalContent = text.textContent;
+    text.textContent = "!";
+    bangWidth = text.getComputedTextLength();
+    text.textContent = "W";
+    wWidth = text.getComputedTextLength();
+    text.textContent = originalContent;
+    if (bangWidth === wWidth) {
+        return bangWidth;
+    } else {
+        return 0;
+    }
+}
+function update_text_for_elements(elements) {
+    // In order to render quickly in the browser, you want to do one pass of
+    // reading attributes, and one pass of mutating attributes. See
+    // https://web.dev/avoid-large-complex-layouts-and-layout-thrashing/ for details.
+
+    // Fall back to inefficient calculation, if we're variable-width font.
+    // TODO This should be optimized somehow too.
+    if (known_font_width === 0) {
+        for (var i = 0; i < elements.length; i++) {
+            update_text(elements[i]);
+        }
+        return;
+    }
+
+    var textElemNewAttributes = [];
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var r = find_child(e, "rect");
+        var t = find_child(e, "text");
+        var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+        var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+        var newX = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+        // Smaller than this size won't fit anything
+        if (w < 2 * known_font_width) {
+            textElemNewAttributes.push([newX, ""]);
+            continue;
+        }
+
+        // Fit in full text width
+        if (txt.length * known_font_width < w) {
+            textElemNewAttributes.push([newX, txt]);
+            continue;
+        }
+
+        var substringLength = Math.floor(w / known_font_width) - 2;
+        if (truncate_text_right) {
+            // Truncate the right side of the text.
+            textElemNewAttributes.push([newX, txt.substring(0, substringLength) + ".."]);
+            continue;
+        } else {
+            // Truncate the left side of the text.
+            textElemNewAttributes.push([newX, ".." + txt.substring(txt.length - substringLength, txt.length)]);
+            continue;
+        }
+    }
+
+    console.assert(textElemNewAttributes.length === elements.length, "Resize failed, please file a bug at https://github.com/jonhoo/inferno/");
+
+    // Now that we know new textContent, set it all in one go so we don't refresh a bazillion times.
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var values = textElemNewAttributes[i];
+        var t = find_child(e, "text");
+        t.attributes.x.value = values[0];
+        t.textContent = values[1];
+    }
+}
+
+function update_text(e) {
+    var r = find_child(e, "rect");
+    var t = find_child(e, "text");
+    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+    t.attributes.x.value = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+    // Smaller than this size won't fit anything
+    if (w < 2 * fontsize * fontwidth) {
+        t.textContent = "";
+        return;
+    }
+    t.textContent = txt;
+    // Fit in full text width
+    if (t.getComputedTextLength() < w)
+        return;
+    if (truncate_text_right) {
+        // Truncate the right side of the text.
+        for (var x = txt.length - 2; x > 0; x--) {
+            if (t.getSubStringLength(0, x + 2) <= w) {
+                t.textContent = txt.substring(0, x) + "..";
+                return;
+            }
+        }
+    } else {
+        // Truncate the left side of the text.
+        for (var x = 2; x < txt.length; x++) {
+            if (t.getSubStringLength(x - 2, txt.length) <= w) {
+                t.textContent = ".." + txt.substring(x, txt.length);
+                return;
+            }
+        }
+    }
+    t.textContent = "";
+}
+// zoom
+function zoom_reset(e) {
+    if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_reset(c[i]);
+    }
+}
+function zoom_child(e, x, zoomed_width_samples) {
+    if (e.tagName == "text") {
+        var parent_x = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
+        e.attributes.x.value = format_percent(parent_x + (100 * 3 / frames.attributes.width.value));
+    } else if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_child(c[i], x, zoomed_width_samples);
+    }
+}
+function zoom_parent(e) {
+    if (e.attributes) {
+        if (e.attributes.x != undefined) {
+            e.attributes.x.value = "0.0%";
+        }
+        if (e.attributes.width != undefined) {
+            e.attributes.width.value = "100.0%";
+        }
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_parent(c[i]);
+    }
+}
+function zoom(node) {
+    var attr = find_child(node, "rect").attributes;
+    var width = parseInt(attr["fg:w"].value);
+    var xmin = parseInt(attr["fg:x"].value);
+    var xmax = xmin + width;
+    var ymin = parseFloat(attr.y.value);
+    unzoombtn.classList.remove("hide");
+    var el = frames.children;
+    var to_update_text = [];
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        var a = find_child(e, "rect").attributes;
+        var ex = parseInt(a["fg:x"].value);
+        var ew = parseInt(a["fg:w"].value);
+        // Is it an ancestor
+        if (!inverted) {
+            var upstack = parseFloat(a.y.value) > ymin;
+        } else {
+            var upstack = parseFloat(a.y.value) < ymin;
+        }
+        if (upstack) {
+            // Direct ancestor
+            if (ex <= xmin && (ex+ew) >= xmax) {
+                e.classList.add("parent");
+                zoom_parent(e);
+                to_update_text.push(e);
+            }
+            // not in current path
+            else
+                e.classList.add("hide");
+        }
+        // Children maybe
+        else {
+            // no common path
+            if (ex < xmin || ex >= xmax) {
+                e.classList.add("hide");
+            }
+            else {
+                zoom_child(e, xmin, width);
+                to_update_text.push(e);
+            }
+        }
+    }
+    update_text_for_elements(to_update_text);
+}
+function unzoom() {
+    unzoombtn.classList.add("hide");
+    var el = frames.children;
+    for(var i = 0; i < el.length; i++) {
+        el[i].classList.remove("parent");
+        el[i].classList.remove("hide");
+        zoom_reset(el[i]);
+    }
+    update_text_for_elements(el);
+}
+// search
+function reset_search() {
+    var el = document.querySelectorAll("#frames rect");
+    for (var i = 0; i < el.length; i++) {
+        orig_load(el[i], "fill")
+    }
+    var params = get_params();
+    delete params.s;
+    history.replaceState(null, null, parse_params(params));
+}
+function search_prompt() {
+    if (!searching) {
+        var term = prompt("Enter a search term (regexp " +
+            "allowed, eg: ^ext4_)", "");
+        if (term != null) {
+            search(term)
+        }
+    } else {
+        reset_search();
+        searching = 0;
+        searchbtn.classList.remove("show");
+        searchbtn.firstChild.nodeValue = "Search"
+        matchedtxt.classList.add("hide");
+        matchedtxt.firstChild.nodeValue = ""
+    }
+}
+function search(term) {
+    var re = new RegExp(term);
+    var el = frames.children;
+    var matches = new Object();
+    var maxwidth = 0;
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        // Skip over frames which are either not visible, or below the zoomed-to frame
+        if (e.classList.contains("hide") || e.classList.contains("parent")) {
+            continue;
+        }
+        var func = g_to_func(e);
+        var rect = find_child(e, "rect");
+        if (func == null || rect == null)
+            continue;
+        // Save max width. Only works as we have a root frame
+        var w = parseInt(rect.attributes["fg:w"].value);
+        if (w > maxwidth)
+            maxwidth = w;
+        if (func.match(re)) {
+            // highlight
+            var x = parseInt(rect.attributes["fg:x"].value);
+            orig_save(rect, "fill");
+            rect.attributes.fill.value = searchcolor;
+            // remember matches
+            if (matches[x] == undefined) {
+                matches[x] = w;
+            } else {
+                if (w > matches[x]) {
+                    // overwrite with parent
+                    matches[x] = w;
+                }
+            }
+            searching = 1;
+        }
+    }
+    if (!searching)
+        return;
+    var params = get_params();
+    params.s = term;
+    history.replaceState(null, null, parse_params(params));
+
+    searchbtn.classList.add("show");
+    searchbtn.firstChild.nodeValue = "Reset Search";
+    // calculate percent matched, excluding vertical overlap
+    var count = 0;
+    var lastx = -1;
+    var lastw = 0;
+    var keys = Array();
+    for (k in matches) {
+        if (matches.hasOwnProperty(k))
+            keys.push(k);
+    }
+    // sort the matched frames by their x location
+    // ascending, then width descending
+    keys.sort(function(a, b){
+        return a - b;
+    });
+    // Step through frames saving only the biggest bottom-up frames
+    // thanks to the sort order. This relies on the tree property
+    // where children are always smaller than their parents.
+    for (var k in keys) {
+        var x = parseInt(keys[k]);
+        var w = matches[keys[k]];
+        if (x >= lastx + lastw) {
+            count += w;
+            lastx = x;
+            lastw = w;
+        }
+    }
+    // display matched percent
+    matchedtxt.classList.remove("hide");
+    var pct = 100 * count / maxwidth;
+    if (pct != 100) pct = pct.toFixed(1);
+    matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+}
+function format_percent(n) {
+    return n.toFixed(4) + "%";
+}
+]]></script><rect x="0" y="0" width="100%" height="650" fill="url(#background)"/><text id="title" fill="rgb(0,0,0)" x="50.0000%" y="24.00">py-spy record --pid 210760 --output profile.svg</text><text id="details" fill="rgb(0,0,0)" x="10" y="40.00"> </text><text id="unzoom" class="hide" fill="rgb(0,0,0)" x="10" y="24.00">Reset Zoom</text><text id="search" fill="rgb(0,0,0)" x="1190" y="24.00">Search</text><text id="matched" fill="rgb(0,0,0)" x="1190" y="639.00"> </text><svg id="frames" x="10" width="1180" total_samples="1678"><g><title>all (1,678 samples, 100%)</title><rect x="0.0000%" y="52" width="100.0000%" height="15" fill="rgb(227,0,7)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="62.50"></text></g><g><title>&lt;module&gt; (pytest:8) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="68" width="100.0000%" height="15" fill="rgb(217,0,24)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="78.50">&lt;module&gt; (pytest:8)</text></g><g><title>console_main (_pytest/config/__init__.py:192) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="84" width="100.0000%" height="15" fill="rgb(221,193,54)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="94.50">console_main (_pytest/config/__init__.py:192)</text></g><g><title>main (_pytest/config/__init__.py:169) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="100" width="100.0000%" height="15" fill="rgb(248,212,6)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="110.50">main (_pytest/config/__init__.py:169)</text></g><g><title>__call__ (pluggy/_hooks.py:493) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="116" width="100.0000%" height="15" fill="rgb(208,68,35)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="126.50">__call__ (pluggy/_hooks.py:493)</text></g><g><title>_hookexec (pluggy/_manager.py:115) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="132" width="100.0000%" height="15" fill="rgb(232,128,0)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="142.50">_hookexec (pluggy/_manager.py:115)</text></g><g><title>_multicall (pluggy/_callers.py:77) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="148" width="100.0000%" height="15" fill="rgb(207,160,47)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="158.50">_multicall (pluggy/_callers.py:77)</text></g><g><title>pytest_cmdline_main (_pytest/main.py:318) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="164" width="100.0000%" height="15" fill="rgb(228,23,34)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="174.50">pytest_cmdline_main (_pytest/main.py:318)</text></g><g><title>wrap_session (_pytest/main.py:271) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="180" width="100.0000%" height="15" fill="rgb(218,30,26)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="190.50">wrap_session (_pytest/main.py:271)</text></g><g><title>_main (_pytest/main.py:325) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="196" width="100.0000%" height="15" fill="rgb(220,122,19)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="206.50">_main (_pytest/main.py:325)</text></g><g><title>__call__ (pluggy/_hooks.py:493) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="212" width="100.0000%" height="15" fill="rgb(250,228,42)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="222.50">__call__ (pluggy/_hooks.py:493)</text></g><g><title>_hookexec (pluggy/_manager.py:115) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="228" width="100.0000%" height="15" fill="rgb(240,193,28)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="238.50">_hookexec (pluggy/_manager.py:115)</text></g><g><title>_multicall (pluggy/_callers.py:77) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="244" width="100.0000%" height="15" fill="rgb(216,20,37)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="254.50">_multicall (pluggy/_callers.py:77)</text></g><g><title>pytest_runtestloop (_pytest/main.py:350) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="260" width="100.0000%" height="15" fill="rgb(206,188,39)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="270.50">pytest_runtestloop (_pytest/main.py:350)</text></g><g><title>__call__ (pluggy/_hooks.py:493) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="276" width="100.0000%" height="15" fill="rgb(217,207,13)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="286.50">__call__ (pluggy/_hooks.py:493)</text></g><g><title>_hookexec (pluggy/_manager.py:115) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="292" width="100.0000%" height="15" fill="rgb(231,73,38)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="302.50">_hookexec (pluggy/_manager.py:115)</text></g><g><title>_multicall (pluggy/_callers.py:77) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="308" width="100.0000%" height="15" fill="rgb(225,20,46)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="318.50">_multicall (pluggy/_callers.py:77)</text></g><g><title>pytest_runtest_protocol (_pytest/runner.py:114) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="324" width="100.0000%" height="15" fill="rgb(210,31,41)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="334.50">pytest_runtest_protocol (_pytest/runner.py:114)</text></g><g><title>runtestprotocol (_pytest/runner.py:133) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="340" width="100.0000%" height="15" fill="rgb(221,200,47)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="350.50">runtestprotocol (_pytest/runner.py:133)</text></g><g><title>call_and_report (_pytest/runner.py:222) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="356" width="100.0000%" height="15" fill="rgb(226,26,5)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="366.50">call_and_report (_pytest/runner.py:222)</text></g><g><title>call_runtest_hook (_pytest/runner.py:261) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="372" width="100.0000%" height="15" fill="rgb(249,33,26)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="382.50">call_runtest_hook (_pytest/runner.py:261)</text></g><g><title>from_call (_pytest/runner.py:341) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="388" width="100.0000%" height="15" fill="rgb(235,183,28)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="398.50">from_call (_pytest/runner.py:341)</text></g><g><title>&lt;lambda&gt; (_pytest/runner.py:262) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="404" width="100.0000%" height="15" fill="rgb(221,5,38)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="414.50">&lt;lambda&gt; (_pytest/runner.py:262)</text></g><g><title>__call__ (pluggy/_hooks.py:493) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="420" width="100.0000%" height="15" fill="rgb(247,18,42)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="430.50">__call__ (pluggy/_hooks.py:493)</text></g><g><title>_hookexec (pluggy/_manager.py:115) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="436" width="100.0000%" height="15" fill="rgb(241,131,45)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="446.50">_hookexec (pluggy/_manager.py:115)</text></g><g><title>_multicall (pluggy/_callers.py:77) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="452" width="100.0000%" height="15" fill="rgb(249,31,29)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="462.50">_multicall (pluggy/_callers.py:77)</text></g><g><title>pytest_runtest_call (_pytest/runner.py:169) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="468" width="100.0000%" height="15" fill="rgb(225,111,53)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="478.50">pytest_runtest_call (_pytest/runner.py:169)</text></g><g><title>runtest (_pytest/python.py:1792) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="484" width="100.0000%" height="15" fill="rgb(238,160,17)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="494.50">runtest (_pytest/python.py:1792)</text></g><g><title>__call__ (pluggy/_hooks.py:493) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="500" width="100.0000%" height="15" fill="rgb(214,148,48)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="510.50">__call__ (pluggy/_hooks.py:493)</text></g><g><title>_hookexec (pluggy/_manager.py:115) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="516" width="100.0000%" height="15" fill="rgb(232,36,49)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="526.50">_hookexec (pluggy/_manager.py:115)</text></g><g><title>_multicall (pluggy/_callers.py:77) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="532" width="100.0000%" height="15" fill="rgb(209,103,24)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="542.50">_multicall (pluggy/_callers.py:77)</text></g><g><title>pytest_pyfunc_call (_pytest/python.py:194) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="548" width="100.0000%" height="15" fill="rgb(229,88,8)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="558.50">pytest_pyfunc_call (_pytest/python.py:194)</text></g><g><title>test_log_file_exists (test_logging.py:136) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="564" width="100.0000%" height="15" fill="rgb(213,181,19)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="574.50">test_log_file_exists (test_logging.py:136)</text></g><g><title>wrapper (ray/_private/client_mode_hook.py:103) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="580" width="100.0000%" height="15" fill="rgb(254,191,54)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="590.50">wrapper (ray/_private/client_mode_hook.py:103)</text></g><g><title>init (ray/_private/worker.py:1847) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="596" width="100.0000%" height="15" fill="rgb(241,83,37)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="606.50">init (ray/_private/worker.py:1847)</text></g><g><title>connect (ray/_private/worker.py:2471) (1,678 samples, 100.00%)</title><rect x="0.0000%" y="612" width="100.0000%" height="15" fill="rgb(233,36,39)" fg:x="0" fg:w="1678"/><text x="0.2500%" y="622.50">connect (ray/_private/worker.py:2471)</text></g></svg></svg>
