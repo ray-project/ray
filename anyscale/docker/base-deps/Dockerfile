@@ -30,16 +30,20 @@ WORKDIR /home/ray
 RUN <<EOF
 #!/bin/bash
 set -eux
-MINICONDA_VERSION="24.3.0-0"
-PYTHON_CODE="$(echo $PYTHON_VERSION | sed 's/\.//g')"
+MINIFORGE_VERSION="24.11.3-0"
 
-# Install Miniconda
-MINICONDA_LINK="https://repo.anaconda.com/miniconda/Miniconda3-py${PYTHON_CODE}_${MINICONDA_VERSION}-Linux-x86_64.sh"
-curl -o /tmp/miniconda.sh $MINICONDA_LINK
-bash /tmp/miniconda.sh -b -p /home/ray/anaconda3 # use anaconda3 to match existing images to avoid surprises.
-rm /tmp/miniconda.sh
+# Install miniforge
+MINIFORGE_LINK="https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-${HOSTTYPE}.sh"
+curl -sfL -o /tmp/miniforge.sh "${MINIFORGE_LINK}"
+bash /tmp/miniforge.sh -b -p /home/ray/anaconda3 # use anaconda3 to match existing images to avoid surprises.
+rm /tmp/miniforge.sh
 
-/home/ray/anaconda3/bin/conda init bash;
+/home/ray/anaconda3/bin/conda init bash
+
+eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
+/home/ray/anaconda3/bin/conda clean -a
+
 EOF
 
 ENV PATH="/home/ray/anaconda3/bin:$PATH"
