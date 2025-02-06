@@ -119,9 +119,6 @@ class AllToAllOperator(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
-    def requires_more_inputs(self) -> bool:
-        return not self._inputs_complete
-
     def _get_next_inner(self) -> RefBundle:
         bundle = self._output_buffer.pop(0)
         self._metrics.on_output_dequeued(bundle)
