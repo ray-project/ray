@@ -222,14 +222,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, dummy_model_ckpt):
         max_pending_requests=111,
         runtime_env={},
         task="generate",
-        gpu_memory_utilization=0.95,
-        use_v2_block_manager=True,
-        enable_prefix_caching=False,
-        enforce_eager=False,
-        pipeline_parallel_size=1,
         max_num_seqs=100,
-        tensor_parallel_size=1,
-        max_logprobs=0,
     )
 
 
