@@ -111,14 +111,14 @@ class RunningTaskInfo:
 
 @dataclass
 class NodeMetrics:
-    num_tasks_submitted: int = field(default=0)
-    num_tasks_running: int = field(default=0)
-    num_tasks_finished: int = field(default=0)
-    obj_store_mem_used: int = field(default=0)
-    obj_store_mem_freed: int = field(default=0)
-    obj_store_mem_spilled: int = field(default=0)
-    bytes_outputs_of_finished_tasks: int = field(default=0)
-    blocks_outputs_of_finished_tasks: int = field(default=0)
+    num_tasks_submitted: int = 0
+    num_tasks_running: int = 0
+    num_tasks_finished: int = 0
+    obj_store_mem_used: int = 0
+    obj_store_mem_freed: int = 0
+    obj_store_mem_spilled: int = 0
+    bytes_outputs_of_finished_tasks: int = 0
+    blocks_outputs_of_finished_tasks: int = 0
 
 
 class OpRuntimesMetricsMeta(type):
