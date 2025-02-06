@@ -2014,9 +2014,8 @@ void MoveReadyPlasmaObjectsToPlasmaSet(std::shared_ptr<CoreWorkerMemoryStore> &m
                                absl::flat_hash_set<ObjectID> &memory_object_ids,
                                absl::flat_hash_set<ObjectID> &plasma_object_ids,
                                absl::flat_hash_set<ObjectID> &ready) {
-  for (auto iter = ready.begin(); iter != ready.end();) {
-    auto current = iter++;
-    const auto &obj_id = *current;
+  for (auto iter = ready.begin(); iter != ready.end(); iter++) {
+    const auto &obj_id = *iter;
     auto found = memory_store->GetIfExists(obj_id);
     if (found != nullptr && found->IsInPlasmaError()) {
       plasma_object_ids.insert(obj_id);
