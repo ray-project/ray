@@ -135,8 +135,10 @@ test_slate_q() {
 }
 
 test_td3() {
+  # shellcheck disable=SC2317
   build "td3"
   # BAZEL (learning and compilation) tests:
+  # shellcheck disable=SC2317
   bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-flaky rllib_contrib/td3/...
 }
 
