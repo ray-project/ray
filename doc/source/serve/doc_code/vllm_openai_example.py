@@ -17,7 +17,12 @@ from vllm.entrypoints.openai.protocol import (
     ErrorResponse,
 )
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
-from vllm.entrypoints.openai.serving_models import BaseModelPath, LoRAModulePath, PromptAdapterPath, OpenAIServingModels
+from vllm.entrypoints.openai.serving_models import (
+    BaseModelPath,
+    LoRAModulePath,
+    PromptAdapterPath,
+    OpenAIServingModels,
+)
 
 from vllm.utils import FlexibleArgumentParser
 from vllm.entrypoints.logger import RequestLogger
@@ -153,6 +158,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
         cli_args.get("request_logger"),
         parsed_args.chat_template,
     )
+
 
 # __serve_example_end__
 
