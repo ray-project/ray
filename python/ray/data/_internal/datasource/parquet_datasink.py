@@ -125,7 +125,7 @@ class ParquetDatasink(_FileDatasink):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        table = concat(tables)
+        table = concat(tables, promote_types=False)
         # Create unique combinations of the partition columns
         table_fields = [
             field for field in output_schema if field.name not in self.partition_cols
