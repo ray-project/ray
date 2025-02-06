@@ -329,9 +329,7 @@ html_theme_options = {
     "pygment_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
-        "version_match": (
-            lambda v: v if v in ["master", "latest"] else f"releases/{v}"
-        )(os.getenv("READTHEDOCS_VERSION", "master")),
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
     },
 }
 
@@ -517,8 +515,8 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 def setup(app):
     # Only generate versions JSON during RTD build
-    if os.getenv("READTHEDOCS") == "True":
-        generate_versions_json()
+    # if os.getenv("READTHEDOCS") == "True":
+    generate_versions_json()
 
     pregenerate_example_rsts(app)
 
