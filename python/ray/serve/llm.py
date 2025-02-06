@@ -18,12 +18,14 @@ from ray.util.annotations import PublicAPI
 @PublicAPI(stability="alpha")
 class LLMConfig(_LLMConfig):
     """The configuration for starting an LLM deployment."""
+
     ...
 
 
 @PublicAPI(stability="alpha")
 class VLLMDeployment(_VLLMDeployment):
     """The LLM deployment implementation to use vllm and the inferencing engine."""
+
     ...
 
 
@@ -38,6 +40,7 @@ class LLMModelRouterDeployment(_LLMModelRouterDeployment):
       - /v1/models: List available models
       - /v1/models/{model}: Model information
     """
+
     ...
 
 

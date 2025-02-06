@@ -3,13 +3,13 @@ import pytest
 
 
 def test_serve_llm_import_does_not_error():
-    import ray.serve.llm
+    import ray.serve.llm   # noqa: F401
     from ray.serve.llm import (
-        LLMConfig,
-        VLLMDeployment,
-        LLMModelRouterDeployment,
-        build_vllm_deployment,
-        build_openai_app,
+        LLMConfig,  # noqa: F401
+        VLLMDeployment,  # noqa: F401
+        LLMModelRouterDeployment,  # noqa: F401
+        build_vllm_deployment,  # noqa: F401
+        build_openai_app,  # noqa: F401
     )
 
 
