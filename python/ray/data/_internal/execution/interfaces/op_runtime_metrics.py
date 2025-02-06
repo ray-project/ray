@@ -5,7 +5,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 import ray
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.bundle_queue import BundleQueue, create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.resource_manager import ExecutionResources
 from ray.data._internal.memory_tracing import trace_allocation
@@ -147,30 +147,35 @@ def estimate_object_store_memory_per_node(
 ) -> Dict[str, int]:
     usage_per_node = defaultdict(int)
 
-    def node_id_from_meta(meta: BlockMetadata) -> str:
-        return (
-            meta.exec_stats.node_id
-            if meta.exec_stats and meta.exec_stats.node_id
-            else NODE_UNKNOWN
-        )
+    def iter_bundle_queue_by_node_id(
+        queue: BundleQueue,
+    ) -> Iterator[Tuple[BlockMetadata, NodeMetrics, str]]:
+        for bundle in queue._bundle_to_nodes:
+            for _, meta in bundle.blocks:
+                node_id = (
+                    meta.exec_stats.node_id
+                    if meta.exec_stats and meta.exec_stats.node_id
+                    else NODE_UNKNOWN
+                )
+
+            yield meta, node_id
 
     # Iterate through inqueue
-    for bundle in op._metrics._internal_inqueue._bundle_to_nodes:
-        for _, meta in bundle.blocks:
-            usage_per_node[node_id_from_meta(meta)] += meta.size_bytes
+    for meta, node_id in iter_bundle_queue_by_node_id(op._metrics._internal_inqueue):
+        usage_per_node[node_id] += meta.size_bytes
 
     # Iterate through outqueue
-    for bundle in op._metrics._internal_outqueue._bundle_to_nodes:
-        for _, meta in bundle.blocks:
-            usage_per_node[node_id_from_meta(meta)] += meta.size_bytes
+    for meta, node_id in iter_bundle_queue_by_node_id(op._metrics._internal_outqueue):
+        usage_per_node[node_id] += meta.size_bytes
 
     # Iterate through input buffers of the downstream operators
     for next_op in op.output_dependencies:
-        for bundle in next_op._metrics._internal_inqueue._bundle_to_nodes:
-            for _, meta in bundle.blocks:
-                usage_per_node[node_id_from_meta(meta)] += meta.size_bytes
-                # TODO(mowen): Do we need something akin to
-                # next_op.metrics.obj_store_mem_pending_task_inputs here?
+        for meta, node_id in iter_bundle_queue_by_node_id(
+            next_op._metrics._internal_inqueue
+        ):
+            usage_per_node[node_id] += meta.size_bytes
+            # TODO(mowen): Do we need something akin to
+            # next_op.metrics.obj_store_mem_pending_task_inputs here?
 
     return usage_per_node
 
