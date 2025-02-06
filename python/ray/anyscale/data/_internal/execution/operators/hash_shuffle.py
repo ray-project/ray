@@ -111,8 +111,22 @@ class Concat(StatefulShuffleAggregation):
     single combined `Block` (Pyarrow `Table`)
     """
 
-    def __init__(self, aggregator_id: int, target_partition_ids: List[int]):
+    def __init__(
+        self,
+        aggregator_id: int,
+        target_partition_ids: List[int],
+        *,
+        should_sort: bool,
+        key_columns: Optional[Tuple[str]] = None,
+    ):
         super().__init__(aggregator_id)
+
+        assert (
+            not should_sort or key_columns
+        ), f"Key columns have to be specified when `should_sort=True` (got {list(key_columns)})"
+
+        self._should_sort = should_sort
+        self._key_columns = key_columns
 
         # Block builders for individual partitions (identified by partition index)
         self._partition_block_builders: Dict[int, ArrowBlockBuilder] = {
@@ -132,7 +146,12 @@ class Concat(StatefulShuffleAggregation):
         self._partition_block_builders[partition_id].add_block(partition_shard)
 
     def finalize(self, partition_id: int) -> Block:
-        return self._partition_block_builders[partition_id].build()
+        block = self._partition_block_builders[partition_id].build()
+
+        if self._should_sort:
+            block = block.sort_by([(k, "ascending") for k in self._key_columns])
+
+        return block
 
     def clear(self, partition_id: int):
         self._partition_block_builders.pop(partition_id)
@@ -829,6 +848,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         *,
         key_columns: Tuple[str],
         num_partitions: int,
+        should_sort: bool = False,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -840,7 +860,10 @@ class HashShuffleOperator(HashShufflingOperatorBase):
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
             partition_aggregation_factory=(
                 lambda aggregator_id, target_partition_ids: Concat(
-                    aggregator_id, target_partition_ids
+                    aggregator_id,
+                    target_partition_ids,
+                    should_sort=should_sort,
+                    key_columns=key_columns,
                 )
             ),
         )

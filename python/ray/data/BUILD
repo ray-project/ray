@@ -250,7 +250,7 @@ py_test(
 
 py_test(
     name = "test_image",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_image.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -360,8 +360,6 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
-# Added "data_non_parallel" tag to prevent parallel execution of this test.
-# It needs about 5GB memory.
 py_test(
     name = "test_dynamic_block_split",
     size = "medium",
@@ -512,7 +510,7 @@ py_test(
     name = "test_sort",
     size = "enormous",
     srcs = ["tests/test_sort.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
