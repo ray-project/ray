@@ -228,6 +228,7 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         _max_inflight_executions: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
+        _default_communicator: Optional[Union[Communicator, str]] = "create",
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -250,6 +251,21 @@ class DAGNode(DAGNodeBase):
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
+            _default_communicator: The default communicator to use to transfer
+                tensors. Three types of values are valid. (1) Communicator:
+                For p2p operations, this is the default communicator
+                to use for nodes annotated with `with_tensor_transport()` and when
+                shared memory is not the desired option (e.g., when transport="nccl",
+                or when transport="auto" for communication between two different GPUs).
+                For collective operations, this is the default communicator to use
+                when a custom communicator is not specified.
+                (2) "create": for each collective operation without a custom communicator
+                specified, a communicator is created and initialized on its involved actors,
+                or an already created communicator is reused if the set of actors is the same.
+                For all p2p operations without a custom communicator specified, it reuses
+                an already created collective communicator if the p2p actors are a subset.
+                Otherwise, a new communicator is created.
+                (3) None: a ValueError will be thrown if a custom communicator is not specified.
 
         Returns:
             A compiled DAG.
@@ -278,6 +294,7 @@ class DAGNode(DAGNodeBase):
             enable_asyncio,
             _max_inflight_executions,
             _overlap_gpu_communication,
+            _default_communicator,
         )
 
     def execute(
