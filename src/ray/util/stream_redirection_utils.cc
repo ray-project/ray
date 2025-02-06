@@ -15,6 +15,7 @@
 #include "ray/util/stream_redirection_utils.h"
 
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <mutex>
 #include <vector>
@@ -55,6 +56,15 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   });
 
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/redirection.out",
+                                     std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << opt.file_path
+                       << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
 #if defined(__APPLE__) || defined(__linux__)
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
