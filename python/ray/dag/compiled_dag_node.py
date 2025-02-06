@@ -273,6 +273,8 @@ class CompiledTask:
         """
         self.idx = idx
         self.dag_node = dag_node
+        # Whether the task contributes to the DAG output.
+        self.is_dag_output: bool = False
 
         # Dict from task index to actor handle for immediate downstream tasks.
         self.downstream_task_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
@@ -377,6 +379,7 @@ class ExecutableTask:
         self.output_idxs = task.output_idxs
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
+        self.is_dag_output = task.is_dag_output
 
         # The NCCL operation (type) of the task. It can be a NCCL read, write, or
         # collective operation.
@@ -684,9 +687,7 @@ class ExecutableTask:
         # execution or an exception.
         # [TODO:P1] Change to use `self.output_writer`.
         if not self.requires_nccl_write:
-            # [HACK] `test_torch_tensor_nccl_overlap_p2p_and_collective`.
-            leaf_idxs = [10, 12, 13, 14]
-            wait_future = self.task_idx in leaf_idxs
+            wait_future = self.is_dag_output
             with self.stream:
                 output_val = self.fetch_intermediate_future(wait_future)
             try:
@@ -1238,6 +1239,11 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
+
+                # If the node is a MultiOutputNode, update the upstream task since it
+                # contributes to the DAG output.
+                if isinstance(dag_node, MultiOutputNode):
+                    upstream_task.is_dag_output = True
 
         # Collect all leaf nodes.
         leaf_nodes: List[DAGNode] = []
