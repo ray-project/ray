@@ -316,7 +316,8 @@ Avoiding out-of-memory errors
 =============================
 
 If your user defined function uses lots of memory, you might encounter out-of-memory 
-errors. To avoid these errors, configure the ``memory`` parameter:
+errors. To avoid these errors, configure the ``memory`` parameter. It tells Ray how much 
+memory your function uses, and prevents Ray from scheduling too many tasks on a node.
 
 .. testcode::
     :hide:
