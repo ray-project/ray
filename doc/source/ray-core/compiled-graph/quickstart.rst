@@ -9,7 +9,7 @@ This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
     pip install "ray[cg]"
     
-    # Note that before ray version 2.41, use the following instead:
+    # For a ray version before 2.41, use the following instead:
     # pip install "ray[adag]"
 
 
