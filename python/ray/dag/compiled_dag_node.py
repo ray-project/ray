@@ -687,7 +687,10 @@ class ExecutableTask:
         # execution or an exception.
         # [TODO:P1] Change to use `self.output_writer`.
         if not self.requires_nccl_write:
-            wait_future = self.is_dag_output
+            if self.requires_nccl_read or self.requires_nccl_collective:
+                wait_future = self.is_dag_output
+            else:
+                wait_future = True
             with self.stream:
                 output_val = self.fetch_intermediate_future(wait_future)
             try:
@@ -1445,8 +1448,6 @@ class CompiledDAG:
                             for idx in downstream_task.downstream_task_idxs
                         ]
                     else:
-                        if task not in output_to_readers:
-                            output_to_readers[task] = []
                         output_to_readers[task].append(downstream_task)
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for output, readers in output_to_readers.items():
