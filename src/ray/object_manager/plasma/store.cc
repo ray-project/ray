@@ -272,8 +272,11 @@ bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 
 bool PlasmaStore::ReleaseObject(const ObjectID &object_id,
                                 const std::shared_ptr<Client> &client) {
+  RAY_LOG(INFO) << "Releasing object..." << object_id;
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
+  RAY_LOG(INFO) << "Get Entry..." << object_id;
   if (entry != nullptr) {
+    RAY_LOG(INFO) << "Entry is not null..." << object_id;
     // Remove the client from the object's array of clients.
     return RemoveFromClientObjectIds(object_id, client);
   }
@@ -424,9 +427,12 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   case fb::MessageType::PlasmaReleaseRequest: {
     // May unmap: client knows a fallback-allocated fd is involved.
     // Should unmap: server finds refcnt == 0 -> need to be unmapped.
+    RAY_LOG(INFO) << "Received release request...";
     bool may_unmap;
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
+    RAY_LOG(INFO) << "Successfully read the release request..." << object_id;
     bool should_unmap = ReleaseObject(object_id, client);
+    RAY_LOG(INFO) << "Successfully released the object..." << object_id;
     if (!may_unmap) {
       RAY_CHECK(!should_unmap)
           << "Plasma client thinks a mmap should not be unmapped but server thinks so. "
