@@ -13,9 +13,9 @@ from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    unify_schemas,
     try_combine_chunked_columns,
+    unify_schemas,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (

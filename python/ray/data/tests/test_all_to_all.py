@@ -7,8 +7,13 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from pkg_resources import parse_version
 
 import ray
+from ray._private.utils import _get_pyarrow_version
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
 from ray.data._internal.util import is_nan
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
