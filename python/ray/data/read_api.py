@@ -108,7 +108,6 @@ if TYPE_CHECKING:
 
     from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
-
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)

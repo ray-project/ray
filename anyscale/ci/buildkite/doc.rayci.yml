@@ -1,0 +1,10 @@
+group: anyscale ragbot 
+steps:
+  - label: ":tapioca: anyscale ragbot: ray doc"
+    key: anyscale_ragbot_doc_build
+    instance_type: medium
+    if: build.branch =~ /^releases\//
+    commands:
+      - bash ./anyscale/ci/upload-anyscale-ragbot-data.sh
+    depends_on: docbuild
+    job_env: docbuild-py3.12

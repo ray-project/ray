@@ -42,6 +42,66 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
+def _create_empty_table(schema: "pyarrow.Schema"):
+    import pyarrow as pa
+
+    arrays = [pa.array([], type=t) for t in schema.types]
+
+    return pa.table(arrays, schema=schema)
+
+
+def hash_partition(
+    table: "pyarrow.Table",
+    *,
+    hash_cols: List[str],
+    num_partitions: int,
+) -> Dict[int, "pyarrow.Table"]:
+    """Hash-partitions provided Pyarrow `Table` into `num_partitions` based on
+    hash of the composed tuple of values from the provided columns list
+
+    NOTE: Since some partitions could be empty (due to skew in the table) this returns a
+          dictionary, rather than a list
+    """
+
+    import numpy as np
+
+    assert num_partitions > 0
+
+    if table.num_rows == 0:
+        return {}
+    elif num_partitions == 1:
+        return {0: table}
+
+    projected_table = table.select(hash_cols)
+
+    partitions = np.zeros((projected_table.num_rows,))
+    for i in range(projected_table.num_rows):
+        _tuple = tuple(c[i] for c in projected_table.columns)
+        partitions[i] = hash(_tuple) % num_partitions
+
+    # Convert to ndarray to compute hash partition indices
+    # more efficiently
+    partitions_array = np.array(partitions)
+    # For every partition compile list of indices of rows falling
+    # under that partition
+    indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
+
+    # NOTE: Subsequent `take` operation is known to be sensitive to the number of
+    #       chunks w/in the individual columns, and therefore to improve performance
+    #       we attempt to defragment the table to potentially combine some of those
+    #       chunks into contiguous arrays.
+    table = try_combine_chunked_columns(table)
+
+    return {
+        p: table.take(idx)
+        # NOTE: Since some of the partitions might be empty, we're filtering out
+        #       indices of the length 0 to make sure we're not passing around
+        #       empty tables
+        for p, idx in enumerate(indices)
+        if len(idx) > 0
+    }
+
+
 def take_table(
     table: "pyarrow.Table",
     indices: Union[List[int], "pyarrow.Array", "pyarrow.ChunkedArray"],
