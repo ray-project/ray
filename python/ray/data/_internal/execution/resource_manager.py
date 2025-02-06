@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import time
 from abc import ABC, abstractmethod
@@ -548,6 +549,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Add the remaining of `_reserved_for_op_outputs`.
         op_outputs_usage = self._get_op_outputs_usage_with_downstream(op)
         res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
+        if math.isinf(res):
+            return None
+
         res = int(res)
         assert res >= 0
         if res == 0 and self._should_unblock_streaming_output_backpressure(op):
@@ -649,3 +653,18 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_budgets[op].gpu = float("inf")
+
+        from ray.data._internal.execution.operators.base_physical_operator import (
+            AllToAllOperator,
+        )
+
+        # An all-to-all operator waits for all its input operator’s outputs before
+        # processing data. This often forces the input operator to exceed its object
+        # store memory budget. To prevent deadlock, we disable object store memory
+        # backpressure for the input operator.
+        for op in eligible_ops:
+            if any(
+                isinstance(next_op, AllToAllOperator)
+                for next_op in op.output_dependencies
+            ):
+                self._op_budgets[op].object_store_memory = float("inf")
