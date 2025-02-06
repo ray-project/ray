@@ -447,7 +447,7 @@ class BuildOutputBlocksMapTransformFn(MapTransformFn):
             )
         else:
             output_block_size_option = OutputBlockSizeOption(
-                target_max_rows_per_block=self._target_max_block_size
+                target_max_block_size=self._target_max_block_size
             )
         output_buffer = BlockOutputBuffer(output_block_size_option)
         if self._input_type == MapTransformFnDataType.Block:
