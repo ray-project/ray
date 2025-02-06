@@ -5,11 +5,11 @@ allowed_azs:
 
 head_node_type:
     name: head_node
-    instance_type: n1-standard-16-nvidia-tesla-t4-1 # g4dn.4xlarge
+    instance_type: n1-standard-16
 
 worker_node_types:
     - name: worker_node
-      instance_type: n2-standard-16 # aws m5.4xlarge
-      min_workers: 1
-      max_workers: 1
+      instance_type: n1-standard-64-nvidia-tesla-t4-4
+      max_workers: 4
+      min_workers: 4
       use_spot: false

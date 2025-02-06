@@ -321,7 +321,10 @@ Learn more about Ray RLlib
 
 ## Ray Core Quickstart
 
-[![try-anyscale-quickstart-ray-quickstart](../_static/img/run-quickstart-anyscale.svg)](https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro)
+<a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro">
+    <img src="../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
+</a>
+<br></br>
 
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications.

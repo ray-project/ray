@@ -5,7 +5,7 @@ depends_on:
 steps:
   - name: llmbuild
     wanda: ci/docker/llm.build.wanda.yaml
-  
+
   - label: "llm tests"
     key: "llm-tests"
     tags:
