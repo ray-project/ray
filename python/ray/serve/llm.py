@@ -67,7 +67,7 @@ def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
 
     Args:
         llm_serving_args: The list of llm configs or the paths to the llm config to
-        build the app.
+            build the app.
 
     Returns:
         The configured Ray Serve Application router.
