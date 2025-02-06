@@ -348,10 +348,8 @@ class ShufflingBatcher(BatcherInterface):
             if self._shuffle_seed is not None:
                 self._shuffle_seed += 1
 
-            if (
-                isinstance(
-                    BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
-                )
+            if isinstance(
+                BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
             ):
                 self._shuffle_buffer = try_combine_chunked_columns(self._shuffle_buffer)
 
