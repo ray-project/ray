@@ -485,7 +485,7 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-        # Set up the execution strema when overlap_gpu_communication is configured.
+        # Set up the execution stream when overlap_gpu_communication is configured.
         self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
             return
@@ -551,7 +551,7 @@ class ExecutableTask:
             CUDA stream, and the CPU is not blocked.
 
         Args:
-            wait_future: Whether to wait for the GPU future.
+            wait_future: Whether to wait for the future.
 
         Returns:
             The result of the intermediate future.
@@ -684,15 +684,11 @@ class ExecutableTask:
         # execution or an exception.
         # [TODO:P1] Change to use `self.output_writer`.
         if not self.requires_nccl_write:
-            # [TODO:P1] Never wait for GPU output. Might need to wait for exception.
-            # output_val = self.fetch_intermediate_future(wait_gpu_future=False)
+            # [HACK] `test_torch_tensor_nccl_overlap_p2p_and_collective`.
+            leaf_idxs = [10, 12, 13, 14]
+            wait_future = self.task_idx in leaf_idxs
             with self.stream:
-                if (
-                    self.requires_nccl_read or self.requires_nccl_collective
-                ) and overlap_gpu_communication:
-                    output_val = self.fetch_intermediate_future(wait_future=False)
-                else:
-                    output_val = self.fetch_intermediate_future(wait_future=True)
+                output_val = self.fetch_intermediate_future(wait_future)
             try:
                 self.output_writer.write(output_val)
             except RayChannelError:

@@ -372,32 +372,20 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
     dtype = torch.float16
-    collective_shape = (100000000,)
-    compute_shape = (100000,)
-    send_shape = (100000000,)
+    coll_shape = (100_000_000,)
+    send_shape = (100_000_000,)
     with InputNode() as inp:
-        collectives = [
-            worker.send.bind(collective_shape, dtype, inp) for worker in workers
-        ]
+        coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
         sends = [
             worker.send.bind(send_shape, dtype, inp).with_type_hint(
                 TorchTensorType(transport="nccl")
             )
             for worker in workers
         ]
-        # computes = [worker.send.bind(compute_shape, dtype, inp) for worker in workers]
         recvs = [workers[0].recv.bind(sends[1]), workers[1].recv.bind(sends[0])]
-        # computes = [
-        #     worker.heavy_compute.bind(compute)
-        #     for worker, compute in zip(workers, computes)
-        # ]
-        collectives = collective.allreduce.bind(collectives)
-        collectives = [
-            worker.recv.bind(collective)
-            for worker, collective in zip(workers, collectives)
-        ]
-        # dag = MultiOutputNode(collectives + computes + recvs)
-        dag = MultiOutputNode(collectives + recvs)
+        colls = collective.allreduce.bind(coll_inputs)
+        coll_outputs = [worker.recv.bind(coll) for worker, coll in zip(workers, colls)]
+        dag = MultiOutputNode(recvs + coll_outputs)
 
     compiled_dag = dag.experimental_compile(
         _overlap_gpu_communication=overlap_gpu_communication
@@ -405,8 +393,7 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
 
     elapses = []
     start = time.monotonic()
-    # for i in range(5):
-    for i in range(1):
+    for i in range(5):
         iter_start = time.monotonic()
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
@@ -414,9 +401,8 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
         elapses.append(iter_duration)
         assert (
             result
-            == [(i * num_workers, collective_shape, dtype)] * num_workers
-            # + [(i + 1000, compute_shape, dtype)] * num_workers
-            + [(i, send_shape, dtype)] * num_workers
+            == [(i, send_shape, dtype)] * num_workers
+            + [(i * num_workers, coll_shape, dtype)] * num_workers
         )
     duration = time.monotonic() - start
     print(f"{overlap_gpu_communication=}, {duration=}")
