@@ -91,6 +91,46 @@ class WorkerGroupContext:
 class WorkerGroup:
     _worker_cls = RayTrainWorker
 
+    @staticmethod
+    def create(
+        train_run_context: TrainRunContext,
+        train_fn: Callable[[], None],
+        num_workers: int,
+        resources_per_worker: dict,
+        callbacks: Optional[
+            List[Union[WorkerGroupCallback, WorkerCallback, TrainContextCallback]]
+        ] = None,
+        placement_strategy: str = "PACK",
+        checkpoint: Optional[Checkpoint] = None,
+    ) -> "WorkerGroup":
+        """Create and start a new worker group.
+
+        Args:
+            train_run_context: The training run context.
+            train_fn: The training function to execute.
+            num_workers: Number of workers to create.
+            resources_per_worker: Resources to allocate per worker.
+            callbacks: Optional callbacks to attach.
+            placement_strategy: Strategy for placing workers.
+            checkpoint: Optional checkpoint to restore from.
+
+        Returns:
+            An active WorkerGroup instance.
+
+        Raises:
+            WorkerGroupStartupTimeoutError: If worker group startup times out.
+            WorkerGroupStartupFailedError: If worker group fails to start.
+        """
+        worker_group = WorkerGroup(train_run_context, callbacks)
+        worker_group._start(
+            train_fn,
+            num_workers,
+            resources_per_worker,
+            placement_strategy,
+            checkpoint,
+        )
+        return worker_group
+
     def __init__(
         self,
         train_run_context: TrainRunContext,
@@ -98,6 +138,10 @@ class WorkerGroup:
             List[Union[WorkerGroupCallback, WorkerCallback, TrainContextCallback]]
         ] = None,
     ):
+        """Initialize a WorkerGroup instance.
+
+        Note: This should not be called directly. Use WorkerGroup.create() instead.
+        """
         self._train_run_context = train_run_context
         run_config = self._train_run_context.run_config
         self._storage_context = StorageContext(
@@ -117,7 +161,6 @@ class WorkerGroup:
 
         self._worker_group_context: Optional[WorkerGroupContext] = None
         self._worker_group_state: Optional[WorkerGroupState] = None
-
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
 
@@ -146,7 +189,7 @@ class WorkerGroup:
     # Start Worker Group
     ################################################################################
 
-    def start(
+    def _start(
         self,
         train_fn: Callable[[], None],
         num_workers: int,
@@ -154,24 +197,11 @@ class WorkerGroup:
         placement_strategy: str = "PACK",
         checkpoint: Optional[Checkpoint] = None,
     ):
-        """Start the a number of workers with the given resources.
-
-        Assign ranks, and initialize the train context on the workers.
-
-        Raises:
-            ValueError: If workers are already started.
-            WorkerGroupStartupTimeoutError: If the worker group startup times out
-                when requesting resources.
-                `RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S` can configure the timeout.
-            WorkerGroupStartupFailedError: If the worker group fails to start
-                due to actors dying/failing during initialization.
-        """
-        assert not self.has_started(), "Worker group already started."
-
+        """Internal method to start the worker group."""
         worker_group_state_builder = WorkerGroupStateBuilder()
 
         try:
-            self._start(
+            self._start_impl(
                 worker_group_state_builder,
                 train_fn,
                 num_workers,
@@ -180,14 +210,13 @@ class WorkerGroup:
                 checkpoint,
             )
         except Exception as e:
-            if not self.has_started():
+            if not self._worker_group_state:
                 worker_group_state_builder.shutdown()
             raise e
 
-        assert self.has_started(), "Worker group failed to start."
-        # TODO: Should this return the WorkerGroupState?
+        assert self._worker_group_state, "Worker group failed to start."
 
-    def _start(
+    def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
         train_fn: Callable[[], None],
@@ -196,9 +225,22 @@ class WorkerGroup:
         placement_strategy: str = "PACK",
         checkpoint: Optional[Checkpoint] = None,
     ):
+        """Implementation of worker group startup.
 
-        if self._worker_group_state:
-            raise ValueError("Workers already started.")
+        Args:
+            worker_group_state_builder: Builder for constructing worker group state.
+            train_fn: Training function to execute on workers.
+            num_workers: Number of workers to start.
+            resources_per_worker: Resources to allocate per worker.
+            placement_strategy: Strategy for placing workers.
+            checkpoint: Optional checkpoint to restore from.
+
+        Raises:
+            ValueError: If workers are already started.
+            WorkerGroupStartupTimeoutError: If startup times out requesting resources.
+            WorkerGroupStartupFailedError: If workers fail during initialization.
+        """
+        self._assert_inactive()
 
         worker_group_context = WorkerGroupContext(
             num_workers=num_workers,
@@ -320,9 +362,6 @@ class WorkerGroup:
             for actor in actors:
                 ray.kill(actor)
 
-            # Make sure to clear any other state (e.g., placement group) that was set.
-            self.shutdown()
-
             error_msg = (
                 "One of the worker actors failed to initialize due to error:\n"
                 f"{traceback.format_exc()}"
@@ -359,12 +398,12 @@ class WorkerGroup:
 
     def shutdown(self):
         """Shutdown all the workers in this worker group."""
+        self._assert_active()
+
         with invoke_context_managers(
             [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
             if self._worker_group_state:
-                # TODO: These callbacks currently assume the WorkerGroup is alive.
-                # This is inconsistent with `on_worker_group_shutdown`.
                 for callback in self._callbacks:
                     callback.before_worker_group_shutdown(self)
 
@@ -389,10 +428,7 @@ class WorkerGroup:
         Args:
             timeout: The maximum time to wait for the poll tasks to complete.
         """
-        if not self.has_started():
-            return WorkerGroupPollStatus(
-                worker_statuses={},
-            )
+        self._assert_active()
 
         poll_results = self._poll_workers_and_collect_errors(timeout)
 
@@ -529,7 +565,7 @@ class WorkerGroup:
                 as ``self.workers``.
 
         """
-        self._assert_worker_group_started()
+        self._assert_active()
         workers = self.get_workers()
 
         return [worker.execute_async(fn, *fn_args, **fn_kwargs) for worker in workers]
@@ -553,7 +589,7 @@ class WorkerGroup:
             (ObjectRef) An ObjectRef representing the output of func.
 
         """
-        self._assert_worker_group_started()
+        self._assert_active()
         workers = self.get_workers()
 
         if rank >= len(workers):
@@ -578,28 +614,36 @@ class WorkerGroup:
     # Utility Methods
     #####################################################################################
 
-    def has_started(self) -> bool:
-        return self._worker_group_state is not None
+    def _assert_active(self):
+        """Assert that the worker group is active (not shut down)."""
+        if not self._worker_group_state:
+            raise ValueError(
+                "Worker group is not active. "
+                "Call WorkerGroup.create() to create a new worker group."
+            )
+
+    def _assert_inactive(self):
+        """Assert that the worker group is inactive (shut down)."""
+        if self._worker_group_state:
+            raise ValueError(
+                "Worker group is active. "
+                "Call WorkerGroup.shutdown() to shut down the worker group."
+            )
 
     def get_workers(self) -> List[Worker]:
-        # TODO: Access workers through WorkerGroupState instead?
-        if not self._worker_group_state:
-            return []
+        self._assert_active()
         return self._worker_group_state.workers
 
-    def get_worker_group_context(self) -> Optional[WorkerGroupContext]:
+    def get_worker_group_context(self) -> WorkerGroupContext:
+        self._assert_active()
         return self._worker_group_context
 
-    def get_worker_group_state(self) -> Optional[WorkerGroupState]:
-        # TODO: Is this needed?
+    def get_worker_group_state(self) -> WorkerGroupState:
+        self._assert_active()
         return self._worker_group_state
 
-    def _assert_worker_group_started(self):
-        if not self.has_started():
-            raise ValueError("Worker group not started.")
-
     def __len__(self) -> int:
-        # TODO: Should this be implemented in WorkerGroupState only?
+        self._assert_active()
         return len(self.get_workers())
 
     #########################################################################################
