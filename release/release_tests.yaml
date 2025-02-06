@@ -2095,6 +2095,29 @@
 # Train tests
 ########################
 
+- name: training_ingest_benchmark-task=image_classification
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
+
+  variations:
+    - __suffix__: full_training
+      run:
+        timeout: 3600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16
+
+    - __suffix__: skip_training
+      run:
+        timeout: 1800
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
 - name: train_horovod_multi_node_test
   group: Train tests
   working_dir: train_tests/horovod
