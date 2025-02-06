@@ -275,7 +275,6 @@ class WorkerGroup:
                     workers, sync_actor, train_context_args
                 )
 
-                worker_group_state_builder.with_start_time(time_monotonic())
                 self._worker_group_state = worker_group_state_builder.build()
 
                 for callback in self._callbacks:
