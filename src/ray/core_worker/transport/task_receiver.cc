@@ -36,6 +36,7 @@ void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
 void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "TaskReceiver::HandleTask";
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
   // which doesn't work with std::move.
@@ -79,6 +80,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
   auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
                              const TaskSpecification &task_spec,
                              rpc::SendReplyCallback send_reply_callback) {
+    RAY_LOG(INFO) << "TaskReceiver::HandleTask accept_callback";
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
@@ -89,6 +91,12 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       // Decrease to account for the dummy object id returned by the actor
       // creation task.
       num_returns--;
+      /// The default max concurrency for creating PoolManager should
+      /// be 0 if this is an asyncio actor.
+      const int default_max_concurrency =
+          task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
+      pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+          task_spec.ConcurrencyGroups(), default_max_concurrency);
     }
     RAY_CHECK(num_returns >= 0);
 
@@ -97,14 +105,47 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
     std::string application_error = "";
-    auto status = task_handler_(task_spec,
-                                std::move(resource_ids),
-                                &return_objects,
-                                &dynamic_return_objects,
-                                &streaming_generator_returns,
-                                reply->mutable_borrowed_refs(),
-                                &is_retryable_error,
-                                &application_error);
+
+    Status status;
+    if (task_spec.IsActorCreationTask()) {
+      RAY_LOG(INFO) << "ActorCreationTask submits to the default executor";
+      auto default_executor = pool_manager_->GetDefaultExecutor();
+      auto promise = std::make_shared<std::promise<void>>();
+      auto future = promise->get_future();
+      default_executor->Post([this,
+                              task_spec,
+                              resource_ids,
+                              &return_objects,
+                              &dynamic_return_objects,
+                              &streaming_generator_returns,
+                              reply,
+                              &is_retryable_error,
+                              &application_error,
+                              &status,
+                              promise]() {
+        status = task_handler_(task_spec,
+                               std::move(resource_ids),
+                               &return_objects,
+                               &dynamic_return_objects,
+                               &streaming_generator_returns,
+                               reply->mutable_borrowed_refs(),
+                               &is_retryable_error,
+                               &application_error);
+        promise->set_value();
+      });
+      future.wait();
+      RAY_LOG(INFO) << "ActorCreationTask finished in default executor";
+    } else {
+      status = task_handler_(task_spec,
+                             std::move(resource_ids),
+                             &return_objects,
+                             &dynamic_return_objects,
+                             &streaming_generator_returns,
+                             reply->mutable_borrowed_refs(),
+                             &is_retryable_error,
+                             &application_error);
+    }
+
     reply->set_is_retryable_error(is_retryable_error);
     reply->set_is_application_error(!application_error.empty());
     std::string task_execution_error;
@@ -169,12 +210,6 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       }
 
       if (task_spec.IsActorCreationTask()) {
-        /// The default max concurrency for creating PoolManager should
-        /// be 0 if this is an asyncio actor.
-        const int default_max_concurrency =
-            task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
-        pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-            task_spec.ConcurrencyGroups(), default_max_concurrency);
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
               task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
@@ -231,6 +266,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
   };
 
+  // ActorCreationTask 被認定為不是 ActorTask，因此都在 main thread 上執行
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {

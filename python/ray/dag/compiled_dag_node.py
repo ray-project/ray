@@ -1476,9 +1476,9 @@ class CompiledDAG:
             node_id = ray.get_runtime_context().get_node_id()
         else:
             node_id = ray.get(
-                actor_handle.__ray_call__.remote(
-                    lambda self: ray.get_runtime_context().get_node_id()
-                )
+                actor_handle.__ray_call__.options(
+                    concurrency_group="_ray_system"
+                ).remote(lambda self: ray.get_runtime_context().get_node_id())
             )
         self.actor_to_node_id[actor_handle] = node_id
         return node_id
@@ -1589,7 +1589,7 @@ class CompiledDAG:
                     )
                     # Create an output channel for each output of the current node.
                     output_channel = ray.get(
-                        fn.remote(
+                        fn.options(concurrency_group="_ray_system").remote(
                             do_allocate_channel,
                             reader_and_node_list,
                             task.dag_node.type_hint,
@@ -1802,9 +1802,7 @@ class CompiledDAG:
         # Build an execution schedule for each actor
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
-            self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
-                concurrency_group="_ray_system"
-            ).remote(
+            self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.remote(
                 exec_task_func,
                 executable_tasks,
                 self.actor_to_execution_schedule[actor_handle],
@@ -2097,7 +2095,9 @@ class CompiledDAG:
                         logger.info(f"Cancelling compiled worker on actor: {actor}")
                     # Cancel all actor loops in parallel.
                     cancel_refs = [
-                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        actor.__ray_call__.options(
+                            concurrency_group="_ray_system"
+                        ).remote(do_cancel_executable_tasks, tasks)
                         for actor, tasks in outer.actor_to_executable_tasks.items()
                     ]
                     for cancel_ref in cancel_refs:

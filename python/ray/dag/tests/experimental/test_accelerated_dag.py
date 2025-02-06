@@ -2262,7 +2262,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
     deserialization for each forward pass.
     """
 
-    @ray.remote
+    @ray.remote(max_concurrency=2)
     class Worker:
         def __init__(self, rank):
             self.rank = rank
@@ -2597,8 +2597,8 @@ def test_result_buffer_exceeds_capacity(ray_start_regular):
 def test_event_profiling(ray_start_regular, monkeypatch):
     monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
-    a = Actor.options(name="a").remote(0)
-    b = Actor.options(name="b").remote(0)
+    a = Actor.options(name="a", max_concurrency=2).remote(0)
+    b = Actor.options(name="b", max_concurrency=2).remote(0)
     with InputNode() as inp:
         x = a.inc.bind(inp)
         y = b.inc.bind(inp)
@@ -2620,6 +2620,43 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         assert event.actor_name in ["a", "b"]
         assert event.method_name == "inc"
         assert event.operation in ["READ", "COMPUTE", "WRITE"]
+
+
+def test_execute_on_actor_thread(shutdown_only):
+    import threading
+
+    @ray.remote
+    class ThreadLocalActor:
+        def __init__(self):
+            # data local to actor default executor thread
+            print("init")
+            current_thread = threading.current_thread()
+            print(current_thread)
+            self.local_data = threading.local()
+            print("local data",self.local_data)
+            self.local_data.value = 42
+            print("local data value",self.local_data.value)
+            print("value", id(self.local_data.value))
+
+        def compute(self, value):
+            print("compute")
+            current_thread = threading.current_thread()
+            print(current_thread)
+            print("local data",self.local_data)
+            if hasattr(self.local_data, "value"):
+                print("self.local_data.value", self.local_data.value)
+            else:
+                print("self.local_data.value is not set")
+            return value + self.local_data.value
+
+    actor = ThreadLocalActor.remote()
+    assert ray.get(actor.compute.remote(1)) == 43
+
+    # with InputNode() as inp:
+    #     dag = actor.compute.bind(inp)
+
+    # compiled_dag = dag.experimental_compile()
+    # assert ray.get(compiled_dag.execute(1)) == 43
 
 
 @ray.remote
