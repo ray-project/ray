@@ -20,6 +20,7 @@
 #include <future>
 #include <iostream>
 #include <mutex>
+#include <fstream>
 #include <string_view>
 #include <thread>
 
@@ -33,6 +34,21 @@
 namespace ray {
 
 namespace {
+
+// Default pipe log read buffer size.
+constexpr size_t kDefaultPipeLogReadBufSize = 1024;
+
+size_t GetPipeLogReadSizeOrDefault() {
+  // TODO(hjiang): Write a util function `GetEnvOrDefault`.
+  const char *var_value = std::getenv(kPipeLogReadBufSizeEnv.data());
+  if (var_value != nullptr) {
+    size_t read_buf_size = 0;
+    if (absl::SimpleAtoi(var_value, &read_buf_size) && read_buf_size > 0) {
+      return read_buf_size;
+    }
+  }
+  return kDefaultPipeLogReadBufSize;
+}
 
 struct StreamDumper {
   absl::Mutex mu;
@@ -56,24 +72,80 @@ void StartStreamDump(
                stream_dumper = stream_dumper]() {
     SetThreadName("PipeReaderThd");
 
-    std::string newline;
+    const size_t buf_size = GetPipeLogReadSizeOrDefault();
+    // Pre-allocate stream buffer to avoid excessive syscall.
+    // TODO(hjiang): Should resize without initialization.
+    std::string readsome_buffer(buf_size, '\0');
+    // Logging are written in lines, `last_line` records part of the strings left in
+    // last `read` syscall.
+    std::string last_line;
 
-    // Exit at pipe read EOF.
-    while (std::getline(*pipe_instream, newline)) {
-      // Backfill newliner for current segment.
-      if (!pipe_instream->eof()) {
-        newline += '\n';
+    std::string cur_new_line{"a"};
+    while (pipe_instream->read(cur_new_line.data(), /*count=*/1)) {
+      // Read available bytes in non-blocking style.
+      while (true) {
+        auto bytes_read =
+            pipe_instream->readsome(readsome_buffer.data(), readsome_buffer.length());
+        if (bytes_read == 0) {
+          break;
+        }
+        std::string_view cur_readsome_buffer{readsome_buffer.data(),
+                                             static_cast<uint64_t>(bytes_read)};
+        cur_new_line += cur_readsome_buffer;
       }
 
-      absl::MutexLock lock(&stream_dumper->mu);
-      stream_dumper->content.emplace_back(std::move(newline));
+      // After we read a chunk of bytes continuously, split into lines, send to write
+      // thread and multiple sinks.
+      std::vector<std::string_view> newlines = absl::StrSplit(cur_new_line, '\n');
+      for (size_t idx = 0; !newlines.empty() && idx < newlines.size() - 1; ++idx) {
+        std::string cur_segment = std::move(last_line);
+        last_line.clear();
+        cur_segment += newlines[idx];
+        cur_segment += '\n';
+
+        {
+          std::ofstream stdout_stderr_name("/home/ubuntu/pipe_logger",
+                                          std::ios::out | std::ios::app);
+          stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- " << cur_segment << std::endl;
+          stdout_stderr_name.flush();
+          stdout_stderr_name.close();
+        }
+
+        absl::MutexLock lock(&stream_dumper->mu);
+        stream_dumper->content.emplace_back(std::move(cur_segment));
+      }
+
+      // Record last segment.
+      if (!newlines.empty()) {
+        last_line = newlines.back();
+      }
+
+      {
+          std::ofstream stdout_stderr_name("/home/ubuntu/pipe_logger",
+                                          std::ios::out | std::ios::app);
+          stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- last line = " << last_line << std::endl;
+          stdout_stderr_name.flush();
+          stdout_stderr_name.close();
+        }
+
+      // Read later bytes in blocking style.
+      cur_new_line = "a";
     }
 
-    RAY_CHECK(pipe_instream->eof());
     {
-      absl::MutexLock lock(&stream_dumper->mu);
-      stream_dumper->stopped = true;
+      std::ofstream stdout_stderr_name("/home/ubuntu/pipe_logger",
+                                      std::ios::out | std::ios::app);
+      stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- reached eof" << std::endl;
+      stdout_stderr_name.flush();
+      stdout_stderr_name.close();
     }
+
+    // Reached EOF.
+    absl::MutexLock lock(&stream_dumper->mu);
+    if (!last_line.empty()) {
+      stream_dumper->content.emplace_back(std::move(last_line));
+    }
+    stream_dumper->stopped = true;
   }).detach();
 
   std::thread([stream_dumper = stream_dumper,
@@ -256,8 +328,17 @@ RedirectionFileHandle CreateRedirectionFileHandle(
       std::make_shared<boost::iostreams::stream<boost::iostreams::file_descriptor_sink>>(
           std::move(pipe_write_sink));
 
-  auto close_fn = [pipe_ostream, promise]() mutable {
+  auto close_fn = [pipe_instream, pipe_ostream, promise]() mutable {
     pipe_ostream->close();
+
+    {
+      std::ofstream stdout_stderr_name("/home/ubuntu/pipe_logger",
+                                      std::ios::out | std::ios::app);
+      stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << "-- request to stop" << std::endl;
+      stdout_stderr_name.flush();
+      stdout_stderr_name.close();
+    }
+
     // Block until destruction finishes.
     promise->get_future().get();
   };

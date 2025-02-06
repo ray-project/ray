@@ -195,6 +195,9 @@ def test_log_rotation(shutdown_only, monkeypatch):
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    logger = logging.getLogger(__name__)
+    logger.info(f"session dir = {session_dir}")
+
     # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
     # substring of "python-core-worker".
     log_rotating_component = [
@@ -371,6 +374,8 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)
 
+    logger = logging.getLogger(__name__)
+
     def submit_job():
         # Connect a driver to the Ray cluster.
         ray.init(address=cluster.address, ignore_reinit_error=True)
@@ -380,7 +385,7 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
 
         @ray.remote
         def f():
-            print("remote func")
+            print("hjiang remote func")
 
         ray.get(f.remote())
 
@@ -388,6 +393,9 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
             return log_batch["task_name"] == "f"
 
         logs = get_log_batch(p, 1, matcher=matcher)
+
+        logger.error(f"logs = {logs}")
+
         # It should logs with pid of hex job id instead of None
         assert logs[0]["pid"] is not None
         ray.shutdown()

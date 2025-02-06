@@ -28,7 +28,7 @@ namespace ray {
 
 namespace {
 constexpr std::string_view kLogLine1 = "hello\n";
-constexpr std::string_view kLogLine2 = "world\n";
+constexpr std::string_view kLogLine2 = "world";
 
 // Output logging files to cleanup at process termination.
 std::vector<std::string> log_files;

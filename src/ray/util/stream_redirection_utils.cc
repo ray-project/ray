@@ -15,6 +15,7 @@
 #include "ray/util/stream_redirection_utils.h"
 
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <mutex>
 #include <vector>
@@ -42,19 +43,39 @@ absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles;
 // ONCE** at program termination.
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/pipe_logger",
+                                     std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__
+                       << " atexit hook " << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
+
   for (auto &[_, handle] : redirection_file_handles) {
     handle.Close();
   }
 }
 
 // Redirect the given [stream_fd] based on the specified option.
-void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
+int RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   std::call_once(stream_exit_once_flag, []() {
     RAY_CHECK_EQ(std::atexit(SyncOnStreamRedirection), 0)
         << "Fails to register stream redirection termination hook.";
   });
 
   RedirectionFileHandle handle = CreateRedirectionFileHandle(opt);
+
+  {
+    std::ofstream stdout_stderr_name("/home/ubuntu/pipe_logger",
+                                     std::ios::out | std::ios::app);
+    stdout_stderr_name << getpid() << ":" << __FILE__ << ":" << __LINE__ << " register "
+                       << opt.file_path << std::endl;
+    stdout_stderr_name.flush();
+    stdout_stderr_name.close();
+  }
 
 #if defined(__APPLE__) || defined(__linux__)
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
@@ -66,9 +87,13 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
       << "Fails to duplicate file descritor.";
 #endif
 
+  int pipe_writefd = handle.GetWriteHandle();
+
   const bool is_new =
       redirection_file_handles.emplace(stream_fd, std::move(handle)).second;
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
+
+  return pipe_writefd;
 }
 
 void FlushOnRedirectedStream(int stream_fd) {
@@ -86,6 +111,14 @@ void RedirectStdout(const StreamRedirectionOption &opt) {
 void RedirectStderr(const StreamRedirectionOption &opt) {
   RedirectStream(GetStderrFd(), opt);
 }
+
+int RedirectStdoutAndGetFd(const StreamRedirectionOption &opt) {
+  return RedirectStream(GetStdoutFd(), opt);
+}
+int RedirectStderrAndGetFd(const StreamRedirectionOption &opt) {
+  return RedirectStream(GetStderrFd(), opt);
+}
+
 void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutFd()); }
 void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrFd()); }
 

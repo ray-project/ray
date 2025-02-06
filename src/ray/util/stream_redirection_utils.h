@@ -29,6 +29,9 @@ namespace ray {
 void RedirectStdout(const StreamRedirectionOption &opt);
 void RedirectStderr(const StreamRedirectionOption &opt);
 
+int RedirectStdoutAndGetFd(const StreamRedirectionOption &opt);
+int RedirectStderrAndGetFd(const StreamRedirectionOption &opt);
+
 // Flush on redirected stream synchronously.
 //
 // TODO(hjiang): Current implementation is naive, which directly flushes on spdlog logger
