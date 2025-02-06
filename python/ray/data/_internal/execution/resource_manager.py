@@ -13,7 +13,7 @@ from ray.data._internal.execution.interfaces.physical_operator import PhysicalOp
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    estimate_object_store_memory_per_node,
+    update_object_store_usage,
 )
 from ray.data.context import DataContext
 
@@ -175,15 +175,7 @@ class ResourceManager:
                 op
             ] = self._global_usage.object_store_memory
 
-            # Update operator's object store usage, which is used by
-            # DatasetStats and updated on the Ray Data dashboard.
-            op._metrics.obj_store_mem_used = op_usage.object_store_memory
-
-            # Update the per node metrics
-            if op.data_context().enable_per_node_metrics:
-                memory_usage_per_node = estimate_object_store_memory_per_node(op, state)
-                for node_id, usage in memory_usage_per_node.items():
-                    op._metrics._per_node_metrics[node_id].obj_store_mem_used = usage
+            update_object_store_usage(op, op_usage, state)
 
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_usages()
