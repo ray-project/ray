@@ -70,6 +70,7 @@ ray_cc_library(
         ":logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -262,6 +263,7 @@ ray_cc_library(
         ":util",
         "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
 )

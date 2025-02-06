@@ -23,6 +23,7 @@
 #include <string_view>
 #include <thread>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_split.h"
 #include "ray/util/spdlog_fd_sink.h"
 #include "ray/util/thread_utils.h"
@@ -112,8 +113,7 @@ void StartStreamDump(
 // Create a spdlog logger with all sinks specified by the given option.
 std::shared_ptr<spdlog::logger> CreateLogger(
     const StreamRedirectionOption &stream_redirect_opt) {
-  // TODO(hjiang): Could optimize to reduce heap allocation.
-  std::vector<spdlog::sink_ptr> sinks;
+  absl::InlinedVector<spdlog::sink_ptr, 3> sinks;
 
   // Setup file sink.
   spdlog::sink_ptr file_sink = nullptr;
