@@ -55,7 +55,7 @@ from overlapping.
                 branch.with_tensor_transport(
                     transport="nccl", _static_shape=True, _direct_return=True
                 )
-                # Note that before ray version 2.42, use `with_type_hint()` instead.
+                # For a ray version before 2.42, use `with_type_hint()` instead.
                 # branch.with_type_hint(
                 #     TorchTensorType(
                 #         transport="nccl", _static_shape=True, _direct_return=True
