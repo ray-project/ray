@@ -18,4 +18,7 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 
 pip install --no-deps -r python/requirements_compiled_rayllm_test_py311.txt
 
+# FIXME(comaniac): Add constraints.
+pip install "vllm==0.7.1"
+
 EOF
