@@ -180,7 +180,7 @@ class ResourceManager:
             op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
             # Update the per node metrics
-            if DataContext.get_current().enable_per_node_metrics:
+            if op.data_context().enable_per_node_metrics:
                 memory_usage_per_node = estimate_object_store_memory_per_node(op, state)
                 for node_id, usage in memory_usage_per_node.items():
                     op._metrics._per_node_metrics[node_id].obj_store_mem_used = usage

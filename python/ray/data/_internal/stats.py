@@ -17,6 +17,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     MetricsGroup,
     NodeMetrics,
     OpRuntimeMetrics,
+    NODE_UNKNOWN,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
@@ -160,7 +161,7 @@ class _StatsActor:
         # Dataset metadata to be queried directly by DashboardHead api.
         self.datasets: Dict[str, Any] = {}
 
-        # cache of calls to ray.nodes() to prevent unnecessary network calls
+        # Cache of calls to ray.nodes() to prevent unnecessary network calls
         self._ray_nodes_cache: Dict[str, str] = {}
 
         # Ray Data dashboard metrics
@@ -389,11 +390,13 @@ class _StatsActor:
             and per_node_metrics is not None
         ):
             for node_id, node_metrics in per_node_metrics.items():
-                # translate node_id into node_name (the node ip), cache node info
+                # Translate node_id into node_name (the node ip), cache node info
                 if node_id not in self._ray_nodes_cache:
+                    # Rebuilding this cache will fetch all nodes, this
+                    # only needs to be done up to once per loop
                     self._rebuild_ray_nodes_cache()
 
-                node_name = self._ray_nodes_cache.get(node_id, "UNKNOWN")
+                node_name = self._ray_nodes_cache.get(node_id, NODE_UNKNOWN)
 
                 tags = self._create_tags(dataset_tag=dataset_tag, node_tag=node_name)
                 for metric_name, metric_value in node_metrics.items():

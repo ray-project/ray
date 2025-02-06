@@ -166,7 +166,9 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
 )
 
 # Enable per node metrics reporting for Ray Data, disabled by default.
-DEFAULT_ENABLE_PER_NODE_METRICS = False
+DEFAULT_ENABLE_PER_NODE_METRICS = bool(
+    int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
+)
 
 
 def _execution_options_factory() -> "ExecutionOptions":
