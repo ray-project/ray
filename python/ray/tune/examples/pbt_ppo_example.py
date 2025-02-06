@@ -15,7 +15,6 @@ from ray import train, tune
 from ray.rllib.algorithms.ppo import PPO
 from ray.tune.schedulers import PopulationBasedTraining
 
-
 if __name__ == "__main__":
     # Postprocess the perturbed config to ensure it's still valid
     def explore(config):

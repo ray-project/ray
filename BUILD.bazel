@@ -7,14 +7,15 @@
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
+load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -81,11 +82,28 @@ bool_flag(
 
 config_setting(
     name = "jemalloc",
-    constraint_values = [
-        "@platforms//os:linux",
-    ],
-    flag_values = {
-        ":jemalloc_flag": "true",
+    constraint_values = ["@platforms//os:linux"],
+    flag_values = {":jemalloc_flag": "true"},
+)
+
+# bazel run :refresh_compile_commands for compile_commands generation for clangd
+# https://github.com/hedronvision/bazel-compile-commands-extractor?tab=readme-ov-file#vscode - directions for clangd config
+refresh_compile_commands(
+    name = "refresh_compile_commands",
+    exclude_external_sources = True,  # removed below to have lsp index external cc files at the cost of 2x index time
+    # Specify the targets of interest.
+    # For example, specify a dict of targets and any flags required to build.
+    targets = {
+        "//:ray_pkg": "",
+    },
+    # No need to add flags already in .bazelrc. They're automatically picked up.
+)
+
+# bazel run :refresh_compile_commands_external_sources for generation with external source files (cc files)
+refresh_compile_commands(
+    name = "refresh_compile_commands_external_sources",
+    targets = {
+        "//:ray_pkg": "",
     },
 )
 
@@ -96,18 +114,22 @@ ray_cc_library(
     srcs = [
         "src/ray/rpc/common.cc",
         "src/ray/rpc/grpc_server.cc",
+        "src/ray/rpc/retryable_grpc_client.cc",
+        "src/ray/rpc/rpc_chaos.cc",
         "src/ray/rpc/server_call.cc",
     ],
-    hdrs = glob([
+    hdrs = [
+        "src/ray/raylet_client/raylet_client.h",
+        "src/ray/raylet_client/raylet_connection.h",
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
         "src/ray/rpc/grpc_client.h",
         "src/ray/rpc/grpc_server.h",
         "src/ray/rpc/metrics_agent_client.h",
+        "src/ray/rpc/retryable_grpc_client.h",
+        "src/ray/rpc/rpc_chaos.h",
         "src/ray/rpc/server_call.h",
-        "src/ray/rpc/grpc_util.h",
-        "src/ray/raylet_client/*.h",
-    ]),
+    ],
     deps = [
         ":stats_metric",
         "//src/ray/common:asio",
@@ -133,12 +155,12 @@ cc_grpc_library(
 # Node manager server and client.
 ray_cc_library(
     name = "node_manager_rpc",
-    srcs = glob([
-        "src/ray/rpc/node_manager/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/rpc/node_manager/*.h",
-    ]),
+    srcs = ["src/ray/rpc/node_manager/node_manager_client_pool.cc"],
+    hdrs = [
+        "src/ray/rpc/node_manager/node_manager_client.h",
+        "src/ray/rpc/node_manager/node_manager_client_pool.h",
+        "src/ray/rpc/node_manager/node_manager_server.h",
+    ],
     deps = [
         ":grpc_common_lib",
         ":node_manager_cc_grpc",
@@ -194,9 +216,10 @@ cc_grpc_library(
 # Object manager rpc server and client.
 ray_cc_library(
     name = "object_manager_rpc",
-    hdrs = glob([
-        "src/ray/rpc/object_manager/*.h",
-    ]),
+    hdrs = [
+        "src/ray/rpc/object_manager/object_manager_client.h",
+        "src/ray/rpc/object_manager/object_manager_server.h",
+    ],
     deps = [
         ":grpc_common_lib",
         ":object_manager_cc_grpc",
@@ -217,12 +240,14 @@ cc_grpc_library(
 # worker server and client.
 ray_cc_library(
     name = "worker_rpc",
-    srcs = glob([
-        "src/ray/rpc/worker/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/rpc/worker/*.h",
-    ]),
+    srcs = [
+        "src/ray/rpc/worker/core_worker_client_pool.cc",
+    ],
+    hdrs = [
+        "src/ray/rpc/worker/core_worker_client.h",
+        "src/ray/rpc/worker/core_worker_client_pool.h",
+        "src/ray/rpc/worker/core_worker_server.h",
+    ],
     deps = [
         ":grpc_common_lib",
         ":pubsub_lib",
@@ -245,9 +270,9 @@ cc_grpc_library(
 # Metrics Agent client.
 ray_cc_library(
     name = "reporter_rpc",
-    hdrs = glob([
+    hdrs = [
         "src/ray/rpc/metrics_agent_client.h",
-    ]),
+    ],
     deps = [
         ":grpc_common_lib",
         ":reporter_cc_grpc",
@@ -303,7 +328,7 @@ ray_cc_library(
 PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
 
 PLASMA_COPTS = COPTS + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
     ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
     "//conditions:default": [
         "-DARROW_USE_GLOG",
@@ -311,7 +336,7 @@ PLASMA_COPTS = COPTS + select({
 })
 
 PLASMA_LINKOPTS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "-DefaultLib:" + "ws2_32.lib",
     ],
     "//conditions:default": [
@@ -329,7 +354,7 @@ ray_cc_library(
         "src/ray/object_manager/plasma/protocol.cc",
         "src/ray/object_manager/plasma/shared_memory.cc",
     ] + select({
-        "@bazel_tools//src/conditions:windows": [
+        "@platforms//os:windows": [
         ],
         "//conditions:default": [
             "src/ray/object_manager/plasma/fling.cc",
@@ -339,7 +364,6 @@ ray_cc_library(
         "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
-        "src/ray/object_manager/plasma/compat.h",
         "src/ray/object_manager/plasma/connection.h",
         "src/ray/object_manager/plasma/malloc.h",
         "src/ray/object_manager/plasma/plasma.h",
@@ -347,7 +371,7 @@ ray_cc_library(
         "src/ray/object_manager/plasma/protocol.h",
         "src/ray/object_manager/plasma/shared_memory.h",
     ] + select({
-        "@bazel_tools//src/conditions:windows": [
+        "@platforms//os:windows": [
         ],
         "//conditions:default": [
             "src/ray/object_manager/plasma/fling.h",
@@ -355,7 +379,7 @@ ray_cc_library(
     }),
     copts = PLASMA_COPTS,
     defines = select({
-        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
+        "@platforms//os:windows": PROPAGATED_WINDOWS_DEFINES,
         "//conditions:default": [],
     }),
     linkopts = PLASMA_LINKOPTS,
@@ -364,6 +388,8 @@ ray_cc_library(
         ":ray_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:compat",
+        "//src/ray/util:counter_map",
         "@msgpack",
     ],
 )
@@ -400,8 +426,8 @@ ray_cc_library(
     linkopts = PLASMA_LINKOPTS,
     deps = [
         ":plasma_client",
-        "//src/ray/common:network",
         ":stats_lib",
+        "//src/ray/common:network",
     ],
 )
 
@@ -449,6 +475,7 @@ ray_cc_library(
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_syncer",
         "//src/ray/common:status",
+        "//src/ray/common:status_or",
         "//src/ray/common:task_common",
         "//src/ray/common:test_util",
         "//src/ray/protobuf:gcs_cc_proto",
@@ -463,6 +490,7 @@ ray_cc_binary(
     deps = [
         ":raylet_lib",
         "//src/ray/util",
+        "//src/ray/util:cmd_line_utils",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -486,20 +514,54 @@ ray_cc_library(
 
 ray_cc_library(
     name = "gcs_server_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_server/*.cc",
-        ],
-        exclude = [
-            "src/ray/gcs/gcs_server/gcs_server_main.cc",
-            "src/ray/gcs/gcs_server/test/*.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_server/*.h",
-        ],
-    ),
+    srcs = [
+        "src/ray/gcs/gcs_server/gcs_actor_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_actor_scheduler.cc",
+        "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_health_check_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_init_data.cc",
+        "src/ray/gcs/gcs_server/gcs_job_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_kv_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_node_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_placement_group_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.cc",
+        "src/ray/gcs/gcs_server/gcs_redis_failure_detector.cc",
+        "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_server.cc",
+        "src/ray/gcs/gcs_server/gcs_table_storage.cc",
+        "src/ray/gcs/gcs_server/gcs_task_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_worker_manager.cc",
+        "src/ray/gcs/gcs_server/pubsub_handler.cc",
+        "src/ray/gcs/gcs_server/runtime_env_handler.cc",
+        "src/ray/gcs/gcs_server/state_util.cc",
+        "src/ray/gcs/gcs_server/store_client_kv.cc",
+        "src/ray/gcs/gcs_server/usage_stats_client.cc",
+    ],
+    hdrs =[
+        "src/ray/gcs/gcs_server/gcs_actor_manager.h",
+        "src/ray/gcs/gcs_server/gcs_actor_scheduler.h",
+        "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h",
+        "src/ray/gcs/gcs_server/gcs_function_manager.h",
+        "src/ray/gcs/gcs_server/gcs_health_check_manager.h",
+        "src/ray/gcs/gcs_server/gcs_init_data.h",
+        "src/ray/gcs/gcs_server/gcs_job_manager.h",
+        "src/ray/gcs/gcs_server/gcs_kv_manager.h",
+        "src/ray/gcs/gcs_server/gcs_node_manager.h",
+        "src/ray/gcs/gcs_server/gcs_placement_group_manager.h",
+        "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.h",
+        "src/ray/gcs/gcs_server/gcs_redis_failure_detector.h",
+        "src/ray/gcs/gcs_server/gcs_resource_manager.h",
+        "src/ray/gcs/gcs_server/gcs_server.h",
+        "src/ray/gcs/gcs_server/gcs_server_io_context_policy.h",
+        "src/ray/gcs/gcs_server/gcs_table_storage.h",
+        "src/ray/gcs/gcs_server/gcs_task_manager.h",
+        "src/ray/gcs/gcs_server/gcs_worker_manager.h",
+        "src/ray/gcs/gcs_server/pubsub_handler.h",
+        "src/ray/gcs/gcs_server/runtime_env_handler.h",
+        "src/ray/gcs/gcs_server/state_util.h",
+        "src/ray/gcs/gcs_server/store_client_kv.h",
+        "src/ray/gcs/gcs_server/usage_stats_client.h",
+    ],
     deps = [
         ":autoscaler_rpc",
         ":gcs",
@@ -514,6 +576,10 @@ ray_cc_library(
         ":scheduler",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:thread_checker",
+        "//src/ray/util:throttler",
+        "//src/ray/util:type_traits",
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
@@ -536,12 +602,14 @@ ray_cc_binary(
 # Ray native pubsub module.
 ray_cc_library(
     name = "pubsub_lib",
-    srcs = glob([
-        "src/ray/pubsub/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/pubsub/*.h",
-    ]),
+    srcs = [
+        "src/ray/pubsub/publisher.cc",
+        "src/ray/pubsub/subscriber.cc",
+    ],
+    hdrs = [
+        "src/ray/pubsub/publisher.h",
+        "src/ray/pubsub/subscriber.h",
+    ],
     deps = [
         ":pubsub_rpc",
         "@boost//:any",
@@ -565,6 +633,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:size_literals",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -590,7 +659,7 @@ ray_cc_library(
         "src/ray/stats/tag_defs.h",
     ],
     linkopts = select({
-        "@bazel_tools//src/conditions:windows": [
+        "@platforms//os:windows": [
         ],
         "//conditions:default": [
             "-lpthread",
@@ -599,6 +668,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
@@ -615,13 +685,12 @@ ray_cc_library(
     ),
     hdrs = glob(
         [
-            "src/ray/raylet/raylet_util.h",
             "src/ray/raylet/scheduling/**/*.h",
             "src/ray/core_worker/common.h",
         ],
     ),
     linkopts = select({
-        "@bazel_tools//src/conditions:windows": [
+        "@platforms//os:windows": [
         ],
         "//conditions:default": [
             "-lpthread",
@@ -651,27 +720,41 @@ ray_cc_library(
 
 ray_cc_library(
     name = "raylet_lib",
-    srcs = glob(
-        [
-            "src/ray/raylet/**/*.cc",
-        ],
-        exclude = [
-            "src/ray/raylet/**/*_test.cc",
-            "src/ray/raylet/scheduling/**/*.cc",
-            "src/ray/raylet/main.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/raylet/**/*.h",
-        ],
-        exclude = [
-            "src/ray/raylet/scheduling/**/*.h",
-            "src/ray/raylet/main.cc",
-        ],
-    ),
+    srcs = [
+        "src/ray/raylet/agent_manager.cc",
+        "src/ray/raylet/dependency_manager.cc",
+        "src/ray/raylet/local_object_manager.cc",
+        "src/ray/raylet/local_task_manager.cc",
+        "src/ray/raylet/node_manager.cc",
+        "src/ray/raylet/placement_group_resource_manager.cc",
+        "src/ray/raylet/raylet.cc",
+        "src/ray/raylet/runtime_env_agent_client.cc",
+        "src/ray/raylet/wait_manager.cc",
+        "src/ray/raylet/worker.cc",
+        "src/ray/raylet/worker_killing_policy.cc",
+        "src/ray/raylet/worker_killing_policy_group_by_owner.cc",
+        "src/ray/raylet/worker_killing_policy_retriable_fifo.cc",
+        "src/ray/raylet/worker_pool.cc",
+    ],
+    hdrs = [
+        "src/ray/raylet/agent_manager.h",
+        "src/ray/raylet/dependency_manager.h",
+        "src/ray/raylet/local_object_manager.h",
+        "src/ray/raylet/local_task_manager.h",
+        "src/ray/raylet/node_manager.h",
+        "src/ray/raylet/placement_group_resource_manager.h",
+        "src/ray/raylet/raylet.h",
+        "src/ray/raylet/runtime_env_agent_client.h",
+        "src/ray/raylet/test/util.h",
+        "src/ray/raylet/wait_manager.h",
+        "src/ray/raylet/worker.h",
+        "src/ray/raylet/worker_killing_policy.h",
+        "src/ray/raylet/worker_killing_policy_group_by_owner.h",
+        "src/ray/raylet/worker_killing_policy_retriable_fifo.h",
+        "src/ray/raylet/worker_pool.h",
+    ],
     linkopts = select({
-        "@bazel_tools//src/conditions:windows": [
+        "@platforms//os:windows": [
         ],
         "//conditions:default": [
             "-lpthread",
@@ -693,6 +776,9 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:container_util",
+        "//src/ray/util:throttler",
         "@boost//:asio",
         "@boost//:beast",
         "@boost//:system",
@@ -717,7 +803,7 @@ ray_cc_library(
         "src/ray/raylet_client/*.h",
     ]),
     linkopts = select({
-        "@bazel_tools//src/conditions:windows": [
+        "@platforms//os:windows": [
         ],
         "//conditions:default": [
             "-lpthread",
@@ -762,14 +848,37 @@ ray_cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:container_util",
+        "//src/ray/util:shared_lru",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
         "@nlohmann_json",
     ],
+)
+
+# This header is used to wrap some internal codes so we can reduce suspicious
+# symbols export.
+ray_cc_library(
+    name = "exported_internal",
+    srcs =
+        [
+            "src/ray/internal/internal.cc",
+        ],
+    hdrs =
+        [
+            "src/ray/internal/internal.h",
+        ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":core_worker_lib",
+    ],
+    alwayslink = 1,
 )
 
 ray_cc_test(
@@ -790,6 +899,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -840,21 +950,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "direct_task_transport_test",
+    name = "normal_task_submitter_test",
     size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":core_worker_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "direct_task_transport_mock_test",
-    size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_mock_test.cc"],
+    srcs = ["src/ray/core_worker/test/normal_task_submitter_test.cc"],
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
@@ -953,6 +1051,21 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "task_event_buffer_export_event_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/task_event_buffer_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "actor_creator_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/actor_creator_test.cc"],
@@ -987,6 +1100,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1210,15 +1324,43 @@ ray_cc_test(
     srcs = [
         "src/ray/object_manager/plasma/test/mutable_object_test.cc",
     ],
-    tags = ["team:core", "no_windows"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
     deps = [
+        ":core_worker_lib",
         ":plasma_store_server_lib",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
-    target_compatible_with = [
-        "@platforms//os:linux",
+)
+
+ray_cc_test(
+    name = "mutable_object_provider_test",
+    srcs = [
+        "src/ray/core_worker/test/mutable_object_provider_test.cc",
+    ],
+    tags = [
+        "no_tsan",
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = select({
+        "@platforms//os:osx": [],
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":core_worker_lib",
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1281,7 +1423,10 @@ ray_cc_test(
     name = "worker_pool_test",
     size = "small",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -1337,6 +1482,18 @@ ray_cc_test(
     srcs = ["src/ray/raylet/dependency_manager_test.cc"],
     tags = ["team:core"],
     deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "local_task_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/local_task_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1439,9 +1596,9 @@ ray_cc_test(
     size = "small",
     srcs = ["src/ray/stats/stats_test.cc"],
     tags = [
+        "no_tsan",
         "stats",
         "team:core",
-        "no_tsan",
     ],
     deps = [
         ":stats_lib",
@@ -1490,6 +1647,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "rpc_chaos_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/test/rpc_chaos_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":grpc_common_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "core_worker_client_pool_test",
     size = "small",
     srcs = [
@@ -1516,11 +1686,15 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "no_windows", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "no_windows",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1542,7 +1716,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1562,7 +1736,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_health_check_manager_test.cc",
     ],
-    tags = ["team:core", "no_windows"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
@@ -1623,7 +1800,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1639,7 +1819,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1686,7 +1869,10 @@ ray_cc_test(
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -1764,7 +1950,7 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         ":gcs_test_util_lib",
         ":store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1815,17 +2001,31 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "usage_stats_client_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/usage_stats_client_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 ray_cc_library(
     name = "gcs_client_lib",
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
-        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
-        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     deps = [
         ":gcs",
@@ -1834,22 +2034,16 @@ ray_cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
+        "//src/ray/util:container_util",
+        "//src/ray/util:sequencer",
         "//src/ray/protobuf:usage_cc_proto",
     ],
 )
 
 ray_cc_library(
     name = "global_state_accessor_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_client/global_state_accessor.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_client/global_state_accessor.h",
-        ],
-    ),
+    srcs = ["src/ray/gcs/gcs_client/global_state_accessor.cc"],
+    hdrs = ["src/ray/gcs/gcs_client/global_state_accessor.h"],
     deps = [
         ":gcs_client_lib",
     ],
@@ -1907,7 +2101,11 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "no_tsan"],
+    tags = [
+        "exclusive",
+        "no_tsan",
+        "team:core",
+    ],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -1929,21 +2127,10 @@ ray_cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["team:core", "no_windows"],
-    deps = [
-        ":gcs_client_lib",
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+    tags = [
+        "no_windows",
+        "team:core",
     ],
-)
-
-ray_cc_test(
-    name = "usage_stats_client_test",
-    srcs = [
-        "src/ray/gcs/gcs_client/test/usage_stats_client_test.cc",
-    ],
-    tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -1954,14 +2141,30 @@ ray_cc_test(
 
 ray_cc_library(
     name = "object_manager",
-    srcs = glob([
-        "src/ray/object_manager/*.cc",
-        "src/ray/object_manager/notification/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/object_manager/*.h",
-        "src/ray/object_manager/notification/*.h",
-    ]),
+    srcs = [
+        "src/ray/object_manager/chunk_object_reader.cc",
+        "src/ray/object_manager/common.cc",
+        "src/ray/object_manager/memory_object_reader.cc",
+        "src/ray/object_manager/object_buffer_pool.cc",
+        "src/ray/object_manager/object_manager.cc",
+        "src/ray/object_manager/ownership_based_object_directory.cc",
+        "src/ray/object_manager/pull_manager.cc",
+        "src/ray/object_manager/push_manager.cc",
+        "src/ray/object_manager/spilled_object_reader.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/chunk_object_reader.h",
+        "src/ray/object_manager/common.h",
+        "src/ray/object_manager/memory_object_reader.h",
+        "src/ray/object_manager/object_buffer_pool.h",
+        "src/ray/object_manager/object_directory.h",
+        "src/ray/object_manager/object_manager.h",
+        "src/ray/object_manager/object_reader.h",
+        "src/ray/object_manager/ownership_based_object_directory.h",
+        "src/ray/object_manager/pull_manager.h",
+        "src/ray/object_manager/push_manager.h",
+        "src/ray/object_manager/spilled_object_reader.h",
+    ],
     deps = [
         ":core_worker_lib",
         ":gcs",
@@ -1976,7 +2179,7 @@ ray_cc_library(
 ray_cc_library(
     name = "platform_shims",
     srcs = [] + select({
-        "@bazel_tools//src/conditions:windows": glob([
+        "@platforms//os:windows": glob([
             "src/shims/windows/**/*.c",
             "src/shims/windows/**/*.cc",
             "src/shims/windows/**/*.h",
@@ -1984,13 +2187,13 @@ ray_cc_library(
         "//conditions:default": [],
     }),
     hdrs = [] + select({
-        "@bazel_tools//src/conditions:windows": glob([
+        "@platforms//os:windows": glob([
             "src/shims/windows/**/*.h",
         ]),
         "//conditions:default": [],
     }),
     strip_include_prefix = select({
-        "@bazel_tools//src/conditions:windows": "src/shims/windows",
+        "@platforms//os:windows": "src/shims/windows",
         "//conditions:default": "",
     }),
 )
@@ -2064,13 +2267,11 @@ alias(
 ray_cc_library(
     name = "redis_client",
     srcs = [
-        "src/ray/gcs/asio.cc",
         "src/ray/gcs/redis_async_context.cc",
         "src/ray/gcs/redis_client.cc",
         "src/ray/gcs/redis_context.cc",
     ],
     hdrs = [
-        "src/ray/gcs/asio.h",
         "src/ray/gcs/redis_async_context.h",
         "src/ray/gcs/redis_client.h",
         "src/ray/gcs/redis_context.h",
@@ -2080,6 +2281,7 @@ ray_cc_library(
         ":ray_common",
         ":stats_lib",
         "//src/ray/util",
+        "//src/ray/util:exponential_backoff",
         "@boost//:asio",
     ],
 )
@@ -2095,7 +2297,8 @@ ray_cc_library(
         "src/ray/gcs/store_client/store_client.h",
     ],
     deps = [
-        "redis_client",
+        ":redis_client",
+        "//src/ray/util:container_util",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
@@ -2114,6 +2317,7 @@ ray_cc_library(
     deps = [
         ":ray_common",
         "//src/ray/util",
+        "@com_google_absl//absl/container:node_hash_map",
     ],
 )
 
@@ -2159,6 +2363,7 @@ ray_cc_test(
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",
+        "@boost//:optional",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2176,13 +2381,17 @@ ray_cc_test(
         "//:redis-server",
     ],
     env = {"REDIS_CHAOS": "1"},
-    tags = ["team:core", "no_windows"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
     target_compatible_with = [
         "@platforms//os:linux",
     ],
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",
+        "@boost//:optional",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2235,6 +2444,7 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:exponential_backoff",
         "@boost//:asio",
     ],
 )
@@ -2251,9 +2461,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "asio_test",
+    name = "redis_async_context_test",
     size = "small",
-    srcs = ["src/ray/gcs/test/asio_test.cc"],
+    srcs = ["src/ray/gcs/test/redis_async_context_test.cc"],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
@@ -2270,11 +2480,69 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "gcs_job_manager_export_event_test",
+    size = "small",
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_job_manager_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_actor_manager_export_event_test",
+    size = "small",
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_actor_manager_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_node_manager_export_event_test",
+    size = "small",
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_node_manager_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "ray/raylet/format/",
+)
+
+ray_cc_library(
+    name = "python_callbacks",
+    hdrs = [
+        "src/ray/gcs/gcs_client/python_callbacks.h",
+    ],
 )
 
 pyx_library(
@@ -2294,11 +2562,10 @@ pyx_library(
         copts = COPTS + PYX_COPTS,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         linkopts = select({
-            "@bazel_tools//src/conditions:darwin": [
+            "@platforms//os:osx": [
                 "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
             ],
-            "@bazel_tools//src/conditions:windows": [
-            ],
+            "@platforms//os:windows": [],
             "//conditions:default": [
                 "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
             ],
@@ -2306,7 +2573,9 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
+        ":python_callbacks",
         "//:core_worker_lib",
+        "//:exported_internal",
         "//:gcs_server_lib",
         "//:global_state_accessor_lib",
         "//:raylet_lib",
@@ -2316,6 +2585,7 @@ pyx_library(
         "//:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
+        "//src/ray/util:memory",
     ],
 )
 
@@ -2327,11 +2597,10 @@ ray_cc_binary(
     ]),
     # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
     linkopts = select({
-        "@bazel_tools//src/conditions:darwin": [
+        "@platforms//os:osx": [
             "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
         ],
-        "@bazel_tools//src/conditions:windows": [
-        ],
+        "@platforms//os:windows": [],
         "//conditions:default": [
             "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
         ],
@@ -2341,6 +2610,7 @@ ray_cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
+        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
@@ -2377,7 +2647,7 @@ filegroup(
 alias(
     name = "redis-server",
     actual = select({
-        "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
+        "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-server.exe",
         "//conditions:default": "@com_github_antirez_redis//:redis-server",
     }),
 )
@@ -2385,7 +2655,7 @@ alias(
 alias(
     name = "redis-cli",
     actual = select({
-        "@bazel_tools//src/conditions:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
+        "@platforms//os:windows": "@com_github_tporadowski_redis_bin//:redis-cli.exe",
         "//conditions:default": "@com_github_antirez_redis//:redis-cli",
     }),
 )
@@ -2398,10 +2668,10 @@ filegroup(
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:event_py_proto",
+        "//src/ray/protobuf:export_event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
-        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
@@ -2501,6 +2771,9 @@ genrule(
         # of experimental.
         autoscale_files=(`ls python/ray/core/generated/instance_manager_pb2*.py`)
         sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
+        # Help the generated export api files to have the correct module
+        export_api_files=(`ls python/ray/core/generated/export*_pb2*.py`)
+        sed -i -E 's/from ..export_api/from ./' "$${export_api_files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,

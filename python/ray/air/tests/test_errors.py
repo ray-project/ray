@@ -29,13 +29,12 @@ from ray._private.test_utils import wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster
 from ray.core.generated import autoscaler_pb2
+from ray.tests.conftest import *  # noqa
 from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.trainer import BaseTrainer, TrainingFailedError
-from ray.tune import Tuner, TuneConfig, TuneError
-
-from ray.tests.conftest import *  # noqa
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.train.trainer import BaseTrainer, TrainingFailedError
+from ray.tune import TuneConfig, TuneError, Tuner
 
 
 @pytest.fixture

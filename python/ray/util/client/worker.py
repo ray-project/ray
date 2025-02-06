@@ -672,7 +672,7 @@ class Worker:
         task.data = dumps_from_client(([], {}), self._client_id)
         futures = self._call_schedule_for_task(task, 1)
         assert len(futures) == 1
-        handle = ClientActorHandle(ClientActorRef(futures[0]))
+        handle = ClientActorHandle(ClientActorRef(futures[0], weak_ref=True))
         # `actor_ref.is_nil()` waits until the underlying ID is resolved.
         # This is needed because `get_actor` is often used to check the
         # existence of an actor.
@@ -724,7 +724,7 @@ class Worker:
         resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
-            output_dict = {k: v for k, v in resp.resource_table.table.items()}
+            output_dict = dict(resp.resource_table.table)
             return output_dict
         elif resp.WhichOneof("response_type") == "runtime_context":
             return resp.runtime_context

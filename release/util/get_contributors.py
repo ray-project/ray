@@ -4,6 +4,17 @@ import shlex
 from tqdm import tqdm
 import click
 from collections import defaultdict
+import sys
+
+
+def _find_pr_number(line: str) -> str:
+    start = line.find("(#")
+    if start < 0:
+        return ""
+    end = line.find(")", start + 2)
+    if end < 0:
+        return ""
+    return line[start + 2 : end]
 
 
 @click.command()
@@ -28,13 +39,18 @@ Create them at https://github.com/settings/tokens/new
 )
 def run(access_token, prev_release_commit, curr_release_commit):
     print("Writing commit descriptions to 'commits.txt'...")
-    check_output(
-        (
-            f"git log {prev_release_commit}..{curr_release_commit} "
-            f"--pretty=format:'%s' > commits.txt"
-        ),
-        shell=True,
-    )
+    commits = check_output(
+        [
+            "git",
+            "log",
+            f"{prev_release_commit}..{curr_release_commit}",
+            "--pretty=format:'%s'",
+        ],
+        stderr=sys.stderr,
+    ).decode()
+    with open("commits.txt", "w") as file:
+        file.write(commits)
+
     # Generate command
     cmd = []
     cmd.append(
@@ -49,8 +65,14 @@ def run(access_token, prev_release_commit, curr_release_commit):
     cmd = shlex.split(cmd)
     print("Executing", cmd)
 
+    lines = commits.split("\n")
+    pr_numbers = []
+    for line in lines:
+        pr_number = _find_pr_number(line)
+        if pr_number:
+            pr_numbers.append(int(pr_number))
+
     # Sort the PR numbers
-    pr_numbers = [int(line.lstrip("#")) for line in check_output(cmd).decode().split()]
     print("PR numbers", pr_numbers)
 
     # Use Github API to fetch the

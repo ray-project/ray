@@ -50,7 +50,7 @@
                 "description": "The size of the VM"
             }
         },
-        "vmTags": { 
+        "vmTags": {
             "type": "object",
             "metadata": {
                 "description": "Tags for the VM"
@@ -76,6 +76,13 @@
                 "description": "Specifies the priority for the virtual machine."
             }
         },
+        "evictionPolicy": {
+            "type": "string",
+            "defaultValue": "Delete",
+            "metadata": {
+                "description": "Specifies the eviction policy for the virtual machine."
+            }
+        },
         "billingProfile": {
             "type": "object",
             "defaultValue": {},
@@ -99,6 +106,13 @@
             "type": "string",
             "metadata": {
                 "descriptions": "Subnet resource id."
+            }
+        },
+        "enableAcceleratedNetworking": {
+            "type": "bool",
+            "defaultValue": false,
+            "metadata": {
+                "descriptions": "Whether to enable accelerated networking."
             }
         }
     },
@@ -141,7 +155,8 @@
                 ],
                 "networkSecurityGroup": {
                     "id": "[parameters('nsg')]"
-                }
+                },
+                "enableAcceleratedNetworking": "[parameters('enableAcceleratedNetworking')]"
             },
             "condition": "[parameters('provisionPublicIp')]"
         },
@@ -168,7 +183,8 @@
                 ],
                 "networkSecurityGroup": {
                     "id": "[parameters('nsg')]"
-                }
+                },
+                "enableAcceleratedNetworking": "[parameters('enableAcceleratedNetworking')]"
             },
             "condition": "[not(parameters('provisionPublicIp'))]"
         },
@@ -246,6 +262,7 @@
                     }
                 },
                 "priority": "[parameters('priority')]",
+                "evictionPolicy": "[if(equals(parameters('priority'), 'Spot'), parameters('evictionPolicy'), '')]",
                 "billingProfile": "[parameters('billingProfile')]"
             },
             "identity": {

@@ -1,14 +1,17 @@
 import csv
-from dataclasses import dataclass
 import glob
 import json
 import os
-import unittest
+import shutil
+import sys
 import tempfile
+import unittest
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-import shutil
+
 import numpy as np
+import pytest
 
 import ray
 from ray.air.constants import (
@@ -20,12 +23,12 @@ from ray.air.constants import (
 from ray.cloudpickle import cloudpickle
 from ray.train import Checkpoint
 from ray.tune.logger import (
-    CSVLoggerCallback,
-    JsonLoggerCallback,
-    JsonLogger,
     CSVLogger,
-    TBXLoggerCallback,
+    CSVLoggerCallback,
+    JsonLogger,
+    JsonLoggerCallback,
     TBXLogger,
+    TBXLoggerCallback,
 )
 from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.utils import flatten_dict
@@ -294,6 +297,7 @@ class LoggerSuite(unittest.TestCase):
         assert "INFO" in cm.output[0]
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="Aim doesn't support py312")
 class AimLoggerSuite(unittest.TestCase):
     """Test Aim integration."""
 
@@ -427,7 +431,8 @@ class AimLoggerSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

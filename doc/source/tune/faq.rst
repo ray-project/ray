@@ -450,7 +450,7 @@ your class trainable or to ``session.report()`` in your function trainable. The 
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
-to do that depending on whether you are using class or functional Trainable API. 
+to do that depending on whether you are using class or functional Trainable API.
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
@@ -570,17 +570,7 @@ be automatically fetched and passed to your trainable as a parameter.
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If an upload directory is provided, Tune will automatically sync results from the ``RAY_AIR_LOCAL_CACHE_DIR`` to the given directory,
-natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
-`fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
-
-Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __log_1_start__
-    :end-before: __log_1_end__
+See :ref:`tune-cloud-checkpointing`.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
@@ -644,7 +634,7 @@ You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment var
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_.get_trial_dir>`
+:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py

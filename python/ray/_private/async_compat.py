@@ -4,6 +4,7 @@ It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
 import inspect
+from functools import lru_cache
 
 try:
     import uvloop
@@ -27,13 +28,20 @@ def try_install_uvloop():
         pass
 
 
-def is_async_func(func):
+def is_async_func(func) -> bool:
     """Return True if the function is an async or async generator method."""
     return inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func)
 
 
+@lru_cache(maxsize=2**10)
+def has_async_methods(cls: object) -> bool:
+    """Return True if the class has any async methods."""
+    return len(inspect.getmembers(cls, predicate=is_async_func)) > 0
+
+
+@lru_cache(maxsize=2**10)
 def sync_to_async(func):
-    """Convert a blocking function to async function"""
+    """Wrap a blocking function in an async function"""
 
     if is_async_func(func):
         return func

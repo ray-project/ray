@@ -367,6 +367,11 @@ Deployment log file:
 (ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
 ```
 
+:::{note}
+The request ID is used to associate logs across the system. Avoid sending
+duplicate request IDs, which may lead to confusion when debugging.
+:::
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 
@@ -548,6 +553,8 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * route
        * application
+       * handle
+       * actor_id
      - The number of requests processed by the router.
    * - ``ray_serve_num_scheduling_tasks`` [*][†]
      - * deployment
@@ -565,8 +572,16 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by this DeploymentHandle.
    * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
-       * route
-     - The number of queries for this deployment waiting to be assigned to a replica.
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that have been submitted to a replica.
+   * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
+     - * deployment
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that's been assigned and sent to execute on a replica.
    * - ``ray_serve_num_deployment_http_error_requests_total`` [*]
      - * deployment
        * error_code

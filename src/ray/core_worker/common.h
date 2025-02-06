@@ -67,14 +67,16 @@ struct TaskOptions {
               const std::string &concurrency_group_name = "",
               int64_t generator_backpressure_num_objects = -1,
               const std::string &serialized_runtime_env_info = "{}",
-              bool enable_task_events = kDefaultTaskEventEnabled)
+              bool enable_task_events = kDefaultTaskEventEnabled,
+              const std::unordered_map<std::string, std::string> &labels = {})
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env_info(serialized_runtime_env_info),
         generator_backpressure_num_objects(generator_backpressure_num_objects),
-        enable_task_events(enable_task_events) {}
+        enable_task_events(enable_task_events),
+        labels(labels) {}
 
   /// The name of this task.
   std::string name;
@@ -95,6 +97,7 @@ struct TaskOptions {
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;
+  std::unordered_map<std::string, std::string> labels;
 };
 
 /// Options for actor creation tasks.
@@ -115,7 +118,8 @@ struct ActorCreationOptions {
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false,
                        int32_t max_pending_calls = -1,
-                       bool enable_task_events = kDefaultTaskEventEnabled)
+                       bool enable_task_events = kDefaultTaskEventEnabled,
+                       const std::unordered_map<std::string, std::string> &labels = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -132,7 +136,8 @@ struct ActorCreationOptions {
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
         scheduling_strategy(scheduling_strategy),
-        enable_task_events(enable_task_events) {
+        enable_task_events(enable_task_events),
+        labels(labels) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -187,6 +192,7 @@ struct ActorCreationOptions {
   /// True if task events (worker::TaskEvent) from this creation task should be reported
   /// default to true.
   const bool enable_task_events = kDefaultTaskEventEnabled;
+  const std::unordered_map<std::string, std::string> labels;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
@@ -230,7 +236,7 @@ struct PlacementGroupCreationOptions {
 class ObjectLocation {
  public:
   ObjectLocation(NodeID primary_node_id,
-                 uint64_t object_size,
+                 int64_t object_size,
                  std::vector<NodeID> node_ids,
                  bool is_spilled,
                  std::string spilled_url,
@@ -246,7 +252,7 @@ class ObjectLocation {
 
   const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
 
-  const uint64_t GetObjectSize() const { return object_size_; }
+  const int64_t GetObjectSize() const { return object_size_; }
 
   const std::vector<NodeID> &GetNodeIDs() const { return node_ids_; }
 
@@ -262,8 +268,8 @@ class ObjectLocation {
   /// The ID of the node has the primary copy of the object.
   /// Nil if the object is pending resolution.
   const NodeID primary_node_id_;
-  /// The size of the object in bytes.
-  const uint64_t object_size_;
+  /// The size of the object in bytes. -1 if unknown.
+  const int64_t object_size_;
   /// The IDs of the nodes that this object appeared on or was evicted by.
   const std::vector<NodeID> node_ids_;
   /// Whether this object has been spilled.
@@ -278,4 +284,28 @@ class ObjectLocation {
 };
 
 }  // namespace core
+}  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::rpc::LineageReconstructionTask> {
+  size_t operator()(const ray::rpc::LineageReconstructionTask &task) const {
+    size_t hash = std::hash<std::string>()(task.name());
+    hash ^= std::hash<ray::rpc::TaskStatus>()(task.status());
+    for (const auto &label : task.labels()) {
+      hash ^= std::hash<std::string>()(label.first);
+      hash ^= std::hash<std::string>()(label.second);
+    }
+    return hash;
+  }
+};
+}  // namespace std
+
+namespace ray {
+namespace rpc {
+inline bool operator==(const ray::rpc::LineageReconstructionTask &lhs,
+                       const ray::rpc::LineageReconstructionTask &rhs) {
+  return google::protobuf::util::MessageDifferencer::Equivalent(lhs, rhs);
+}
+}  // namespace rpc
 }  // namespace ray

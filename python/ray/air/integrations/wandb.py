@@ -3,36 +3,35 @@ import os
 import pickle
 import urllib
 import warnings
-
-import numpy as np
 from numbers import Number
-
-import pyarrow.fs
-
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import numpy as np
+import pyarrow.fs
+
 import ray
 from ray import logger
-from ray.air import session
+from ray._private.storage import _load_class
 from ray.air._internal import usage as air_usage
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
-
+from ray.train._internal.session import get_session
+from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
+from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
-from ray.tune.experiment import Trial
-from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
-
-from ray._private.storage import _load_class
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
 try:
     import wandb
+    from wandb.sdk.data_types.base_types.wb_value import WBValue
+    from wandb.sdk.data_types.image import Image
+    from wandb.sdk.data_types.video import Video
+    from wandb.sdk.lib.disabled import RunDisabled
     from wandb.util import json_dumps_safer
     from wandb.wandb_run import Run
-    from wandb.sdk.lib.disabled import RunDisabled
-    from wandb.sdk.data_types.base_types.wb_value import WBValue
 except ImportError:
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 
@@ -105,7 +104,7 @@ def setup_wandb(
 
     Example:
 
-        .. code-block: python
+        .. code-block:: python
 
             from ray.air.integrations.wandb import setup_wandb
 
@@ -120,20 +119,19 @@ def setup_wandb(
             "Wandb was not found - please install with `pip install wandb`"
         )
 
-    try:
-        # Do a try-catch here if we are not in a train session
-        _session = session._get_session(warn=False)
-        if _session and rank_zero_only and session.get_world_rank() != 0:
-            return RunDisabled()
+    default_trial_id = None
+    default_trial_name = None
+    default_experiment_name = None
 
-        default_trial_id = session.get_trial_id()
-        default_trial_name = session.get_trial_name()
-        default_experiment_name = session.get_experiment_name()
+    # Do a try-catch here if we are not in a train session
+    session = get_session()
+    if session and rank_zero_only and session.world_rank in (None, 0):
+        return RunDisabled()
 
-    except RuntimeError:
-        default_trial_id = None
-        default_trial_name = None
-        default_experiment_name = None
+    if session:
+        default_trial_id = session.trial_id
+        default_trial_name = session.trial_name
+        default_experiment_name = session.experiment_name
 
     # Default init kwargs
     wandb_init_kwargs = {
@@ -168,7 +166,7 @@ def _setup_wandb(
     project = _get_wandb_project(kwargs.pop("project", None))
     group = kwargs.pop("group", os.environ.get(WANDB_GROUP_ENV_VAR))
 
-    # remove unpickleable items
+    # Remove unpickleable items.
     _config = _clean_log(_config)
 
     wandb_init_kwargs = dict(
@@ -207,7 +205,7 @@ def _is_allowed_type(obj):
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
     if isinstance(obj, Sequence) and len(obj) > 0:
-        return isinstance(obj[0], WBValue)
+        return isinstance(obj[0], (Image, Video, WBValue))
     return isinstance(obj, (Number, WBValue))
 
 
@@ -219,6 +217,19 @@ def _clean_log(obj: Any):
         return [_clean_log(v) for v in obj]
     elif isinstance(obj, tuple):
         return tuple(_clean_log(v) for v in obj)
+    elif isinstance(obj, np.ndarray) and obj.ndim == 3:
+        # Must be single image (H, W, C).
+        return Image(obj)
+    elif isinstance(obj, np.ndarray) and obj.ndim == 4:
+        # Must be batch of images (N >= 1, H, W, C).
+        return (
+            _clean_log([Image(v) for v in obj]) if obj.shape[0] > 1 else Image(obj[0])
+        )
+    elif isinstance(obj, np.ndarray) and obj.ndim == 5:
+        # Must be batch of videos (N >= 1, T, C, W, H).
+        return (
+            _clean_log([Video(v) for v in obj]) if obj.shape[0] > 1 else Video(obj[0])
+        )
     elif _is_allowed_type(obj):
         return obj
 
@@ -404,11 +415,11 @@ class _WandbLoggingActor:
             log, config_update = self._handle_result(item_content)
             try:
                 self._wandb.config.update(config_update, allow_val_change=True)
-                self._wandb.log(log)
+                self._wandb.log(log, step=log.get(TRAINING_ITERATION))
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
-                logger.warn("Failed to log result to w&b: {}".format(str(e)))
+                logger.warning("Failed to log result to w&b: {}".format(str(e)))
         self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
@@ -630,6 +641,11 @@ class WandbLoggerCallback(LoggerCallback):
     def _start_logging_actor(
         self, trial: "Trial", exclude_results: List[str], **wandb_init_kwargs
     ):
+        # Reuse actor if one already exists.
+        # This can happen if the trial is restarted.
+        if trial in self._trial_logging_futures:
+            return
+
         if not self._remote_logger_class:
             env_vars = {}
             # API key env variable is not set if authenticating through `wandb login`

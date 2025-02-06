@@ -199,10 +199,7 @@ def main(gpu_env: Optional[bool], smoke_run: Optional[bool]):
             }
             print(throughput_mean_tps, model_inference_latency_mean)
 
-        save_test_results(
-            {test_name: result},
-            default_output_file="/tmp/serve_resent_benchmark.json",
-        )
+        save_test_results({test_name: result})
 
 
 if __name__ == "__main__":

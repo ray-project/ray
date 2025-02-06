@@ -1,18 +1,18 @@
-from collections import Counter
 import fnmatch
-from pathlib import Path
-from typing import Callable, Dict, Optional, Union
 import logging
 import os
 import time
+from collections import Counter
+from pathlib import Path
+from typing import Callable, Dict, Optional, Union
 
 import pyarrow.fs
 
 from ray.train._internal.storage import (
     StorageContext,
-    get_fs_and_path,
     _download_from_fs_path,
     _list_at_fs_path,
+    get_fs_and_path,
 )
 from ray.tune.experiment.trial import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
@@ -201,20 +201,23 @@ class _ExperimentCheckpointManager:
             if (
                 time_since_last_sync is not None
                 and time_since_last_sync < self._excessive_sync_threshold
+                and self._should_force_sync_up
             ):
                 logger.warning(
                     "Experiment state snapshotting has been triggered multiple "
-                    f"times in the last {self._excessive_sync_threshold} seconds. "
+                    f"times in the last {self._excessive_sync_threshold} seconds "
+                    "and may become a bottleneck. "
                     "A snapshot is forced if `CheckpointConfig(num_to_keep)` is set, "
                     "and a trial has checkpointed >= `num_to_keep` times "
                     "since the last snapshot.\n"
                     "You may want to consider increasing the "
                     "`CheckpointConfig(num_to_keep)` or decreasing the frequency of "
                     "saving checkpoints.\n"
-                    "You can suppress this error by setting the environment variable "
+                    "You can suppress this warning by setting the environment variable "
                     "TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S "
                     "to a smaller value than the current threshold "
-                    f"({self._excessive_sync_threshold})."
+                    f"({self._excessive_sync_threshold}). "
+                    "Set it to 0 to completely suppress this warning."
                 )
 
             self._last_sync_time = time.monotonic()

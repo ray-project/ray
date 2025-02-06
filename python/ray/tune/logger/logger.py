@@ -2,11 +2,11 @@ import abc
 import json
 import logging
 from pathlib import Path
-import pyarrow
-
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
 
+import pyarrow
 import yaml
+
 from ray.air._internal.json import SafeFallbackEncoder
 from ray.tune.callback import Callback
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI

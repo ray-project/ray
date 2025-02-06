@@ -13,7 +13,6 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
     client_test_enabled,
-    get_error_message,
     run_string_as_driver,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -582,7 +581,7 @@ def test_options():
     # TODO(suquark): The current implementation of `.options()` is so bad that we
     # cannot even access its options from outside. Here we hack the closures to
     # achieve our goal. Need futher efforts to clean up the tech debt.
-    assert f2.remote.__closure__[1].cell_contents == {
+    assert f2.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
@@ -594,7 +593,7 @@ def test_options():
 
     f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
 
-    assert f3.remote.__closure__[1].cell_contents == {
+    assert f3.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
@@ -867,9 +866,9 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     assert ray.get(f.remote(s)) == s
 
     # Test types.
-    assert ray.get(f.remote(int)) == int
-    assert ray.get(f.remote(float)) == float
-    assert ray.get(f.remote(str)) == str
+    assert ray.get(f.remote(int)) is int
+    assert ray.get(f.remote(float)) is float
+    assert ray.get(f.remote(str)) is str
 
     class Foo:
         def __init__(self):
@@ -889,7 +888,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
             self.val = ray.put(0)
 
         def method(self):
-            f
+            _ = f
 
     f = Foo()
     ray.put(f)
@@ -1132,16 +1131,8 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     def throw_exception_fct3(x):
         raise Exception("Test function 3 intentionally failed.")
 
-    p = error_pubsub
-
     throw_exception_fct1.remote()
     throw_exception_fct1.remote()
-
-    if ray._private.worker.global_worker.mode != ray._private.worker.LOCAL_MODE:
-        msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
-        assert len(msgs) == 2
-        for msg in msgs:
-            assert "Test function 1 intentionally failed." in msg["error_message"]
 
     x = throw_exception_fct2.remote()
     try:

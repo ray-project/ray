@@ -25,7 +25,6 @@
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
-#include "ray/util/container_util.h"
 
 namespace ray {
 namespace raylet {
@@ -51,10 +50,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
   ClusterTaskManager(
       const NodeID &self_node_id,
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      ClusterResourceScheduler &cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
-      std::shared_ptr<ILocalTaskManager> local_task_manager,
+      ILocalTaskManager &local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
       });
@@ -67,7 +66,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param is_selected_based_on_locality : should schedule on local node if possible.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task,
+  void QueueAndScheduleTask(RayTask task,
                             bool grant_or_reject,
                             bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
@@ -92,6 +91,16 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") override;
+
+  /// Attempt to cancel all queued tasks that match the predicate.
+  ///
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
+  bool CancelTasks(std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                   const std::string &scheduling_failure_message) override;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
@@ -122,7 +131,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
-  std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
+  ClusterResourceScheduler &GetClusterResourceScheduler() const;
 
   /// Get the count of tasks in `infeasible_tasks_`.
   size_t GetInfeasibleQueueSize() const;
@@ -151,14 +160,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
 
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
-  std::shared_ptr<ILocalTaskManager> local_task_manager_;
+  ILocalTaskManager &local_task_manager_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.

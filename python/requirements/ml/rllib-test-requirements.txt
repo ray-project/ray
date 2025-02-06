@@ -3,41 +3,33 @@
 # Environment adapters.
 # ---------------------
 # Atari
-gymnasium==0.28.1
-imageio==2.31.1
-ale_py==0.8.1
+ale_py==0.10.1
+imageio==2.34.2
+opencv-python-headless==4.8.1.78
+
 # For testing MuJoCo envs with gymnasium.
-mujoco==2.3.6
-dm_control==1.0.12
+mujoco==3.2.4
+dm_control==1.0.12; python_version < "3.12"
 
 # For tests on PettingZoo's multi-agent envs.
-pettingzoo==1.23.1
-# When installing pettingzoo, chess is missing, even though its a dependancy
-# TODO: remove if a future pettingzoo and/or ray version fixes this dependancy issue.
-chess==1.7.0
+pettingzoo==1.24.3
 pymunk==6.2.1
-supersuit==3.8.0
-tinyscaler==1.2.6
-shimmy
-
-# Kaggle envs.
-kaggle_environments==1.7.11
-# Unity3D testing
-# TODO(sven): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
-#mlagents==0.28.0
-mlagents_envs==0.28.0
+tinyscaler==1.2.8
+shimmy==2.0.0
+supersuit==3.9.3
 
 # For tests on minigrid.
-minigrid==2.1.1
-# For tests on RecSim and Kaggle envs.
-# Explicitly depends on `tensorflow` and doesn't accept `tensorflow-macos`
-recsim==0.2.4; (sys_platform != 'darwin' or platform_machine != 'arm64')
-# recsim depends on dopamine-rl, but dopamine-rl pins gym <= 0.25.2, which break some envs
-dopamine-rl==4.0.5; (sys_platform != 'darwin' or platform_machine != 'arm64')
+minigrid==2.3.1
 tensorflow_estimator
+
 # DeepMind's OpenSpiel
-open-spiel==1.2
+open-spiel==1.4
+
+# Unity3D testing
+mlagents_envs==0.28.0
 
 # Requires libtorrent which is unavailable for arm64
-autorom[accept-rom-license]; platform_machine != "arm64"
-h5py==3.7.0
+h5py==3.10.0
+
+# Requirements for rendering.
+moviepy

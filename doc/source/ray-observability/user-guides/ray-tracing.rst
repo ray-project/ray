@@ -7,7 +7,7 @@ To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to
 
 .. note::
 
-    Tracing is an experimental feature and under active development. APIs are subject to change.
+    Tracing is an Alpha feature and no longer under active development/being maintained. APIs are subject to change.
 
 Installation
 ------------

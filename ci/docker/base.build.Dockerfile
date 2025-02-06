@@ -7,5 +7,11 @@ RUN apt-get install -y -qq maven openjdk-8-jre openjdk-8-jdk
 
 COPY . .
 
-# init also calls install-dependencies.sh (again)
-RUN BUILD=1 ./ci/ci.sh init
+RUN <<EOF
+#!/bin/bash -i
+
+set -euo pipefail
+
+BUILD=1 ./ci/ci.sh init
+
+EOF

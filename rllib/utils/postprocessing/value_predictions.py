@@ -75,6 +75,8 @@ def extract_bootstrapped_values(vf_preds, episode_lengths, T):
         )
 
     # Loop over all episode lengths and collect bootstrap values.
+    # Do not alter incoming `episode_lengths` list.
+    episode_lengths = episode_lengths[:]
     i = -1
     while i < len(episode_lengths) - 1:
         i += 1

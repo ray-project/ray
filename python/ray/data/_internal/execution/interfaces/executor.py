@@ -61,10 +61,14 @@ class Executor:
         """
         raise NotImplementedError
 
-    def shutdown(self):
+    def shutdown(self, exception: Optional[Exception] = None):
         """Shutdown an executor, which may still be running.
 
         This should interrupt execution and clean up any used resources.
+
+        Args:
+            exception: The exception that causes the executor to shut down, or None if
+                the executor finishes successfully.
         """
         pass
 

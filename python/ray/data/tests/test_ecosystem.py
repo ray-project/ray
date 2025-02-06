@@ -6,9 +6,11 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
-    ArrowTensorType,
     TensorArray,
     TensorDtype,
 )
@@ -33,7 +35,7 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask()
@@ -52,7 +54,7 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     df1["two"] = df1["two"].astype(pd.StringDtype())
     df2["two"] = df2["two"].astype(pd.StringDtype())
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask(
@@ -76,7 +78,7 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"three": [4, 5, 6], "four": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask(verify_meta=False)
@@ -119,7 +121,7 @@ def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
         in_table = pa.table({"a": ArrowTensorArray.from_numpy(data)})
         ds = ray.data.from_arrow(in_table)
         dtype = ds.schema().base_schema.field(0).type
-        assert isinstance(dtype, ArrowTensorType)
+        assert isinstance(dtype, get_arrow_extension_fixed_shape_tensor_types())
         out_df = ds.to_dask().compute()
         assert out_df["a"].dtype.type is np.object_
         expected_df = pd.DataFrame({"a": list(data)})

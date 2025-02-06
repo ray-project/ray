@@ -10,7 +10,7 @@ This guide shows how to scale up your [Gradio](https://gradio.app/) application 
 To follow this tutorial, you need Ray Serve and Gradio. If you haven't already, install them by running:
 ```console
 $ pip install "ray[serve]"
-$ pip install gradio==3.19
+$ pip install gradio==3.50.2
 ```
 This tutorial uses Gradio apps that run text summarization and generation models and use [Hugging Face's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access these models. **Note that you can substitute this Gradio app for any Gradio app of your own.**
 

@@ -84,13 +84,13 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
       ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false);
 
   // Test `AcquireResources`.
-  ASSERT_TRUE(cluster_resource_manager_.HasSufficientResource(
+  ASSERT_TRUE(cluster_resource_manager_.HasAvailableResources(
       scheduling_node_id,
       resource_request,
       /*ignore_object_store_memory_requirement=*/true));
   ASSERT_TRUE(cluster_resource_manager_.SubtractNodeAvailableResources(scheduling_node_id,
                                                                        resource_request));
-  ASSERT_FALSE(cluster_resource_manager_.HasSufficientResource(
+  ASSERT_FALSE(cluster_resource_manager_.HasAvailableResources(
       scheduling_node_id,
       resource_request,
       /*ignore_object_store_memory_requirement=*/true));
@@ -255,8 +255,3 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

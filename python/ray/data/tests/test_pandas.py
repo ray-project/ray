@@ -1,13 +1,25 @@
+from typing import Iterator
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 
 import ray
-from ray.data.extensions import ArrowTensorArray, ArrowTensorType, TensorDtype
+from ray.air.util.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data.block import Block
+from ray.data.extensions import ArrowTensorArray, TensorDtype
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
+
+
+def _get_first_block(bundles: Iterator[RefBundle]) -> ObjectRef[Block]:
+    return next(bundles).block_refs[0]
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -19,7 +31,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas([df1, df2])
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block
@@ -33,7 +45,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas(df1)
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block
@@ -48,6 +60,15 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
+@pytest.mark.parametrize("num_inputs", [1, 2])
+def test_from_pandas_override_num_blocks(num_inputs, ray_start_regular_shared):
+    df = pd.DataFrame({"number": [0]})
+
+    ds = ray.data.from_pandas([df] * num_inputs, override_num_blocks=2)
+
+    assert ds.materialize().num_blocks() == 2
+
+
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
 def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
     ctx = ray.data.context.DataContext.get_current()
@@ -57,7 +78,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block
@@ -71,7 +92,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe ref
         ds = ray.data.from_pandas_refs(ray.put(df1))
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block
@@ -102,6 +123,20 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+def test_to_pandas_different_block_types(ray_start_regular_shared):
+    # Test for https://github.com/ray-project/ray/issues/48575.
+    df = pd.DataFrame({"a": [0]})
+    ds1 = ray.data.from_pandas(df)
+
+    table = pa.Table.from_pandas(df)
+    ds2 = ray.data.from_arrow(table)
+
+    actual_df = ds1.union(ds2).to_pandas()
+
+    expected_df = pd.DataFrame({"a": [0, 0]})
+    pd.testing.assert_frame_equal(actual_df, expected_df)
+
+
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"id": list(range(n))})
@@ -113,7 +148,7 @@ def test_to_pandas_refs(ray_start_regular_shared):
 def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_pandas([df1, df2], override_num_blocks=2)
     dfds = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dfds)
 
@@ -154,7 +189,7 @@ def test_to_pandas_tensor_column_cast_arrow(ray_start_regular_shared):
         in_table = pa.table({"a": ArrowTensorArray.from_numpy(data)})
         ds = ray.data.from_arrow(in_table)
         dtype = ds.schema().base_schema.field(0).type
-        assert isinstance(dtype, ArrowTensorType)
+        assert isinstance(dtype, get_arrow_extension_fixed_shape_tensor_types())
         out_df = ds.to_pandas()
         assert out_df["a"].dtype.type is np.object_
         expected_df = pd.DataFrame({"a": list(data)})

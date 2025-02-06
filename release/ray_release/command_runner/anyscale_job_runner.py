@@ -349,9 +349,7 @@ class AnyscaleJobRunner(JobRunner):
         )
 
     def cleanup(self):
-        try:
-            self.file_manager.delete(self.path_in_bucket, recursive=True)
-        except Exception:
-            # No big deal if we don't clean up, the bucket
-            # is set to automatically expire objects anyway
-            pass
+        # We piggy back on s3 retention policy for clean up instead of doing this
+        # ourselves. We find many cases where users want the data to be available
+        # for a short-while for debugging purpose.
+        pass

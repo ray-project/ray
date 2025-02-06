@@ -13,10 +13,9 @@ except ImportError:
     from grpc.experimental import aio as aiogrpc
 
 import ray._private.gcs_utils as gcs_utils
-import ray._private.logging_utils as logging_utils
-from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
+from ray.core.generated import gcs_pb2
 from ray.core.generated import common_pb2
 from ray.core.generated import pubsub_pb2
 
@@ -27,19 +26,6 @@ MAX_GCS_PUBLISH_RETRIES = 60
 
 
 class _PublisherBase:
-    @staticmethod
-    def _create_log_request(log_json: dict):
-        job_id = log_json.get("job")
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
-                    key_id=job_id.encode() if job_id else None,
-                    log_batch_message=logging_utils.log_batch_dict_to_proto(log_json),
-                )
-            ]
-        )
-
     @staticmethod
     def _create_node_resource_usage_request(key: str, json: str):
         return gcs_service_pb2.GcsPublishRequest(
@@ -104,39 +90,6 @@ class _SubscriberBase:
             return True
         return False
 
-    @staticmethod
-    def _pop_error_info(queue):
-        if len(queue) == 0:
-            return None, None
-        msg = queue.popleft()
-        return msg.key_id, msg.error_info_message
-
-    @staticmethod
-    def _pop_log_batch(queue):
-        if len(queue) == 0:
-            return None
-        msg = queue.popleft()
-        return logging_utils.log_batch_proto_to_dict(msg.log_batch_message)
-
-    @staticmethod
-    def _pop_resource_usage(queue):
-        if len(queue) == 0:
-            return None, None
-        msg = queue.popleft()
-        return msg.key_id.decode(), msg.node_resource_usage_message.json
-
-    @staticmethod
-    def _pop_actors(queue, batch_size=100):
-        if len(queue) == 0:
-            return []
-        popped = 0
-        msgs = []
-        while len(queue) > 0 and popped < batch_size:
-            msg = queue.popleft()
-            msgs.append((msg.key_id, msg.actor_message))
-            popped += 1
-        return msgs
-
 
 class GcsAioPublisher(_PublisherBase):
     """Publisher to GCS. Uses async io."""
@@ -148,21 +101,6 @@ class GcsAioPublisher(_PublisherBase):
         else:
             assert channel is not None, "One of address and channel must be specified"
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
-
-    async def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
-        """Publishes error info to GCS."""
-        msg = pubsub_pb2.PubMessage(
-            channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
-            key_id=key_id,
-            error_info_message=error_info,
-        )
-        req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        await self._stub.GcsPublish(req)
-
-    async def publish_logs(self, log_batch: dict) -> None:
-        """Publishes logs to GCS."""
-        req = self._create_log_request(log_batch)
-        await self._stub.GcsPublish(req)
 
     async def publish_resource_usage(self, key: str, json: str) -> None:
         """Publishes logs to GCS."""
@@ -251,7 +189,7 @@ class _AioSubscriber(_SubscriberBase):
                     self._max_processed_sequence_id = 0
                 for msg in poll.result().pub_messages:
                     if msg.sequence_id <= self._max_processed_sequence_id:
-                        logger.warn(f"Ignoring out of order message {msg}")
+                        logger.warning(f"Ignoring out of order message {msg}")
                         continue
                     self._max_processed_sequence_id = msg.sequence_id
                     self._queue.append(msg)
@@ -275,46 +213,6 @@ class _AioSubscriber(_SubscriberBase):
         self._stub = None
 
 
-class GcsAioErrorSubscriber(_AioSubscriber):
-    def __init__(
-        self,
-        worker_id: bytes = None,
-        address: str = None,
-        channel: grpc.Channel = None,
-    ):
-        super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, worker_id, address, channel)
-
-    async def poll(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
-        """Polls for new error message.
-
-        Returns:
-            A tuple of error message ID and ErrorTableData proto message,
-            or None, None if polling times out or subscriber closed.
-        """
-        await self._poll(timeout=timeout)
-        return self._pop_error_info(self._queue)
-
-
-class GcsAioLogSubscriber(_AioSubscriber):
-    def __init__(
-        self,
-        worker_id: bytes = None,
-        address: str = None,
-        channel: grpc.Channel = None,
-    ):
-        super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, worker_id, address, channel)
-
-    async def poll(self, timeout=None) -> dict:
-        """Polls for new log message.
-
-        Returns:
-            A dict containing a batch of log lines and their metadata,
-            or None if polling times out or subscriber closed.
-        """
-        await self._poll(timeout=timeout)
-        return self._pop_log_batch(self._queue)
-
-
 class GcsAioResourceUsageSubscriber(_AioSubscriber):
     def __init__(
         self,
@@ -335,6 +233,13 @@ class GcsAioResourceUsageSubscriber(_AioSubscriber):
         await self._poll(timeout=timeout)
         return self._pop_resource_usage(self._queue)
 
+    @staticmethod
+    def _pop_resource_usage(queue):
+        if len(queue) == 0:
+            return None, None
+        msg = queue.popleft()
+        return msg.key_id.decode(), msg.node_resource_usage_message.json
+
 
 class GcsAioActorSubscriber(_AioSubscriber):
     def __init__(
@@ -349,11 +254,58 @@ class GcsAioActorSubscriber(_AioSubscriber):
     def queue_size(self):
         return len(self._queue)
 
-    async def poll(self, timeout=None, batch_size=500) -> List[Tuple[bytes, str]]:
+    async def poll(
+        self, batch_size, timeout=None
+    ) -> List[Tuple[bytes, gcs_pb2.ActorTableData]]:
         """Polls for new actor message.
 
         Returns:
-            A tuple of binary actor ID and actor table data.
+            A list of tuples of binary actor ID and actor table data.
         """
         await self._poll(timeout=timeout)
         return self._pop_actors(self._queue, batch_size=batch_size)
+
+    @staticmethod
+    def _pop_actors(queue, batch_size):
+        if len(queue) == 0:
+            return []
+        popped = 0
+        msgs = []
+        while len(queue) > 0 and popped < batch_size:
+            msg = queue.popleft()
+            msgs.append((msg.key_id, msg.actor_message))
+            popped += 1
+        return msgs
+
+
+class GcsAioNodeInfoSubscriber(_AioSubscriber):
+    def __init__(
+        self,
+        worker_id: bytes = None,
+        address: str = None,
+        channel: grpc.Channel = None,
+    ):
+        super().__init__(pubsub_pb2.GCS_NODE_INFO_CHANNEL, worker_id, address, channel)
+
+    async def poll(
+        self, batch_size, timeout=None
+    ) -> List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]:
+        """Polls for new node info message.
+
+        Returns:
+            A list of tuples of (node_id, GcsNodeInfo).
+        """
+        await self._poll(timeout=timeout)
+        return self._pop_node_infos(self._queue, batch_size=batch_size)
+
+    @staticmethod
+    def _pop_node_infos(queue, batch_size):
+        if len(queue) == 0:
+            return []
+        popped = 0
+        msgs = []
+        while len(queue) > 0 and popped < batch_size:
+            msg = queue.popleft()
+            msgs.append((msg.key_id, msg.node_info_message))
+            popped += 1
+        return msgs

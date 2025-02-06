@@ -3,7 +3,6 @@
 # __reproducible_start__
 import numpy as np
 from ray import train, tune
-from ray.train import ScalingConfig
 
 
 def train_func(config):
@@ -223,17 +222,6 @@ data = np.random.random(size=100000000)
 tuner = tune.Tuner(tune.with_parameters(f, data=data))
 tuner.fit()
 # __large_data_end__
-
-MyTrainableClass = None
-
-if not MOCK:
-    # __log_1_start__
-    tuner = tune.Tuner(
-        MyTrainableClass,
-        run_config=train.RunConfig(storage_path="s3://my-log-dir"),
-    )
-    tuner.fit()
-    # __log_1_end__
 
 
 import ray

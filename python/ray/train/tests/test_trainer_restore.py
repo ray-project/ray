@@ -217,7 +217,7 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         train_loop_per_worker=lambda config: train.report({"score": 1}),
         datasets=datasets,
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="datasets_respecify_test", local_dir=tmpdir),
+        run_config=RunConfig(name="datasets_respecify_test"),
     )
     trainer._save(pyarrow.fs.LocalFileSystem(), str(tmpdir))
 

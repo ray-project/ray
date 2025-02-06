@@ -31,7 +31,7 @@ def test_get_spark_task_assigned_physical_gpus():
 
 
 @patch("ray._private.ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES", 1)
-def test_calc_mem_per_ray_worker_node():
+def test_calc_mem_per_ray_worker_node(monkeypatch):
     assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None, 100000) == (
         120000,
         80000,
@@ -55,6 +55,12 @@ def test_calc_mem_per_ray_worker_node():
     assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, 150000, 70000) == (
         150000,
         70000,
+        None,
+    )
+    monkeypatch.setenv("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE", "1")
+    assert _calc_mem_per_ray_worker_node(4, 1000000, 400000, None, 100000) == (
+        100000,
+        100000,
         None,
     )
 

@@ -100,7 +100,7 @@ def create_dummy_preprocessors():
         RobustScaler(columns=["X"]),
         SimpleImputer(columns=["X"]),
         StandardScaler(columns=["X"]),
-        Concatenator(),
+        Concatenator(columns=["X"]),
         Tokenizer(columns=["X"]),
     ],
 )

@@ -11,7 +11,7 @@ A deployment contains business logic or an ML model to handle incoming requests 
 At runtime, a deployment consists of a number of *replicas*, which are individual copies of the class or function that are started in separate Ray Actors (processes).
 The number of replicas can be scaled up or down (or even autoscaled) to match the incoming request load.
 
-To define a deployment, use the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator on a Python class (or function for simple use cases).
+To define a deployment, use the {mod}`@serve.deployment <ray.serve.deployment>` decorator on a Python class (or function for simple use cases).
 Then, `bind` the deployment with optional arguments to the constructor to define an [application](serve-key-concepts-application).
 Finally, deploy the resulting application using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
 
@@ -36,7 +36,7 @@ Applications can be called via HTTP at the specified `route_prefix` or in Python
 Ray Serve enables flexible model composition and scaling by allowing multiple independent deployments to call into each other.
 When binding a deployment, you can include references to _other bound deployments_.
 Then, at runtime each of these arguments is converted to a {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` that can be used to query the deployment using a Python-native API.
-Below is a basic example where the `Driver` deployment can call into two downstream models.
+Below is a basic example where the `Ingress` deployment can call into two downstream models.
 For a more comprehensive guide, see the [model composition guide](serve-model-composition).
 
 ```{literalinclude} ../serve/doc_code/key_concepts.py

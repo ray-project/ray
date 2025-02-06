@@ -32,3 +32,12 @@ Registry
 .. autofunction:: ray.tune.register_trainable
 
 .. autofunction:: ray.tune.register_env
+
+
+Output
+------
+
+.. autoclass:: ray.tune.experimental.output.ProgressReporter
+.. autoclass:: ray.tune.experimental.output.TrainReporter
+.. autoclass:: ray.tune.experimental.output.TuneReporterBase
+.. autoclass:: ray.tune.experimental.output.TuneTerminalReporter

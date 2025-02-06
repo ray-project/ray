@@ -15,6 +15,8 @@ from ci.ray_ci.automation.docker_tags_lib import (
     query_tags_from_docker_with_oci,
     _is_release_tag,
     list_image_tags,
+    get_ray_commit,
+    check_image_ray_commit,
     AuthTokenException,
     RetrieveImageConfigException,
     DockerHubRateLimitException,
@@ -444,23 +446,23 @@ def test_backup_release_tags(
             "test",
             "ray",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu12.1.1-cudnn8"],
             ["x86_64", "aarch64"],
             [
                 "test",
                 "test-aarch64",
                 "test-cpu",
                 "test-cpu-aarch64",
-                "test-cu118",
-                "test-cu118-aarch64",
+                "test-cu121",
+                "test-cu121-aarch64",
                 "test-gpu",
                 "test-gpu-aarch64",
                 "test-py39",
                 "test-py39-aarch64",
                 "test-py39-cpu",
                 "test-py39-cpu-aarch64",
-                "test-py39-cu118",
-                "test-py39-cu118-aarch64",
+                "test-py39-cu121",
+                "test-py39-cu121-aarch64",
                 "test-py39-gpu",
                 "test-py39-gpu-aarch64",
             ],
@@ -469,16 +471,16 @@ def test_backup_release_tags(
             "test",
             "ray-ml",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu12.1.1-cudnn8"],
             ["x86_64"],
             [
                 "test",
                 "test-cpu",
-                "test-cu118",
+                "test-cu121",
                 "test-gpu",
                 "test-py39",
                 "test-py39-cpu",
-                "test-py39-cu118",
+                "test-py39-cu121",
                 "test-py39-gpu",
             ],
         ),
@@ -498,7 +500,7 @@ def test_list_image_tags(
             "test",
             "ray",
             ["3.8"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["x86_64", "aarch64"],
         ),  # python version not supported
         (
@@ -512,28 +514,28 @@ def test_list_image_tags(
             "test",
             "ray",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["aarch32"],
         ),  # architecture not supported
         (
             "test",
             "ray-ml",
             ["3.9"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["aarch64"],
         ),  # architecture not supported
         (
             "test",
             "ray-ml",
             ["3.9"],
-            ["cpu", "cu11.5.2"],
+            ["cpu", "cu11.7.1-cudnn8"],
             ["x86_64"],
         ),  # platform not supported
         (
             "test",
             "not-ray",
             ["3.8"],
-            ["cpu", "cu11.8.0"],
+            ["cpu", "cu11.8.0-cudnn8"],
             ["x86_64"],
         ),  # ray type not supported
     ],
@@ -545,5 +547,87 @@ def test_list_images_tags_failure(
         list_image_tags(prefix, ray_type, python_versions, platforms, architectures)
 
 
+@mock.patch("docker.from_env")
+def test_get_ray_commit(mock_docker_from_env):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+    # Setup mock
+    mock_client = mock_docker_from_env.return_value
+    mock_container = mock_client.containers.run.return_value
+    mock_container.decode.return_value = expected_commit
+
+    commit = get_ray_commit("test_repo/test_image:tag")
+
+    assert mock_client.containers.run.call_count == 1
+    assert (
+        mock_client.containers.run.call_args.kwargs["image"]
+        == "test_repo/test_image:tag"
+    )
+    assert commit == expected_commit
+
+
+@mock.patch("docker.from_env")
+def test_get_ray_commit_failure(mock_docker_from_env):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e"
+    # Setup mock
+    mock_client = mock_docker_from_env.return_value
+    mock_container = mock_client.containers.run.return_value
+    mock_container.decode.return_value = expected_commit
+
+    with pytest.raises(Exception):
+        get_ray_commit("test_repo/test_image:tag")
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_ray_commit")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.list_image_tags")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.pull_image")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.remove_image")
+def test_check_image_ray_commit(
+    mock_remove_image, mock_pull_image, mock_list_tags, mock_get_commit
+):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+    ray_type = "ray"
+    mock_get_commit.return_value = expected_commit
+    mock_list_tags.return_value = ["test-tag1", "test-tag2", "test-tag3", "test-tag4"]
+
+    check_image_ray_commit(
+        prefix="test", ray_type=ray_type, expected_commit=expected_commit
+    )
+
+    assert mock_pull_image.call_count == len(mock_list_tags.return_value)
+    assert mock_pull_image.call_args_list == [
+        mock.call(f"rayproject/{ray_type}:{tag}") for tag in mock_list_tags.return_value
+    ]
+
+    assert mock_get_commit.call_count == len(mock_list_tags.return_value)
+    assert mock_get_commit.call_args_list == [
+        mock.call(f"rayproject/{ray_type}:{tag}") for tag in mock_list_tags.return_value
+    ]
+
+    # Remove all images except the first one
+    assert mock_remove_image.call_count == len(mock_list_tags.return_value) - 1
+    assert mock_remove_image.call_args_list == [
+        mock.call(f"rayproject/{ray_type}:{tag}")
+        for tag in mock_list_tags.return_value[1:]
+    ]
+
+
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.get_ray_commit")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.list_image_tags")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.pull_image")
+@mock.patch("ci.ray_ci.automation.docker_tags_lib.remove_image")
+def test_check_image_ray_commit_failure(
+    mock_remove_image, mock_pull_image, mock_list_tags, mock_get_commit
+):
+    expected_commit = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"
+    ray_type = "ray"
+    mock_get_commit.return_value = expected_commit
+    mock_list_tags.return_value = ["test-tag1", "test-tag2", "test-tag3", "test-tag4"]
+
+    with pytest.raises(SystemExit):
+        check_image_ray_commit(
+            prefix="test", ray_type=ray_type, expected_commit=expected_commit[::-1]
+        )
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))

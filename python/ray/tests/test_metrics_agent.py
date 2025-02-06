@@ -59,7 +59,9 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_grpc_server_req_process_time_ms",
+    "ray_grpc_server_req_process_time_ms_sum",
+    "ray_grpc_server_req_process_time_ms_bucket",
+    "ray_grpc_server_req_process_time_ms_count",
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
     "ray_grpc_server_req_finished_total",
@@ -298,10 +300,10 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             assert metric in metric_names, f"metric {metric} not in {metric_names}"
 
         for sample in metric_samples:
-            if sample.name in _METRICS:
-                assert sample.labels["SessionName"] == session_name
-            if sample.name in _DASHBOARD_METRICS:
-                assert sample.labels["SessionName"] == session_name
+            # All Ray metrics have label "Version" and "SessionName".
+            if sample.name in _METRICS or sample.name in _DASHBOARD_METRICS:
+                assert sample.labels.get("Version") == ray.__version__, sample
+                assert sample.labels["SessionName"] == session_name, sample
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
@@ -332,7 +334,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure the gRPC stats are not reported from workers. We disabled
         # it there because it has too high cardinality.
         grpc_metrics = [
-            "ray_grpc_server_req_process_time_ms",
+            "ray_grpc_server_req_process_time_ms_sum",
+            "ray_grpc_server_req_process_time_ms_bucket",
+            "ray_grpc_server_req_process_time_ms_count",
             "ray_grpc_server_req_new_total",
             "ray_grpc_server_req_handling_total",
             "ray_grpc_server_req_finished_total",
@@ -679,6 +683,13 @@ def test_per_func_name_stats(shutdown_only):
 
     ray.get(a.__ray_ready__.remote())
     ray.get(b.__ray_ready__.remote())
+
+    # Run a short lived task to make sure there's a ray::IDLE component.
+    @ray.remote
+    def do_nothing():
+        pass
+
+    ray.get(do_nothing.remote())
 
     def verify_components():
         metrics = raw_metrics(addr)

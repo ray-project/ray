@@ -68,7 +68,7 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env,
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
   auto actor_id = CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
-      binary, /*outer_object_id=*/ObjectID::Nil());
+      binary, /*outer_object_id=*/ObjectID::Nil(), /*add_local_ref=*/true);
 
   return IdToJavaByteArray<ActorID>(env, actor_id);
 }
@@ -79,7 +79,7 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(
   // We can't control the timing of Java GC, so it's normal that this method is called but
   // core worker is shutting down (or already shut down). If we can't get a core worker
   // instance here, skip calling the `RemoveLocalReference` method.
- auto core_worker = CoreWorkerProcess::TryGetWorker();
+  auto core_worker = CoreWorkerProcess::TryGetWorker();
   if (core_worker != nullptr) {
     const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
     core_worker->RemoveActorHandleReference(actor_id);

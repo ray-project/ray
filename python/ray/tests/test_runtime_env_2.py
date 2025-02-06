@@ -240,7 +240,9 @@ class TestNoUserInfoInLogs:
         with pytest.raises(AssertionError):
             assert_no_user_info_in_logs(USER_SECRET)
 
-        assert_no_user_info_in_logs(USER_SECRET, file_whitelist=["runtime_env*.log"])
+        assert_no_user_info_in_logs(
+            USER_SECRET, file_whitelist=["runtime_env*.log", "event_EXPORT*.log"]
+        )
 
 
 if __name__ == "__main__":

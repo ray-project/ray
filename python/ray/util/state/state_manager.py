@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 from functools import wraps
 from typing import List, Optional, Tuple
+import json
 
 import aiohttp
 import grpc
@@ -11,13 +12,15 @@ from grpc.aio._call import UnaryStreamCall
 
 import ray
 import ray.dashboard.modules.log.log_consts as log_consts
+import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import ActorID, JobID, TaskID
+from ray._raylet import ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
+    FilterPredicate,
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
     GetAllNodeInfoReply,
@@ -32,8 +35,6 @@ from ray.core.generated.gcs_service_pb2 import (
 from ray.core.generated.node_manager_pb2 import (
     GetObjectsInfoReply,
     GetObjectsInfoRequest,
-    GetTasksInfoReply,
-    GetTasksInfoRequest,
 )
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated.reporter_pb2 import (
@@ -46,11 +47,9 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoReply,
     GetRuntimeEnvsInfoRequest,
 )
-from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import get_driver_jobs
-from ray.dashboard.utils import Dict as Dictionary
 from ray.util.state.common import (
     RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     PredicateType,
@@ -157,9 +156,8 @@ class StateDataSourceClient:
         self.register_gcs_client(gcs_channel)
         self._raylet_stubs = {}
         self._runtime_env_agent_addresses = {}  # {node_id -> url}
-        self._log_agent_stub = {}
         self._job_client = JobInfoStorageClient(gcs_aio_client)
-        self._id_id_map = IdToIpMap()
+        self._id_ip_map = IdToIpMap()
         self._gcs_aio_client = gcs_aio_client
         self._client_session = aiohttp.ClientSession()
 
@@ -200,24 +198,12 @@ class StateDataSourceClient:
         self._runtime_env_agent_addresses[
             node_id
         ] = f"http://{address}:{runtime_env_agent_port}"
-        self._id_id_map.put(node_id, address)
+        self._id_ip_map.put(node_id, address)
 
     def unregister_raylet_client(self, node_id: str):
         self._raylet_stubs.pop(node_id)
         self._runtime_env_agent_addresses.pop(node_id)
-        self._id_id_map.pop(node_id)
-
-    def register_agent_client(self, node_id, address: str, port: int):
-        options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            f"{address}:{port}", options=options, asynchronous=True
-        )
-        self._log_agent_stub[node_id] = LogServiceStub(channel)
-        self._id_id_map.put(node_id, address)
-
-    def unregister_agent_client(self, node_id: str):
-        self._log_agent_stub.pop(node_id)
-        self._id_id_map.pop(node_id)
+        self._id_ip_map.pop(node_id)
 
     def get_all_registered_raylet_ids(self) -> List[str]:
         return self._raylet_stubs.keys()
@@ -226,9 +212,21 @@ class StateDataSourceClient:
     def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
         return self._runtime_env_agent_addresses.keys()
 
-    # Returns all nod_ids which registered their log_agent_stub.
-    def get_all_registered_log_agent_ids(self) -> List[str]:
-        return self._log_agent_stub.keys()
+    async def get_log_service_stub(self, node_id: NodeID) -> Optional[LogServiceStub]:
+        """Returns None if the agent on the node is not registered in Internal KV."""
+        agent_addr = await self._gcs_aio_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if not agent_addr:
+            return None
+        ip, http_port, grpc_port = json.loads(agent_addr)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        channel = ray._private.utils.init_grpc_channel(
+            f"{ip}:{grpc_port}", options=options, asynchronous=True
+        )
+        return LogServiceStub(channel)
 
     def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
         """Return the node id that corresponds to the given ip.
@@ -243,17 +241,15 @@ class StateDataSourceClient:
         """
         if not ip:
             return None
-        return self._id_id_map.get_node_id(ip)
+        return self._id_ip_map.get_node_id(ip)
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
         self,
         timeout: int = None,
-        limit: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllActorInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
         if filters is None:
             filters = []
 
@@ -284,12 +280,10 @@ class StateDataSourceClient:
     async def get_all_task_info(
         self,
         timeout: int = None,
-        limit: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
         exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         if filters is None:
             filters = []
@@ -297,16 +291,47 @@ class StateDataSourceClient:
         req_filters = GetTaskEventsRequest.Filters()
         for filter in filters:
             key, predicate, value = filter
-            if predicate != "=":
-                # We only support EQUAL predicate for source side filtering.
-                continue
+            filter_predicate = None
+            if predicate == "=":
+                filter_predicate = FilterPredicate.EQUAL
+            elif predicate == "!=":
+                filter_predicate = FilterPredicate.NOT_EQUAL
+            else:
+                # We only support EQUAL and NOT_EQUAL predicate for source side
+                # filtering. If invalid predicates were specified, it should already be
+                # raised when the filters arguments are parsed
+                assert False, "Invalid predicate: " + predicate
 
             if key == "actor_id":
-                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+                actor_filter = GetTaskEventsRequest.Filters.ActorIdFilter()
+                actor_filter.actor_id = ActorID(hex_to_binary(value)).binary()
+                actor_filter.predicate = filter_predicate
+                req_filters.actor_filters.append(actor_filter)
+
             elif key == "job_id":
-                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+                job_filter = GetTaskEventsRequest.Filters.JobIdFilter()
+                job_filter.job_id = JobID(hex_to_binary(value)).binary()
+                job_filter.predicate = filter_predicate
+                req_filters.job_filters.append(job_filter)
+
             elif key == "task_id":
-                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+                task_filter = GetTaskEventsRequest.Filters.TaskIdFilter()
+                task_filter.task_id = TaskID(hex_to_binary(value)).binary()
+                task_filter.predicate = filter_predicate
+                req_filters.task_filters.append(task_filter)
+
+            elif key == "name":
+                task_name_filter = GetTaskEventsRequest.Filters.TaskNameFilter()
+                task_name_filter.task_name = value
+                task_name_filter.predicate = filter_predicate
+                req_filters.task_name_filters.append(task_name_filter)
+
+            elif key == "state":
+                state_filter = GetTaskEventsRequest.Filters.StateFilter()
+                state_filter.state = value
+                state_filter.predicate = filter_predicate
+                req_filters.state_filters.append(state_filter)
+
             else:
                 continue
 
@@ -318,10 +343,8 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_placement_group_info(
-        self, timeout: int = None, limit: int = None
+        self, timeout: int = None, limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE
     ) -> Optional[GetAllPlacementGroupReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         request = GetAllPlacementGroupRequest(limit=limit)
         reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
@@ -331,20 +354,67 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_node_info(
-        self, timeout: int = None
+        self,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllNodeInfoReply]:
-        request = GetAllNodeInfoRequest()
+
+        if filters is None:
+            filters = []
+
+        req_filters = GetAllNodeInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+
+            if key == "node_id":
+                req_filters.node_id = NodeID(hex_to_binary(value)).binary()
+            elif key == "state":
+                value = value.upper()
+                if value not in GcsNodeInfo.GcsNodeState.keys():
+                    raise ValueError(f"Invalid node state for filtering: {value}")
+                req_filters.state = GcsNodeInfo.GcsNodeState.Value(value)
+            elif key == "node_name":
+                req_filters.node_name = value
+            else:
+                continue
+
+        request = GetAllNodeInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors
     async def get_all_worker_info(
-        self, timeout: int = None, limit: int = None
+        self,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllWorkerInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
-        request = GetAllWorkerInfoRequest(limit=limit)
+        if filters is None:
+            filters = []
+
+        req_filters = GetAllWorkerInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            # Special treatments for the Ray Debugger.
+            if (
+                key == "num_paused_threads"
+                and predicate in ("!=", ">")
+                and value == "0"
+            ):
+                req_filters.exist_paused_threads = True
+                continue
+            if key == "is_alive" and predicate == "=" and value == "True":
+                req_filters.is_alive = True
+                continue
+            else:
+                continue
+
+        request = GetAllWorkerInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
             request, timeout=timeout
         )
@@ -375,30 +445,13 @@ class StateDataSourceClient:
 
         return list(driver_jobs.values()) + submission_jobs
 
-    async def get_all_cluster_events(self) -> Dictionary:
-        return DataSource.events
-
-    @handle_grpc_network_errors
-    async def get_task_info(
-        self, node_id: str, timeout: int = None, limit: int = None
-    ) -> Optional[GetTasksInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        stub = self._raylet_stubs.get(node_id)
-        if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
-
-        reply = await stub.GetTasksInfo(
-            GetTasksInfoRequest(limit=limit), timeout=timeout
-        )
-        return reply
-
     @handle_grpc_network_errors
     async def get_object_info(
-        self, node_id: str, timeout: int = None, limit: int = None
+        self,
+        node_id: str,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetObjectsInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         stub = self._raylet_stubs.get(node_id)
         if not stub:
@@ -411,10 +464,11 @@ class StateDataSourceClient:
         return reply
 
     async def get_runtime_envs_info(
-        self, node_id: str, timeout: int = None, limit: int = None
+        self,
+        node_id: str,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetRuntimeEnvsInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         address = self._runtime_env_agent_addresses.get(node_id)
         if not address:
@@ -442,7 +496,7 @@ class StateDataSourceClient:
     async def list_logs(
         self, node_id: str, glob_filter: str, timeout: int = None
     ) -> ListLogsReply:
-        stub = self._log_agent_stub.get(node_id)
+        stub = await self.get_log_service_stub(NodeID.from_hex(node_id))
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
         return await stub.ListLogs(
@@ -461,7 +515,7 @@ class StateDataSourceClient:
         start_offset: Optional[int] = None,
         end_offset: Optional[int] = None,
     ) -> UnaryStreamCall:
-        stub = self._log_agent_stub.get(node_id)
+        stub = await self.get_log_service_stub(NodeID.from_hex(node_id))
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
 

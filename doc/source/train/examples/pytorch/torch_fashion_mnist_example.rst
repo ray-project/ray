@@ -1,6 +1,8 @@
 :orphan:
 
-Train a PyTorch Model on Fashion MNIST
+.. _train-pytorch-fashion-mnist:
+
+Train a PyTorch model on Fashion MNIST
 ======================================
 
 This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train.

@@ -9,6 +9,7 @@ import threading
 import time
 import warnings
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -17,7 +18,6 @@ from typing import (
     Sequence,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 import ray
@@ -25,25 +25,20 @@ from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train import CheckpointConfig, SyncConfig
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
-from ray.tune import ResumeConfig
+from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.experiment import Experiment, _convert_to_experiment_list
-from ray.tune.experimental.output import (
-    get_air_verbosity,
-    IS_NOTEBOOK,
-    AirVerbosity,
-)
-
+from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
+from ray.tune.experimental.output import IS_NOTEBOOK, AirVerbosity, get_air_verbosity
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.logger import TBXLoggerCallback
 from ray.tune.progress_reporter import (
     ProgressReporter,
-    _detect_reporter,
     _detect_progress_metrics,
+    _detect_reporter,
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
@@ -59,28 +54,23 @@ from ray.tune.schedulers import (
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
-from ray.tune.stopper import Stopper
 from ray.tune.search import (
     BasicVariantGenerator,
-    SearchAlgorithm,
-    SearchGenerator,
     ConcurrencyLimiter,
+    SearchAlgorithm,
     Searcher,
+    SearchGenerator,
     create_searcher,
 )
 from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
+from ray.tune.stopper import Stopper
 from ray.tune.trainable import Trainable
-from ray.tune.experiment import Trial
+from ray.tune.tune_config import ResumeConfig
 from ray.tune.utils.callback import _create_default_callbacks
-from ray.tune.utils.log import (
-    Verbosity,
-    has_verbosity,
-    set_verbosity,
-)
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
@@ -353,12 +343,10 @@ def run(
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
 
         # Resumes training if a previous machine crashed
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume=True)
-
-        # Rerun ONLY failed trials after an experiment is finished.
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume="ERRORED_ONLY")
+        tune.run(
+            my_trainable, config=space,
+            storage_path=<path/to/dir>, name=<exp_name>, resume=True
+        )
 
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
@@ -490,6 +478,7 @@ def run(
         _remote: Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
+        local_dir: Deprecated. Use `storage_path` instead.
         keep_checkpoints_num: Deprecated. use checkpoint_config instead.
         checkpoint_score_attr: Deprecated. use checkpoint_config instead.
         checkpoint_freq: Deprecated. use checkpoint_config instead.
@@ -577,15 +566,29 @@ def run(
 
     del remote_run_kwargs
 
+    # TODO(justinvyu): [Deprecated] Remove in 2.30
+    ENV_VAR_DEPRECATION_MESSAGE = (
+        "The environment variable `{}` is deprecated. "
+        "It is no longer used and will not have any effect. "
+        "You should set the `storage_path` instead. Files will no longer be "
+        "written to `~/ray_results` as long as `storage_path` is set."
+        "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+        "persistent-storage.html#setting-the-local-staging-directory"
+    )
     if os.environ.get("TUNE_RESULT_DIR"):
-        # Deprecate: Raise in 2.6, remove in 2.7
-        warnings.warn(
-            "The TUNE_RESULT_DIR environment variable is deprecated and will be "
-            "removed in the future. If you want to set persistent storage to "
-            "a local directory, pass `storage_path` instead. If you are using "
-            "remote storage and want to control the local cache directory, "
-            "set the RAY_AIR_LOCAL_CACHE_DIR environment variable instead.",
-            DeprecationWarning,
+        raise DeprecationWarning(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
+
+    if os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
+        raise DeprecationWarning(
+            ENV_VAR_DEPRECATION_MESSAGE.format("RAY_AIR_LOCAL_CACHE_DIR")
+        )
+
+    if local_dir is not None:
+        raise DeprecationWarning(
+            "The `local_dir` argument is deprecated. "
+            "You should set the `storage_path` instead. "
+            "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+            "persistent-storage.html#setting-the-local-staging-directory"
         )
 
     ray._private.usage.usage_lib.record_library_usage("tune")
@@ -619,13 +622,6 @@ def run(
         air_verbosity = None
 
     if air_verbosity is not None:
-        logger.info(
-            f"[output] This will use the new output engine with verbosity "
-            f"{air_verbosity}. To disable the new output and use the legacy "
-            f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
-            f"For more information, please see "
-            f"https://github.com/ray-project/ray/issues/36949"
-        )
         # Disable old output engine
         set_verbosity(0)
     else:
@@ -643,12 +639,6 @@ def run(
         )
 
     sync_config = sync_config or SyncConfig()
-
-    # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-    # For now, keep accepting both options.
-    if local_dir is not None:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
-
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
     # For backward compatibility
@@ -915,7 +905,10 @@ def run(
         progress_reporter = None
 
     if air_verbosity is None:
-        progress_reporter = progress_reporter or _detect_reporter()
+        is_trainer = _entrypoint == AirEntrypoint.TRAINER
+        progress_reporter = progress_reporter or _detect_reporter(
+            _trainer_api=is_trainer
+        )
 
     if resume is not None:
         resume_config = resume_config or _build_resume_config_from_legacy_config(resume)

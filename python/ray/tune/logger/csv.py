@@ -1,7 +1,6 @@
 import csv
 import logging
 from pathlib import Path
-
 from typing import TYPE_CHECKING, Dict, TextIO
 
 from ray.air.constants import EXPR_PROGRESS_FILE

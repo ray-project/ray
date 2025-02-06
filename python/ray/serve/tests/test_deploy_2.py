@@ -11,45 +11,23 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus
-from ray.serve._private.logging_utils import (
-    get_component_log_file_name,
-    get_serve_logs_dir,
-)
+from ray.serve._private.common import DeploymentStatus
+from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.utils import get_component_file_name
+from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
 
 
-@pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
-def test_deploy_nullify_route_prefix(serve_instance, prefixes):
-    # With multi dags support, dag driver will receive all route
-    # prefix when route_prefix is "None", since "None" will be converted
-    # to "/" internally.
-    # Note: the expose http endpoint will still be removed for internal
-    # dag node by setting "None" to route_prefix
-    @serve.deployment
-    def f(*args):
-        return "got me"
-
-    for prefix in prefixes:
-        dag = f.options(route_prefix=prefix).bind()
-        handle = serve.run(dag)
-        assert requests.get("http://localhost:8000/f").status_code == 200
-        assert requests.get("http://localhost:8000/f").text == "got me"
-        assert handle.remote().result() == "got me"
-
-
-@pytest.mark.timeout(10, method="thread")
-def test_deploy_empty_bundle(serve_instance):
+def test_deploy_zero_cpus(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     class D:
-        def hello(self, _):
+        def hello(self):
             return "hello"
 
-    # This should succesfully terminate within the provided time-frame.
-    serve.run(D.bind())
+    h = serve.run(D.bind())
+    assert h.hello.remote().result() == "hello"
 
 
 def test_deployment_error_handling(serve_instance):
@@ -57,9 +35,7 @@ def test_deployment_error_handling(serve_instance):
     def f():
         pass
 
-    with pytest.raises(
-        ValidationError, match="1 validation error for RayActorOptionsSchema.*"
-    ):
+    with pytest.raises(RuntimeError):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.
@@ -236,7 +212,7 @@ def test_deploy_application_unhealthy(serve_instance):
         for actor in list_actors()
         if actor["name"] == "SERVE_CONTROLLER_ACTOR"
     ][0]
-    controller_log_file_name = get_component_log_file_name(
+    controller_log_file_name = get_component_file_name(
         "controller", controller_pid, component_type=None, suffix=".log"
     )
     controller_log_path = os.path.join(get_serve_logs_dir(), controller_log_file_name)
@@ -322,7 +298,6 @@ def test_num_replicas_auto_api(serve_instance, use_options):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Untouched defaults
@@ -375,7 +350,6 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Overrided by `autoscaling_config`

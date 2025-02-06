@@ -8,9 +8,9 @@ import pytest
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data import Dataset
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -294,7 +294,7 @@ def test_optimize_lazy_reuse_base_data(
 
 
 def test_require_preserve_order(ray_start_regular_shared):
-    ds = ray.data.range(100).map_batches(lambda x: x).sort()
+    ds = ray.data.range(100).map_batches(lambda x: x).sort("id")
     assert ds._plan.require_preserve_order()
     ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
     assert ds2._plan.require_preserve_order()

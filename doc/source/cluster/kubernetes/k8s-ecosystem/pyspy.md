@@ -33,7 +33,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ```bash
 # Download `ray-cluster.py-spy.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.py-spy.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.py-spy.yaml
 
 # Create a RayCluster
 kubectl apply -f ray-cluster.py-spy.yaml
@@ -42,7 +42,7 @@ kubectl apply -f ray-cluster.py-spy.yaml
 ### Step 4: Forward the dashboard port
 
 ```bash
-kubectl port-forward --address 0.0.0.0 svc/raycluster-py-spy-head-svc 8265:8265
+kubectl port-forward svc/raycluster-py-spy-head-svc 8265:8265
 ```
 
 ### Step 5: Run a sample job within the head Pod
@@ -52,7 +52,7 @@ kubectl port-forward --address 0.0.0.0 svc/raycluster-py-spy-head-svc 8265:8265
 kubectl exec -it ${YOUR_HEAD_POD} -- bash
 
 # (Head Pod) Run a sample job in the Pod
-# `long_running_task` includes a `while True` loop to ensure the task remains actively running indefinitely. 
+# `long_running_task` includes a `while True` loop to ensure the task remains actively running indefinitely.
 # This allows you ample time to view the Stack Trace and CPU Flame Graph via Ray Dashboard.
 python3 samples/long_running_task.py
 ```

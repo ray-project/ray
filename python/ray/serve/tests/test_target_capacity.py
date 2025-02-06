@@ -13,7 +13,6 @@ from ray.exceptions import RayActorError
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
@@ -22,7 +21,11 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
 INGRESS_DEPLOYMENT_NAME = "ingress"
 INGRESS_DEPLOYMENT_NUM_REPLICAS = 6
@@ -367,11 +370,6 @@ def test_autoscaling_scale_to_zero(
             SCALE_TO_ZERO_DEPLOYMENT_NAME: SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS / 2,
         },
     )
-
-    # TODO(edoakes): for some reason, the deployment does not actually scale down to
-    # zero here, so skipping this part for now. Instead it repeatedly scales down and
-    # then back up. Seems to have something to do with the handle-side queue metric.
-    return
 
     # Cancel all of the requests, should scale down to zero.
     [r.cancel() for r in responses]

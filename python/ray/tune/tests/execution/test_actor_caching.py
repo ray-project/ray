@@ -1,10 +1,10 @@
-import pytest
 import sys
+
+import pytest
 
 import ray
 from ray.tune import PlacementGroupFactory
-
-from ray.tune.tests.execution.utils import create_execution_test_objects, TestingTrial
+from ray.tune.tests.execution.utils import TestingTrial, create_execution_test_objects
 
 
 @pytest.fixture

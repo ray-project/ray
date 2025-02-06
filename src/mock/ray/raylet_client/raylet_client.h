@@ -49,9 +49,14 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
               (override));
   MOCK_METHOD(void,
-              ReleaseUnusedWorkers,
+              PrestartWorkers,
+              (const rpc::PrestartWorkersRequest &request,
+               const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              ReleaseUnusedActorWorkers,
               (const std::vector<WorkerID> &workers_in_use,
-               const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback),
+               const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback),
               (override));
   MOCK_METHOD(void,
               CancelWorkerLease,
@@ -89,12 +94,27 @@ class MockRayletClientInterface : public RayletClientInterface {
                const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback),
               (override));
   MOCK_METHOD(void,
-              GetSystemConfig,
-              (const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback),
-              (override));
-  MOCK_METHOD(void,
               GetResourceLoad,
               (const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              RegisterMutableObjectReader,
+              (const ObjectID &object_id,
+               int64_t num_readers,
+               const ObjectID &local_reader_object_id,
+               const rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              PushMutableObject,
+              (const ObjectID &object_id,
+               uint64_t data_size,
+               uint64_t metadata_size,
+               void *data,
+               const rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              GetSystemConfig,
+              (const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback),
               (override));
   MOCK_METHOD(void,
               NotifyGCSRestart,
@@ -112,6 +132,11 @@ class MockRayletClientInterface : public RayletClientInterface {
                const std::string &reason_message,
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              IsLocalWorkerDead,
+              (const WorkerID &worker_id,
+               const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback),
               (override));
 };
 

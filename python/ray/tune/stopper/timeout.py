@@ -1,10 +1,10 @@
 import datetime
-from typing import Union
 import time
+from typing import Union
 
 from ray import logger
-from ray.util.annotations import PublicAPI
 from ray.tune.stopper.stopper import Stopper
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI

@@ -1,13 +1,19 @@
 import argparse
-
-import tensorflow as tf
+import sys
 
 import ray
 from ray import train
-from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.data.preprocessors import Concatenator
 from ray.train import Result, ScalingConfig
-from ray.train.tensorflow import TensorflowTrainer
+
+if sys.version_info >= (3, 12):
+    # Skip this test in Python 3.12+ because TensorFlow is not supported.
+    sys.exit(0)
+else:
+    import tensorflow as tf
+
+    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.train.tensorflow import TensorflowTrainer
 
 
 def build_model() -> tf.keras.Model:
@@ -51,7 +57,8 @@ def train_func(config: dict):
 
 def train_tensorflow_regression(num_workers: int = 2, use_gpu: bool = False) -> Result:
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
-    preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
+    columns_to_concatenate = [f"x{i:03}" for i in range(100)]
+    preprocessor = Concatenator(columns=columns_to_concatenate, output_column_name="x")
     dataset = preprocessor.fit_transform(dataset)
 
     config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}

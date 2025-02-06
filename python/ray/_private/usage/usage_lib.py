@@ -48,7 +48,6 @@ import os
 import platform
 import sys
 import time
-import uuid
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -414,7 +413,6 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
     if usage_stats_enabled():
         metadata.update(
             {
-                "session_id": str(uuid.uuid4()),
                 "git_commit": ray.__commit__,
                 "os": sys.platform,
                 "session_start_timestamp_ms": int(time.time() * 1000),
@@ -539,7 +537,9 @@ def put_cluster_metadata(gcs_client, *, ray_init_cluster) -> None:
 def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     """Return the total number of running jobs in the cluster excluding internal ones"""
     try:
-        result = gcs_client.get_all_job_info()
+        result = gcs_client.get_all_job_info(
+            skip_submission_job_info_field=True, skip_is_running_tasks_field=True
+        )
         total_num_running_jobs = 0
         for job_info in result.values():
             if not job_info.is_dead and not job_info.config.ray_namespace.startswith(
@@ -558,7 +558,7 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
         result = gcs_client.get_all_node_info(timeout=timeout)
         total_num_nodes = 0
         for node_id, node_info in result.items():
-            if node_info["state"] == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+            if node_info.state == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:
@@ -634,8 +634,8 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
     try:
         cluster_status = get_cluster_status(gcs_client.address)
         total_resources = cluster_status.total_resources()
-        result.total_num_cpus = total_resources.get("CPU", 0)
-        result.total_num_gpus = total_resources.get("GPU", 0)
+        result.total_num_cpus = int(total_resources.get("CPU", 0))
+        result.total_num_gpus = int(total_resources.get("GPU", 0))
 
         to_GiB = 1 / 2**30
         result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
@@ -808,11 +808,8 @@ def get_cluster_metadata(gcs_client) -> dict:
     )
 
 
-def is_ray_init_cluster(gcs_address: str) -> bool:
+def is_ray_init_cluster(gcs_client: ray._raylet.GcsClient) -> bool:
     """Return whether the cluster is started by ray.init()"""
-
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
-
     cluster_metadata = get_cluster_metadata(gcs_client)
     return cluster_metadata["ray_init_cluster"]
 
@@ -836,6 +833,7 @@ def generate_report_data(
     total_failed: int,
     seq_number: int,
     gcs_address: str,
+    cluster_id: str,
 ) -> UsageStatsToReport:
     """Generate the report data.
 
@@ -849,11 +847,16 @@ def generate_report_data(
         seq_number: The sequence number that's incremented whenever
             a new report is sent.
         gcs_address: the address of gcs to get data to report.
+        cluster_id: hex id of the cluster.
 
     Returns:
         UsageStats
     """
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+    assert cluster_id
+
+    gcs_client = ray._raylet.GcsClient(
+        address=gcs_address, nums_reconnect_retry=20, cluster_id=cluster_id
+    )
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
@@ -870,7 +873,7 @@ def generate_report_data(
         seq_number=seq_number,
         ray_version=cluster_metadata["ray_version"],
         python_version=cluster_metadata["python_version"],
-        session_id=cluster_metadata["session_id"],
+        session_id=cluster_id,
         git_commit=cluster_metadata["git_commit"],
         os=cluster_metadata["os"],
         session_start_timestamp_ms=cluster_metadata["session_start_timestamp_ms"],

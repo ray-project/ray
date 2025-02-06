@@ -6,6 +6,17 @@ This module provides a compatibility layer for different versions of the protobu
 library.
 """
 
+_protobuf_has_old_arg_name_cached = None
+
+
+def _protobuf_has_old_arg_name():
+    """Cache the inspect result to avoid doing it for every single message."""
+    global _protobuf_has_old_arg_name_cached
+    if _protobuf_has_old_arg_name_cached is None:
+        params = inspect.signature(MessageToDict).parameters
+        _protobuf_has_old_arg_name_cached = "including_default_value_fields" in params
+    return _protobuf_has_old_arg_name_cached
+
 
 def rename_always_print_fields_with_no_presence(kwargs):
     """
@@ -23,16 +34,10 @@ def rename_always_print_fields_with_no_presence(kwargs):
     new_arg_name = "always_print_fields_with_no_presence"
     if old_arg_name in kwargs:
         raise ValueError(f"{old_arg_name} is deprecated, please use {new_arg_name}")
-    if new_arg_name not in kwargs:
-        return kwargs
 
-    params = inspect.signature(MessageToDict).parameters
-    if new_arg_name in params:
-        return kwargs
-    if old_arg_name in params:
+    if new_arg_name in kwargs and _protobuf_has_old_arg_name():
         kwargs[old_arg_name] = kwargs.pop(new_arg_name)
-        return kwargs
-    # Neither args are in the signature, do nothing.
+
     return kwargs
 
 

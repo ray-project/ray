@@ -24,6 +24,12 @@ parser.add_argument(
     help="the auto-generated ID of the cluster",
 )
 parser.add_argument(
+    "--node-id",
+    required=True,
+    type=str,
+    help="the auto-generated ID of the node",
+)
+parser.add_argument(
     "--node-ip-address",
     required=True,
     type=str,
@@ -44,6 +50,13 @@ parser.add_argument(
 )
 parser.add_argument(
     "--gcs-address", required=True, type=str, help="the address to use for GCS"
+)
+parser.add_argument(
+    "--redis-username",
+    required=False,
+    type=str,
+    default=None,
+    help="the username to use for Redis",
 )
 parser.add_argument(
     "--redis-password",
@@ -206,6 +219,7 @@ if __name__ == "__main__":
         raylet_ip_address=raylet_ip_address,
         node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
+        redis_username=args.redis_username,
         redis_password=args.redis_password,
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
@@ -217,6 +231,7 @@ if __name__ == "__main__":
         session_name=args.session_name,
         webui=args.webui,
         cluster_id=args.cluster_id,
+        node_id=args.node_id,
     )
     node = ray._private.node.Node(
         ray_params,
@@ -240,7 +255,7 @@ if __name__ == "__main__":
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(
-            object_spilling_config, node.session_name
+            object_spilling_config, node.node_id, node.session_name
         )
 
     ray._private.worker._global_node = node

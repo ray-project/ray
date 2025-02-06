@@ -51,6 +51,9 @@ class MockPlasmaClient : public plasma::PlasmaClientInterface {
 
   MOCK_METHOD1(Abort, ray::Status(const ObjectID &object_id));
 
+  MOCK_METHOD1(ExperimentalMutableObjectRegisterWriter,
+               ray::Status(const ObjectID &object_id));
+
   MOCK_METHOD2(GetExperimentalMutableObject,
                ray::Status(const ObjectID &object_id,
                            std::unique_ptr<plasma::MutableObject> *mutable_object));

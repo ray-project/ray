@@ -27,7 +27,7 @@ reason() {
   echo "${REASON}"
 }
 
-RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
+RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-"python ray_release/scripts/run_release_test.py"}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 BUILDKITE_MAX_RETRIES=1
 BUILDKITE_RETRY_CODE=79
@@ -93,7 +93,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   set +e
 
   trap _term SIGINT SIGTERM
-  python "${RAY_TEST_SCRIPT}" "$@" &
+  ${RAY_TEST_SCRIPT} "$@" &
   proc=$!
 
   wait "$proc"

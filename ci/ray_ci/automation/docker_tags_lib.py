@@ -1,7 +1,10 @@
 import subprocess
+import docker
+import re
 from datetime import datetime
 from typing import List, Optional, Callable, Tuple
 import os
+import sys
 from dateutil import parser
 import runfiles
 import platform
@@ -58,7 +61,7 @@ def _get_platform_tag(platform: str) -> str:
     if platform == "cpu":
         return "-cpu"
     versions = platform.split(".")
-    return f"-{versions[0]}{versions[1]}"  # cu11.8.0 -> cu118
+    return f"-{versions[0]}{versions[1]}"  # cu11.8.0-cudnn8 -> cu118
 
 
 def _get_architecture_tag(architecture: str) -> str:
@@ -95,6 +98,75 @@ def list_image_tag_suffixes(
                 tag_suffix = f"{py_version}{platform}{architecture}"
                 tag_suffixes.append(tag_suffix)
     return tag_suffixes
+
+
+def pull_image(image_name: str) -> None:
+    logger.info(f"Pulling image {image_name}")
+    client = docker.from_env()
+    client.images.pull(image_name)
+
+
+def remove_image(image_name: str) -> None:
+    logger.info(f"Removing image {image_name}")
+    client = docker.from_env()
+    client.images.remove(image_name)
+
+
+def get_ray_commit(image_name: str) -> str:
+    """
+    Get the commit hash of Ray in the image.
+    """
+    client = docker.from_env()
+
+    # Command to grab commit hash from ray image
+    command = "python -u -c 'import ray; print(ray.__commit__)'"
+
+    container = client.containers.run(
+        image=image_name, command=command, remove=True, stdout=True, stderr=True
+    )
+    output = container.decode("utf-8").strip()
+    match = re.search(
+        r"^[a-f0-9]{40}$", output, re.MULTILINE
+    )  # Grab commit hash from output
+
+    if not match:
+        raise Exception(
+            f"Failed to get commit hash from image {image_name}. Output: {output}"
+        )
+    return match.group(0)
+
+
+def check_image_ray_commit(prefix: str, ray_type: str, expected_commit: str) -> None:
+    if ray_type == RayType.RAY:
+        tags = list_image_tags(
+            prefix, ray_type, PYTHON_VERSIONS_RAY, PLATFORMS_RAY, ARCHITECTURES_RAY
+        )
+    elif ray_type == RayType.RAY_ML:
+        tags = list_image_tags(
+            prefix,
+            ray_type,
+            PYTHON_VERSIONS_RAY_ML,
+            PLATFORMS_RAY_ML,
+            ARCHITECTURES_RAY_ML,
+        )
+    tags = [f"rayproject/{ray_type}:{tag}" for tag in tags]
+
+    for i, tag in enumerate(tags):
+        logger.info(f"{i+1}/{len(tags)} Checking commit for tag {tag} ....")
+
+        pull_image(tag)
+        commit = get_ray_commit(tag)
+
+        if commit != expected_commit:
+            print(f"Ray commit mismatch for tag {tag}!")
+            print("Expected:", expected_commit)
+            print("Actual:", commit)
+            sys.exit(42)  # Not retrying the check on Buildkite jobs
+        else:
+            print(f"Commit {commit} match for tag {tag}!")
+
+        if i != 0:  # Only save first pulled image for caching
+            remove_image(tag)
 
 
 def list_image_tags(

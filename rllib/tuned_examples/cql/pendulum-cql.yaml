@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Given a SAC-generated offline file generated via:
 # rllib train -f tuned_examples/sac/pendulum-sac.yaml --no-ray-ui
 
@@ -6,11 +7,14 @@ pendulum-cql:
     env: Pendulum-v1
     run: CQL
     stop:
-        evaluation/sampler_results/episode_reward_mean: -700
+        evaluation/env_runners/episode_return_mean: -700
         timesteps_total: 800000
     config:
         # Works for both torch and tf.
         framework: torch
+
+        # Set seed.
+        seed: 0
 
         # Use one or more offline files or "input: sampler" for online learning.
         input: 'dataset'
@@ -25,14 +29,14 @@ pendulum-cql:
         twin_q: true
         train_batch_size: 2000
         bc_iters: 100
-        num_workers: 2
+        num_env_runners: 2
         min_time_s_per_iteration: 10
 
         metrics_num_episodes_for_smoothing: 5
 
         # Evaluate in an actual environment.
         evaluation_interval: 1
-        evaluation_num_workers: 2
+        evaluation_num_env_runners: 2
         evaluation_duration: 10
         evaluation_parallel_to_training: true
         evaluation_config:

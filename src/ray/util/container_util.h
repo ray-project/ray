@@ -14,70 +14,138 @@
 
 #pragma once
 
+#include <array>
 #include <deque>
 #include <map>
+#include <ostream>
 #include <set>
 #include <sstream>
+#include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
 template <typename T>
-std::string debug_string(const T &obj) {
-  std::stringstream ss;
-  ss << obj;
-  return ss.str();
+class DebugStringWrapper;
+
+// The actual interface.
+template <typename T>
+DebugStringWrapper<T> debug_string(const T &t) {
+  return DebugStringWrapper<T>(t);
 }
 
-template <typename... Ts>
-std::string debug_string(const std::pair<Ts...> &pair) {
-  std::stringstream ss;
-  ss << "(" << debug_string(pair.first) << ", " << debug_string(pair.second) << ")";
-  return ss.str();
-}
+/// Wrapper for `debug_string(const T&)`.
+template <typename T>
+class DebugStringWrapper {
+ public:
+  explicit DebugStringWrapper(const T &obj) : obj_(obj) {}
 
-template <typename C>
-std::string _container_debug_string(const C &c) {
-  std::stringstream ss;
-  ss << "[";
-  for (auto it = c.begin(); it != c.end(); ++it) {
-    if (it != c.begin()) {
-      ss << ", ";
+  // Only initialized for the blessed container types listed below with operator<<
+  // specializations.
+  std::ostream &StringifyContainer(std::ostream &os) const {
+    os << "[";
+    for (auto it = obj_.begin(); it != obj_.end(); ++it) {
+      if (it != obj_.begin()) {
+        os << ", ";
+      }
+      os << debug_string(*it);
     }
-    ss << debug_string(*it);
+    os << "]";
+    return os;
   }
-  ss << "]";
-  return ss.str();
+
+  // Public but OK, since it's const &.
+  const T &obj_;
+};
+
+template <typename T>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<T> wrapper) {
+  return os << wrapper.obj_;
+}
+
+// TODO(hjiang): Implement debug string for `std::variant`.
+template <>
+inline std::ostream &operator<<(std::ostream &os,
+                                DebugStringWrapper<std::nullopt_t> wrapper) {
+  return os << "(nullopt)";
 }
 
 template <typename... Ts>
-std::string debug_string(const std::vector<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::pair<Ts...>> pair) {
+  return os << "(" << debug_string(pair.obj_.first) << ", "
+            << debug_string(pair.obj_.second) << ")";
+}
+
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::tuple<Ts...>> tuple) {
+  os << "(";
+  // This specialization is needed, or the compiler complains the lambda in std::apply
+  // does not use capture &os.
+  if constexpr (sizeof...(Ts) != 0) {
+    std::apply(
+        [&os](const Ts &...args) {
+          size_t n = 0;
+          ((os << debug_string(args) << (++n != sizeof...(Ts) ? ", " : "")), ...);
+        },
+        tuple.obj_);
+  } else {
+    // Avoid unused variable warning.
+    (void)tuple;
+  }
+  os << ")";
+  return os;
+}
+
+template <typename T, std::size_t N>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::array<T, N>> c) {
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
-std::string debug_string(const std::set<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::vector<Ts...>> c) {
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
-std::string debug_string(const std::unordered_set<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::set<Ts...>> c) {
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
-std::string debug_string(const absl::flat_hash_set<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<std::unordered_set<Ts...>> c) {
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
-std::string debug_string(const std::map<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<absl::flat_hash_set<Ts...>> c) {
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
-std::string debug_string(const absl::flat_hash_map<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::map<Ts...>> c) {
+  return c.StringifyContainer(os);
+}
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<absl::flat_hash_map<Ts...>> c) {
+  return c.StringifyContainer(os);
+}
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<std::unordered_map<Ts...>> c) {
+  return c.StringifyContainer(os);
+}
+
+template <typename T>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::optional<T>> c) {
+  if (!c.obj_.has_value()) {
+    return os << debug_string(std::nullopt);
+  }
+  return os << debug_string(c.obj_.value());
 }
 
 template <typename C>
@@ -97,21 +165,49 @@ typename C::mapped_type &map_find_or_die(C &c, const typename C::key_type &k) {
       map_find_or_die(const_cast<const C &>(c), k));
 }
 
-/// Remove elements whole matcher returns true against the element.
-///
-/// @param matcher the matcher function to be applied to each elements
-/// @param container the container of the elements
-template <typename T>
-void remove_elements(std::function<bool(T)> matcher, std::deque<T> &container) {
-  auto itr = container.begin();
-  while (itr != container.end()) {
-    if (matcher(*itr)) {
-      itr = container.erase(itr);
+// This is guaranteed that predicate is applied to each element exactly once,
+// so it can have side effect.
+template <typename K, typename V>
+void erase_if(absl::flat_hash_map<K, std::deque<V>> &map,
+              std::function<bool(const V &)> predicate) {
+  for (auto map_it = map.begin(); map_it != map.end();) {
+    auto &queue = map_it->second;
+    for (auto queue_it = queue.begin(); queue_it != queue.end();) {
+      if (predicate(*queue_it)) {
+        queue_it = queue.erase(queue_it);
+      } else {
+        ++queue_it;
+      }
     }
-    if (itr != container.end()) {
-      itr++;
+    if (queue.empty()) {
+      map.erase(map_it++);
+    } else {
+      ++map_it;
     }
   }
+}
+
+template <typename T>
+void erase_if(std::list<T> &list, std::function<bool(const T &)> predicate) {
+  for (auto list_it = list.begin(); list_it != list.end();) {
+    if (predicate(*list_it)) {
+      list_it = list.erase(list_it);
+    } else {
+      ++list_it;
+    }
+  }
+}
+
+// [T] -> (T -> U) -> [U]
+// Only supports && input.
+template <typename T, typename F>
+auto move_mapped(std::vector<T> &&vec, F transform) {
+  std::vector<decltype(transform(std::declval<T>()))> result;
+  result.reserve(vec.size());
+  for (T &elem : vec) {
+    result.emplace_back(transform(std::move(elem)));
+  }
+  return result;
 }
 
 }  // namespace ray

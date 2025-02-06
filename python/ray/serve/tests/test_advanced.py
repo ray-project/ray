@@ -2,11 +2,14 @@ import asyncio
 import time
 
 import pytest
+import requests
+from starlette.requests import Request
 
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve.handle import DeploymentHandle
 
 
 def test_serve_forceful_shutdown(serve_instance):
@@ -95,6 +98,51 @@ def test_parallel_start(serve_instance):
 
     handle = serve.run(LongStartingServable.bind())
     handle.remote().result(timeout_s=10)
+
+
+def test_passing_object_ref_to_deployment_not_pinned_to_memory(serve_instance):
+    """Passing object refs to deployments should not pin the refs in memory.
+
+    We had issue that passing object ref to a deployment will result in memory leak
+    due to _PyObjScanner/ cloudpickler pinning the object to memory. This test will
+    ensure the object ref is released after the request is done.
+
+    See: https://github.com/ray-project/ray/issues/43248
+    """
+
+    @serve.deployment
+    class Dep1:
+        def multiple_by_two(self, length: int):
+            return length * 2
+
+    @serve.deployment
+    class Gateway:
+        def __init__(self, dep1: DeploymentHandle):
+            self.dep1: DeploymentHandle = dep1
+
+        async def __call__(self, http_request: Request) -> str:
+            _length = int(http_request.query_params.get("length"))
+            length_ref = ray.put(_length)
+            obj_ref_hex = length_ref.hex()
+
+            # Object ref should be in the memory for downstream deployment to access.
+            assert obj_ref_hex in ray._private.internal_api.memory_summary()
+            return {
+                "result": await self.dep1.multiple_by_two.remote(length_ref),
+                "length": _length,
+                "obj_ref_hex": obj_ref_hex,
+            }
+
+    app = Gateway.bind(Dep1.bind())
+    serve.run(target=app)
+
+    length = 10
+    response = requests.get(f"http://localhost:8000?length={length}").json()
+    assert response["result"] == length * 2
+    assert response["length"] == length
+
+    # Ensure the object ref is not in the memory anymore.
+    assert response["obj_ref_hex"] not in ray._private.internal_api.memory_summary()
 
 
 if __name__ == "__main__":

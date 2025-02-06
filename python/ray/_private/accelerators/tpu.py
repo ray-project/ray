@@ -3,6 +3,7 @@ import re
 import glob
 import requests
 import logging
+from functools import lru_cache
 from typing import Dict, Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -10,7 +11,7 @@ from ray._private.accelerators.accelerator import AcceleratorManager
 logger = logging.getLogger(__name__)
 
 
-TPU_VALID_CHIP_OPTIONS = (1, 2, 4)
+TPU_VALID_CHIP_OPTIONS = (1, 2, 4, 8)
 GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
@@ -28,14 +29,8 @@ GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
 
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP = {"v2", "v3", "v4"}
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
-
-# TPU VMs come with 4 chips per host and 2 tensorcores per chip.
-# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
-TPU_NUM_CHIPS_PER_HOST = 4
-TPU_CORES_PER_CHIP = 2
 
 # The following defines environment variables that allow
 # us to access a subset of TPU visible chips.
@@ -98,6 +93,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         return list(tpu_visible_chips.split(","))
 
     @staticmethod
+    @lru_cache()
     def get_current_node_num_accelerators() -> int:
         """Attempt to detect the number of TPUs on this machine.
 
@@ -175,8 +171,13 @@ class TPUAcceleratorManager(AcceleratorManager):
             return
 
         num_visible_tpu_chips = len(visible_tpu_chips)
-        if num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST:
+        num_accelerators_on_node = (
+            TPUAcceleratorManager.get_current_node_num_accelerators()
+        )
+        if num_visible_tpu_chips == num_accelerators_on_node:
             # Let the ML framework use the defaults
+            os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+            os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
@@ -191,9 +192,6 @@ class TPUAcceleratorManager(AcceleratorManager):
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif num_visible_tpu_chips == 4:
-            os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = None
-            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = None
 
     @staticmethod
     def _get_current_node_tpu_pod_type() -> Optional[str]:
@@ -275,13 +273,10 @@ class TPUAcceleratorManager(AcceleratorManager):
     def get_num_workers_in_current_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
-        if tpu_pod_type:
-            version = tpu_pod_type.split("-")[0]
+        cores_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
+        if tpu_pod_type and cores_per_host > 0:
             num_chips_or_cores = int(tpu_pod_type.split("-")[1])
-            if version in TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP:
-                return num_chips_or_cores // 8
-            else:
-                return num_chips_or_cores // 4
+            return num_chips_or_cores // cores_per_host
         else:
             logging.debug("Could not get num workers in TPU pod.")
             return None

@@ -1,22 +1,28 @@
 #!/usr/bin/env python
 
-# flake8: noqa
+# ruff: noqa
 # fmt: off
 
 # __tutorial_imports_begin__
 import argparse
 import os
+
 import numpy as np
 import torch
 import torch.optim as optim
 from torchvision import datasets
-from ray.tune.examples.mnist_pytorch import train_func, test_func, ConvNet,\
-    get_data_loaders
 
 import ray
 from ray import train, tune
+from ray.tune.examples.mnist_pytorch import (
+    ConvNet,
+    get_data_loaders,
+    test_func,
+    train_func,
+)
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
+
 # __tutorial_imports_end__
 
 

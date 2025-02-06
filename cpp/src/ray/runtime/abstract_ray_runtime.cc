@@ -48,10 +48,10 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   std::shared_ptr<AbstractRayRuntime> runtime;
   if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
-    runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime());
+    runtime = std::make_shared<LocalModeRayRuntime>();
   } else {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
-    runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
+    runtime = std::make_shared<NativeRayRuntime>();
     RAY_LOG(INFO) << "Native ray runtime started.";
   }
   RAY_CHECK(runtime);
@@ -389,7 +389,9 @@ std::string AbstractRayRuntime::DeserializeAndRegisterActorHandle(
     const std::string &serialized_actor_handle) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   return core_worker
-      .DeserializeAndRegisterActorHandle(serialized_actor_handle, ObjectID::Nil())
+      .DeserializeAndRegisterActorHandle(serialized_actor_handle,
+                                         ObjectID::Nil(),
+                                         /*add_local_ref=*/true)
       .Binary();
 }
 

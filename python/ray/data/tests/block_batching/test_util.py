@@ -1,4 +1,4 @@
-import threading
+import logging
 import time
 
 import numpy as np
@@ -16,7 +16,10 @@ from ray.data._internal.block_batching.util import (
     format_batches,
     resolve_block_refs,
 )
-from ray.data._internal.util import Queue, make_async_gen
+from ray.data._internal.util import make_async_gen
+
+
+logger = logging.getLogger(__file__)
 
 
 def block_generator(num_rows: int, num_blocks: int):
@@ -110,14 +113,19 @@ def test_finalize():
         assert batch.data == pa.table({"bar": [1] * 2})
 
 
-def test_make_async_gen_fail():
+@pytest.mark.parametrize("buffer_size", [0, 1, 2])
+def test_make_async_gen_fail(buffer_size: int):
     """Tests that any errors raised in async threads are propagated to the main
     thread."""
 
     def gen(base_iterator):
         raise ValueError("Fail")
 
-    iterator = make_async_gen(base_iterator=iter([1]), fn=gen)
+    iterator = make_async_gen(
+        base_iterator=iter([1]),
+        fn=gen,
+        queue_buffer_size=buffer_size,
+    )
 
     with pytest.raises(ValueError) as e:
         for _ in iterator:
@@ -126,22 +134,61 @@ def test_make_async_gen_fail():
     assert e.match("Fail")
 
 
-def test_make_async_gen():
+@pytest.mark.parametrize("buffer_size", [0, 1, 2])
+def test_make_async_gen_varying_seq_lengths(buffer_size: int):
+    """Tests that iterators of varying lengths are handled appropriately"""
+
+    def _gen(base_iterator):
+        worker_id = next(base_iterator)
+
+        # Make workers produce sequences increasing the same order
+        # as worker-ids (so that for left workers sequences run out first)
+        target_length = worker_id + 1
+
+        return iter([f"worker_{worker_id}:{i}" for i in range(target_length)])
+
+    num_seqs = 3
+
+    iterator = make_async_gen(
+        base_iterator=iter(list(range(num_seqs))),
+        fn=_gen,
+        # Make sure individual elements are handle by diff workers
+        num_workers=num_seqs,
+        queue_buffer_size=buffer_size,
+    )
+
+    seq = list(iterator)
+
+    assert [
+        "worker_0:0",
+        "worker_1:0",
+        "worker_2:0",
+        "worker_1:1",
+        "worker_2:1",
+        "worker_2:2",
+    ] == seq
+
+
+@pytest.mark.parametrize("buffer_size", [0, 1, 2])
+def test_make_async_gen(buffer_size: int):
     """Tests that make_async_gen overlaps compute."""
 
-    num_items = 10
+    num_items = 5
 
     def gen(base_iterator):
         for i in base_iterator:
-            time.sleep(2)
+            time.sleep(1)
             yield i
 
     def sleep_udf(item):
-        time.sleep(3)
+        time.sleep(2)
         return item
 
     iterator = make_async_gen(
-        base_iterator=iter(range(num_items)), fn=gen, num_workers=1
+        base_iterator=iter(range(num_items)),
+        fn=gen,
+        num_workers=1,
+        queue_buffer_size=buffer_size,
     )
 
     start_time = time.time()
@@ -151,46 +198,58 @@ def test_make_async_gen():
         outputs.append(sleep_udf(item))
     end_time = time.time()
 
+    # Assert ordering is preserved
     assert outputs == list(range(num_items))
 
     # Three second buffer.
-    assert end_time - start_time < num_items * 3 + 3
+    assert end_time - start_time < num_items * 2 + 3
 
 
-def test_make_async_gen_multiple_threads():
+@pytest.mark.parametrize("buffer_size", [0, 1, 2])
+def test_make_async_gen_multiple_threads(buffer_size: int):
     """Tests that using multiple threads can overlap compute even more."""
 
     num_items = 5
 
+    gen_sleep = 2
+    iter_sleep = 3
+
     def gen(base_iterator):
         for i in base_iterator:
-            time.sleep(4)
+            time.sleep(gen_sleep)
             yield i
 
     def sleep_udf(item):
-        time.sleep(5)
+        time.sleep(iter_sleep)
         return item
 
     # All 5 items should be fetched concurrently.
     iterator = make_async_gen(
-        base_iterator=iter(range(num_items)), fn=gen, num_workers=5
+        base_iterator=iter(range(num_items)),
+        fn=gen,
+        num_workers=5,
+        queue_buffer_size=buffer_size,
     )
 
     start_time = time.time()
 
     # Only sleep for first item.
-    sleep_udf(next(iterator))
+    elements = [sleep_udf(next(iterator))] + list(iterator)
 
     # All subsequent items should already be prefetched and should be ready.
-    for _ in iterator:
-        pass
     end_time = time.time()
 
-    # 4 second for first item, 5 seconds for udf, 0.5 seconds buffer
-    assert end_time - start_time < 9.5
+    # Assert ordering is preserved
+    assert elements == list(range(num_items))
+
+    # - 2 second for every worker to handle their single element
+    # - 3 seconds for overlapping one
+    # - 0.5 seconds buffer
+    assert end_time - start_time < gen_sleep + iter_sleep + 0.5
 
 
-def test_make_async_gen_multiple_threads_unfinished():
+@pytest.mark.parametrize("buffer_size", [0, 1, 2])
+def test_make_async_gen_multiple_threads_unfinished(buffer_size: int):
     """Tests that using multiple threads can overlap compute even more.
     Do not finish iteration with break in the middle.
     """
@@ -208,7 +267,10 @@ def test_make_async_gen_multiple_threads_unfinished():
 
     # All 5 items should be fetched concurrently.
     iterator = make_async_gen(
-        base_iterator=iter(range(num_items)), fn=gen, num_workers=5
+        base_iterator=iter(range(num_items)),
+        fn=gen,
+        num_workers=5,
+        queue_buffer_size=buffer_size,
     )
 
     start_time = time.time()
@@ -226,63 +288,30 @@ def test_make_async_gen_multiple_threads_unfinished():
     assert end_time - start_time < 9.5
 
 
-def test_queue():
-    queue = Queue(5)
-    num_producers = 10
-    num_producers_finished = 0
-    num_items = 20
-
-    def execute_computation():
-        for item in range(num_items):
-            if queue.put(item):
-                # Return early when it's instructed to do so.
-                break
-        # Put -1 as indicator of thread being finished.
-        queue.put(-1)
-
-    # Use separate threads as producers.
-    threads = [
-        threading.Thread(target=execute_computation, daemon=True)
-        for _ in range(num_producers)
-    ]
-
-    for thread in threads:
-        thread.start()
-
-    for i in range(num_producers * num_items):
-        item = queue.get()
-        if item == -1:
-            num_producers_finished += 1
-        if i > num_producers * num_items / 2:
-            num_producers_alive = num_producers - num_producers_finished
-            # Check there are some alive producers.
-            assert num_producers_alive > 0, num_producers_alive
-            # Release the alive producers.
-            queue.release(num_producers_alive)
-            # Consume the remaining items in queue.
-            while queue.qsize() > 0:
-                queue.get()
-            break
-
-    # Sleep 5 seconds to allow producer threads to exit.
-    time.sleep(5)
-    # Then check the queue is still empty.
-    assert queue.qsize() == 0
-
-
 def test_calculate_ref_hits(ray_start_regular_shared):
     refs = [ray.put(0), ray.put(1)]
     hits, misses, unknowns = _calculate_ref_hits(refs)
-    assert hits == 0
-    assert misses == 0
-    assert unknowns == 0
+    # With ctx.enable_get_object_locations_for_metrics set to False
+    # by default, `_calculate_ref_hits` returns -1 for all, since
+    # getting object locations is disabled.
+    assert hits == -1
+    assert misses == -1
+    assert unknowns == -1
 
     ctx = ray.data.context.DataContext.get_current()
-    ctx.enable_get_object_locations_for_metrics = True
-    hits, misses, unknowns = _calculate_ref_hits(refs)
-    assert hits == 2
-    assert misses == 0
-    assert unknowns == 0
+    prev_enable_get_object_locations_for_metrics = (
+        ctx.enable_get_object_locations_for_metrics
+    )
+    try:
+        ctx.enable_get_object_locations_for_metrics = True
+        hits, misses, unknowns = _calculate_ref_hits(refs)
+        assert hits == 2
+        assert misses == 0
+        assert unknowns == 0
+    finally:
+        ctx.enable_get_object_locations_for_metrics = (
+            prev_enable_get_object_locations_for_metrics
+        )
 
 
 if __name__ == "__main__":

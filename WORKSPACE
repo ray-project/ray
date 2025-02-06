@@ -1,6 +1,15 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "platforms",
+    sha256 = "5eda539c841265031c2f82d8ae7a3a6490bd62176e0c038fc469eabf91f6149b",
+    urls = [
+        "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
+    ],
+)
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
@@ -18,23 +27,21 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-# TODO (shrekris-anyscale): Update the min version to 4.2.2 once Windows uses
-# it in CI.
+# Please keep this in sync with the .bazelversion file.
+versions.check(
+    maximum_bazel_version = "6.5.0",
+    minimum_bazel_version = "6.5.0",
+)
 
-# Please keep this in sync with the .bazeliskrc file.
-versions.check(minimum_bazel_version = "5.4.1")
-
-# Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
-# Just run `bazel run @hedron_compile_commands//:refresh_all`
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
 hedron_compile_commands_setup()
 
 http_archive(
     name = "rules_python",
-    sha256 = "94750828b18044533e98a129003b6a68001204038dc4749f40b195b24c38f49f",
-    strip_prefix = "rules_python-0.21.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.21.0/rules_python-0.21.0.tar.gz",
+    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
+    strip_prefix = "rules_python-0.31.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
 )
 
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
@@ -79,5 +86,5 @@ filegroup(
 )
 """,
     sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
-    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"]
+    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
 )

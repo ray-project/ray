@@ -1,9 +1,12 @@
 import collections
+import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict, fields
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
     Iterator,
@@ -20,8 +23,10 @@ import numpy as np
 
 import ray
 from ray import DynamicObjectRefGenerator
+from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 import psutil
@@ -53,9 +58,25 @@ AggType = TypeVar("AggType")
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
+
+logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+class BlockType(Enum):
+    ARROW = "arrow"
+    PANDAS = "pandas"
+
+
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+
+# User-facing data column type. This is the data type for data that is supplied to and
+# returned from column UDFs.
+DataBatchColumn = Union[
+    "pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", np.ndarray
+]
 
 
 # A class type that implements __call__.
@@ -103,20 +124,17 @@ def _apply_batch_format(given_batch_format: Optional[str]) -> str:
 
 
 def _apply_batch_size(
-    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+    given_batch_size: Optional[Union[int, Literal["default"]]]
 ) -> Optional[int]:
-    if use_gpu and (not given_batch_size or given_batch_size == "default"):
-        raise ValueError(
-            "`batch_size` must be provided to `map_batches` when requesting GPUs. "
-            "The optimal batch size depends on the model, data, and GPU used. "
-            "It is recommended to use the largest batch size that doesn't result "
-            "in your GPU device running out of memory. You can view the GPU memory "
-            "usage via the Ray dashboard."
-        )
-    elif given_batch_size == "default":
+    if given_batch_size == "default":
         return ray.data.context.DEFAULT_BATCH_SIZE
     else:
         return given_batch_size
+
+
+@DeveloperAPI
+def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
+    return [m.to_stats() for m in metas]
 
 
 @DeveloperAPI
@@ -191,28 +209,47 @@ class _BlockExecStatsBuilder:
 
 @DeveloperAPI
 @dataclass
-class BlockMetadata:
-    """Metadata about the block."""
+class BlockStats:
+    """Statistics about the block produced"""
 
     #: The number of rows contained in this block, or None.
     num_rows: Optional[int]
     #: The approximate size in bytes of this block, or None.
     size_bytes: Optional[int]
+    #: Execution stats for this block.
+    exec_stats: Optional[BlockExecStats]
+
+    def __post_init__(self):
+        if self.size_bytes is not None:
+            # Require size_bytes to be int, ray.util.metrics objects
+            # will not take other types like numpy.int64
+            assert isinstance(self.size_bytes, int)
+
+
+_BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
+
+
+@DeveloperAPI
+@dataclass
+class BlockMetadata(BlockStats):
+    """Metadata about the block."""
+
     #: The pyarrow schema or types of the block elements, or None.
     schema: Optional[Union[type, "pyarrow.lib.Schema"]]
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
-    #: Execution stats for this block.
-    exec_stats: Optional[BlockExecStats]
+
+    def to_stats(self):
+        return BlockStats(
+            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+        )
 
     def __post_init__(self):
+        super().__post_init__()
+
         if self.input_files is None:
             self.input_files = []
-        if self.size_bytes is not None:
-            # Require size_bytes to be int, ray.util.metrics objects
-            # will not take other types like numpy.int64
-            assert isinstance(self.size_bytes, int)
 
 
 @DeveloperAPI
@@ -241,8 +278,8 @@ class BlockAccessor:
         """Return a slice of this block.
 
         Args:
-            start: The starting index of the slice.
-            end: The ending index of the slice.
+            start: The starting index of the slice (inclusive).
+            end: The ending index of the slice (exclusive).
             copy: Whether to perform a data copy for the slice.
 
         Returns:
@@ -263,6 +300,10 @@ class BlockAccessor:
 
     def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
+        raise NotImplementedError
+
+    def rename_columns(self, columns_rename: Dict[str, str]) -> Block:
+        """Return the block reflecting the renamed columns."""
         raise NotImplementedError
 
     def random_shuffle(self, random_seed: Optional[int]) -> Block:
@@ -329,7 +370,9 @@ class BlockAccessor:
         raise NotImplementedError
 
     def get_metadata(
-        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+        self,
+        input_files: Optional[List[str]] = None,
+        exec_stats: Optional[BlockExecStats] = None,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
@@ -349,8 +392,12 @@ class BlockAccessor:
         """Create a builder for this block type."""
         raise NotImplementedError
 
-    @staticmethod
-    def batch_to_block(batch: DataBatch) -> Block:
+    @classmethod
+    def batch_to_block(
+        cls,
+        batch: DataBatch,
+        block_type: Optional[BlockType] = None,
+    ) -> Block:
         """Create a block from user-facing data formats."""
 
         if isinstance(batch, np.ndarray):
@@ -362,19 +409,38 @@ class BlockAccessor:
             )
 
         elif isinstance(batch, collections.abc.Mapping):
-            import pyarrow as pa
+            if block_type is None or block_type == BlockType.ARROW:
+                try:
+                    return cls.batch_to_arrow_block(batch)
+                except ArrowConversionError as e:
+                    if log_once("_fallback_to_pandas_block_warning"):
+                        logger.warning(
+                            f"Failed to convert batch to Arrow due to: {e}; "
+                            f"falling back to Pandas block"
+                        )
 
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
-
-            try:
-                return ArrowBlockAccessor.numpy_to_block(batch)
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
-                import pandas as pd
-
-                # TODO(ekl) once we support Python objects within Arrow blocks, we
-                # don't need this fallback path.
-                return pd.DataFrame(dict(batch))
+                    if block_type is None:
+                        return cls.batch_to_pandas_block(batch)
+                    else:
+                        raise e
+            else:
+                assert block_type == BlockType.PANDAS
+                return cls.batch_to_pandas_block(batch)
         return batch
+
+    @classmethod
+    def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create an Arrow block from user-facing data formats."""
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
+
+        return ArrowBlockBuilder._table_from_pydict(batch)
+
+    @classmethod
+    def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create a Pandas block from user-facing data formats."""
+        from ray.data._internal.pandas_block import PandasBlockAccessor
+
+        return PandasBlockAccessor.numpy_to_block(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
@@ -410,13 +476,17 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
+    def sort(self, sort_key: "SortKey") -> "Block":
+        """Returns new block sorted according to provided `sort_key`"""
+        raise NotImplementedError
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: Optional[str], agg: "AggregateFn") -> Block:
+    def combine(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -429,7 +499,94 @@ class BlockAccessor:
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], key: Optional[str], agg: "AggregateFn"
+        blocks: List[Block],
+        sort_key: "SortKey",
+        aggs: Tuple["AggregateFn"],
+        finalize: bool = True,
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
+
+    def block_type(self) -> BlockType:
+        """Return the block type of this block."""
+        raise NotImplementedError
+
+
+def _get_block_boundaries(columns: list[np.ndarray]) -> np.ndarray:
+    """Compute boundaries of the groups within a block, which is represented
+    by a list of 1D numpy arrays for each column. In each column,
+    NaNs/None are considered to be the same group.
+
+    Args:
+        columns: a list of 1D numpy arrays. This is generally given by the
+        dictionary values of ``BlockAccessor.to_numpy()``.
+
+    Returns:
+        A list of starting indices of each group and an end index of the last
+        group, i.e., there are ``num_groups + 1`` entries and the first and last
+        entries are 0 and ``len(array)`` respectively.
+    """
+
+    # There are 3 categories: general, numerics with NaN, and categorical with None.
+    # We only needed to check the last element for NaNs/None, as they are assumed to
+    # be sorted.
+    general_arrays = []
+    num_arrays_with_nan = []
+    cat_arrays_with_none = []
+    for arr in columns:
+        if np.issubdtype(arr.dtype, np.number) and np.isnan(arr[-1]):
+            num_arrays_with_nan.append(arr)
+        elif not np.issubdtype(arr.dtype, np.number) and arr[-1] is None:
+            cat_arrays_with_none.append(arr)
+        else:
+            general_arrays.append(arr)
+
+    # Compute the difference between each pair of elements. Handle the cases
+    # where neighboring elements are both NaN or None. Output as a list of
+    # boolean arrays.
+    diffs = []
+    if len(general_arrays) > 0:
+        diffs.append(
+            np.vstack([arr[1:] != arr[:-1] for arr in general_arrays]).any(axis=0)
+        )
+    if len(num_arrays_with_nan) > 0:
+        # Two neighboring numeric elements belong to the same group when they are
+        # 1) both finite and equal
+        # or 2) both np.nan
+        diffs.append(
+            np.vstack(
+                [
+                    (arr[1:] != arr[:-1])
+                    & (np.isfinite(arr[1:]) | np.isfinite(arr[:-1]))
+                    for arr in num_arrays_with_nan
+                ]
+            ).any(axis=0)
+        )
+    if len(cat_arrays_with_none) > 0:
+        # Two neighboring str/object elements belong to the same group when they are
+        # 1) both finite and equal
+        # or 2) both None
+        diffs.append(
+            np.vstack(
+                [
+                    (arr[1:] != arr[:-1])
+                    & ~(np.equal(arr[1:], None) & np.equal(arr[:-1], None))
+                    for arr in cat_arrays_with_none
+                ]
+            ).any(axis=0)
+        )
+
+    # A series of vectorized operations to compute the boundaries:
+    # - column_stack: stack the bool arrays into a single 2D bool array
+    # - any() and nonzero(): find the indices where any of the column diffs are True
+    # - add 1 to get the index of the first element of the next group
+    # - hstack(): include the 0 and last indices to the boundaries
+    boundaries = np.hstack(
+        [
+            [0],
+            (np.column_stack(diffs).any(axis=1).nonzero()[0] + 1),
+            [len(columns[0])],
+        ]
+    ).astype(int)
+
+    return boundaries

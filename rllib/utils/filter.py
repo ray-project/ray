@@ -114,12 +114,12 @@ class RunningStat:
             delta = x - self.mean_array
             self.mean_array[...] += delta / self.num_pushes
             self.std_array[...] += (
-                delta * delta * (self.num_pushes - 1) / self.num_pushes
+                (delta / self.num_pushes) * delta * (self.num_pushes - 1)
             )
 
     def update(self, other):
-        n1 = self.num_pushes
-        n2 = other.num_pushes
+        n1 = float(self.num_pushes)
+        n2 = float(other.num_pushes)
         n = n1 + n2
         if n == 0:
             # Avoid divide by zero, which creates nans
@@ -127,7 +127,7 @@ class RunningStat:
         delta = self.mean_array - other.mean_array
         delta2 = delta * delta
         m = (n1 * self.mean_array + n2 * other.mean_array) / n
-        s = self.std_array + other.std_array + delta2 * n1 * n2 / n
+        s = self.std_array + other.std_array + (delta2 / n) * n1 * n2
         self.num_pushes = n
         self.mean_array = m
         self.std_array = s
@@ -408,7 +408,6 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
 @OldAPIStack
 def get_filter(filter_config, shape):
-    # TODO(rliaw): move this into filter manager
     if filter_config == "MeanStdFilter":
         return MeanStdFilter(shape, clip=None)
     elif filter_config == "ConcurrentMeanStdFilter":

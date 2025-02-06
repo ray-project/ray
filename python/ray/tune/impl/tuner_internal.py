@@ -1,36 +1,47 @@
 import copy
 import io
-import math
 import logging
+import math
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
     Optional,
+    Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
-    Tuple,
 )
 
 import pyarrow.fs
 
 import ray.cloudpickle as pickle
-from ray.util import inspect_serializability
+import ray.train
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.config import RunConfig, ScalingConfig
+from ray.train import ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
-from ray.tune import Experiment, ExperimentAnalysis, ResumeConfig, TuneError
-from ray.tune.tune import _Config
+from ray.train.constants import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
+from ray.train.utils import _log_deprecation_warning
+from ray.tune import (
+    Experiment,
+    ExperimentAnalysis,
+    ResumeConfig,
+    RunConfig,
+    TuneConfig,
+    TuneError,
+)
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
-from ray.tune.tune import run
-from ray.tune.tune_config import TuneConfig
+from ray.tune.tune import _Config, run
 from ray.tune.utils import flatten_dict
+from ray.util import inspect_serializability
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
@@ -75,7 +86,7 @@ class TunerInternal:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.train.RunConfig for more info.
+            if applicable. Refer to ray.tune.RunConfig for more info.
     """
 
     def __init__(
@@ -93,6 +104,14 @@ class TunerInternal:
         from ray.train.trainer import BaseTrainer
 
         if isinstance(trainable, BaseTrainer):
+            if _v2_migration_warnings_enabled():
+                _log_deprecation_warning(
+                    "The Ray Train + Ray Tune integration has been reworked. "
+                    "Passing a Trainer to the Tuner is deprecated and will be removed "
+                    "in a future release. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+                )
+
             run_config = self._choose_run_config(
                 tuner_run_config=run_config,
                 trainer=trainable,
@@ -101,6 +120,15 @@ class TunerInternal:
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = copy.copy(run_config) or RunConfig()
+
+        if not isinstance(self._run_config, RunConfig):
+            if _v2_migration_warnings_enabled():
+                _log_deprecation_warning(
+                    "The `RunConfig` class should be imported from `ray.tune` "
+                    "when passing it to the Tuner. Please update your imports. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+                )
+
         self._entrypoint = _entrypoint
 
         # Restore from Tuner checkpoint.
@@ -394,7 +422,7 @@ class TunerInternal:
             )
 
         # Both Tuner RunConfig + Trainer RunConfig --> prefer Tuner RunConfig
-        if tuner_run_config and trainer.run_config != RunConfig():
+        if tuner_run_config and trainer.run_config != ray.train.RunConfig():
             logger.info(
                 "A `RunConfig` was passed to both the `Tuner` and the "
                 f"`{trainer.__class__.__name__}`. The run config passed to "
@@ -570,9 +598,6 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             _entrypoint=self._entrypoint,
-            # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-            # For now, keep accepting both options.
-            local_dir=self._run_config.local_dir,
             # Deprecated
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )

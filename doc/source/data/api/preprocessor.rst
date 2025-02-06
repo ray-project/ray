@@ -28,6 +28,7 @@ Fit/Transform APIs
     ~preprocessor.Preprocessor.fit_transform
     ~preprocessor.Preprocessor.transform
     ~preprocessor.Preprocessor.transform_batch
+    ~preprocessor.PreprocessorNotFittedException
 
 
 Generic Preprocessors

@@ -269,7 +269,9 @@ class TestDeploymentHandleStreaming:
                 with pytest.raises(StopAsyncIteration):
                     assert await gen2.__anext__()
 
-        h = serve.run(Delegate.bind(deployment.bind(), deployment.bind()))
+        h = serve.run(
+            Delegate.bind(deployment.bind(), deployment.bind()),
+        )
         h.remote().result()
 
 

@@ -1,31 +1,41 @@
 import argparse
-import sys
-from typing import (
-    Any,
-    Collection,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
-
 import collections
-from dataclasses import dataclass
 import datetime
-from enum import IntEnum
 import logging
 import math
 import numbers
-import numpy as np
 import os
-import pandas as pd
+import sys
 import textwrap
 import time
+from dataclasses import dataclass
+from enum import IntEnum
+from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, Union
 
+import numpy as np
+import pandas as pd
+
+import ray
+from ray._private.dict import flatten_dict, unflattened_lookup
+from ray._private.thirdparty.tabulate.tabulate import (
+    DataRow,
+    Line,
+    TableFormat,
+    tabulate,
+)
 from ray.air._internal.usage import AirEntrypoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.train import Checkpoint
+from ray.tune.callback import Callback
+from ray.tune.experiment.trial import Trial
+from ray.tune.result import (
+    AUTO_RESULT_KEYS,
+    EPISODE_REWARD_MEAN,
+    MEAN_ACCURACY,
+    MEAN_LOSS,
+    TIME_TOTAL_S,
+    TIMESTEPS_TOTAL,
+)
 from ray.tune.search.sample import Domain
 from ray.tune.utils.log import Verbosity
 
@@ -36,25 +46,6 @@ try:
 except ImportError:
     rich = None
 
-import ray
-from ray._private.dict import unflattened_lookup, flatten_dict
-from ray._private.thirdparty.tabulate.tabulate import (
-    tabulate,
-    TableFormat,
-    Line,
-    DataRow,
-)
-from ray.air.constants import TRAINING_ITERATION
-from ray.tune.callback import Callback
-from ray.tune.result import (
-    AUTO_RESULT_KEYS,
-    EPISODE_REWARD_MEAN,
-    MEAN_ACCURACY,
-    MEAN_LOSS,
-    TIME_TOTAL_S,
-    TIMESTEPS_TOTAL,
-)
-from ray.tune.experiment.trial import Trial
 
 logger = logging.getLogger(__name__)
 

@@ -113,7 +113,7 @@ def test_autodetect_parallelism(
         def estimate_inmemory_data_size(self):
             return data_size
 
-    result, _, _, _ = _autodetect_parallelism(
+    result, _, _ = _autodetect_parallelism(
         parallelism=-1,
         target_max_block_size=target_max_block_size,
         ctx=DataContext.get_current(),

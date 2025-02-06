@@ -136,6 +136,20 @@ class InMemoryMetricsStore:
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
 
+    def prune_keys_and_compact_data(self, start_timestamp_s: float):
+        """Prune keys and compact data that are outdated.
+
+        For keys that haven't had new data recorded after the timestamp,
+        remove them from the database.
+        For keys that have, compact the datapoints that were recorded
+        before the timestamp.
+        """
+        for key, datapoints in list(self.data.items()):
+            if len(datapoints) == 0 or datapoints[-1].timestamp < start_timestamp_s:
+                del self.data[key]
+            else:
+                self.data[key] = self._get_datapoints(key, start_timestamp_s)
+
     def _get_datapoints(
         self, key: Hashable, window_start_timestamp_s: float
     ) -> List[float]:
