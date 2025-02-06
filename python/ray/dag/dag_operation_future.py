@@ -65,6 +65,10 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
+    # [HACK]
+    id = 0
+    id_to_event = {}
+
     def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
         """
         Initialize a GPU future on the given stream.
@@ -82,6 +86,10 @@ class GPUFuture(DAGOperationFuture[Any]):
         self._buf = buf
         self._event = cp.cuda.Event()
         self._event.record(stream)
+        # [HACK]
+        self._id = GPUFuture.id
+        GPUFuture.id += 1
+        GPUFuture.id_to_event[self._id] = self._event
 
     def wait(self) -> Any:
         """
@@ -92,4 +100,6 @@ class GPUFuture(DAGOperationFuture[Any]):
 
         current_stream = cp.cuda.get_current_stream()
         current_stream.wait_event(self._event)
+        # [HACK]
+        GPUFuture.id_to_event.pop(self._id)
         return self._buf
