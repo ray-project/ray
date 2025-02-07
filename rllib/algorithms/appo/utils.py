@@ -4,9 +4,10 @@ Luo et al. 2020
 https://arxiv.org/pdf/1912.00167
 """
 from collections import deque
-import random
 import threading
 import time
+
+import numpy as np
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -69,7 +70,7 @@ class CircularBuffer:
                 continue
             # Sample a random buffer index.
             with self._lock:
-                entry = self._buffer[random.randint(0, len(self._buffer) - 1)]
+                entry = self._buffer[np.random.randint(0, len(self._buffer))]
             batch, k = entry
             # Ignore batches that have already been invalidated.
             if batch is not None:
