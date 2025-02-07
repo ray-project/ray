@@ -56,7 +56,9 @@ ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR = "RAY_TRAIN_ENABLE_V2_MIGRATION_WARNINGS"
 
 V2_MIGRATION_GUIDE_MESSAGE = (
     "See this issue for more context and migration options: "
-    "https://github.com/ray-project/ray/issues/49454"
+    "https://github.com/ray-project/ray/issues/49454. "
+    "Disable these warnings by setting the environment variable: "
+    f"{ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR}=0"
 )
 
 
