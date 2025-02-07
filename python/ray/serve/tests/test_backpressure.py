@@ -1,4 +1,7 @@
+import asyncio
+import pickle
 import sys
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Tuple
 
 import grpc
@@ -9,7 +12,8 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.exceptions import BackPressureError
+from ray.exceptions import RayTaskError
+from ray.serve.exceptions import BackPressureError, RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
@@ -130,6 +134,40 @@ def test_grpc_backpressure(serve_instance):
     ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == (grpc.StatusCode.OK, "hi-1")
     assert ray.get(second_ref) == (grpc.StatusCode.OK, "hi-2")
+
+
+def test_model_composition_backpressure(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
+    class Child:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "ok"
+
+    @serve.deployment
+    class Parent:
+        def __init__(self, child):
+            self.child = child
+
+        async def __call__(self):
+            return await self.child.remote()
+
+    def send_request():
+        return requests.get("http://localhost:8000/").status_code
+
+    serve.run(Parent.bind(child=Child.bind()))
+    with ThreadPoolExecutor(max_workers=3) as exc:
+        futures = [exc.submit(send_request) for _ in range(3)]
+        done, _ = wait(futures, return_when=FIRST_COMPLETED)
+        assert len(done) == 1
+        for f in done:
+            assert f.result() == 503
+            print("Received 503 response.")
+
+        print("Releasing signal.")
+        ray.get(signal.send.remote())
+        assert sorted([f.result() for f in futures]) == [200, 200, 503]
 
 
 if __name__ == "__main__":
