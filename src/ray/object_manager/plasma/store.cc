@@ -129,6 +129,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
 PlasmaStore::~PlasmaStore() {}
 
 void PlasmaStore::Start() {
+  RAY_LOG(INFO) << "Starting the PlasmaStore...";
   // Start listening for clients.
   DoAccept();
 }
