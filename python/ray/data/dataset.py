@@ -33,7 +33,6 @@ from ray.air.util.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum, Unique
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
@@ -45,6 +44,7 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -88,7 +88,7 @@ from ray.data._internal.util import (
     _validate_rows_per_file_args,
     get_compute_strategy,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum, Unique
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -265,6 +265,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -336,6 +337,7 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -370,6 +372,9 @@ class Dataset:
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         plan = self._plan.copy()
         map_op = MapRows(
@@ -413,6 +418,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -561,6 +567,7 @@ class Dataset:
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -630,6 +637,7 @@ class Dataset:
             fn_constructor_kwargs=fn_constructor_kwargs,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
@@ -649,6 +657,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]],
         num_cpus: Optional[float],
         num_gpus: Optional[float],
+        memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
@@ -671,6 +680,9 @@ class Dataset:
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         batch_format = _apply_batch_format(batch_format)
 
@@ -1027,8 +1039,7 @@ class Dataset:
 
             if len(names.values()) != len(set(names.values())):
                 raise ValueError(
-                    f"rename_columns received duplicate values in the 'names': "
-                    f"{names}"
+                    f"rename_columns received duplicate values in the 'names': {names}"
                 )
 
             if not all(
@@ -1104,6 +1115,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -1169,6 +1181,7 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
@@ -1202,6 +1215,9 @@ class Dataset:
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         plan = self._plan.copy()
         op = FlatMap(
@@ -1283,8 +1299,7 @@ class Dataset:
             # TODO: (srinathk) bind the expression to the actual schema.
             # If fn is a string, convert it to a pyarrow.dataset.Expression
             # Initialize ExpressionEvaluator with valid columns, if available
-            evaluator = ExpressionEvaluator()
-            resolved_expr = evaluator.get_filters(expression=expr)
+            resolved_expr = ExpressionEvaluator.get_filters(expression=expr)
 
             compute = TaskPoolStrategy(size=concurrency)
         else:
@@ -2104,6 +2119,7 @@ class Dataset:
     def groupby(
         self,
         key: Union[str, List[str], None],
+        num_partitions: Optional[int] = None,
     ) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
@@ -2132,7 +2148,11 @@ class Dataset:
 
         Args:
             key: A column name or list of column names.
-            If this is ``None``, place all rows in a single group.
+                If this is ``None``, place all rows in a single group.
+
+            num_partitions: Number of partitions data will be partitioned into (only
+                relevant if hash-shuffling strategy is used). When not set defaults
+                to `DataContext.min_parallelism`.
 
         Returns:
             A lazy :class:`~ray.data.grouped_data.GroupedData`.
@@ -2151,7 +2171,10 @@ class Dataset:
             # input validation.
             SortKey(key).validate_schema(self.schema(fetch_if_missing=False))
 
-        return GroupedData(self, key)
+        if num_partitions is not None and num_partitions <= 0:
+            raise ValueError("`num_partitions` must be a positive integer")
+
+        return GroupedData(self, key, num_partitions=num_partitions)
 
     @AllToAllAPI
     @ConsumptionAPI
@@ -3914,6 +3937,56 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @ConsumptionAPI
+    def write_lance(
+        self,
+        path: str,
+        *,
+        schema: Optional["pyarrow.Schema"] = None,
+        mode: Literal["create", "append", "overwrite"] = "create",
+        max_rows_per_file: int = 1024 * 1024,
+        data_storage_version: Optional[str] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write the dataset to a Lance dataset.
+
+        Examples:
+             .. testcode::
+                import ray
+                import pandas as pd
+
+                docs = [{"title": "Lance data sink test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_lance("/tmp/data/")
+
+        Args:
+            path: The path to the destination Lance dataset.
+            schema: The schema of the dataset. If not provided, it is inferred from the data.
+            mode: The write mode. Can be "create", "append", or "overwrite".
+            max_rows_per_file: The maximum number of rows per file.
+            data_storage_version: The version of the data storage format to use. Newer versions are more
+                efficient but require newer versions of lance to read.  The default is
+                "legacy" which will use the legacy v1 version.  See the user guide
+                for more details.
+            storage_options: The storage options for the writer. Default is None.
+        """
+        datasink = LanceDatasink(
+            path,
+            schema=schema,
+            mode=mode,
+            max_rows_per_file=max_rows_per_file,
+            data_storage_version=data_storage_version,
+            storage_options=storage_options,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
         self,
@@ -3958,7 +4031,6 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
@@ -5309,6 +5381,10 @@ class Dataset:
 
         if not isinstance(on, list):
             on = [on]
+
+        if len(on) == 0:
+            raise ValueError("At least 1 column to aggregate on has to be provided")
+
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
     def _aggregate_result(self, result: Union[Tuple, Mapping]) -> U:
@@ -5555,7 +5631,6 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-
                 if self._context.use_arrow_tensor_v2:
                     pa_tensor_type_class = ArrowTensorTypeV2
                 else:

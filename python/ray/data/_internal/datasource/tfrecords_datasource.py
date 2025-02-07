@@ -127,14 +127,19 @@ class TFRecordDatasource(FileBasedDatasource):
             raise RuntimeError(f"Failed to read TFRecord file {full_path}.")
 
     def _resolve_full_path(self, relative_path):
-        if isinstance(self._filesystem, pyarrow.fs.S3FileSystem):
+        from ray.data._internal.util import RetryingPyFileSystem
+
+        filesystem = self._filesystem
+        if isinstance(filesystem, RetryingPyFileSystem):
+            filesystem = filesystem.unwrap()
+        if isinstance(filesystem, pyarrow.fs.S3FileSystem):
             return f"s3://{relative_path}"
-        if isinstance(self._filesystem, pyarrow.fs.GcsFileSystem):
+        if isinstance(filesystem, pyarrow.fs.GcsFileSystem):
             return f"gs://{relative_path}"
-        if isinstance(self._filesystem, pyarrow.fs.HadoopFileSystem):
+        if isinstance(filesystem, pyarrow.fs.HadoopFileSystem):
             return f"hdfs:///{relative_path}"
-        if isinstance(self._filesystem, pyarrow.fs.PyFileSystem):
-            protocol = self._filesystem.handler.fs.protocol
+        if isinstance(filesystem, pyarrow.fs.PyFileSystem):
+            protocol = filesystem.handler.fs.protocol
             if isinstance(protocol, list) or isinstance(protocol, tuple):
                 protocol = protocol[0]
             if protocol == "gcs":

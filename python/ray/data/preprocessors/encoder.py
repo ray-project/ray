@@ -608,7 +608,8 @@ def _get_unique_value_indices(
     for batch in value_counts.iter_batches(batch_size=None):
         for col, counters in batch.items():
             for counter in counters:
-                final_counters[col] += counter
+                counter = {k: v for k, v in counter.items() if v is not None}
+                final_counters[col] += Counter(counter)
 
     # Inspect if there is any NA values.
     for col in columns:
