@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
@@ -18,12 +18,6 @@ ENV RAY_INSTALL_JAVA=0
 ENV BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST}
 ENV BUILDKITE_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
-# For wheel build
-# https://github.com/docker-library/docker/blob/master/20.10/docker-entrypoint.sh
-ENV DOCKER_TLS_CERTDIR=/certs
-ENV DOCKER_HOST=tcp://docker:2376
-ENV DOCKER_TLS_VERIFY=1
-ENV DOCKER_CERT_PATH=/certs/client
 ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
@@ -39,7 +33,7 @@ RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
     ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
     ln -s /usr/bin/clang-12 /usr/bin/clang
 
-RUN curl -o- https://get.docker.com | sh
+RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
 # System conf for tests
 RUN locale -a

@@ -12,12 +12,15 @@ class JSONDatasink(BlockBasedFileDatasink):
         self,
         path: str,
         *,
-        pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         pandas_json_args: Optional[Dict[str, Any]] = None,
         file_format: str = "json",
         **file_datasink_kwargs,
     ):
         super().__init__(path, file_format=file_format, **file_datasink_kwargs)
+
+        if pandas_json_args_fn is None:
+            pandas_json_args_fn = lambda: {}  # noqa: E731
 
         if pandas_json_args is None:
             pandas_json_args = {}

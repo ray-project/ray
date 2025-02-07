@@ -53,7 +53,7 @@ class SequenceModel(tf.keras.Model):
         Args:
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the number of GRU units used.
-            action_space: The action space the our environment used.
+            action_space: The action space of the environment used.
             num_gru_units: Overrides the number of GRU units (dimension of the h-state).
                 If None, use the value given through `model_size`
                 (see [1] Appendix B).

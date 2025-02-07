@@ -46,13 +46,6 @@ class SACCatalog(Catalog):
     Any module built for exploration or inference is built with the flag
     `ìnference_only=True` and does not contain any Q-function. This flag can be set
     in the `model_config_dict` with the key `ray.rllib.core.rl_module.INFERENCE_ONLY`.
-    Whenever the default configuration or build methods are overridden, the
-    `inference_only` flag must be used with care to ensure that the module synching
-    works correctly.
-    The module classes contain a `_inference_only_state_dict_keys` attribute that
-    contains the keys to be taken care of when synching the state. The method
-    `__set_inference_only_state_dict_keys` has to be overridden to define these keys
-    and `_inference_only_get_state_hook`.
     """
 
     def __init__(
@@ -81,9 +74,9 @@ class SACCatalog(Catalog):
         )
 
         # Define the heads.
-        self.pi_and_qf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
+        self.pi_and_qf_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
         self.pi_and_qf_head_activation = self._model_config_dict[
-            "post_fcnet_activation"
+            "head_fcnet_activation"
         ]
 
         # We don't have the exact (framework specific) action dist class yet and thus
@@ -92,7 +85,7 @@ class SACCatalog(Catalog):
         self.pi_head_config = None
 
         # TODO (simon): Implement in a later step a q network with
-        # different `post_fcnet_hiddens` than pi.
+        #  different `head_fcnet_hiddens` than pi.
         self.qf_head_config = MLPHeadConfig(
             # TODO (simon): These latent_dims could be different for the
             # q function, value function, and pi head.
@@ -140,11 +133,7 @@ class SACCatalog(Catalog):
         else:
             raise ValueError("The observation space is not supported by RLlib's SAC.")
 
-        if self._model_config_dict["encoder_latent_dim"]:
-            self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"]
-        else:
-            self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
-
+        self.qf_encoder_hiddens = self._model_config_dict["fcnet_hiddens"][:-1]
         self.qf_encoder_activation = self._model_config_dict["fcnet_activation"]
 
         self.qf_encoder_config = MLPEncoderConfig(
@@ -163,7 +152,7 @@ class SACCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a SACRLModule implementation.
+        the behavior of the DefaultSACRLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -177,6 +166,13 @@ class SACCatalog(Catalog):
         if self._model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
+            )
+            is_diag_gaussian = True
+        else:
+            is_diag_gaussian = _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls,
+                framework=framework,
+                no_error=True,
             )
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
@@ -194,6 +190,8 @@ class SACCatalog(Catalog):
             hidden_layer_activation=self.pi_and_qf_head_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
+            clip_log_std=is_diag_gaussian,
+            log_std_clip_param=self._model_config_dict.get("log_std_clip_param", 20),
         )
 
         return self.pi_head_config.build(framework=framework)

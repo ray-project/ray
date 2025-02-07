@@ -1,6 +1,8 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
 load("//bazel:python.bzl", "doctest")
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_test")
 
 exports_files(["test_myst_doc.py"])
 
@@ -213,7 +215,8 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = [
         "source/serve/doc_code/distilbert.py",
-        "source/serve/doc_code/stable_diffusion.py",
+        # TODO: Re-enable after fixing diffusers dependency in runtime_env
+        # "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
     ],
     env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
@@ -269,22 +272,9 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "team:ml",
+    exclude = [
+        "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
     ],
-)
-
-# --------------------------------------------------------------------
-# Test all doc/source/ray-overview/doc_test snippets, used on ray.io
-# --------------------------------------------------------------------
-
-py_test_run_all_subdirectory(
-    size = "small",
-    include = ["source/ray-overview/doc_test/*.py"],
-    exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = [
         "exclusive",
@@ -351,12 +341,28 @@ py_test(
 py_test_run_all_subdirectory(
     size = "enormous",
     include = ["external/*.py"],
-    exclude = [],
+    exclude = ["external/test_hashes.py"],
     extra_srcs = [],
     tags = [
         "exclusive",
         "external",
         "team:ml",
+    ],
+)
+
+py_test(
+    name = "test_external_hashes",
+    srcs = ["external/test_hashes.py"],
+    data = glob(
+        ["external/*.py"],
+        exclude = ["external/test_hashes.py"],
+    ),
+    exec_compatible_with = ["//:hermetic_python"],
+    main = "external/test_hashes.py",
+    tags = ["team:ml"],
+    deps = [
+        ci_require("pytest"),
+        ci_require("bazel-runfiles"),
     ],
 )
 
@@ -407,7 +413,8 @@ doctest(
             # GPU
             "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-gpus.rst",
-        ],
+            "source/train/horovod.rst",  # CI do not have Horovod
+        ]
     ),
     tags = ["team:ml"],
 )
@@ -435,15 +442,26 @@ doctest(
 
 doctest(
     name = "doctest[rllib]",
-    size = "enormous",
+    size = "large",
     files = glob(
         include = [
             "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
         ],
         exclude = [
-            "source/rllib/rllib-env.rst",
-            "source/rllib/rllib-sample-collection.rst",
+            "source/rllib/getting-started.rst",
+        ]
+    ),
+    data = ["//rllib:cartpole-v1_large"],
+    tags = ["team:rllib"],
+)
+
+doctest(
+    name = "doctest[rllib2]",
+    size = "large",
+    files = glob(
+        include = [
+            "source/rllib/getting-started.rst",
         ],
     ),
     tags = ["team:rllib"],

@@ -48,9 +48,6 @@ class TesterContainer(Container):
         self.build_type = build_type
         self.network = network
         self.gpus = gpus
-        assert (
-            self.gpus == 0 or self.gpus >= self.shard_count
-        ), f"Not enough gpus ({self.gpus} provided) for {self.shard_count} shards"
 
         if not skip_ray_installation:
             self.install_ray(build_type)
@@ -77,6 +74,7 @@ class TesterContainer(Container):
         test_arg: Optional[str] = None,
         is_bisect_run: bool = False,
         run_flaky_tests: bool = False,
+        cache_test_results: bool = False,
     ) -> bool:
         """
         Run tests parallelly in docker.  Return whether all tests pass.
@@ -104,8 +102,9 @@ class TesterContainer(Container):
                 gpu_ids[i],
                 bazel_log_dir_host,
                 self.test_envs,
-                test_arg,
-                run_flaky_tests,
+                test_arg=test_arg,
+                run_flaky_tests=run_flaky_tests,
+                cache_test_results=cache_test_results,
             )
             for i in range(len(chunks))
         ]
@@ -221,6 +220,7 @@ class TesterContainer(Container):
         test_envs: List[str],
         test_arg: Optional[str] = None,
         run_flaky_tests: bool = False,
+        cache_test_results: bool = False,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
         commands = [
@@ -255,6 +255,8 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
+        if cache_test_results:
+            test_cmd += "--cache_test_results=auto "
         if run_flaky_tests:
             test_cmd += f"--runs_per_test {RUN_PER_FLAKY_TEST} "
         test_cmd += f"{' '.join(test_targets)}"

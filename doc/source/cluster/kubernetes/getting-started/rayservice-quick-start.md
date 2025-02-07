@@ -40,10 +40,10 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 ## Step 3: Install a RayService
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.sample.yaml
 ```
 
-## Step 4: Verify the Kubernetes cluster status 
+## Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all RayService custom resources in the `default` namespace.
@@ -110,7 +110,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 ```sh
 # Delete the RayService.
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.sample.yaml
 
 # Uninstall the KubeRay operator.
 helm uninstall kuberay-operator

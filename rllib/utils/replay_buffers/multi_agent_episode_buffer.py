@@ -59,8 +59,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         env = MultiAgentCartPole({"num_agents": 2})
 
         # Set up the loop variables
-        agent_ids = env.get_agent_ids()
-        agent_ids.add("__all__")
+        agent_ids = env.agents
+        agent_ids.append("__all__")
         terminateds = {aid: False for aid in agent_ids}
         truncateds = {aid: False for aid in agent_ids}
         num_timesteps = 10000
@@ -75,20 +75,18 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         for i in range(num_timesteps):
             # If terminated we create a new episode.
             if eps.is_done:
-                episodes.append(eps.finalize())
+                episodes.append(eps.to_numpy())
                 eps = MultiAgentEpisode()
                 terminateds = {aid: False for aid in agent_ids}
                 truncateds = {aid: False for aid in agent_ids}
                 obs, infos = env.reset()
                 eps.add_env_reset(observations=obs, infos=infos)
 
-            # Note, `action_space_sample` samples an action for all agents not only the
-            # ones still alive, but the `MultiAgentEpisode.add_env_step` does not accept
-            # results for dead agents.
+            # Sample a random action for all agents that should step in the episode
+            # next.
             actions = {
-                aid: act
-                for aid, act in env.action_space_sample().items()
-                if aid not in (env.terminateds or env.truncateds)
+                aid: env.get_action_space(aid).sample()
+                for aid in eps.get_agents_to_act()
             }
             obs, rewards, terminateds, truncateds, infos = env.step(actions)
             eps.add_env_step(
@@ -481,14 +479,15 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def get_added_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
-        """Returns number of timesteps that have been added in buffer's lifetime for a module.
+        """Returns the number of timesteps added in buffer's lifetime for given module.
 
         Args:
-            module_id: The ID of the module to query. If not provided, the number of
-
+            module_id: The ID of the module to query. If not provided, the total number
+                of timesteps ever added.
 
         Returns:
-            The number of timesteps added for the module or all modules.
+            The number of timesteps added for `module_id` (or all modules if `module_id`
+            is None).
         """
         return (
             self._num_module_timesteps_added[module_id]

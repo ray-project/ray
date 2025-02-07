@@ -2,7 +2,7 @@ import { getStateApiDownloadLogUrl, MAX_LINES_FOR_LOGS } from "./log";
 
 describe("getStateApiDownloadLogUrl", () => {
   it("only uses parameters provided but doesn't fetch when parameters are null", () => {
-    expect.assertions(8);
+    expect.assertions(9);
 
     expect(
       getStateApiDownloadLogUrl({
@@ -10,7 +10,17 @@ describe("getStateApiDownloadLogUrl", () => {
         filename: "file.log",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}&format=text`,
+    );
+
+    expect(
+      getStateApiDownloadLogUrl({
+        nodeId: "node-id",
+        filename: "file.log",
+        format: "leading_1",
+      }),
+    ).toStrictEqual(
+      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}&format=leading_1`,
     );
 
     expect(
@@ -19,7 +29,7 @@ describe("getStateApiDownloadLogUrl", () => {
         suffix: "err",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?task_id=task-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?task_id=task-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}&format=text`,
     );
 
     expect(
@@ -28,7 +38,7 @@ describe("getStateApiDownloadLogUrl", () => {
         suffix: "out",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?task_id=task-id&suffix=out&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?task_id=task-id&suffix=out&lines=${MAX_LINES_FOR_LOGS}&format=text`,
     );
 
     expect(
@@ -37,7 +47,7 @@ describe("getStateApiDownloadLogUrl", () => {
         suffix: "err",
       }),
     ).toStrictEqual(
-      `api/v0/logs/file?actor_id=actor-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}`,
+      `api/v0/logs/file?actor_id=actor-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}&format=text`,
     );
 
     expect(

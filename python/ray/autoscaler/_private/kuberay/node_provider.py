@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -7,10 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from ray.autoscaler._private.constants import (
-    WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
-)
+from ray.autoscaler._private.constants import WORKER_LIVENESS_CHECK_KEY
 from ray.autoscaler._private.util import NodeID, NodeIP, NodeKind, NodeStatus, NodeType
 from ray.autoscaler.batching_node_provider import (
     BatchingNodeProvider,
@@ -38,15 +36,26 @@ KUBERAY_KIND_HEAD = "head"
 # Kind label value indicating the pod is the worker.
 KUBERAY_KIND_WORKER = "worker"
 
-# Group name (node type) to use for the head.
-KUBERAY_TYPE_HEAD = "head-group"
 # KubeRay CRD version
 KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
+KUBERAY_REQUEST_TIMEOUT_S = int(os.getenv("KUBERAY_REQUEST_TIMEOUT_S", 60))
+
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
+# https://kubernetes.io/docs/tasks/run-application/access-api-from-pod
+# While running in a Pod, your container can create an HTTPS URL for the
+# Kubernetes API server by fetching the KUBERNETES_SERVICE_HOST and
+# KUBERNETES_SERVICE_PORT_HTTPS environment variables.
+KUBERNETES_SERVICE_HOST = os.getenv(
+    "KUBERNETES_SERVICE_HOST", "https://kubernetes.default"
+)
+KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+KUBERNETES_HOST = f"{KUBERNETES_SERVICE_HOST}:{KUBERNETES_SERVICE_PORT}"
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
+
+TOKEN_REFRESH_PERIOD = datetime.timedelta(minutes=1)
 
 # Design:
 
@@ -72,8 +81,6 @@ REPLICA_INDEX_KEY = "replicaIndex"
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
 
-provider_exists = False
-
 
 def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
     """Converts a Ray pod extracted from K8s into Ray NodeData.
@@ -93,12 +100,12 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
     from a Ray pod's labels.
     """
     labels = pod["metadata"]["labels"]
-    if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
-        kind = NODE_KIND_HEAD
-        type = KUBERAY_TYPE_HEAD
-    else:
-        kind = NODE_KIND_WORKER
-        type = labels[KUBERAY_LABEL_KEY_TYPE]
+    kind = (
+        NODE_KIND_HEAD
+        if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD
+        else NODE_KIND_WORKER
+    )
+    type = labels[KUBERAY_LABEL_KEY_TYPE]
     return kind, type
 
 
@@ -177,7 +184,10 @@ def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
 
 
 def url_from_resource(
-    namespace: str, path: str, kuberay_crd_version: str = KUBERAY_CRD_VER
+    namespace: str,
+    path: str,
+    kuberay_crd_version: str = KUBERAY_CRD_VER,
+    kubernetes_host: str = KUBERNETES_HOST,
 ) -> str:
     """Convert resource path to REST URL for Kubernetes API server.
 
@@ -185,21 +195,29 @@ def url_from_resource(
         namespace: The K8s namespace of the resource
         path: The part of the resource path that starts with the resource type.
             Supported resource types are "pods" and "rayclusters".
+        kuberay_crd_version: The API version of the KubeRay CRD.
+            Looks like "v1alpha1", "v1".
+        kubernetes_host: The host of the Kubernetes API server.
+            Uses $KUBERNETES_SERVICE_HOST and
+            $KUBERNETES_SERVICE_PORT to construct the kubernetes_host if not provided.
+
+            When set by Kubernetes,
+            $KUBERNETES_SERVICE_HOST could be an IP address. That's why the https
+            scheme is added here.
+
+            Defaults to "https://kubernetes.default:443".
     """
+    if kubernetes_host.startswith("http://"):
+        raise ValueError("Kubernetes host must be accessed over HTTPS.")
+    if not kubernetes_host.startswith("https://"):
+        kubernetes_host = "https://" + kubernetes_host
     if path.startswith("pods"):
         api_group = "/api/v1"
     elif path.startswith("rayclusters"):
         api_group = "/apis/ray.io/" + kuberay_crd_version
     else:
         raise NotImplementedError("Tried to access unknown entity at {}".format(path))
-    return (
-        "https://kubernetes.default:443"
-        + api_group
-        + "/namespaces/"
-        + namespace
-        + "/"
-        + path
-    )
+    return kubernetes_host + api_group + "/namespaces/" + namespace + "/" + path
 
 
 def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
@@ -249,7 +267,19 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
     def __init__(self, namespace: str, kuberay_crd_version: str = KUBERAY_CRD_VER):
         self._kuberay_crd_version = kuberay_crd_version
         self._namespace = namespace
-        self._headers, self._verify = load_k8s_secrets()
+        self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
+        self._headers, self._verify = None, None
+
+    def _get_refreshed_headers_and_verify(self):
+        if (datetime.datetime.now() >= self._token_expires_at) or (
+            self._headers is None or self._verify is None
+        ):
+            logger.info("Refreshing K8s API client token and certs.")
+            self._headers, self._verify = load_k8s_secrets()
+            self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
+            return self._headers, self._verify
+        else:
+            return self._headers, self._verify
 
     def get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers.
@@ -268,7 +298,14 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
-        result = requests.get(url, headers=self._headers, verify=self._verify)
+
+        headers, verify = self._get_refreshed_headers_and_verify()
+        result = requests.get(
+            url,
+            headers=headers,
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
+            verify=verify,
+        )
         if not result.status_code == 200:
             result.raise_for_status()
         return result.json()
@@ -291,11 +328,12 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
+        headers, verify = self._get_refreshed_headers_and_verify()
         result = requests.patch(
             url,
             json.dumps(payload),
-            headers={**self._headers, "Content-type": "application/json-patch+json"},
-            verify=self._verify,
+            headers={**headers, "Content-type": "application/json-patch+json"},
+            verify=verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -307,7 +345,6 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
-        _allow_multiple: bool = False,
     ):
         logger.info("Creating KubeRayNodeProvider.")
         self.namespace = provider_config["namespace"]
@@ -318,12 +355,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
         ), f"To use KubeRayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
-        assert (
-            provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
-        ), f"To use KubeRayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
-        BatchingNodeProvider.__init__(
-            self, provider_config, cluster_name, _allow_multiple
-        )
+        BatchingNodeProvider.__init__(self, provider_config, cluster_name)
 
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         """Queries K8s for pods in the RayCluster. Converts that pod data into a
@@ -494,25 +526,6 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         """Submits a patch to modify a RayCluster CR."""
         path = "rayclusters/{}".format(self.cluster_name)
         self._patch(path, patch_payload)
-
-    def _url(self, path: str) -> str:
-        """Convert resource path to REST URL for Kubernetes API server."""
-        if path.startswith("pods"):
-            api_group = "/api/v1"
-        elif path.startswith("rayclusters"):
-            api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
-        else:
-            raise NotImplementedError(
-                "Tried to access unknown entity at {}".format(path)
-            )
-        return (
-            "https://kubernetes.default:443"
-            + api_group
-            + "/namespaces/"
-            + self.namespace
-            + "/"
-            + path
-        )
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""

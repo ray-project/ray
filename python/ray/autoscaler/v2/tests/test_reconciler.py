@@ -4,11 +4,10 @@ import time
 
 # coding: utf-8
 from collections import defaultdict
+from unittest import mock
+from unittest.mock import MagicMock
 
 import pytest
-
-import mock
-from mock import MagicMock
 
 from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig, Provider
@@ -71,9 +70,6 @@ class MockAutoscalingConfig:
 
     def disable_node_updaters(self):
         return self._configs.get("disable_node_updaters", True)
-
-    def worker_rpc_drain(self):
-        return self._configs.get("worker_rpc_drain", True)
 
     def disable_launch_config_check(self):
         return self._configs.get("disable_launch_config_check", False)
@@ -1100,12 +1096,7 @@ class TestReconciler:
         assert Reconciler._is_head_node_running(instance_manager) is expected_running
 
     @staticmethod
-    @pytest.mark.parametrize(
-        "worker_rpc_drain",
-        [True, False],
-        ids=["worker_rpc_drain", "no_ray_stop"],
-    )
-    def test_scaling_updates(setup, worker_rpc_drain):
+    def test_scaling_updates(setup):
         """
         Tests that new instances should be launched due to autoscaling
         decisions, and existing instances should be terminated if needed.
@@ -1172,7 +1163,6 @@ class TestReconciler:
             autoscaling_config=MockAutoscalingConfig(
                 configs={
                     "max_concurrent_launches": 0,  # don't launch anything.
-                    "worker_rpc_drain": worker_rpc_drain,
                 }
             ),
         )
@@ -1184,11 +1174,7 @@ class TestReconciler:
             if id == "head":
                 assert instance.status == Instance.RAY_RUNNING
             elif id == "i-1":
-                assert (
-                    instance.status == Instance.RAY_STOP_REQUESTED
-                    if worker_rpc_drain
-                    else Instance.TERMINATING
-                )
+                assert instance.status == Instance.RAY_STOP_REQUESTED
             else:
                 assert instance.status == Instance.QUEUED
                 assert instance.instance_type == "type-1"

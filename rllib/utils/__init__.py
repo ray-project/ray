@@ -34,7 +34,6 @@ from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
-    framework_iterator,
 )
 from ray.tune.utils import merge_dicts, deep_update
 
@@ -115,7 +114,6 @@ __all__ = [
     "fc",
     "force_list",
     "force_tuple",
-    "framework_iterator",
     "lstm",
     "merge_dicts",
     "one_hot",

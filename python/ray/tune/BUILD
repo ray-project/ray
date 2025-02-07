@@ -9,6 +9,9 @@ doctest(
             "**/tests/**",
             "suggest/**",
             "impl/test_utils.py",
+            # Already covered by Ray Train doctests
+            "context.py",
+            "trainable/trainable_fn_utils.py",
             # Deprecated
             "automl/**",
             "cluster_info.py",
@@ -64,6 +67,14 @@ py_test(
     name = "test_api_checkpoint_integration",
     size = "medium",
     srcs = ["tests/test_api_checkpoint_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_api_migrations",
+    size = "small",
+    srcs = ["tests/test_api_migrations.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
@@ -288,6 +299,15 @@ py_test(
 )
 
 py_test(
+    name = "test_train_v2_integration",
+    size = "small",
+    srcs = ["tests/test_train_v2_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_trainable",
     size = "medium",
     srcs = ["tests/test_trainable.py"],
@@ -465,6 +485,14 @@ py_test(
     name = "test_controller_resources_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_resources_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_resume_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_resume_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"]
 )

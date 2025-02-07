@@ -10,6 +10,7 @@ public class RedisPasswordTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
+    System.setProperty("ray.redis.username", "default");
     System.setProperty("ray.redis.password", "12345678");
   }
 

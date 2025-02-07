@@ -53,7 +53,7 @@ Use `ray list tasks` from :ref:`State API CLI <state-api-overview-ref>` to query
 .. code-block:: bash
 
   # This API is only available when you download Ray via `pip install "ray[default]"`
-  ray list tasks 
+  ray list tasks
 
 .. code-block:: bash
 

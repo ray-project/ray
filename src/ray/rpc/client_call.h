@@ -26,6 +26,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/util/thread_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -57,7 +58,7 @@ class ClientCallManager;
 ///
 /// \tparam Reply Type of the reply message.
 template <class Reply>
-using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
+using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
@@ -102,7 +103,8 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (callback_ != nullptr) {
-      callback_(status, reply_);
+      // This should be only called once.
+      callback_(status, std::move(reply_));
     }
   }
 

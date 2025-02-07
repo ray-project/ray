@@ -104,7 +104,7 @@ def test_preemption(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    with pytest.raises(ray.exceptions.RpcError):
+    with pytest.raises(ray.exceptions.RaySystemError):
         # Test invalid draining deadline
         gcs_client.drain_node(
             worker_node_id,

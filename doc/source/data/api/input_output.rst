@@ -64,6 +64,15 @@ Text
 
    read_text
 
+Audio
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_audio
+
 Avro
 ----
 
@@ -101,7 +110,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-   datasource.tfrecords_datasource.TFXReadOptions
+   TFXReadOptions
 
 Pandas
 ------
@@ -177,6 +186,33 @@ Databricks
 
    read_databricks_tables
 
+Delta Sharing
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta_sharing_tables
+
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi
+
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
+
 Lance
 -----
 
@@ -185,6 +221,16 @@ Lance
    :toctree: doc/
 
    read_lance
+   Dataset.write_lance
+
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
 
 Dask
 ----
@@ -253,6 +299,15 @@ TensorFlow
 
    from_tf
 
+Video
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_videos
+
 WebDataset
 ----------
 
@@ -288,6 +343,8 @@ Datasink API
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
 
 Partitioning API
 ----------------
@@ -316,4 +373,11 @@ MetadataProvider API
    datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
-   
+Shuffling API
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig

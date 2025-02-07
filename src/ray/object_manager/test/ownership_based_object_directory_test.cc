@@ -55,7 +55,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
     auto callback = callbacks.front();
     auto reply = rpc::UpdateObjectLocationBatchReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
     callback_invoked++;
     callbacks.pop_front();
     return true;

@@ -12,9 +12,16 @@ from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray.serve._private.replica_scheduler import ReplicaScheduler
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
+
+
+def _get_replica_scheduler(handle: DeploymentHandle) -> ReplicaScheduler:
+    # TODO(edoakes): we shouldn't be reaching into private fields, but better
+    # to isolate it to one place (this function).
+    return handle._router._asyncio_router._replica_scheduler
 
 
 @pytest.fixture()
@@ -315,7 +322,10 @@ def test_multiplexed_replica_info(serve_instance):
     def check_replica_information(
         model_ids: List[str],
     ):
-        replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
+        if not handle.is_initialized:
+            handle._init()
+
+        replica_scheduler = _get_replica_scheduler(handle)
         for replica in replica_scheduler.curr_replicas.values():
             if (
                 replica.replica_id != replica_id
@@ -353,7 +363,10 @@ def test_multiplexed_replica_info(serve_instance):
 
 
 def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
-    replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
+    if not handle.is_initialized:
+        handle._init()
+
+    replica_scheduler = _get_replica_scheduler(handle)
     replica_to_model_ids = {
         tag: replica.multiplexed_model_ids
         for tag, replica in replica_scheduler.curr_replicas.items()

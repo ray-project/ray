@@ -310,10 +310,10 @@ class InstanceUtilTest(unittest.TestCase):
         # Add REQUESTED again since it's also reachable from QUEUED.
         add_reachable_from(expected_reachable, Instance.REQUESTED, transitions)
 
-        for s, expected_reachable in expected_reachable.items():
-            assert InstanceUtil.get_reachable_statuses(s) == expected_reachable, (
+        for s, expected in expected_reachable.items():
+            assert InstanceUtil.get_reachable_statuses(s) == expected, (
                 f"reachable_from({s}) = {InstanceUtil.get_reachable_statuses(s)} "
-                f"!= {expected_reachable}"
+                f"!= {expected}"
             )
 
 

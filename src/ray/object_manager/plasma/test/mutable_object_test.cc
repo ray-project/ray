@@ -79,7 +79,10 @@ void Read(PlasmaObjectHeader *header,
   int64_t version_to_read = 1;
   for (size_t i = 0; i < num_reads; i++) {
     int64_t version_read = 0;
-    if (!header->ReadAcquire(sem, version_to_read, version_read).ok()) {
+    if (!header
+             ->ReadAcquire(
+                 ObjectID::FromRandom(), sem, version_to_read, version_read, nullptr)
+             .ok()) {
       data_results.push_back("error");
       metadata_results.push_back("error");
       return;

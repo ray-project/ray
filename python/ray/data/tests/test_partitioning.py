@@ -97,7 +97,7 @@ class PathPartitionEncoder:
         Returns:
             The new partition path encoder.
         """
-        scheme = Partitioning(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, None, filesystem)
         return PathPartitionEncoder(scheme)
 
     def __init__(self, partitioning: Partitioning):
@@ -875,6 +875,25 @@ def test_path_partition_filter_directory(fs, base_dir):
         posixpath.join(base_dir, "1/2/"),
         posixpath.join(base_dir, "1/2/3"),
     ]
+
+
+@pytest.mark.parametrize(
+    "partition_value,expected_type",
+    [
+        ("1", int),
+        ("1.0", float),
+        ("spam", str),
+        ("true", bool),
+    ],
+)
+def test_field_types(partition_value, expected_type):
+    partitioning = Partitioning(style="hive", field_types={"key": expected_type})
+    parse = PathPartitionParser(partitioning)
+
+    partitions = parse(f"key={partition_value}/data.parquet")
+
+    assert set(partitions.keys()) == {"key"}
+    assert isinstance(partitions["key"], expected_type)
 
 
 if __name__ == "__main__":

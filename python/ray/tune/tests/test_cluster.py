@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,21 +11,33 @@ from ray import tune
 from ray.cluster_utils import Cluster
 from ray.train import CheckpointConfig
 from ray.train._internal.storage import StorageContext
+from ray.tune import register_trainable
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.search import BasicVariantGenerator
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, MyTrainableClass
 
 
 def _check_trial_running(trial):
-    if trial.temporary_state.ray_actor:
-        ray.get(trial.temporary_state.ray_actor.get_info.remote())
-        return True
-    return False
+    return Path(trial.storage.trial_working_directory, "marker").exists()
 
 
 def _get_running_trials(runner):
     return [t for t in runner.get_live_trials() if t.status == Trial.RUNNING]
+
+
+class SlowTrainable(MyTrainableClass):
+    def setup(self, config):
+        super().setup(config)
+        running_marker = Path(self._storage.trial_working_directory, "marker")
+        running_marker.touch()
+
+        self._sleep_time = config.get("sleep", 0)
+
+    def step(self):
+        time.sleep(self._sleep_time)
+        return super().step()
 
 
 def _start_new_cluster():
@@ -40,6 +53,7 @@ def _start_new_cluster():
             },
         },
     )
+    register_trainable(MOCK_TRAINABLE_NAME, SlowTrainable)
     return cluster
 
 
@@ -86,6 +100,12 @@ def storage(tmp_path):
     )
 
 
+@pytest.fixture(autouse=True)
+def register_mock_trainable():
+    register_trainable(MOCK_TRAINABLE_NAME, SlowTrainable)
+    yield
+
+
 def test_counting_resources(start_connected_cluster, storage):
     """Tests that Tune accounting is consistent with actual cluster."""
 
@@ -95,11 +115,14 @@ def test_counting_resources(start_connected_cluster, storage):
     runner = TuneController(search_alg=BasicVariantGenerator(), storage=storage)
     kwargs = {
         "stopping_criterion": {"training_iteration": 10},
-        "config": {"sleep": 1.5},
         "storage": storage,
+        "config": {"sleep": 1},
     }
 
-    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+    trials = [
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+    ]
     for t in trials:
         runner.add_trial(t)
 
@@ -147,7 +170,7 @@ def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster, s
     # Disable recursion in magic mock when saving experiment state
     runner.save_to_dir = lambda *args, **kwargs: None
 
-    runner.add_trial(Trial("__fake", storage=storage))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, storage=storage))
     trial = runner.get_trials()[0]
 
     while trial.status != Trial.RUNNING:
@@ -174,7 +197,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster, storage):
         "max_failures": 2,
         "storage": storage,
     }
-    trial = Trial("__fake", **kwargs)
+    trial = Trial(MOCK_TRAINABLE_NAME, **kwargs)
     runner.add_trial(trial)
 
     while trial.status != Trial.RUNNING:
@@ -219,7 +242,10 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, storage):
         "storage": storage,
     }
 
-    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+    trials = [
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+    ]
     for t in trials:
         runner.add_trial(t)
 
@@ -257,7 +283,7 @@ def test_migration_checkpoint_removal(
     }
 
     # Test recovery of trial that has been checkpointed
-    t1 = Trial("__fake", **kwargs)
+    t1 = Trial(MOCK_TRAINABLE_NAME, **kwargs)
     runner.add_trial(t1)
 
     # Start trial, process result (x2), process save
@@ -277,7 +303,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
     """Tests that run_experiment restoring works on cluster shutdown."""
     cluster = start_connected_cluster
 
-    base_dict = dict(run="__fake", stop=dict(training_iteration=3))
+    base_dict = dict(run=MOCK_TRAINABLE_NAME, stop=dict(training_iteration=3))
 
     exp1_args = base_dict
     exp2_args = dict(

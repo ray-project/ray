@@ -66,7 +66,7 @@ In this mode, you _must_ disable the KubeRay init container injection by setting
 
 ```bash
 # Set ENABLE_INIT_CONTAINER_INJECTION=false on the KubeRay operator.
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.1.1 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.2 \
   --set env\[0\].name=ENABLE_INIT_CONTAINER_INJECTION \
   --set-string env\[0\].value=false
 
@@ -310,7 +310,8 @@ Run the following command to start the Jaeger dashboard:
 istioctl dashboard jaeger
 ```
 
-Go to the Jaeger dashboard with the `service=raycluster-istio.default` query: [http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default](http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default)
+<!-- TODO: Change the following link to markdown syntax after this issue  https://github.com/executablebooks/MyST-Parser/issues/760 is resolved -->
+Go to the Jaeger dashboard with the `service=raycluster-istio.default` query: <a class="reference external" href="http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default">http://localhost:16686/jaeger/search?limit=1000&lookback=1h&maxDuration&minDuration&service=raycluster-istio.default</a>
 
 ![Istio Jaeger Overview](../images/istio-jaeger-1.png)
 

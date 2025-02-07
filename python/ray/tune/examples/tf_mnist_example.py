@@ -11,15 +11,21 @@
 
 import argparse
 import os
+import sys
 
 from filelock import FileLock
-from tensorflow.keras import Model
-from tensorflow.keras.datasets.mnist import load_data
-from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 from ray import train, tune
 
 MAX_TRAIN_BATCH = 10
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    from tensorflow.keras import Model
+    from tensorflow.keras.datasets.mnist import load_data
+    from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 
 class MyModel(Model):

@@ -1,5 +1,10 @@
 from ray.data._internal.datasource.sql_datasource import Connection
-from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
+from ray.data.datasource.datasink import (
+    Datasink,
+    DummyOutputDatasink,
+    WriteResult,
+    WriteReturnType,
+)
 from ray.data.datasource.datasource import (
     Datasource,
     RandomIntRowDatasource,
@@ -8,6 +13,7 @@ from ray.data.datasource.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
+    FileShuffleConfig,
     _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
@@ -38,10 +44,12 @@ __all__ = [
     "Connection",
     "Datasink",
     "Datasource",
+    "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
+    "FileShuffleConfig",
     "FileMetadataProvider",
     "FilenameProvider",
     "ParquetMetadataProvider",
@@ -54,4 +62,6 @@ __all__ = [
     "Reader",
     "RowBasedFileDatasink",
     "_S3FileSystemWrapper",
+    "WriteResult",
+    "WriteReturnType",
 ]

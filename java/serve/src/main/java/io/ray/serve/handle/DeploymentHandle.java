@@ -82,7 +82,6 @@ public class DeploymentHandle implements Serializable {
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(requestContext.getRequestId());
-    requestMetadata.setEndpoint(deploymentId.getName());
     requestMetadata.setCallMethod(
         handleOptions != null ? handleOptions.getMethodName() : Constants.CALL_METHOD);
     requestMetadata.setRoute(requestContext.getRoute());

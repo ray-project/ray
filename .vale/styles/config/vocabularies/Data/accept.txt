@@ -2,11 +2,12 @@ autoscaler
 [Aa]vro
 [Bb]ackpressure
 Dask
-Data('s)?
+[Dd]ata('s)?
 [Dd]atasource
 [Dd]iscretizer(s)?
 dtype
 [Gg]roupby
+[Hh]udi
 [Ii]ndexable
 [Ii]ngest
 [Ii]nqueue(s)?
@@ -15,6 +16,7 @@ Modin
 [Mm]ultiget(s)?
 ndarray(s)?
 [Oo]utqueue(s)?
+[Pp]ipelined
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching

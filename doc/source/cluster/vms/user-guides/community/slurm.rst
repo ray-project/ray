@@ -283,4 +283,3 @@ Here are some community-contributed templates for using SLURM with Ray:
 .. _`YASPI`: https://github.com/albanie/yaspi
 
 .. _`Convenient python interface`: https://github.com/pengzhenghao/use-ray-with-slurm
-

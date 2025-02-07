@@ -89,7 +89,7 @@ def test_chaos_task_retry(set_kill_interval):
     # 50MB of return values.
     TOTAL_TASKS = 100
 
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
+    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS, "task")
     results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
     start = time.time()
     pb.block_until_complete(results)
@@ -120,7 +120,7 @@ def test_chaos_actor_retry(set_kill_interval):
     NUM_CPUS = 16
     TOTAL_TASKS = 300
 
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS)
+    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS, "task")
     actors = [Actor.remote() for _ in range(NUM_CPUS)]
     results = []
     for a in actors:

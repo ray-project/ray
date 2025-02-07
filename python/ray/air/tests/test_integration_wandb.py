@@ -335,7 +335,7 @@ class TestWandbLogger:
             "framework": "torch",
             "num_gpus": 1,
             "num_workers": 20,
-            "num_envs_per_worker": 1,
+            "num_envs_per_env_runner": 1,
             "compress_observations": True,
             "lambda": 0.99,
             "train_batch_size": 512,
@@ -482,6 +482,26 @@ class TestWandbLogger:
 
             state = ray.get(actor.get_state.remote())
             assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]
+
+    def test_wandb_restart(self, trial):
+        """Test that the WandbLoggerCallback reuses actors for trial restarts."""
+
+        logger = WandbLoggerCallback(project="test_project", api_key="1234")
+        logger._logger_actor_cls = _MockWandbLoggingActor
+        logger.setup()
+
+        assert len(logger._trial_logging_futures) == 0
+        assert len(logger._logging_future_to_trial) == 0
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):

@@ -26,8 +26,8 @@ class BCCatalog(Catalog):
     Any custom head can be built by overriding the `build_pi_head()` method.
     Alternatively, the `PiHeadConfig` can be overridden to build a custom
     policy head during runtime. To change solely the network architecture,
-    `model_config_dict["post_fcnet_hiddens"]` and
-    `model_config_dict["post_fcnet_activation"]` can be used.
+    `model_config_dict["head_fcnet_hiddens"]` and
+    `model_config_dict["head_fcnet_activation"]` can be used.
     """
 
     def __init__(
@@ -49,8 +49,8 @@ class BCCatalog(Catalog):
             model_config_dict=model_config_dict,
         )
 
-        self.pi_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
-        self.pi_head_activation = self._model_config_dict["post_fcnet_activation"]
+        self.pi_head_hiddens = self._model_config_dict["head_fcnet_hiddens"]
+        self.pi_head_activation = self._model_config_dict["head_fcnet_activation"]
 
         # At this time we do not have the precise (framework-specific) action
         # distribution class, i.e. we do  not know the output dimension of the
@@ -64,7 +64,7 @@ class BCCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a BCRLModule implementation.
+        the behavior of a BC specific RLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -78,6 +78,13 @@ class BCCatalog(Catalog):
         if self._model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
+            )
+            is_diag_gaussian = True
+        else:
+            is_diag_gaussian = _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls,
+                framework=framework,
+                no_error=True,
             )
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
@@ -95,6 +102,8 @@ class BCCatalog(Catalog):
             hidden_layer_activation=self.pi_head_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
+            clip_log_std=is_diag_gaussian,
+            log_std_clip_param=self._model_config_dict.get("log_std_clip_param", 20),
         )
 
         return self.pi_head_config.build(framework=framework)

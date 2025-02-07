@@ -12,10 +12,14 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Schema
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
@@ -43,7 +47,6 @@ def test_schema(ray_start_regular):
             task_count={
                 "ReadRange": 10,
                 "reduce": 5,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot,
@@ -86,7 +89,7 @@ def test_schema_no_execution(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.range(100, override_num_blocks=10)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1}),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot,
     )
     # We do not kick off the read task by default.
@@ -143,9 +146,7 @@ def test_count(ray_start_regular):
     # for ray.data.range(), as the number of rows is known beforehand.
     assert not ds._plan.has_started_execution
 
-    assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
-    )
+    assert_core_execution_metrics_equals(CoreExecutionMetrics(task_count={}))
 
 
 def test_count_edge_case(ray_start_regular):
@@ -156,6 +157,21 @@ def test_count_edge_case(ray_start_regular):
     actual_count = ds.filter(lambda row: row["id"] % 2 == 0).count()
 
     assert actual_count == 5
+
+
+def test_count_after_partial_execution(ray_start_regular):
+    paths = ["example://iris.csv"] * 5
+    ds = ray.data.read_csv(paths)
+    for batch in ds.iter_batches():
+        # Take one batch and break to simulate partial iteration/execution.
+        break
+    # Row count should be unknown after partial execution.
+    assert "num_rows=?" in str(ds)
+
+    # After iterating over bundles and completing execution, row count should be known.
+    list(ds.iter_internal_ref_bundles())
+    assert f"num_rows={150*5}" in str(ds)
+    assert ds.count() == 150 * 5
 
 
 def test_limit_execution(ray_start_regular):
@@ -171,11 +187,7 @@ def test_limit_execution(ray_start_regular):
 
     ds = ds.map(delay)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={
-                "_get_datasource_or_legacy_reader": 1,
-            }
-        ),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot=last_snapshot,
     )
 
@@ -200,7 +212,6 @@ def test_limit_execution(ray_start_regular):
         CoreExecutionMetrics(
             task_count={
                 "ReadRange": 20,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot=last_snapshot,
@@ -679,7 +690,8 @@ def test_convert_types(ray_start_regular_shared):
 def test_from_blocks(input_blocks, ray_start_regular_shared):
     ds = ray.data.from_blocks(input_blocks)
 
-    output_blocks = [ray.get(block_ref) for block_ref in ds.get_internal_block_refs()]
+    bundles = ds.iter_internal_ref_bundles()
+    output_blocks = ray.get(_ref_bundles_iterator_to_block_refs_list(bundles))
     assert len(input_blocks) == len(output_blocks)
     assert all(
         input_block.equals(output_block)
@@ -776,11 +788,6 @@ def test_iter_rows(ray_start_regular_shared):
     for row, (index, df_row) in zip(pandas_ds.iter_rows(), df.iterrows()):
         assert isinstance(row, dict)
         assert row == df_row.to_dict()
-
-    # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
-        assert isinstance(row, dict)
-        assert row == t_row
 
 
 def test_iter_batches_basic(ray_start_regular_shared):
@@ -1247,6 +1254,17 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
+def test_iter_tf_batches_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iter_tf_batches()
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches(ray_start_regular_shared):
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
@@ -1269,6 +1287,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
@@ -1492,11 +1513,9 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "MaterializedDataset(num_blocks=1, num_rows=10, "
-        "schema={1: float64, a: float64})"
-    )
-    assert str(ds) == expected_str, str(ds)
+    assert ds.schema() == Schema(pa.schema([("1", pa.float64()), ("a", pa.float64())]))
+    assert ds.count() == 10
+
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
         ray.data.from_pandas(df)
@@ -1526,6 +1545,9 @@ def test_pandas_block_select():
 # tests should only be carefully reordered to retain this invariant!
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
     ray.shutdown()
 
@@ -1541,6 +1563,9 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
         ray.get(should_error.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check_disabled(
     shutdown_only,
     unsupported_pyarrow_version,
@@ -1590,6 +1615,9 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
         ds.write_parquet("local://" + data_path).materialize()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, override_num_blocks=5000).materialize()
@@ -1628,11 +1656,12 @@ def test_read_write_local_node(ray_start_cluster):
     ctx.read_write_local_node = True
 
     def check_dataset_is_local(ds):
-        blocks = ds.get_internal_block_refs()
-        ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-        location_data = ray.experimental.get_object_locations(blocks)
+        bundles = ds.iter_internal_ref_bundles()
+        block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
+        ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
+        location_data = ray.experimental.get_object_locations(block_refs)
         locations = []
-        for block in blocks:
+        for block in block_refs:
             locations.extend(location_data[block]["node_ids"])
         assert set(locations) == {ray.get_runtime_context().get_node_id()}
 

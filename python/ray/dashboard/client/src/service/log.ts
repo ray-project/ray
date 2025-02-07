@@ -21,6 +21,10 @@ export type StateApiLogInput = {
    * -1 for all lines.
    */
   maxLines?: number;
+  /**
+   * Use "text" for orignal log, "leading_1" for an error bit for each chunk.
+   */
+  format?: "text" | "leading_1";
 };
 
 export const getStateApiDownloadLogUrl = ({
@@ -29,6 +33,7 @@ export const getStateApiDownloadLogUrl = ({
   taskId,
   actorId,
   suffix,
+  format = "text",
   maxLines = MAX_LINES_FOR_LOGS,
 }: StateApiLogInput) => {
   if (
@@ -51,13 +56,14 @@ export const getStateApiDownloadLogUrl = ({
       : []),
     ...(suffix !== undefined ? [`suffix=${encodeURIComponent(suffix)}`] : []),
     `lines=${maxLines}`,
+    `format=${format}`,
   ];
 
   return `api/v0/logs/file?${variables.join("&")}`;
 };
 
 export const getStateApiLog = async (props: StateApiLogInput) => {
-  const url = getStateApiDownloadLogUrl(props);
+  const url = getStateApiDownloadLogUrl({ ...props, format: "leading_1" });
   if (url === null) {
     return undefined;
   }

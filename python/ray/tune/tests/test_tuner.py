@@ -522,18 +522,18 @@ def test_invalid_param_space(shutdown_only):
 
 
 def test_tuner_restore_classmethod():
-    tuner = Tuner("PPO")
+    tuner = Tuner(lambda x: None)
 
     # Calling `tuner.restore()` on an instance should raise an AttributeError
     with pytest.raises(AttributeError):
-        tuner.restore("/", "PPO")
+        tuner.restore("/", lambda x: None)
 
     # Calling `Tuner.restore()` on the class should work. This will throw a
     # FileNotFoundError because no checkpoint exists at that location. Since
     # this happens in the downstream restoration code, this means that the
     # classmethod check successfully passed.
     with pytest.raises(FileNotFoundError):
-        tuner = Tuner.restore("/invalid", "PPO")
+        tuner = Tuner.restore("/invalid", lambda x: None)
 
 
 if __name__ == "__main__":

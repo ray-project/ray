@@ -15,7 +15,22 @@ logger = logging.getLogger(__name__)
 class JSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON and JSONL files."""
 
-    _FILE_EXTENSIONS = ["json", "jsonl"]
+    _FILE_EXTENSIONS = [
+        "json",
+        "jsonl",
+        # gzip-compressed files
+        "json.gz",
+        "jsonl.gz",
+        # Brotli-compressed fi;es
+        "json.br",
+        "jsonl.br",
+        # Zstandard-compressed files
+        "json.zst",
+        "jsonl.zst",
+        # lz4-compressed files
+        "json.lz4",
+        "jsonl.lz4",
+    ]
 
     def __init__(
         self,
@@ -100,6 +115,10 @@ class JSONDatasource(FileBasedDatasource):
         import json
 
         import pyarrow as pa
+
+        # Check if the buffer is empty
+        if buffer.size == 0:
+            return
 
         parsed_json = json.load(BytesIO(buffer))
         try:

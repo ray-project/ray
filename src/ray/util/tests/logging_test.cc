@@ -24,6 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
+#include "ray/common/status.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
@@ -188,7 +189,7 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
 
 TEST(PrintLogTest, TestTextLogging) {
   setEnv("RAY_BACKEND_LOG_JSON", "0");
-  RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, "");
+  RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, /*log_filepath=*/"");
   CaptureStdout();
   RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
       << "contextual log";
@@ -205,7 +206,7 @@ TEST(PrintLogTest, TestTextLogging) {
 
 TEST(PrintLogTest, TestJSONLogging) {
   setEnv("RAY_BACKEND_LOG_JSON", "1");
-  RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, "");
+  RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, /*log_filepath=*/"");
   CaptureStdout();
   RAY_LOG(DEBUG) << "this is not logged";
   RAY_LOG(INFO) << "this is info logged";
@@ -242,15 +243,20 @@ TEST(PrintLogTest, TestJSONLogging) {
 
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
-  RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir());
+  const std::string log_dir = ray::GetUserTempDir();
+  const std::string log_filepath =
+      RayLog::GetLogFilepathFromDirectory(log_dir, /*app_name=*/"");
+  RayLog::StartRayLog(/*app_name=*/"", RayLogLevel::DEBUG, log_filepath);
   PrintLog();
   RayLog::ShutDownRayLog();
 }
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
-  RayLog::StartRayLog(
-      "/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR, ray::GetUserTempDir());
+  const std::string app_name = "/fake/path/to/appdire/LogPerfTest";
+  const std::string log_dir = ray::GetUserTempDir();
+  const std::string log_filepath = RayLog::GetLogFilepathFromDirectory(log_dir, app_name);
+  RayLog::StartRayLog(app_name, RayLogLevel::ERROR, log_filepath);
   int rounds = 10;
 
   int64_t start_time = current_time_ms();
@@ -305,6 +311,16 @@ TEST(PrintLogTest, TestCheckOp) {
   int j = 0;
   RAY_CHECK_NE(i, j);
   ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
+}
+
+TEST(PrintLogTest, RayCheckOk) {
+  Status status = Status::OK();
+  RAY_CHECK_OK(status) << "this log is not printed";
+
+  Status some_error_status = Status::Invalid("deadbeef");
+  ASSERT_DEATH(RAY_CHECK_OK(some_error_status) << "this log is printed",
+               HasSubstr("Check failed: some_error_status Status not OK: Invalid: "
+                         "deadbeef this log is printed"));
 }
 
 #ifndef _WIN32

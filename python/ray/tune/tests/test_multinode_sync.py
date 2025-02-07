@@ -84,7 +84,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         """Test that newly added nodes from autoscaling are not stale."""
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": 2, "GPU": 0}},
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
@@ -119,7 +119,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         """
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": 2, "GPU": 0}},
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},

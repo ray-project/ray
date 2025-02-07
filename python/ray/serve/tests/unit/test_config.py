@@ -46,8 +46,6 @@ def test_autoscaling_config_validation():
     # target_ongoing_requests must be nonnegative
     with pytest.raises(ValidationError):
         AutoscalingConfig(target_ongoing_requests=-1)
-    with pytest.raises(ValidationError):
-        AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
 
     # max_replicas must be greater than or equal to min_replicas
     with pytest.raises(ValueError):
@@ -465,16 +463,6 @@ class TestAutoscalingConfig:
         autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
         assert autoscaling_config.get_target_ongoing_requests() == 7
 
-        autoscaling_config = AutoscalingConfig(
-            target_num_ongoing_requests_per_replica=7
-        )
-        assert autoscaling_config.get_target_ongoing_requests() == 7
-
-        autoscaling_config = AutoscalingConfig(
-            target_ongoing_requests=7, target_num_ongoing_requests_per_replica=70
-        )
-        assert autoscaling_config.get_target_ongoing_requests() == 7
-
     def test_scaling_factor(self):
         autoscaling_config = AutoscalingConfig()
         assert autoscaling_config.get_upscaling_factor() == 1
@@ -621,14 +609,14 @@ def test_grpc_options():
     grpc_servicer_functions = ["fake.service.that.does.not.exist"]
     with pytest.raises(ModuleNotFoundError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "can't be imported!" in str(exception)
 
     # Not callable should raise ValueError.
     grpc_servicer_functions = ["ray.serve._private.constants.DEFAULT_HTTP_PORT"]
     with pytest.raises(ValueError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "is not a callable function!" in str(exception)
 
 

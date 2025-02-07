@@ -1,6 +1,7 @@
 import ray._private.worker
 
 try:
+    from ray.serve._private.logging_utils import configure_default_serve_logger
     from ray.serve.api import (
         Application,
         Deployment,
@@ -28,6 +29,8 @@ except ModuleNotFoundError as e:
     )
     raise e
 
+# Setup default ray.serve logger to ensure all serve module logs are captured.
+configure_default_serve_logger()
 
 # Mute the warning because Serve sometimes intentionally calls
 # ray.get inside async actors.

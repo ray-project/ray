@@ -26,6 +26,7 @@
 
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
+#include "ray/util/random.h"
 #include "ray/util/util.h"
 #include "ray/util/visibility.h"
 
@@ -580,6 +581,11 @@ struct DefaultLogKey<ObjectID> {
   constexpr static std::string_view key = kLogKeyObjectID;
 };
 
+template <>
+struct DefaultLogKey<PlacementGroupID> {
+  constexpr static std::string_view key = kLogKeyPlacementGroupID;
+};
+
 }  // namespace ray
 
 namespace std {
@@ -587,10 +593,6 @@ namespace std {
 #define DEFINE_UNIQUE_ID(type)                                           \
   template <>                                                            \
   struct hash<::ray::type> {                                             \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
-  };                                                                     \
-  template <>                                                            \
-  struct hash<const ::ray::type> {                                       \
     size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
   };
 

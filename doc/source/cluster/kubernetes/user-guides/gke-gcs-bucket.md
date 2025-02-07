@@ -59,7 +59,7 @@ kubectl annotate serviceaccount my-ksa \
 
 ## Create a Google Cloud Storage Bucket and allow the Google Cloud Service Account to access it
 
-Please follow the documentation at <https://cloud.google.com/storage/docs/creating-buckets> to create a bucket using the Google Cloud Console or the `gsutil` command line tool.  
+Please follow the documentation at <https://cloud.google.com/storage/docs/creating-buckets> to create a bucket using the Google Cloud Console or the `gsutil` command line tool.
 
 This example gives the principal `my-iam-sa@my-project-id.iam.gserviceaccount.com` "Storage Admin" permissions on the bucket. Enable the permissions in the Google Cloud Console ("Permissions" tab under "Buckets" > "Bucket Details") or with the following command:
 
@@ -72,7 +72,7 @@ gsutil iam ch serviceAccount:my-iam-sa@my-project-id.iam.gserviceaccount.com:rol
 You can download the RayCluster YAML manifest for this tutorial with `curl` as follows:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.gke-bucket.yaml
 ```
 
 The key parts are the following lines:
@@ -100,7 +100,7 @@ Use `kubectl get pod` to get the name of the Ray head pod.  Then run the followi
 kubectl exec -it raycluster-mini-head-xxxx -- /bin/bash
 ```
 
-In the shell, run `pip install google-cloud-storage` to install the Google Cloud Storage Python client library. 
+In the shell, run `pip install google-cloud-storage` to install the Google Cloud Storage Python client library.
 
 (For production use cases, you will need to make sure `google-cloud-storage` is installed on every node of your cluster, or use `ray.init(runtime_env={"pip": ["google-cloud-storage"]})` to have the package installed as needed at runtime -- see <https://docs.ray.io/en/latest/ray-core/handling-dependencies.html#runtime-environments> for more details.)
 
@@ -121,13 +121,13 @@ def check_gcs_read_write():
     client = storage.Client()
     bucket = client.get_bucket(GCP_GCS_BUCKET)
     blob = bucket.blob(GCP_GCS_FILE)
-    
+
     # Write to the bucket
     blob.upload_from_string("Hello, Ray on GKE!")
-    
+
     # Read from the bucket
     content = blob.download_as_text()
-    
+
     return content
 
 result = ray.get(check_gcs_read_write.remote())

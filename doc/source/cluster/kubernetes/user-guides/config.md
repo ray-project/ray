@@ -126,7 +126,7 @@ Here are some of the subfields of the pod `template` to pay attention to:
 #### containers
 A Ray pod template specifies at minimum one container, namely the container
 that runs the Ray processes. A Ray pod template may also specify additional sidecar
-containers, for purposes such as {ref}`log processing <kuberay-logging>`. However, the KubeRay operator assumes that
+containers, for purposes such as {ref}`log processing <persist-kuberay-custom-resource-logs>`. However, the KubeRay operator assumes that
 the first container in the containers list is the main Ray container.
 Therefore, make sure to specify any sidecar containers
 **after** the main Ray container. In other words, the Ray container should be the **first**
@@ -171,7 +171,7 @@ the same Ray version as the CR's `spec.rayVersion`.
 If you are using a nightly or development Ray image, you can specify Ray's
 latest release version under `spec.rayVersion`.
 
-For Apple M1 or M2 MacBooks, see [Use ARM-based docker images for Apple M1 or M2 MacBooks](docker-image-for-apple-macbooks) to specify the 
+For Apple M1 or M2 MacBooks, see [Use ARM-based docker images for Apple M1 or M2 MacBooks](docker-image-for-apple-macbooks) to specify the
 correct image.
 
 You must install code dependencies for a given Ray task or actor on each Ray node that

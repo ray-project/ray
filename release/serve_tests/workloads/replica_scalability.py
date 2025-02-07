@@ -28,12 +28,12 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH_S = 60
 @click.option("--num-replicas", type=int, default=DEFAULT_FULL_TEST_NUM_REPLICA)
 @click.option("--trial-length", type=int, default=DEFAULT_FULL_TEST_TRIAL_LENGTH_S)
 @click.option("--output-path", "-o", type=str, default=None)
-@click.option("--cluster-env", type=str, default=None)
+@click.option("--image-uri", type=str, default=None)
 def main(
     num_replicas: Optional[int],
     trial_length: Optional[int],
     output_path: Optional[str],
-    cluster_env: Optional[str],
+    image_uri: Optional[str],
 ):
     noop_1k_application = {
         "name": "default",
@@ -88,9 +88,10 @@ def main(
 
     with start_service(
         service_name="replica-scalability",
+        image_uri=image_uri,
         compute_config=compute_config,
         applications=[noop_1k_application],
-        cluster_env=cluster_env,
+        working_dir="workloads",
     ) as service_name:
         ray.init("auto")
         status = service.status(name=service_name)

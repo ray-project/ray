@@ -13,6 +13,7 @@ import ray
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+    KV_HEAD_NODE_ID_KEY,
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
@@ -65,14 +66,19 @@ async def test_get_scheduling_strategy(
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_aio_client.internal_kv_del(
-        "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
+        KV_HEAD_NODE_ID_KEY,
+        del_by_prefix=False,
+        namespace=KV_NAMESPACE_JOB,
     )
     strategy = await job_manager._get_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_aio_client.internal_kv_put(
-        "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
+        KV_HEAD_NODE_ID_KEY,
+        "123456".encode(),
+        True,
+        namespace=KV_NAMESPACE_JOB,
     )
     strategy = await job_manager._get_scheduling_strategy(resources_specified)
     if resources_specified:
@@ -259,6 +265,37 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call_ray_start",
+    [{"env": {"RAY_BACKEND_LOG_JSON": "1"}, "cmd": "ray start --head"}],
+    indirect=True,
+)
+async def test_job_supervisor_log_json(call_ray_start, tmp_path):  # noqa: F811
+    """Test JobSupervisor logs are structured JSON logs"""
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+    job_manager = JobManager(gcs_aio_client, tmp_path)
+    job_id = await job_manager.submit_job(
+        entrypoint="echo hello 1", submission_id="job_1"
+    )
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+    # Verify logs saved to file
+    supervisor_log_path = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(),
+        f"jobs/supervisor-{job_id}.log",
+    )
+    log_message = f'"message": "Job {job_id} entrypoint command exited with code 0"'
+    with open(supervisor_log_path, "r") as f:
+        logs = f.read()
+        assert log_message in logs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
     ["ray start --head"],
     indirect=True,
 )
@@ -283,7 +320,8 @@ async def test_job_supervisor_logs_saved(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"jobs/supervisor-{job_id}.log",
     )
-    log_message = f"Job {job_id} entrypoint command exited with code 0"
+    # By default, log is TEXT format
+    log_message = f"-- Job {job_id} entrypoint command exited with code 0"
     with open(supervisor_log_path, "r") as f:
         logs = f.read()
         assert log_message in logs

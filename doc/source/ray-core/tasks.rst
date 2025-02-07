@@ -97,8 +97,8 @@ Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see r
   total_actor_scheduled: 0
   total_actor_tasks: 0
   total_tasks: 5
-  
-  
+
+
   Table (group by func_name):
   ------------------------------------
       FUNC_OR_CLASS_NAME    STATE_COUNTS    TYPE

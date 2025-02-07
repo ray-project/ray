@@ -52,7 +52,7 @@ Note that this environment variable doesn't include the `ulimit` command.
   ```sh
   # Example of the environment variable `KUBERAY_GEN_RAY_START_CMD` in the head Pod.
   ray start --head  --dashboard-host=0.0.0.0  --num-cpus=1  --block  --metrics-export-port=8080  --memory=2147483648
-  ``` 
+  ```
 
 The head Pod's `command`/`args` looks like the following:
 
@@ -100,7 +100,7 @@ Some users employ this method to set up environment variables used by `ray start
     # Prerequisite: There is a KubeRay operator in the Kubernetes cluster.
 
     # Download `ray-cluster.head-command.yaml`
-    curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.head-command.yaml
+    curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.head-command.yaml
 
     # Create a RayCluster
     kubectl apply -f ray-cluster.head-command.yaml
