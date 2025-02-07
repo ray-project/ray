@@ -162,20 +162,7 @@ class ParquetDatasource(Datasource):
     cost of some potential performance and/or compatibility penalties.
     """
 
-    _FUTURE_FILE_EXTENSIONS = [
-        "parquet",
-        # Snappy compression
-        "parquet.snappy",
-        "snappy.parquet",
-        # Gzip compression
-        "parquet.gz",
-        # Brotili compression
-        "parquet.br",
-        # Lz4 compression
-        "parquet.lz4",
-        # Zstd compression
-        "parquet.zst",
-    ]
+    _FUTURE_FILE_EXTENSIONS = ["parquet"]
 
     def __init__(
         self,
