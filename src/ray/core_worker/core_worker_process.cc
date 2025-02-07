@@ -15,6 +15,8 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/stream_redirection_options.h"
+#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -88,11 +90,30 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     const std::string app_name = app_name_ss.str();
     const std::string log_filepath =
         RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+    const std::string err_log_filepath =
+        RayLog::GetErrLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+
+    ray::StreamRedirectionOption stdout_redirection_options;
+    stdout_redirection_options.file_path = log_filepath;
+    stdout_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stdout_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStdout(stdout_redirection_options);
+
+    ray::StreamRedirectionOption stderr_redirection_options;
+    stderr_redirection_options.file_path = err_log_filepath;
+    stderr_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stderr_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStderr(stderr_redirection_options);
+
     RayLog::StartRayLog(app_name,
                         RayLogLevel::INFO,
-                        log_filepath,
-                        ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-                        ray::RayLog::GetRayLogRotationBackupCountOrDefault());
+                        /*log_filepath=*/"",
+                        /*log_rotation_max_size=*/std::numeric_limits<size_t>::max(),
+                        /*log_rotation_file_num=*/1);
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols
