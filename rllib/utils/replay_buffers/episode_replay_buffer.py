@@ -1356,41 +1356,41 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 clear_on_reduce=True,
             )
         # Add per-module metrics.
-        for aid in module_to_num_steps_sampled:
+        for mid in module_to_num_steps_sampled:
             self.metrics.log_value(
-                (NUM_MODULE_STEPS_SAMPLED, aid),
-                module_to_num_steps_sampled[aid],
+                (NUM_MODULE_STEPS_SAMPLED, mid),
+                module_to_num_steps_sampled[mid],
                 reduce="sum",
                 clear_on_reduce=True,
             )
             # TODO (simon): Check, if we can then deprecate
             # self.sampled_timesteps.
             self.metrics.log_value(
-                (NUM_MODULE_STEPS_SAMPLED_LIFETIME, aid),
-                module_to_num_steps_sampled[aid],
+                (NUM_MODULE_STEPS_SAMPLED_LIFETIME, mid),
+                module_to_num_steps_sampled[mid],
                 reduce="sum",
             )
             self.metrics.log_value(
-                (NUM_MODULE_EPISODES_PER_SAMPLE, aid),
-                module_to_num_episodes_per_sample[aid],
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-            self.metrics.log_value(
-                (NUM_MODULE_STEPS_PER_SAMPLE, aid),
-                module_to_num_steps_per_sample[aid],
+                (NUM_MODULE_EPISODES_PER_SAMPLE, mid),
+                module_to_num_episodes_per_sample[mid],
                 reduce="sum",
                 clear_on_reduce=True,
             )
             self.metrics.log_value(
-                (NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME, aid),
-                module_to_num_steps_per_sample[aid],
+                (NUM_MODULE_STEPS_PER_SAMPLE, mid),
+                module_to_num_steps_per_sample[mid],
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME, mid),
+                module_to_num_steps_per_sample[mid],
                 reduce="sum",
             )
             self.metrics.log_value(
-                (MODULE_STEP_UTILIZATION, aid),
-                self.metrics.peek((NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME, aid))
-                / self.metrics.peek((NUM_MODULE_STEPS_SAMPLED_LIFETIME, aid)),
+                (MODULE_STEP_UTILIZATION, mid),
+                self.metrics.peek((NUM_MODULE_STEPS_PER_SAMPLE_LIFETIME, mid))
+                / self.metrics.peek((NUM_MODULE_STEPS_SAMPLED_LIFETIME, mid)),
                 reduce="mean",
                 window=self._metrics_num_episodes_for_smoothing,
             )
