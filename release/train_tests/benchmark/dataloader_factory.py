@@ -5,7 +5,7 @@ import torch
 import ray.train
 from ray.data import Dataset
 
-from config import DataLoaderConfig
+from config import DataLoaderConfig, RayDataConfig
 
 
 class BaseDataLoaderFactory(ABC):
@@ -32,9 +32,11 @@ class BaseDataLoaderFactory(ABC):
 
 
 class RayDataLoaderFactory(BaseDataLoaderFactory):
-    def __init__(self, config: DataLoaderConfig):
+    def __init__(self, config: RayDataConfig):
         super().__init__(config)
         self._ray_ds_iterators = {}
+
+        assert isinstance(config, RayDataConfig), type(config)
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
@@ -61,7 +63,11 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         return iter(
             ds_iterator.iter_torch_batches(
                 batch_size=self.config.train_batch_size,
-                local_shuffle_buffer_size=self.config.local_buffer_shuffle_size,
+                local_shuffle_buffer_size=(
+                    self.config.local_buffer_shuffle_size
+                    if self.config.local_buffer_shuffle_size > 0
+                    else None
+                ),
                 collate_fn=self.collate_fn,
             )
         )

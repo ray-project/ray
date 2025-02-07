@@ -1,7 +1,7 @@
 import argparse
 import enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class DataloaderType(enum.Enum):
@@ -10,15 +10,13 @@ class DataloaderType(enum.Enum):
 
 
 class DataLoaderConfig(BaseModel):
-    # NOTE: Workaround for optional types not playing well with argparse.
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     train_batch_size: int = 32
     validation_batch_size: int = 256
 
 
 class RayDataConfig(DataLoaderConfig):
-    local_buffer_shuffle_size: int = None
+    # NOTE: Optional[int] doesn't play well with argparse.
+    local_buffer_shuffle_size: int = -1
 
 
 class BenchmarkConfig(BaseModel):
