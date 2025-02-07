@@ -1042,17 +1042,16 @@ class HTTPProxy(GenericProxy):
                 f"Client for request {request_id} disconnected, cancelling request."
             )
         except (BackPressureError, DeploymentUnavailableError) as e:
-            status_code = 503
             status = ResponseStatus(
-                code=status_code,
+                code=503,
                 is_error=True,
                 message=e.message,
             )
-            for message in convert_object_to_asgi_messages(
-                e.message,
-                status_code=status_code,
-            ):
-                yield message
+            if isinstance(e, RayTaskError):
+                logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
+            else:
+                for message in convert_object_to_asgi_messages(e.message, 503):
+                    yield message
         except Exception as e:
             if isinstance(e, (RayActorError, RayTaskError)):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
