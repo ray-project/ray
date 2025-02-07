@@ -13,6 +13,9 @@ from ray.train.v2._internal.callbacks.accelerators import (
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
+from ray.train.v2._internal.execution.worker_group.worker_group import (
+    WorkerGroupContext,
+)
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 
@@ -117,11 +120,13 @@ def test_accelerator_setup_callback(mock_gpu_cluster):
     with pytest.raises(RuntimeError):
         setup_callback.after_worker_group_start(worker_group)
 
-    worker_group.start(
+    worker_group_context = WorkerGroupContext(
         train_fn=lambda: None,
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config._resources_per_worker_not_none,
     )
+
+    worker_group._start(worker_group_context)
 
     setup_callback.after_worker_group_start(worker_group)
 
