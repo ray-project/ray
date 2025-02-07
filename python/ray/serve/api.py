@@ -459,10 +459,13 @@ def _run(
     validate_route_prefix(route_prefix)
 
     if _local_testing_mode:
+        if not isinstance(logging_config, LoggingConfig):
+            logging_config = LoggingConfig(**(logging_config or {}))
+
         configure_component_logger(
             component_name="local_test",
             component_id="-",
-            logging_config=logging_config or LoggingConfig(),
+            logging_config=logging_config,
             stream_handler_only=True,
         )
         built_app = build_app(
@@ -725,7 +728,7 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
-    _request_context = ray.serve.context._serve_request_context.get()
+    _request_context = ray.serve.context._get_serve_request_context()
     return _request_context.multiplexed_model_id
 
 

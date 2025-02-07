@@ -16,6 +16,7 @@ Modin
 [Mm]ultiget(s)?
 ndarray(s)?
 [Oo]utqueue(s)?
+[Pp]ipelined
 Predibase('s)?
 [Pp]refetch
 [Pp]refetching

@@ -103,7 +103,8 @@ struct CoreWorkerOptions {
         worker_launch_time_ms(-1),
         worker_launched_time_ms(-1),
         assigned_worker_port(std::nullopt),
-        assigned_raylet_id(std::nullopt) {
+        assigned_raylet_id(std::nullopt),
+        debug_source("") {
     // TODO(hjiang): Add invariant check: for worker, both should be assigned; for driver,
     // neither should be assigned.
   }
@@ -219,6 +220,10 @@ struct CoreWorkerOptions {
   /// Same as [assigned_worker_port], will be assigned for worker, and left empty for
   /// driver.
   std::optional<NodeID> assigned_raylet_id;
+
+  // Source information for `CoreWorker`, used for debugging and informational purpose,
+  // rather than functional purpose.
+  std::string debug_source;
 };
 }  // namespace core
 }  // namespace ray

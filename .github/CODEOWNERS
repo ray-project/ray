@@ -91,6 +91,9 @@
 /python/ray/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
 /doc/source/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
 
+# LLM
+/python/ray/llm/ @ray-project/ray-llm
+
 # Serve (docs)
 /doc/source/serve/ @edoakes @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
 

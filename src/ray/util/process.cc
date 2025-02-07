@@ -30,19 +30,20 @@
 #include <unistd.h>
 #endif
 
-#include <string.h>
-
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <string>
 #include <vector>
 
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/util.h"
 
 #ifdef __APPLE__
 extern char **environ;

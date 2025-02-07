@@ -1,10 +1,11 @@
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.train import Checkpoint
+from ray.train.v2.api.callback import RayTrainCallback
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    from ray.train import Checkpoint
     from ray.train.v2._internal.execution.controller import TrainControllerState
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
     from ray.train.v2._internal.execution.scaling_policy import ScalingDecision
@@ -14,14 +15,8 @@ if TYPE_CHECKING:
     )
 
 
-class Callback:
-    """Hooks that subscribe to a some event and get run as a callback."""
-
-    pass
-
-
 @DeveloperAPI
-class WorkerGroupCallback(Callback):
+class WorkerGroupCallback(RayTrainCallback):
     def before_init_train_context(
         self, worker_group: "WorkerGroup"
     ) -> Dict[str, List[Any]]:
@@ -61,7 +56,7 @@ class WorkerGroupCallback(Callback):
 
 
 @DeveloperAPI
-class ControllerCallback(Callback):
+class ControllerCallback(RayTrainCallback):
     def after_controller_start(self):
         """Called immediately after `TrainController.run` is called,
         before the control loop starts executing."""
@@ -91,24 +86,28 @@ class ControllerCallback(Callback):
     def before_controller_execute_scaling_decision(
         self,
         scaling_decision: "ScalingDecision",
-        worker_group_status: "WorkerGroupStatus",
     ):
         """Called before the controller executes a scaling decision."""
         pass
 
 
-# TODO: Call the CheckpointCallback in the checkpoint manager.
 @DeveloperAPI
-class CheckpointCallback(Callback):
-    def after_checkpoint_register(self, checkpoint: Checkpoint):
+class ReportCallback(RayTrainCallback):
+    def after_report(
+        self, metrics: List[Dict[str, Any]], checkpoint: Optional["Checkpoint"]
+    ):
+        """Called after all workers have reported a training result.
+
+        Note that this differs from `after_worker_group_poll_status`,
+        which may only contain a subset of workers that have reported.
+        For example, if only rank 0 is performing checkpointing, then
+        rank 0 would report a training result the slowest.
+        """
         pass
 
-    def after_checkpoint_delete(self, checkpoint: Checkpoint):
-        pass
-
 
 @DeveloperAPI
-class WorkerCallback(Callback):
+class WorkerCallback(RayTrainCallback):
     """
     Callbacks that are hooked to the worker event.
 
@@ -126,7 +125,7 @@ class WorkerCallback(Callback):
 
 
 @DeveloperAPI
-class TrainContextCallback(Callback):
+class TrainContextCallback(RayTrainCallback):
     """
     Callbacks that are hooked to the train context event.
 

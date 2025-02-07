@@ -20,6 +20,7 @@ import numpy as np
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
@@ -45,6 +46,7 @@ from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.torch_datasource import TorchDatasource
+from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
@@ -398,6 +400,7 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+
     import uuid
 
     stats = DatasetStats(
@@ -420,6 +423,177 @@ def read_datasource(
     return Dataset(
         plan=execution_plan,
         logical_plan=logical_plan,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_audio(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    file_extensions: Optional[List[str]] = AudioDatasource._FILE_EXTENSIONS,
+    shuffle: Union[Literal["files"], None] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Creates a :class:`~ray.data.Dataset` from audio files.
+
+    Examples:
+        >>> import ray
+        >>> path = "s3://anonymous@air-example-data-2/6G-audio-data-LibriSpeech-train-clean-100-flac/train-clean-100/5022/29411/5022-29411-0000.flac"
+        >>> ds = ray.data.read_audio(path)
+        >>> ds.schema()
+        Column       Type
+        ------       ----
+        amplitude    numpy.ndarray(shape=(1, 191760), dtype=float)
+        sample_rate  int64
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The pyarrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        arrow_open_stream_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.fs.FileSystem.html\
+                    #pyarrow.fs.FileSystem.open_input_file>`_.
+            when opening input files to read.
+        partition_filter:  A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each image. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Defaults to False.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing audio amplitudes and associated
+        metadata.
+    """  # noqa: E501
+    datasource = AudioDatasource(
+        paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_videos(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    file_extensions: Optional[List[str]] = VideoDatasource._FILE_EXTENSIONS,
+    shuffle: Union[Literal["files"], None] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+):
+    """Creates a :class:`~ray.data.Dataset` from video files.
+
+    Each row in the resulting dataset represents a video frame.
+
+    Examples:
+        >>> import ray
+        >>> path = "s3://anonymous@ray-example-data/basketball.mp4"
+        >>> ds = ray.data.read_videos(path)
+        >>> ds.schema()
+        Column       Type
+        ------       ----
+        frame        numpy.ndarray(shape=(720, 1280, 3), dtype=uint8)
+        frame_index  int64
+
+    Args:
+        paths: A single file or directory, or a list of file or directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The pyarrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        arrow_open_stream_args: kwargs passed to
+            `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.fs.FileSystem.html\
+                    #pyarrow.fs.FileSystem.open_input_file>`_.
+            when opening input files to read.
+        partition_filter:  A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
+            with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to ``None``.
+        include_paths: If ``True``, include the path to each image. File paths are
+            stored in the ``'path'`` column.
+        ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
+            that are not found. Defaults to False.
+        file_extensions: A list of file extensions to filter files by.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`~ray.data.Dataset` containing video frames from the video files.
+    """
+    datasource = VideoDatasource(
+        paths,
+        filesystem=filesystem,
+        open_stream_args=arrow_open_stream_args,
+        meta_provider=DefaultFileMetadataProvider(),
+        partition_filter=partition_filter,
+        partitioning=partitioning,
+        ignore_missing_paths=ignore_missing_paths,
+        shuffle=shuffle,
+        include_paths=include_paths,
+        file_extensions=file_extensions,
+    )
+    return read_datasource(
+        datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 
@@ -2095,6 +2269,8 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    shard_keys: Optional[list[str]] = None,
+    shard_hash_fn: str = "MD5",
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2105,14 +2281,16 @@ def read_sql(
 
     .. note::
 
-        By default, ``read_sql`` launches multiple read tasks, and each task executes a
-        ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
-        databases, ``OFFSET`` is slow.
+        Parallelism is supported by databases that support sharding. This means
+        that the database needs to support all of the following operations:
+        ``MOD``, ``ABS``, and ``CONCAT``.
 
-        As a workaround, set ``override_num_blocks=1`` to directly fetch all rows in a
-        single task. Note that this approach requires all result rows to fit in the
-        memory of single task. If the rows don't fit, your program may raise an out of
-        memory error.
+        You can use ``shard_hash_fn`` to specify the hash function to use for sharding.
+        The default is ``MD5``, but other common alternatives include ``hash``,
+        ``unicode``, and ``SHA``.
+
+        If the database does not support sharding, the read operation will be
+        executed in a single task.
 
     Examples:
 
@@ -2165,6 +2343,10 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        shard_keys: The keys to shard the data by.
+        shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
+            For other databases, common alternatives include "hash" and "SHA".
+            This is applied to the shard keys.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -2172,6 +2354,7 @@ def read_sql(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         override_num_blocks: Override the number of output blocks from all read tasks.
+            This is used for sharding when shard_keys is provided.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
@@ -2179,13 +2362,21 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    if parallelism != -1 and parallelism != 1:
-        raise ValueError(
-            "To ensure correctness, 'read_sql' always launches one task. The "
-            "'parallelism' argument you specified can't be used."
-        )
+    datasource = SQLDatasource(
+        sql=sql,
+        shard_keys=shard_keys,
+        shard_hash_fn=shard_hash_fn,
+        connection_factory=connection_factory,
+    )
+    if override_num_blocks and override_num_blocks > 1:
+        if shard_keys is None:
+            raise ValueError("shard_keys must be provided when override_num_blocks > 1")
 
-    datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
+        if not datasource.supports_sharding(override_num_blocks):
+            raise ValueError(
+                "Database does not support sharding. Please set override_num_blocks to 1."
+            )
+
     return read_datasource(
         datasource,
         parallelism=parallelism,
@@ -3277,6 +3468,7 @@ def read_clickhouse(
     table: str,
     dsn: str,
     columns: Optional[List[str]] = None,
+    filter: Optional[str] = None,
     order_by: Optional[Tuple[List[str], bool]] = None,
     client_settings: Optional[Dict[str, Any]] = None,
     client_kwargs: Optional[Dict[str, Any]] = None,
@@ -3293,6 +3485,7 @@ def read_clickhouse(
         ...     table="default.table",
         ...     dsn="clickhouse+http://username:password@host:8124/default",
         ...     columns=["timestamp", "age", "status", "text", "label"],
+        ...     filter="age > 18 AND status = 'active'",
         ...     order_by=(["timestamp"], False),
         ... )
 
@@ -3305,6 +3498,12 @@ def read_clickhouse(
             <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
         columns: Optional list of columns to select from the data source.
             If no columns are specified, all columns will be selected by default.
+        filter: Optional SQL filter string that will be used in the WHERE statement
+            (e.g., "label = 2 AND text IS NOT NULL"). The filter string must be valid for use in
+            a ClickHouse SQL WHERE clause. Please Note: Parallel reads are not currently supported
+            when a filter is set. Specifying a filter forces the parallelism to 1 to ensure
+            deterministic and consistent results. For more information, see `ClickHouse SQL WHERE Clause doc
+            <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
         order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
             should be descending (True for DESC, False for ASC). Please Note: order_by is required to support
             parallelism. If not provided, the data will be read in a single task. This is to ensure
@@ -3331,6 +3530,7 @@ def read_clickhouse(
         table=table,
         dsn=dsn,
         columns=columns,
+        filter=filter,
         order_by=order_by,
         client_settings=client_settings,
         client_kwargs=client_kwargs,

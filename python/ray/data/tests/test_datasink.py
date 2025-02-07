@@ -105,21 +105,21 @@ def test_write_datasink_ray_remote_args(ray_start_cluster):
     assert node_ids == {bar_node_id}
 
 
-@pytest.mark.parametrize("num_rows_per_write", [5, 10, 50])
-def test_num_rows_per_write(tmp_path, ray_start_regular_shared, num_rows_per_write):
+@pytest.mark.parametrize("min_rows_per_write", [5, 10, 50])
+def test_min_rows_per_write(tmp_path, ray_start_regular_shared, min_rows_per_write):
     class MockDatasink(Datasink[None]):
-        def __init__(self, num_rows_per_write):
-            self._num_rows_per_write = num_rows_per_write
+        def __init__(self, min_rows_per_write):
+            self._min_rows_per_write = min_rows_per_write
 
         def write(self, blocks: Iterable[Block], ctx: TaskContext) -> None:
-            assert sum(len(block) for block in blocks) == self._num_rows_per_write
+            assert sum(len(block) for block in blocks) == self._min_rows_per_write
 
         @property
-        def num_rows_per_write(self):
-            return self._num_rows_per_write
+        def min_rows_per_write(self):
+            return self._min_rows_per_write
 
     ray.data.range(100, override_num_blocks=20).write_datasink(
-        MockDatasink(num_rows_per_write)
+        MockDatasink(min_rows_per_write)
     )
 
 

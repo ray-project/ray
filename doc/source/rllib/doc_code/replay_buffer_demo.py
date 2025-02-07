@@ -4,7 +4,7 @@ from typing import Optional
 import random
 import numpy as np
 
-from ray import air, tune
+from ray import tune
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
@@ -103,7 +103,7 @@ config = (
 tune.Tuner(
     "DQN",
     param_space=config,
-    run_config=air.RunConfig(
+    run_config=tune.RunConfig(
         stop={"training_iteration": 1},
     ),
 ).fit()
@@ -168,7 +168,7 @@ config = (
 tune.Tuner(
     "DQN",
     param_space=config.to_dict(),
-    run_config=air.RunConfig(
+    run_config=tune.RunConfig(
         stop={"env_runners/episode_return_mean": 40, "training_iteration": 7},
     ),
 ).fit()

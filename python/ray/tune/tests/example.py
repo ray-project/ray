@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 # This is an example quickstart for Tune.
 # To connect to a cluster, uncomment below:

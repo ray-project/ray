@@ -218,8 +218,7 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   (*node_info->second.second.mutable_resources_available()) = node.resources_total();
 }
 
-void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
-    const rpc::ResourcesData &data) {
+void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
@@ -230,21 +229,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   }
 
   auto &new_data = iter->second.second;
-
-  (*new_data.mutable_resource_load()) = data.resource_load();
-  (*new_data.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-
-  if (data.resources_total_size() > 0) {
-    (*new_data.mutable_resources_total()) = data.resources_total();
-  }
-
-  (*new_data.mutable_resources_available()) = data.resources_available();
-
-  new_data.set_object_pulls_queued(data.object_pulls_queued());
-  new_data.set_idle_duration_ms(data.idle_duration_ms());
-  new_data.set_is_draining(data.is_draining());
-  new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
-
+  new_data = std::move(data);
   // Last update time
   iter->second.first = absl::Now();
 }

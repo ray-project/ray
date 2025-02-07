@@ -20,6 +20,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.error import MultiAgentEnvError
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import AgentID, ModuleID, MultiAgentDict
@@ -117,8 +118,8 @@ class MultiAgentEpisode:
                 (actions, rewards, etc.) in terms of list lengths and agent IDs.
             observation_space: An optional gym.spaces.Dict mapping agent IDs to
                 individual agents' spaces, which all (individual agents') observations
-                should abide to. If not None and this MultiAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this MultiAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             infos: A list of dictionaries mapping agent IDs to info dicts.
                 Can be None. If provided, should match all other episode data
@@ -128,8 +129,8 @@ class MultiAgentEpisode:
                 (observations, rewards, etc.) in terms of list lengths and agent IDs.
             action_space: An optional gym.spaces.Dict mapping agent IDs to
                 individual agents' spaces, which all (individual agents') actions
-                should abide to. If not None and this MultiAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this MultiAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: A list of dictionaries mapping agent IDs to rewards.
                 Can be None. If provided, should match all other episode data
@@ -657,18 +658,24 @@ class MultiAgentEpisode:
         #  action/reward caches, etc..
 
     @property
-    def is_finalized(self) -> bool:
+    def is_reset(self) -> bool:
+        """Returns True if `self.add_env_reset()` has already been called."""
+        return any(
+            len(sa_episode.observations) > 0
+            for sa_episode in self.agent_episodes.values()
+        )
+
+    @property
+    def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
-        is_finalized = next(iter(self.agent_episodes.values())).is_finalized
-        # Make sure that all single agent's episodes' `finalized` flags are the same.
-        if not all(
-            eps.is_finalized is is_finalized for eps in self.agent_episodes.values()
-        ):
+        is_numpy = next(iter(self.agent_episodes.values())).is_numpy
+        # Make sure that all single agent's episodes' `is_numpy` flags are the same.
+        if not all(eps.is_numpy is is_numpy for eps in self.agent_episodes.values()):
             raise RuntimeError(
-                f"Only some SingleAgentEpisode objects in {self} are finalized (others "
-                f"are not)!"
+                f"Only some SingleAgentEpisode objects in {self} are converted to "
+                f"numpy, others are not!"
             )
-        return is_finalized
+        return is_numpy
 
     @property
     def is_done(self):
@@ -699,10 +706,7 @@ class MultiAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def finalize(
-        self,
-        drop_zero_len_single_agent_episodes: bool = False,
-    ) -> "MultiAgentEpisode":
+    def to_numpy(self) -> "MultiAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
         This means in particular that this episodes' lists (per single agent) of
@@ -748,14 +752,14 @@ class MultiAgentEpisode:
                 actions=actions,
                 rewards=rewards,
                 # Note: terminated/truncated have nothing to do with an episode
-                # being `finalized` or not (via the `self.finalize()` method)!
+                # being converted `to_numpy` or not (via the `self.to_numpy()` method)!
                 terminateds=terminateds,
                 truncateds=truncateds,
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
 
-            # Episode has not been finalized (numpy'ized) yet.
-            assert not episode.is_finalized
+            # Episode has not been numpy'ized yet.
+            assert not episode.is_numpy
             # We are still operating on lists.
             assert (
                 episode.get_observations(
@@ -764,9 +768,9 @@ class MultiAgentEpisode:
                 ) == {"agent_1": [1]}
             )
 
-            # Let's finalize the episode.
-            episode.finalize()
-            assert episode.is_finalized
+            # Numpy'ized the episode.
+            episode.to_numpy()
+            assert episode.is_numpy
 
             # Everything is now numpy arrays (with 0-axis of size
             # B=[len of requested slice]).
@@ -777,22 +781,12 @@ class MultiAgentEpisode:
                 )["agent_1"], np.ndarray)
             )
 
-        Args:
-            drop_zero_len_single_agent_episodes: If True, will remove from this
-                episode all underlying SingleAgentEpisodes that have a len of 0
-                (meaning that these SingleAgentEpisodes only have a reset obs as
-                their data thus far, making them useless for learning anything from
-                them).
-
         Returns:
              This `MultiAgentEpisode` object with the converted numpy data.
         """
 
         for agent_id, agent_eps in self.agent_episodes.copy().items():
-            if len(agent_eps) == 0 and drop_zero_len_single_agent_episodes:
-                del self.agent_episodes[agent_id]
-            else:
-                agent_eps.finalize()
+            agent_eps.to_numpy()
 
         return self
 
@@ -1440,10 +1434,10 @@ class MultiAgentEpisode:
         return truncateds
 
     def add_temporary_timestep_data(self, key: str, data: Any) -> None:
-        """Temporarily adds (until `finalized()` called) per-timestep data to self.
+        """Temporarily adds (until `to_numpy()` called) per-timestep data to self.
 
         The given `data` is appended to a list (`self._temporary_timestep_data`), which
-        is cleared upon calling `self.finalize()`. To get the thus-far accumulated
+        is cleared upon calling `self.to_numpy()`. To get the thus-far accumulated
         temporary timestep data for a certain key, use the `get_temporary_timestep_data`
         API.
         Note that the size of the per timestep list is NOT checked or validated against
@@ -1454,10 +1448,10 @@ class MultiAgentEpisode:
                 the first data to be added for this key, start a new list.
             data: The data item (representing a single timestep) to be stored.
         """
-        if self.is_finalized:
+        if self.is_numpy:
             raise ValueError(
                 "Cannot use the `add_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}!"
+                f"numpy'ized {type(self).__name__}!"
             )
         self._temporary_timestep_data[key].append(data)
 
@@ -1465,16 +1459,16 @@ class MultiAgentEpisode:
         """Returns all temporarily stored data items (list) under the given key.
 
         Note that all temporary timestep data is erased/cleared when calling
-        `self.finalize()`.
+        `self.to_numpy()`.
 
         Returns:
             The current list storing temporary timestep data under `key`.
         """
-        if self.is_finalized:
+        if self.is_numpy:
             raise ValueError(
                 "Cannot use the `get_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}! All temporary data has been erased "
-                f"upon `{type(self).__name__}.finalize()`."
+                f"numpy'ized {type(self).__name__}! All temporary data has been erased "
+                f"upon `{type(self).__name__}.to_numpy()`."
             )
         try:
             return self._temporary_timestep_data[key]
@@ -1687,9 +1681,9 @@ class MultiAgentEpisode:
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
 
-        # Finalize slice if `self` is also finalized.
-        if self.is_finalized:
-            ma_episode.finalize()
+        # Numpy'ize slice if `self` is also finalized.
+        if self.is_numpy:
+            ma_episode.to_numpy()
 
         return ma_episode
 
@@ -2502,7 +2496,7 @@ class MultiAgentEpisode:
                             **one_hot_discrete,
                         )
                     )
-            if self.is_finalized:
+            if self.is_numpy:
                 ret = batch(ret)
         else:
             # Filter these indices out up front.
@@ -2607,3 +2601,11 @@ class MultiAgentEpisode:
             return inf_lookback_buffer_or_dict, filter_for_skip_indices
         else:
             return inf_lookback_buffer_or_dict
+
+    @Deprecated(new="MultiAgentEpisode.is_numpy()", error=True)
+    def is_finalized(self):
+        pass
+
+    @Deprecated(new="MultiAgentEpisode.to_numpy()", error=True)
+    def finalize(self):
+        pass
