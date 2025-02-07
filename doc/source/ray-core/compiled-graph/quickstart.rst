@@ -7,7 +7,11 @@ This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
 .. testcode::
 
-    pip install "ray[adag]"
+    pip install "ray[cg]"
+    
+    # For a ray version before 2.41, use the following instead:
+    # pip install "ray[adag]"
+
 
 We will define a simple actor.
 
@@ -122,7 +126,7 @@ Next, create sender and receiver actors.
     sender = GPUSender.remote()
     receiver = GPUReceiver.remote()
 
-To support GPU to GPU RDMA with NCCL, you can use ``with_type_hint`` API with Compiled Graph.
+To support GPU to GPU RDMA with NCCL, you can use ``with_tensor_transport`` API with Compiled Graph.
 
 .. testcode::
 
@@ -130,7 +134,9 @@ To support GPU to GPU RDMA with NCCL, you can use ``with_type_hint`` API with Co
         dag = sender.send.bind(inp)
         # It gives a type hint that the return value of `send` should use
         # NCCL.
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport("nccl")
+        # Note that before ray version 2.42, use `with_type_hint()` instead.
+        # dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
     # Compile API prepares the NCCL communicator across all workers and schedule operations

@@ -26,12 +26,20 @@ class OpTask(ABC):
     The task can be either a regular task or an actor task.
     """
 
-    def __init__(self, task_index: int):
-        self._task_index = task_index
+    def __init__(
+        self,
+        task_index: int,
+        task_resource_bundle: Optional[ExecutionResources] = None,
+    ):
+        self._task_index: int = task_index
+        self._task_resource_bundle: Optional[ExecutionResources] = task_resource_bundle
 
     def task_index(self) -> int:
         """Return the index of the task."""
         return self._task_index
+
+    def get_requested_resource_bundle(self) -> Optional[ExecutionResources]:
+        return self._task_resource_bundle
 
     @abstractmethod
     def get_waitable(self) -> Waitable:
@@ -48,6 +56,7 @@ class DataOpTask(OpTask):
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[Optional[Exception]], None],
+        task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """
         Args:
@@ -56,7 +65,7 @@ class DataOpTask(OpTask):
                 from the generator.
             task_done_callback: The callback to call when the task is done.
         """
-        super().__init__(task_index)
+        super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -118,13 +127,14 @@ class MetadataOpTask(OpTask):
         task_index: int,
         object_ref: ray.ObjectRef,
         task_done_callback: Callable[[], None],
+        task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """
         Args:
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
         """
-        super().__init__(task_index)
+        super().__init__(task_index, task_resource_bundle)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
@@ -336,6 +346,11 @@ class PhysicalOperator(Operator):
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
+        assert 0 <= input_index < len(self._input_dependencies), (
+            f"Input index out of bounds (total inputs {len(self._input_dependencies)}, "
+            f"index is {input_index})"
+        )
+
         self._metrics.on_input_received(refs)
         self._add_input_inner(refs, input_index)
 
@@ -500,7 +515,7 @@ class PhysicalOperator(Operator):
     def implements_accurate_memory_accounting(self) -> bool:
         """Return whether this operator implements accurate memory accounting.
 
-        An operator that implements accurate memory accounting should should properly
+        An operator that implements accurate memory accounting should properly
         report its memory usage via the following APIs:
           - `self._metrics.on_input_queued`.
           - `self._metrics.on_input_dequeued`.
