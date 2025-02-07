@@ -34,6 +34,8 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
+#include "ray/util/stream_redirection_options.h"
+#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
@@ -372,6 +374,26 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+  if (!options_.stdout_file.empty()) {
+    ray::StreamRedirectionOption stdout_redirection_options;
+    stdout_redirection_options.file_path = options_.stdout_file;
+    stdout_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stdout_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStdout(stdout_redirection_options);
+  }
+
+  if (!options_.stderr_file.empty()) {
+    ray::StreamRedirectionOption stderr_redirection_options;
+    stderr_redirection_options.file_path = options_.stderr_file;
+    stderr_redirection_options.rotation_max_size =
+        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+    stderr_redirection_options.rotation_max_file_count =
+        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+    ray::RedirectStderr(stderr_redirection_options);
+  }
+
   // Notify that core worker is initialized.
   absl::Cleanup initialzed_scope_guard = [this] {
     absl::MutexLock lock(&initialize_mutex_);
