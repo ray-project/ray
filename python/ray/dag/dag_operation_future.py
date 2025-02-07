@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Generic, Optional, TypeVar
 from ray.util.annotations import DeveloperAPI
 
 
@@ -65,9 +65,9 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
-    # [HACK]
-    id = 0
-    id_to_event = {}
+    # [HACK] This prevents CUDA events from being garbage collected.
+    id: int = 0
+    id_to_event: Dict[int, "cp.cuda.Event"] = {}
 
     def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
         """

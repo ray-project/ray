@@ -683,10 +683,13 @@ class ExecutableTask:
                         output_val, wrap_in_gpu_future=overlap_gpu_communication
                     )
 
-        # Write the output value to the output channel. It is either the result of an
-        # execution or an exception.
+        # Write the output value to the output channel. It is either an execution result
+        # or an exception.
         # [TODO:P1] Change to use `self.output_writer`.
         if not self.requires_nccl_write:
+            # The GPU future is always returned without waiting, except when it
+            # contributes to the DAG output. When it is directly returned, downstream
+            # tasks can wait on its event from their streams.
             if self.requires_nccl_read or self.requires_nccl_collective:
                 wait_future = self.is_dag_output
             else:

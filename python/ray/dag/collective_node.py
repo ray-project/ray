@@ -145,8 +145,6 @@ class _CollectiveOperation(_NcclOperation):
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         nccl_group = self.get_nccl_group()
-        # [HACK]
-        # recv_buf = torch.empty_like(send_buf)
         recv_buf = send_buf
         nccl_group.allreduce(send_buf, recv_buf, self._op)
         return recv_buf
