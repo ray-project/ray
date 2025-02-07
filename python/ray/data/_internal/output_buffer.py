@@ -12,10 +12,9 @@ class OutputBlockSizeOption:
     target_max_rows_per_block: Optional[int] = None
 
     def __post_init__(self) -> None:
-        assert not (
-            self.target_max_block_size is not None
-            and self.target_max_rows_per_block is not None
-        ), "Only one of target_max_block_size or target_max_rows_per_block should be set."
+        assert (self.target_max_block_size is None) != (
+            self.target_max_rows_per_block is None
+        ), "Exactly one of target_max_block_size or target_max_rows_per_block must be set."
 
 
 class BlockOutputBuffer:
