@@ -59,7 +59,7 @@ class NumpyToTensor(ConnectorV2):
         input_action_space: Optional[gym.Space] = None,
         *,
         as_learner_connector: bool = False,
-        pin_mempory: Optional[bool] = None,
+        pin_mempory: bool = False,
         device: Optional[str] = None,
         **kwargs,
     ):
@@ -81,9 +81,7 @@ class NumpyToTensor(ConnectorV2):
             **kwargs,
         )
         self._as_learner_connector = as_learner_connector
-        self._pin_memory = (
-            pin_mempory if pin_mempory is not None else self._as_learner_connector
-        )
+        self._pin_memory = pin_mempory
         self._device = device
 
     @override(ConnectorV2)

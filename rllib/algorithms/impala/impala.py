@@ -13,7 +13,7 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
+from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate, NumpyToTensor
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
@@ -491,11 +491,13 @@ class IMPALAConfig(AlgorithmConfig):
             input_action_space,
             device,
         )
-        # Extend all episodes by one artificial timestep to allow the value function net
-        # to compute the bootstrap values (and add a mask to the batch to know, which
-        # slots to mask out).
         if self.add_default_connectors_to_learner_pipeline:
+            # Extend all episodes by one artificial timestep to allow the value function
+            # net to compute the bootstrap values (and add a mask to the batch to know,
+            # which slots to mask out).
             connector.prepend(AddOneTsToEpisodesAndTruncate())
+            # Remove the NumpyToTensor connector if we have the GPULoaderThreads.
+            connector.remove(NumpyToTensor)
         return connector
 
 
