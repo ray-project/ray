@@ -1,0 +1,35 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+
+py_library(
+    name = "ray_wheels_lib",
+    srcs = ["ray_wheels_lib.py"],
+    visibility = ["//anyscale/ci:__subpackages__"],
+    deps = [
+        ci_require("requests")
+    ]
+)
+
+py_test(
+    name = "test_ray_wheels_lib",
+    srcs = ["test_ray_wheels_lib.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ":ray_wheels_lib",
+    ],
+)
+
+py_binary(
+    name = "check_wheels_exist_s3",
+    srcs = ["check_wheels_exist_s3.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_wheels_lib",
+        ci_require("click"),
+    ],
+)

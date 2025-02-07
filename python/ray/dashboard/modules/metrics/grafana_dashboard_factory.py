@@ -18,6 +18,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
+    train_dashboard_config,
+)
 
 GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_UID"
 GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
@@ -209,6 +212,17 @@ def generate_data_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(data_dashboard_config)
+
+
+def generate_train_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the train dashboard and returns
+    both the content and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(train_dashboard_config)
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
