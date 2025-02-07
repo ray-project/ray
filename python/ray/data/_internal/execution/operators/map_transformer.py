@@ -260,8 +260,7 @@ class MapTransformer:
 
         fused_transform_fns = self._transform_fns + other._transform_fns
         transformer = MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
-        if target_max_block_size is not None:
-            transformer.set_target_max_block_size(target_max_block_size)
+        transformer.set_target_max_block_size(target_max_block_size)
         return transformer
 
     def udf_time(self) -> float:
