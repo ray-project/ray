@@ -70,11 +70,10 @@ class _HcclGroup(Communicator):
             if not torch.distributed.is_initialized():
                 self._init_dist_hccl(rank, world_size)
             self.real_rank = dist.get_rank()
-        
+
     def initialize(self, rank: int) -> None:
         # No additional initialization is needed.
         pass
-
 
     def _init_dist_hccl(self, rank, world_size):
         """
@@ -153,9 +152,13 @@ class _HcclGroup(Communicator):
         real_peer_rank = self.rank_map[peer_rank]
         if self._closed:
             raise RuntimeError("HCCL group has been destroyed.")
-        logger.info(f"Start to send to:{real_peer_rank}, real_self_rank: {real_self_rank} ")
+        logger.info(
+            f"Start to send to:{real_peer_rank}, real_self_rank: {real_self_rank} "
+        )
         dist.send(tensor, dst=real_peer_rank)
-        logger.info(f"Finished to send to:{real_peer_rank}, real_self_rank : {real_self_rank} ")
+        logger.info(
+            f"Finished to send to:{real_peer_rank}, real_self_rank : {real_self_rank} "
+        )
 
     def recv(
         self,
@@ -178,13 +181,17 @@ class _HcclGroup(Communicator):
         """
         real_self_rank = self.rank_map[self._rank]
         real_peer_rank = self.rank_map[peer_rank]
-        logger.info(f"Start to receive, real_self_rank : {real_self_rank}, real_peer_rank:{real_peer_rank} ")
+        logger.info(
+            f"Start to receive, real_self_rank : {real_self_rank}, real_peer_rank:{real_peer_rank} "
+        )
         if self._closed:
             raise RuntimeError("HCCL group has been destroyed.")
         torch_npu.npu.set_device(f"npu:{real_self_rank}")
         tensor = torch.zeros(*shape, dtype=dtype).to(f"npu:{real_self_rank}")
         dist.recv(tensor, src=real_peer_rank)
-        logger.info(f"Finished to receive, real_self_rank: {real_self_rank}, real_peer_rank:{real_peer_rank} ")
+        logger.info(
+            f"Finished to receive, real_self_rank: {real_self_rank}, real_peer_rank:{real_peer_rank} "
+        )
 
         if self._closed:
             raise RayChannelError("HCCL group has been destroyed.")
@@ -215,6 +222,6 @@ class _HcclGroup(Communicator):
                 "Destructing HCCL group on actor: "
                 f"{ray.get_runtime_context().current_actor}"
             )
-    
+
     def get_transport_name(self) -> str:
         return "hccl"

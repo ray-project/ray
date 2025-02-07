@@ -35,11 +35,14 @@ if os.getenv("ASCEND_RT_VISIBLE_DEVICES"):
         USE_GPU = False
         USE_NPU = True
     except Exception as e:
-        logger.warning(f"Failed in import hccl_group, use nccl_group instead with exception {e}")
+        logger.warning(
+            f"Failed in import hccl_group, use nccl_group instead with exception {e}"
+        )
         from ray.experimental.channel.nccl_group import _NcclGroup
 
 else:
     from ray.experimental.channel.nccl_group import _NcclGroup
+
 
 @dataclass
 class _TorchTensorMetadata:
@@ -649,10 +652,12 @@ class _TorchTensorNcclChannel(ChannelInterface):
         if self._nccl_group_id in ctx.communicators:
             del ctx.communicators[self._nccl_group_id]
 
+
 def _do_set_rank(self, group_id, rank_map):
     ctx = ChannelContext.get_current()
     ctx.communicators[group_id].rank_map = rank_map
     return ctx.communicators[group_id]
+
 
 def _do_init_communicator(
     self,
@@ -709,12 +714,14 @@ def _do_destroy_communicator(self, group_id):
 def _do_check_has_gpu(self) -> bool:
     return bool(ray.get_gpu_ids()) or bool("NPU" in ray.cluster_resources())
 
+
 def _do_get_unique_nccl_id(self) -> bool:
     if "NPU" in ray.cluster_resources():
         # NPU doesn't have get_unique_id
         return uuid.uuid4()
     else:
         from cupy.cuda import nccl
+
         return nccl.get_unique_id()
 
 
@@ -827,8 +834,11 @@ def _init_communicator(
             rank_map = dict()
             for rank, tmp_actor in zip(ranks, tmp_actors):
                 rank_map[rank] = tmp_actor.real_rank
-            set_tasks = [actor.__ray_call__.remote(_do_set_rank, group_id, rank_map) for actor in actors]
-            ray.get(set_tasks,  timeout=30)
+            set_tasks = [
+                actor.__ray_call__.remote(_do_set_rank, group_id, rank_map)
+                for actor in actors
+            ]
+            ray.get(set_tasks, timeout=30)
     except ray.exceptions.GetTimeoutError:
         logger.warning(
             "NCCL group creation not done after 30s. NCCL group creation may be hung."
