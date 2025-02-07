@@ -2565,7 +2565,7 @@ class CompiledDAG:
             # |                             |---------------------------->|                            # noqa
             # |                             9:Output[0]                   10:Output[1]                 # noqa
             # |<----------------------------------------------------------|                            # noqa
-            # 8:MultiOutputNod
+            # 8:MultiOutputNode
             ```
         """
 
