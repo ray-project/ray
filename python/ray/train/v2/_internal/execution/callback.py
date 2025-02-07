@@ -6,7 +6,10 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
-    from ray.train.v2._internal.execution.controller import TrainControllerState
+    from ray.train.v2._internal.execution.controller import (
+        TrainController,
+        TrainControllerState,
+    )
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
     from ray.train.v2._internal.execution.scaling_policy import ScalingDecision
     from ray.train.v2._internal.execution.worker_group import (
@@ -33,6 +36,10 @@ class WorkerGroupCallback(RayTrainCallback):
     @contextmanager
     def on_worker_group_start(self):
         yield
+
+    def before_worker_group_start(self, worker_group: "WorkerGroup"):
+        """Called before the worker group actors are initialized."""
+        pass
 
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
@@ -72,6 +79,7 @@ class ControllerCallback(RayTrainCallback):
 
     def after_controller_state_update(
         self,
+        controller: "TrainController",
         previous_state: "TrainControllerState",
         current_state: "TrainControllerState",
     ):
@@ -81,7 +89,6 @@ class ControllerCallback(RayTrainCallback):
     def before_controller_execute_failure_decision(
         self,
         failure_decision: "FailureDecision",
-        worker_group_status: "WorkerGroupPollStatus",
     ):
         """Called before the controller executes a failure decision."""
         pass

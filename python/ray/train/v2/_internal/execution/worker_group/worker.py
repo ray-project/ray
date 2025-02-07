@@ -39,6 +39,7 @@ class ActorMetadata:
     node_ip: str
     pid: int
     accelerator_ids: Dict[str, List[Union[int, str]]]
+    gpu_ids: Union[List[int], List[str]]
 
     @cached_property
     def _repr(self) -> str:
@@ -53,6 +54,9 @@ class ActorMetadata:
         non_empty_accelerator_ids = {k: v for k, v in self.accelerator_ids.items() if v}
         if non_empty_accelerator_ids:
             repr_lines.append(f"{indent}accelerator_ids={non_empty_accelerator_ids},")
+        if self.gpu_ids:
+            repr_lines.append(f"{indent}gpu_ids={self.gpu_ids},")
+
         repr_lines.append(")")
         return "\n".join(repr_lines)
 
@@ -64,6 +68,7 @@ class ActorMetadata:
 class Worker:
     actor: ActorHandle
     metadata: ActorMetadata
+    resources: Dict[str, float]
     distributed_context: Optional[DistributedContext] = None
 
     @cached_property
@@ -119,6 +124,7 @@ class RayTrainWorker:
             node_ip=ray.util.get_node_ip_address(),
             pid=os.getpid(),
             accelerator_ids=ray.get_runtime_context().get_accelerator_ids(),
+            gpu_ids=ray.get_gpu_ids(),
         )
 
     def poll_status(self) -> WorkerStatus:
