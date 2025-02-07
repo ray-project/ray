@@ -61,7 +61,7 @@ V2_MIGRATION_GUIDE_MESSAGE = (
 
 
 def _v2_migration_warnings_enabled() -> bool:
-    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, False)
+    return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, True)
 
 
 # ==================================================
