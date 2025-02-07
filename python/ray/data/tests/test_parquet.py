@@ -1425,6 +1425,19 @@ def test_seed_file_shuffle(restore_data_context, tmp_path):
     assert ds1.take_all() == ds2.take_all()
 
 
+def test_read_file_with_partition_values(ray_start_regular_shared, tmp_path):
+    # Typically, partition values are excluded from the Parquet file and are instead
+    # encoded in the directory structure. However, in some cases, partition values
+    # are also included in the Parquet file. This test verifies that case.
+    table = pa.Table.from_pydict({"data": [0], "year": [2024]})
+    os.makedirs(tmp_path / "year=2024")
+    pq.write_table(table, tmp_path / "year=2024" / "data.parquet")
+
+    ds = ray.data.read_parquet(tmp_path)
+
+    assert ds.take_all() == [{"data": 0, "year": 2024}]
+
+
 def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
     # The `read_parquet` implementation might infer the schema from the first file.
     # This test ensures that implementation handles the case where the first file has no
@@ -1442,6 +1455,14 @@ def test_read_null_data_in_first_file(tmp_path, ray_start_regular_shared):
         {"data": "ham"},
         {"data": "spam"},
     ]
+
+
+def test_read_invalid_file_extensions_emits_warning(tmp_path, ray_start_regular_shared):
+    table = pa.Table.from_pydict({})
+    pq.write_table(table, tmp_path / "no_extension")
+
+    with pytest.warns(FutureWarning, match="file_extensions"):
+        ray.data.read_parquet(tmp_path)
 
 
 if __name__ == "__main__":
