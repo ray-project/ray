@@ -10,6 +10,7 @@ class DataloaderType(enum.Enum):
 
 
 class DataLoaderConfig(BaseModel):
+    # NOTE: Workaround for optional types not playing well with argparse.
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     train_batch_size: int = 32
