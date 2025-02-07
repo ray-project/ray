@@ -244,6 +244,7 @@ steps:
       - tune
       - doc
     instance_type: large
+    parallelism: 2
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... ml
