@@ -263,6 +263,9 @@ class RayLog {
   static std::string GetLogFilepathFromDirectory(const std::string &log_dir,
                                                  const std::string &app_name);
 
+  static std::string GetErrLogFilepathFromDirectory(const std::string &log_dir,
+                                                    const std::string &app_name);
+
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.

@@ -43,6 +43,8 @@ Status ConnectSocketRetry(local_stream_socket &socket,
                           int num_retries = -1,
                           int64_t timeout_in_ms = -1);
 
+// between core worker (raylet connection) and raylet
+
 /// \typename ServerConnection
 ///
 /// A generic type representing a client connection to a server. This typename
