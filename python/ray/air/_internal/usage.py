@@ -92,6 +92,14 @@ def tag_air_trainer(trainer: "BaseTrainer"):
     record_extra_usage_tag(TagKey.AIR_TRAINER, trainer_name)
 
 
+def tag_train_v2_trainer(trainer):
+    from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+
+    assert isinstance(trainer, DataParallelTrainer)
+    trainer_name = _find_class_name(trainer, "ray.train", AIR_TRAINERS)
+    record_extra_usage_tag(TagKey.AIR_TRAINER, trainer_name)
+
+
 def tag_searcher(searcher: Union["BasicVariantGenerator", "Searcher"]):
     from ray.tune.search import BasicVariantGenerator, Searcher
 
