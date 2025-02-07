@@ -4,11 +4,10 @@ import dataclasses
 import logging
 import math
 import time
-import torch
 import uuid
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, AsyncIterator, Optional, List, Tuple
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -16,6 +15,9 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStageUDF,
 )
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+if TYPE_CHECKING:
+    import torch
 
 try:
     import vllm
@@ -61,7 +63,7 @@ class vLLMOutputData(BaseModel):
     num_generated_tokens: int = Field(default=0)
 
     # Embed fields.
-    embeddings: Optional[torch.Tensor] = None
+    embeddings: Optional["torch.Tensor"] = None
 
     # Metrics fields.
     metrics: Optional[Dict[str, Any]] = None
