@@ -384,7 +384,7 @@ class Deployment:
                 self._replica_config.init_args == other._replica_config.init_args,
                 self._replica_config.init_kwargs == other._replica_config.init_kwargs,
                 self._replica_config.ray_actor_options
-                == self._replica_config.ray_actor_options,
+                == other._replica_config.ray_actor_options,
             ]
         )
 

@@ -28,4 +28,3 @@ worker_node_types:
       cpu: 2
       custom_resources:
         pg_custom: 666
-

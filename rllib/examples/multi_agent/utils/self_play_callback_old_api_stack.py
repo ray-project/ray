@@ -1,12 +1,12 @@
 import numpy as np
 
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
 @Deprecated(help="Use the example for the new RLlib API stack.", error=False)
-class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
+class SelfPlayCallbackOldAPIStack(RLlibCallback):
     def __init__(self, win_rate_threshold):
         super().__init__()
         # 0=RandomPolicy, 1=1st main policy snapshot,
@@ -58,6 +58,9 @@ class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
                 policy_id=new_pol_id,
                 policy_cls=type(main_policy),
                 policy_mapping_fn=policy_mapping_fn,
+                config=main_policy.config,
+                observation_space=main_policy.observation_space,
+                action_space=main_policy.action_space,
             )
 
             # Set the weights of the new policy to the main policy.

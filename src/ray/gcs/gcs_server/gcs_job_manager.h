@@ -50,18 +50,22 @@ using JobFinishListenerCallback = rpc::JobInfoHandler::JobFinishListenerCallback
 /// This implementation class of `JobInfoHandler`.
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
-  explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
-                         std::shared_ptr<GcsPublisher> gcs_publisher,
+  explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
+                         GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
                          GcsFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
+                         instrumented_io_context &io_context,
                          rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
-      : gcs_table_storage_(std::move(gcs_table_storage)),
-        gcs_publisher_(std::move(gcs_publisher)),
+      : gcs_table_storage_(gcs_table_storage),
+        gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
         internal_kv_(internal_kv),
-        core_worker_clients_(client_factory) {}
+        io_context_(io_context),
+        core_worker_clients_(client_factory) {
+    export_event_write_enabled_ = IsExportAPIEnabledDriverJob();
+  }
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -97,6 +101,14 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
+  // Verify if export events should be written for EXPORT_DRIVER_JOB source types
+  bool IsExportAPIEnabledDriverJob() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_DRIVER_JOB",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
+
   /// Record metrics.
   /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
   /// succeed or fail) will be reported periodically.
@@ -118,8 +130,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
   // Number of finished jobs since start of this GCS Server, used to report metrics.
   int64_t finished_jobs_count_ = 0;
 
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  GcsTableStorage &gcs_table_storage_;
+  GcsPublisher &gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<JobFinishListenerCallback> job_finished_listeners_;
@@ -130,9 +142,12 @@ class GcsJobManager : public rpc::JobInfoHandler {
   ray::RuntimeEnvManager &runtime_env_manager_;
   GcsFunctionManager &function_manager_;
   InternalKVInterface &internal_kv_;
-
+  instrumented_io_context &io_context_;
   /// The cached core worker clients which are used to communicate with workers.
   rpc::CoreWorkerClientPool core_worker_clients_;
+
+  /// If true, driver job events are exported for Export API
+  bool export_event_write_enabled_ = false;
 };
 
 }  // namespace gcs

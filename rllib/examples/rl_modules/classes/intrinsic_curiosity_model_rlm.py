@@ -47,7 +47,6 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
             import torch
 
             from ray.rllib.core import Columns
-            from ray.rllib.core.rl_module.rl_module import RLModuleConfig
             from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (  # noqa
                 IntrinsicCuriosityModel
             )
@@ -58,11 +57,10 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
             f = 25  # feature dim
 
             # Construct the RLModule.
-            rl_module_config = RLModuleConfig(
+            icm_net = IntrinsicCuriosityModel(
                 observation_space=gym.spaces.Box(-1.0, 1.0, (O,), np.float32),
                 action_space=gym.spaces.Discrete(A),
             )
-            icm_net = IntrinsicCuriosityModel(rl_module_config)
 
             # Create some dummy input.
             obs = torch.from_numpy(

@@ -25,11 +25,11 @@ namespace core {
 // Notify the user about an unhandled error after this amount of time. This only
 // applies to interactive console (e.g., IPython), see:
 // https://github.com/ray-project/ray/issues/14485 for more info.
-const int64_t kUnhandledErrorGracePeriodNanos = static_cast<int64_t>(5e9);
+constexpr int64_t kUnhandledErrorGracePeriodNanos = static_cast<int64_t>(5e9);
 
 // Only scan at most this many items for unhandled errors, to avoid slowdowns
 // when there are too many local objects.
-const int kMaxUnhandledErrorScanItems = 1000;
+constexpr int kMaxUnhandledErrorScanItems = 1000;
 
 /// A class that represents a `Get` request.
 class GetRequest {
@@ -54,9 +54,6 @@ class GetRequest {
   bool ShouldRemoveObjects() const;
 
  private:
-  /// Wait until all requested objects are available.
-  void Wait();
-
   /// The object IDs involved in this request.
   const absl::flat_hash_set<ObjectID> object_ids_;
   /// The object information for the objects in this request.
@@ -70,7 +67,7 @@ class GetRequest {
   // Whether we should abort the waiting if any object is an exception.
   const bool abort_if_any_object_is_exception_;
   // Whether all the requested objects are available.
-  bool is_ready_;
+  bool is_ready_ = false;
   mutable std::mutex mutex_;
   std::condition_variable cv_;
 };
@@ -82,8 +79,7 @@ GetRequest::GetRequest(absl::flat_hash_set<ObjectID> object_ids,
     : object_ids_(std::move(object_ids)),
       num_objects_(num_objects),
       remove_after_get_(remove_after_get),
-      abort_if_any_object_is_exception_(abort_if_any_object_is_exception_),
-      is_ready_(false) {
+      abort_if_any_object_is_exception_(abort_if_any_object_is_exception_) {
   RAY_CHECK(num_objects_ <= object_ids_.size());
 }
 
@@ -95,36 +91,20 @@ bool GetRequest::Wait(int64_t timeout_ms) {
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   if (timeout_ms == -1) {
     // Wait forever until all objects are ready.
-    Wait();
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_.wait(lock, [this] { return is_ready_; });
     return true;
   }
 
   // Wait until all objects are ready, or the timeout expires.
   std::unique_lock<std::mutex> lock(mutex_);
-  auto remaining_timeout_ms = timeout_ms;
-  auto timeout_timestamp = current_time_ms() + timeout_ms;
-  while (!is_ready_) {
-    // TODO (dayshah): see if using cv condition function instead of busy while helps.
-    auto status = cv_.wait_for(lock, std::chrono::milliseconds(remaining_timeout_ms));
-    auto current_timestamp = current_time_ms();
-    remaining_timeout_ms =
-        current_timestamp < timeout_timestamp ? timeout_timestamp - current_timestamp : 0;
-    if (status == std::cv_status::timeout || remaining_timeout_ms <= 0) {
-      return false;
-    }
-  }
-  return true;
-}
-
-void GetRequest::Wait() {
-  std::unique_lock<std::mutex> lock(mutex_);
-  while (!is_ready_) {
-    cv_.wait(lock);
-  }
+  auto is_ready_status_after_timeout = cv_.wait_for(
+      lock, std::chrono::milliseconds(timeout_ms), [this]() { return is_ready_; });
+  return is_ready_status_after_timeout;
 }
 
 void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> object) {
-  std::unique_lock<std::mutex> lock(mutex_);
+  std::scoped_lock<std::mutex> lock(mutex_);
   if (is_ready_) {
     return;  // We have already hit the number of objects to return limit.
   }
@@ -151,14 +131,14 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
-    std::shared_ptr<ReferenceCounter> counter,
+    ReferenceCounter *counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
-      ref_counter_(std::move(counter)),
+      ref_counter_(counter),
       raylet_client_(std::move(raylet_client)),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
@@ -181,7 +161,7 @@ void CoreWorkerMemoryStore::GetAsync(
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
-    io_context_.post([callback, ptr]() { callback(ptr); },
+    io_context_.post([callback = std::move(callback), ptr]() { callback(ptr); },
                      "CoreWorkerMemoryStore.GetAsync.Callback");
   }
 }
@@ -329,7 +309,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
         remaining_ids.insert(object_id);
       }
     }
-    RAY_CHECK(count <= num_objects);
 
     // Clean up the objects if ref counting is off.
     if (ref_counter_ == nullptr) {
@@ -369,11 +348,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   Status signal_status = Status::OK();
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
-      std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
-
-  if (timeout_ms == -1) {
-    iteration_timeout = RayConfig::instance().get_timeout_milliseconds();
-  }
+      timeout_ms == -1
+          ? RayConfig::instance().get_check_signal_interval_milliseconds()
+          : std::min(timeout_ms,
+                     RayConfig::instance().get_check_signal_interval_milliseconds());
 
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between
   // calls. If timeout_ms == -1, this should run forever until all objects are
@@ -411,14 +389,12 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       auto object_request_iter = object_get_requests_.find(object_id);
       if (object_request_iter != object_get_requests_.end()) {
         auto &get_requests = object_request_iter->second;
-        // Erase get_request from the vector.
-        auto it = std::find(get_requests.begin(), get_requests.end(), get_request);
-        if (it != get_requests.end()) {
-          get_requests.erase(it);
-          // If the vector is empty, remove the object ID from the map.
-          if (get_requests.empty()) {
-            object_get_requests_.erase(object_request_iter);
-          }
+        get_requests.erase(
+            std::remove(get_requests.begin(), get_requests.end(), get_request),
+            get_requests.end());
+
+        if (get_requests.empty()) {
+          object_get_requests_.erase(object_request_iter);
         }
       }
     }
