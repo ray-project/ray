@@ -221,7 +221,7 @@ def test_tag_train_entrypoint(mock_record):
             train_loop_per_worker=train_fn,
             scaling_config=train.ScalingConfig(num_workers=2),
         )
-        assert mock_record[TagKey.TRAIN_ENTRYPOINT] == trainer.__class__.__name__
+        assert mock_record[TagKey.TRAIN_TRAINER] == trainer.__class__.__name__
 
 
 if __name__ == "__main__":
