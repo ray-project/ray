@@ -698,6 +698,7 @@ def _do_init_communicator(
             actor_handles,
             None,
         )
+        # Need return this actor in NPU to get the rank map
         return ctx.communicators[group_id]
 
 
@@ -830,6 +831,11 @@ def _init_communicator(
         if USE_GPU:
             ray.get(init_tasks, timeout=30)
         else:
+            # Since the NPU use torch distributed for communication.
+            # If the init is call outside hccl group, i.e. in vLLM,
+            # The rank in dist is not the same the rank in rank.
+            # We need a rank map to map the rank in ray to correct
+            # rank in dist for device.
             tmp_actors = ray.get(init_tasks, timeout=30)
             rank_map = dict()
             for rank, tmp_actor in zip(ranks, tmp_actors):
