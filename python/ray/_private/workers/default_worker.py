@@ -273,12 +273,8 @@ if __name__ == "__main__":
     worker = ray._private.worker.global_worker
 
     # Setup log file.
-    out_file, err_file = node.get_log_file_handles(
-        get_worker_log_file_name(args.worker_type)
-    )
-    configure_log_file(out_file, err_file)
-    worker.set_out_file(out_file)
-    worker.set_err_file(err_file)
+    worker.set_out_file(None)
+    worker.set_err_file(None)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
