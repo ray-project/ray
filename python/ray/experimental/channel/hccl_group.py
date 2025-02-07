@@ -8,7 +8,6 @@ import torch_npu  # The torch_npu for communicate
 
 import ray
 from ray.exceptions import RayChannelError
-from ray.experimental.channel import ChannelContext
 
 from ray.experimental.channel.communicator import (
     Communicator,
