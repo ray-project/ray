@@ -112,4 +112,3 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   WORKSPACE_DIR="${SCRIPT_DIR}/../.."
   install_miniconda
 fi
-

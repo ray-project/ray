@@ -50,10 +50,10 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
-    RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -344,6 +344,9 @@ class ReplicaBase(ABC):
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Flipped to `True` when health checks pass and `False` when they fail. May be
+        # used by replica subclass implementations.
+        self._healthy = False
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
@@ -801,13 +804,19 @@ class ReplicaBase(ABC):
         await self._metrics_manager.shutdown()
 
     async def check_health(self):
-        # If there's no user-defined health check, nothing runs on the user code event
-        # loop and no future is returned.
-        f: Optional[
-            concurrent.futures.Future
-        ] = self._user_callable_wrapper.call_user_health_check()
-        if f is not None:
-            await asyncio.wrap_future(f)
+        try:
+            # If there's no user-defined health check, nothing runs on the user code event
+            # loop and no future is returned.
+            f: Optional[
+                concurrent.futures.Future
+            ] = self._user_callable_wrapper.call_user_health_check()
+            if f is not None:
+                await asyncio.wrap_future(f)
+            self._healthy = True
+        except Exception as e:
+            logger.warning("Replica health check failed.")
+            self._healthy = False
+            raise e from None
 
 
 class Replica(ReplicaBase):
@@ -1601,7 +1610,7 @@ class UserCallableWrapper:
                 if request_metadata.is_streaming
                 else None,
             )
-            return await self._handle_user_method_result(
+            final_result = await self._handle_user_method_result(
                 result,
                 request_metadata,
                 user_method_info,
@@ -1610,6 +1619,10 @@ class UserCallableWrapper:
                 asgi_args=asgi_args,
             )
 
+            if receive_task is not None and not receive_task.done():
+                receive_task.cancel()
+
+            return final_result
         except Exception:
             if (
                 request_metadata.is_http_request
@@ -1625,10 +1638,22 @@ class UserCallableWrapper:
                     asgi_args,
                 )
 
-            raise
-        finally:
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
+
+            raise
+        except asyncio.CancelledError:
+            user_method_info = self._get_user_method_info(request_metadata.call_method)
+            if receive_task is not None and not receive_task.done():
+                # Do NOT cancel the receive task if the request has been
+                # cancelled, but the call is a batched call. This is
+                # because we cannot guarantee cancelling the batched
+                # call, so in the case that the call continues executing
+                # we should continue fetching data from the client.
+                if not hasattr(user_method_info.callable, "set_max_batch_size"):
+                    receive_task.cancel()
+
+            raise
 
     @_run_on_user_code_event_loop
     async def call_destructor(self):
