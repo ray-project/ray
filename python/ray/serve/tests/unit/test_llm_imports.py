@@ -3,7 +3,7 @@ import pytest
 
 
 def test_serve_llm_import_does_not_error():
-    import ray.serve.llm   # noqa: F401
+    import ray.serve.llm  # noqa: F401
     from ray.serve.llm import (
         LLMConfig,  # noqa: F401
         VLLMDeployment,  # noqa: F401
