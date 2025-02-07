@@ -200,5 +200,5 @@ enum TagKey {
   TRAIN_TORCH_GET_DEVICES = 520;
 
   // Train V2 Trainer name (e.g. "TorchTrainer")
-  TRAIN_ENTRYPOINT = 521;
+  TRAIN_TRAINER = 521;
 }
