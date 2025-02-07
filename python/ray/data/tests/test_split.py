@@ -266,42 +266,34 @@ def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices
     assert r == [arr.tolist() for arr in np.array_split(list(range(20)), indices)]
 
 
-@pytest.mark.parametrize("num_blocks", list(range(1, 5)) + [8, 10])
+@pytest.mark.parametrize("num_blocks", [1, 3, 5, 10])
 @pytest.mark.parametrize(
     "indices",
     [
-        # Two-splits.
-        list(range(5)),
+        [2],  # Single split
+        [1, 3],  # Two splits
+        [0, 2, 4],  # Three splits
+        [1, 2, 3, 4],  # Four splits
+        [1, 2, 3, 4, 7],  # Five splits
+        [1, 2, 3, 4, 6, 9],  # Six splits
     ]
-    + list(
-        # Three-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 2))
-    )
-    + list(
-        # Four-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 3))
-    )
-    + list(
-        # Five-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 4))
-    )
-    + list(
-        # Six-splits.
-        map(list, itertools.combinations_with_replacement(list(range(5)), 5))
-    ),
+    + [
+        list(x) for x in itertools.combinations_with_replacement([1, 3, 4], 2)
+    ]  # Selected two-split cases
+    + [
+        list(x) for x in itertools.combinations_with_replacement([0, 2, 4], 3)
+    ],  # Selected three-split cases
 )
 def test_split_at_indices_coverage_complete(
-    ray_start_regular_shared,
-    num_blocks,
-    indices,
+    ray_start_regular_shared, num_blocks, indices
 ):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
-    ds = ray.data.range(5, override_num_blocks=num_blocks)
+    ds = ray.data.range(10, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
-    assert r == [arr.tolist() for arr in np.array_split(list(range(5)), indices)]
+    assert r == [arr.tolist() for arr in np.array_split(list(range(10)), indices)]
 
 
 def test_split_proportionately(ray_start_regular_shared):

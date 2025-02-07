@@ -2,7 +2,7 @@ group: Upload & Validate wheels
 steps:
   - block: "Upload wheels from S3 to TestPyPI"
     key: block-upload-wheels-testpypi
-    depends_on: 
+    depends_on:
       - forge
 
   - label: "Upload wheels from S3 to TestPyPI"
@@ -15,7 +15,7 @@ steps:
       - export RAY_VERSION="$RAY_VERSION"
       - export RAY_COMMIT="$RAY_COMMIT"
       - source .buildkite/release-automation/set-ray-version.sh
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
+      - bazel run //ci/ray_ci/automation:upload_wheels_pypi --
         --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
         --pypi_env=test
 
@@ -65,7 +65,7 @@ steps:
   - block: "Download & validate Ray wheels from TestPyPI Mac"
     key: block-validate-macos-wheels
     depends_on: []
-  
+
   - label: "MacOS x86_64"
     key: validate-macos-x86_64-wheels
     depends_on:
@@ -98,6 +98,6 @@ steps:
       - export RAY_VERSION="$RAY_VERSION"
       - export RAY_COMMIT="$RAY_COMMIT"
       - source .buildkite/release-automation/set-ray-version.sh
-      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
+      - bazel run //ci/ray_ci/automation:upload_wheels_pypi --
         --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
         --pypi_env=prod
