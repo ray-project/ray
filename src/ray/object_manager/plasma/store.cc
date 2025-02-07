@@ -410,6 +410,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     ReplyToCreateClient(client, object_id, request->request_id());
   } break;
   case fb::MessageType::PlasmaAbortRequest: {
+    RAY_LOG(INFO) << "Received abort request...";
     RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
     RAY_CHECK(AbortObject(object_id, client) == 1) << "To abort an object, the only "
                                                       "client currently using it "
@@ -447,6 +448,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
 
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
+    RAY_LOG(INFO) << "Received abort request...";
     std::vector<ObjectID> object_ids;
     std::vector<PlasmaError> error_codes;
     RAY_RETURN_NOT_OK(ReadDeleteRequest(input, input_size, &object_ids));
@@ -465,12 +467,14 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     }
   } break;
   case fb::MessageType::PlasmaSealRequest: {
+    RAY_LOG(INFO) << "Received seal request...";
     RAY_RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
     SealObjects({object_id});
     RAY_RETURN_NOT_OK(SendSealReply(client, object_id, PlasmaError::OK));
   } break;
   case fb::MessageType::PlasmaEvictRequest: {
     // This code path should only be used for testing.
+    RAY_LOG(INFO) << "Received Evict request...";
     int64_t num_bytes;
     RAY_RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
     int64_t num_bytes_evicted = object_lifecycle_mgr_.RequireSpace(num_bytes);
@@ -480,15 +484,18 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     RAY_RETURN_NOT_OK(SendConnectReply(client, allocator_.GetFootprintLimit()));
   } break;
   case fb::MessageType::PlasmaDisconnectClient:
+    RAY_LOG(INFO) << "Received Disconnect request...";
     RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
     DisconnectClient(client);
     return Status::Disconnected("The Plasma Store client is disconnected.");
     break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
+    RAY_LOG(INFO) << "Received DebugString request...";
     RAY_RETURN_NOT_OK(SendGetDebugStringReply(
         client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
   } break;
   default:
+    RAY_LOG(INFO) << "Received request falls into default...";
     // This code should be unreachable.
     RAY_CHECK(0);
   }
