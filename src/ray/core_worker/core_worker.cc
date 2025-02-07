@@ -2019,8 +2019,8 @@ void MoveReadyPlasmaObjectsToPlasmaSet(std::shared_ptr<CoreWorkerMemoryStore> &m
     auto found = memory_store->GetIfExists(obj_id);
     if (found != nullptr && found->IsInPlasmaError()) {
       plasma_object_ids.insert(obj_id);
-      ready.erase(obj_id);
-      memory_object_ids.erase(iter);
+      ready.erase(iter);
+      memory_object_ids.erase(obj_id);
     }
   }
 }
