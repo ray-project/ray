@@ -1,23 +1,23 @@
-== Status ==
-Memory usage on this node: 52.0/480.3 GiB
-Using FIFO scheduling algorithm.
+== Status ==                                                                                            
+Memory usage on this node: 52.0/480.3 GiB                                                               
+Using FIFO scheduling algorithm.                                                                        
 Resources requested: 0/64 CPUs, 0.0/8 GPUs, 0.0/326.03 GiB heap, 0.0/99.17 GiB objects (0/1.0 accelerato
-r_type:V100)
-Result logdir: /home/ubuntu/ray_results/apex
-Result logdir: /home/ubuntu/ray_results/atari-a2c
-Result logdir: /home/ubuntu/ray_results/atari-basic-dqn
-Result logdir: /home/ubuntu/ray_results/atari-impala
-Result logdir: /home/ubuntu/ray_results/atari-ppo-tf
-Result logdir: /home/ubuntu/ray_results/atari-ppo-torch
-Number of trials: 24/24 (24 TERMINATED)
+r_type:V100)                                                                                            
+Result logdir: /home/ubuntu/ray_results/apex                                                            
+Result logdir: /home/ubuntu/ray_results/atari-a2c                                                       
+Result logdir: /home/ubuntu/ray_results/atari-basic-dqn                                                 
+Result logdir: /home/ubuntu/ray_results/atari-impala                                                    
+Result logdir: /home/ubuntu/ray_results/atari-ppo-tf                                                    
+Result logdir: /home/ubuntu/ray_results/atari-ppo-torch                                                 
+Number of trials: 24/24 (24 TERMINATED)                                                                 
 +-------------------------------------------+------------+-------+--------+------------------+---------+
-----------+----------------------+----------------------+--------------------+
+----------+----------------------+----------------------+--------------------+                          
 | Trial name                                | status     | loc   |   iter |   total time (s) |      ts |
-   reward |   episode_reward_max |   episode_reward_min |   episode_len_mean |
+   reward |   episode_reward_max |   episode_reward_min |   episode_len_mean |                          
 |-------------------------------------------+------------+-------+--------+------------------+---------+
-----------+----------------------+----------------------+--------------------|
+----------+----------------------+----------------------+--------------------|                          
 | IMPALA_BreakoutNoFrameskip-v4_4060e_00000 | TERMINATED |       |    355 |          3606.4  | 9039500 |
-   413.62 |                  802 |                  244 |           11042.7  |
+   413.62 |                  802 |                  244 |           11042.7  |                          
 | IMPALA_BreakoutNoFrameskip-v4_4060e_00001 | TERMINATED |       |    355 |          3605.53 | 9002500 |   393.79 |                  497 |                  159 |           10146.2  |
 | IMPALA_BreakoutNoFrameskip-v4_4060e_00002 | TERMINATED |       |    355 |          3606.64 | 9023250 |   393.07 |                  438 |                   89 |            9990.92 |
 | IMPALA_BreakoutNoFrameskip-v4_4060e_00003 | TERMINATED |       |    355 |          3606.81 | 9005250 |   374.35 |                  758 |                   60 |            9785.87 |
@@ -42,6 +42,6 @@ Number of trials: 24/24 (24 TERMINATED)
     16.44 |                   40 |                    6 |            2055.3  |                          | DQN_BreakoutNoFrameskip-v4_4060e_00022    | TERMINATED |       |     33 |          3657.1  |  340000 |
     18.85 |                   40 |                    6 |            2476.26 |                          | DQN_BreakoutNoFrameskip-v4_4060e_00023    | TERMINATED |       |     33 |          3654.52 |  340000 |
     21.07 |                   47 |                    8 |            2586.87 |                          +-------------------------------------------+------------+-------+--------+------------------+---------+
-----------+----------------------+----------------------+--------------------+
+----------+----------------------+----------------------+--------------------+                                                                                                                                  
                                                                                                         2020-11-05 02:48:15,548 INFO tune.py:439 -- Total run time: 14646.45 seconds (14645.94 seconds for the t
-uning loop).
+uning loop).                                                                                            

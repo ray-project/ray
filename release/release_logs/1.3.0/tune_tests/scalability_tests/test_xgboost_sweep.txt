@@ -4,7 +4,7 @@ Traceback (most recent call last):
     main()
   File "workloads/test_xgboost_sweep.py", line 86, in main
     f"The {name} test took {time_taken:.2f} seconds, but should not " \
-AssertionError: The large xgboost sweep test took 3187.07 seconds, but should not have exceeded 2600.00 seconds. Test failed.
+AssertionError: The large xgboost sweep test took 3187.07 seconds, but should not have exceeded 2600.00 seconds. Test failed. 
 
 --- FAILED: LARGE XGBOOST SWEEP ::: 3187.07 <= 2600.00 ---
 
