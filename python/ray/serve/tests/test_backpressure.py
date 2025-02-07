@@ -154,7 +154,7 @@ def test_model_composition_backpressure(serve_instance):
             return await self.child.remote()
 
     def send_request():
-        return requests.get("http://localhost:8000/").status_code
+        return requests.get("http://localhost:8000/")
 
     serve.run(Parent.bind(child=Child.bind()))
     with ThreadPoolExecutor(max_workers=3) as exc:
@@ -162,12 +162,13 @@ def test_model_composition_backpressure(serve_instance):
         done, _ = wait(futures, return_when=FIRST_COMPLETED)
         assert len(done) == 1
         for f in done:
-            assert f.result() == 503
+            assert f.result().status_code == 503
+            assert "Request dropped due to backpressure" in f.result().text
             print("Received 503 response.")
 
         print("Releasing signal.")
         ray.get(signal.send.remote())
-        assert sorted([f.result() for f in futures]) == [200, 200, 503]
+        assert sorted([f.result().status_code for f in futures]) == [200, 200, 503]
 
 
 if __name__ == "__main__":

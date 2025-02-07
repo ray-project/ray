@@ -21,7 +21,6 @@ class BackPressureError(RayServeException):
             f"(num_queued_requests={num_queued_requests}, "
             f"max_queued_requests={max_queued_requests})."
         )
-        # super().__init__(self._message)
 
     def __str__(self) -> str:
         return self._message
