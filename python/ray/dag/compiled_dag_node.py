@@ -492,12 +492,7 @@ class ExecutableTask:
 
         for arg in resolved_args:
             if isinstance(arg, ChannelInterface):
-                if isinstance(arg, ChannelInterface):
-                    channel = arg
-                else:
-                    adapter = arg
-                    channel = adapter.get_dag_input_channel()
-
+                channel = arg
                 if channel in input_channel_to_idx:
                     # The same channel was added before, so reuse the index.
                     channel_idx = input_channel_to_idx[channel]
