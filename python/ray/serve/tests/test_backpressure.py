@@ -1,5 +1,3 @@
-import asyncio
-import pickle
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Tuple
@@ -12,8 +10,7 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.exceptions import RayTaskError
-from ray.serve.exceptions import BackPressureError, RayServeException
+from ray.serve.exceptions import BackPressureError
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 
