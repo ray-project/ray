@@ -36,7 +36,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def _default_test_worker_group(**kwargs):
+def _default_inactive_worker_group(**kwargs):
     return WorkerGroup(
         train_run_context=TrainRunContext(RunConfig()),
         **kwargs,
@@ -62,27 +62,12 @@ def test_worker_group_create():
     assert len(worker_group) == 4
     assert worker_group.has_started()
 
-    worker_group.shutdown()
-    with pytest.raises(ValueError, match="Worker group is not active"):
-        worker_group.get_workers()
-
-
-def test_worker_group_create_start():
-    """Test that starting an already started worker group raises an error."""
-    train_run_context = TrainRunContext(run_config=RunConfig())
-
-    def train_fn():
-        pass
-
-    worker_group = WorkerGroup.create(
-        train_run_context=train_run_context,
-        worker_group_context=default_worker_group_context,
-    )
-
     with pytest.raises(ValueError, match="Worker group is active"):
         worker_group._start(default_worker_group_context)
 
     worker_group.shutdown()
+    with pytest.raises(ValueError, match="Worker group is not active"):
+        worker_group.get_workers()
 
 
 def test_actor_start_failure():
@@ -90,7 +75,7 @@ def test_actor_start_failure():
         def __init__(self):
             raise RuntimeError("Worker failed to start.")
 
-    wg = _default_test_worker_group()
+    wg = _default_inactive_worker_group()
     wg._worker_cls = FailingWorker
 
     with pytest.raises(WorkerGroupStartupFailedError):
@@ -103,7 +88,7 @@ def test_callback_start_failure(error_type):
         def after_worker_group_start(self, worker_group):
             raise error_type
 
-    wg = _default_test_worker_group(callbacks=[FailingCallback()])
+    wg = _default_inactive_worker_group(callbacks=[FailingCallback()])
 
     if error_type is RayActorError:
         # Actor errors are wrapped in WorkerGroupStartupFailedError.
@@ -127,7 +112,7 @@ def test_start_timeout(monkeypatch):
     monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
     monkeypatch.setattr(PlacementGroup, "ready", hanging_task.remote)
 
-    wg = _default_test_worker_group()
+    wg = _default_inactive_worker_group()
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
         # Not enough CPU resources are available, so the workers will not start.
@@ -135,7 +120,7 @@ def test_start_timeout(monkeypatch):
 
 
 def test_poll_status_running():
-    wg = _default_test_worker_group()
+    wg = _default_inactive_worker_group()
     worker_group_context = WorkerGroupContext(
         train_fn=lambda: time.sleep(60),
         num_workers=4,
@@ -151,7 +136,7 @@ def test_poll_status_running():
 
 
 def test_poll_status_finished():
-    wg = _default_test_worker_group()
+    wg = _default_inactive_worker_group()
     worker_group_context = WorkerGroupContext(
         train_fn=lambda: "done",
         num_workers=4,
@@ -186,7 +171,7 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
 
         monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
 
-    wg = _default_test_worker_group()
+    wg = _default_inactive_worker_group()
     worker_group_context = WorkerGroupContext(
         train_fn=train_fn,
         num_workers=4,
@@ -227,7 +212,7 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
 
     monkeypatch.setattr(RayTrainWorker, "poll_status", hanging_poll_status)
 
-    wg = _default_test_worker_group()
+    wg = _default_inactive_worker_group()
 
     # Try 2x to ensure that shutdown clears the health-check hanging timer.
     for _ in range(2):
@@ -383,7 +368,7 @@ def test_setup_worker_group(tmp_path):
 @pytest.mark.parametrize("queue_backlog_length", [0, 1, 3])
 def test_flush_worker_result_queue(queue_backlog_length):
     """Make sure that the result queue is fully consumed before the worker exits."""
-    wg = _default_test_worker_group()
+    wg = _default_inactive_worker_group()
     wg._start(default_worker_group_context)
 
     def populate_result_queue():
@@ -410,10 +395,10 @@ def test_env_var_propagation(monkeypatch):
     from the driver to the workers."""
     test_env_var = list(ENV_VARS_TO_PROPAGATE)[0]
     monkeypatch.setenv(test_env_var, "1")
-    w = _default_test_worker_group()
-    w._start(default_worker_group_context)
-    env_vars = w.execute(lambda: os.environ.get(test_env_var))
-    w.shutdown()
+    wg = _default_inactive_worker_group()
+    wg._start(default_worker_group_context)
+    env_vars = wg.execute(lambda: os.environ.get(test_env_var))
+    wg.shutdown()
 
     assert env_vars == ["1"] * 4
 
@@ -442,7 +427,7 @@ def test_worker_group_callback():
             self.poll_status_hook_called = True
 
     hooks = AssertCallback()
-    wg = _default_test_worker_group(callbacks=[hooks])
+    wg = _default_inactive_worker_group(callbacks=[hooks])
 
     wg._start(default_worker_group_context)
     assert hooks.start_hook_called
@@ -470,7 +455,7 @@ def test_shutdown_hook_with_dead_actors():
         if ray.train.get_context().get_world_rank() % 2 == 0:
             ray.actor.exit_actor()
 
-    wg = _default_test_worker_group(callbacks=[ShutdownCallback()])
+    wg = _default_inactive_worker_group(callbacks=[ShutdownCallback()])
     wg._start(default_worker_group_context)
 
     # Kill some of the actors

@@ -165,13 +165,15 @@ class TrainController:
             callback.before_controller_execute_scaling_decision(decision)
 
         if isinstance(decision, ResizeDecision):
-            # TODO: Add more control over restart vs. shutdown + start.
-            worker_group_restarted = self._restart_worker_group(
+            if self._worker_group:
+                self._shutdown_worker_group()
+
+            worker_group_started = self._start_worker_group(
                 num_workers=decision.num_workers,
                 resources_per_worker=decision.resources_per_worker,
             )
 
-            if worker_group_restarted:
+            if worker_group_started:
                 next_state = RunningState()
             else:
                 next_state = ReschedulingState()
@@ -265,16 +267,12 @@ class TrainController:
         self._latest_poll_time = time_monotonic()
         return status
 
-    def _restart_worker_group(
-        self, num_workers: int, resources_per_worker: dict
-    ) -> bool:
-        """Restart the worker group and launch the train function.
+    def _start_worker_group(self, num_workers: int, resources_per_worker: dict) -> bool:
+        """Start the worker group and launch the train function.
 
         Returns:
-            True if the worker group was successfully restarted, False otherwise.
+            True if the worker group was successfully started, False otherwise.
         """
-        if self._worker_group:
-            self._shutdown_worker_group()
 
         # If there's a latest checkpoint that's been committed,
         # use it to restore the worker group.
