@@ -11,7 +11,12 @@ from ray._private.utils import _get_pyarrow_version
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
-from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    concat,
+    try_combine_chunked_columns,
+    unify_schemas,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -22,6 +27,23 @@ from ray.data.extensions import (
     ArrowVariableShapedTensorType,
     _object_extension_type_allowed,
 )
+
+
+def test_try_defragment_table():
+    chunks = np.array_split(np.arange(1000), 10)
+
+    t = pa.Table.from_pydict(
+        {
+            "id": pa.chunked_array([pa.array(c) for c in chunks]),
+        }
+    )
+
+    assert len(t["id"].chunks) == 10
+
+    dt = try_combine_chunked_columns(t)
+
+    assert len(dt["id"].chunks) == 1
+    assert dt == t
 
 
 def test_arrow_concat_empty():
@@ -710,6 +732,65 @@ def test_unify_schemas():
     )
 
 
+@pytest.mark.skipif(
+    parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires Arrow version of at least 14.0.0",
+)
+def test_unify_schemas_type_promotion():
+    s_non_null = pa.schema(
+        [
+            pa.field("A", pa.int32()),
+        ]
+    )
+
+    s_nullable = pa.schema(
+        [
+            pa.field("A", pa.int32(), nullable=True),
+        ]
+    )
+
+    # No type promotion
+    assert (
+        unify_schemas(
+            [s_non_null, s_nullable],
+            promote_types=False,
+        )
+        == s_nullable
+    )
+
+    s1 = pa.schema(
+        [
+            pa.field("A", pa.int64()),
+        ]
+    )
+
+    s2 = pa.schema(
+        [
+            pa.field("A", pa.float64()),
+        ]
+    )
+
+    # No type promotion
+    with pytest.raises(pa.lib.ArrowTypeError) as exc_info:
+        unify_schemas(
+            [s1, s2],
+            promote_types=False,
+        )
+
+    assert "Unable to merge: Field A has incompatible types: int64 vs double" == str(
+        exc_info.value
+    )
+
+    # Type promoted
+    assert (
+        unify_schemas(
+            [s1, s2],
+            promote_types=True,
+        )
+        == s2
+    )
+
+
 def test_arrow_block_select():
     df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
     table = pa.Table.from_pandas(df)
@@ -872,6 +953,11 @@ def test_fallback_to_pandas_on_incompatible_data(
     assert isinstance(block, pd.DataFrame)
 
 
+_PYARROW_SUPPORTS_TYPE_PROMOTION = (
+    parse_version(_get_pyarrow_version()) >= MIN_PYARROW_VERSION_TYPE_PROMOTION
+)
+
+
 @pytest.mark.parametrize(
     "op, data, should_fail, expected_type",
     [
@@ -879,9 +965,15 @@ def test_fallback_to_pandas_on_incompatible_data(
         ("map_batches", [1, 2**100], False, ArrowPythonObjectType()),
         ("map_batches", [1.0, 2**100], False, ArrowPythonObjectType()),
         ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
-        # Case B: No fallback to `ArrowPythonObjectType` and hence arrow is enforcing
-        #         deduced schema
-        ("map_batches", [1.0, 2**4], True, None),
+        # Case B: No fallback to `ArrowPythonObjectType`, but type promotion allows
+        #         int to be promoted to a double
+        (
+            "map_batches",
+            [1.0, 2**4],
+            not _PYARROW_SUPPORTS_TYPE_PROMOTION,
+            pa.float64(),
+        ),
+        # Case C: No fallback to `ArrowPythonObjectType` and no type promotion possible
         ("map_batches", ["1.0", 2**4], True, None),
     ],
 )

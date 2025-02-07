@@ -1,11 +1,10 @@
 from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
-from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import (
     BlockAccessor,
     CallableClass,
@@ -30,14 +29,17 @@ class GroupedData:
         self,
         dataset: Dataset,
         key: Optional[Union[str, List[str]]],
+        *,
+        num_partitions: Optional[int],
     ):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
-        self._dataset = dataset
-        self._key = key
+        self._dataset: Dataset = dataset
+        self._key: Optional[Union[str, List[str]]] = key
+        self._num_partitions: Optional[int] = num_partitions
 
     def __repr__(self) -> str:
         return (
@@ -63,6 +65,7 @@ class GroupedData:
             self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
+            num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
@@ -102,6 +105,7 @@ class GroupedData:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -172,6 +176,7 @@ class GroupedData:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -254,6 +259,7 @@ class GroupedData:
             fn_constructor_kwargs=fn_constructor_kwargs,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=None,
             **ray_remote_args,
