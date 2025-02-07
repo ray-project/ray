@@ -6,8 +6,8 @@ import math
 import time
 import torch
 import uuid
-from pydantic import BaseModel, Field
-from pydantic import root_validator
+from functools import partial
+from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple
 
 import ray
@@ -102,7 +102,6 @@ class vLLMEngineWrapper:
     Args:
         *args: The positional arguments for the engine.
         max_pending_requests: The maximum number of pending requests in the queue.
-        runtime_env: The runtime environment to use for the vLLM engine.
         **kwargs: The keyword arguments for the engine.
     """
 
@@ -111,7 +110,6 @@ class vLLMEngineWrapper:
         *args,
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
-        runtime_env: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         self.request_id = 0
@@ -142,15 +140,12 @@ class vLLMEngineWrapper:
             self._generate_async = self.generate_async_v0
 
         # The performance gets really bad if there are too many requests in the pending queue.
-        # We work around it by introducing another queue that gates how many requests we are
-        # sending to the engine at once.
-        # This is not a queue of requests. Instead, this queue holds "slots". Each time
-        # we add a new request, we take one slot. When a request finishes, we add a new slot.
+        # We work around it with semaphore to limit the number of concurrent requests in the engine.
         self.max_pending_requests = max_pending_requests
-        self.free_queue: asyncio.Queue[bool] = asyncio.Queue()
         if self.max_pending_requests > 0:
-            for _ in range(self.max_pending_requests):
-                self.free_queue.put_nowait(True)
+            self.semaphore = asyncio.Semaphore(self.max_pending_requests)
+        else:
+            self.semaphore = asyncio.NullContext()
 
     def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         """Prepare the inputs for LLM inference.
@@ -204,15 +199,8 @@ class vLLMEngineWrapper:
         """
         request = self._prepare_llm_request(row)
 
-        # If free queue is used, guard the request here until a slot is available.
-        if self.max_pending_requests > 0:
-            await self.free_queue.get()
-
-        output = await self._generate_async(request)
-
-        # If free queue is used, release the slot.
-        if self.max_pending_requests > 0:
-            self.free_queue.put_nowait(True)
+        async with self.semaphore:
+            output = await self._generate_async(request)
 
         output_data = vLLMOutputData.from_vllm_engine_output(output)
         return request, output_data.model_dump()
@@ -319,7 +307,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: str = "generate",
-        runtime_env: Optional[Dict[str, Any]] = None,
         max_pending_requests: Optional[int] = None,
     ):
         """
@@ -330,15 +317,11 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             model: The model to use for the vLLM engine.
             engine_kwargs: The kwargs to pass to the vLLM engine.
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
-            runtime_env: The runtime environment to use for the vLLM engine.
             max_pending_requests: The maximum number of pending requests. If None,
                 it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
         """
         super().__init__(data_column)
         self.model = model
-
-        # Setup runtime env.
-        self.runtime_env = runtime_env or {}
 
         # Setup vLLM engine kwargs.
         self.task_type = task_type
@@ -358,7 +341,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             disable_log_stats=False,
             max_pending_requests=self.max_pending_requests,
-            runtime_env=self.runtime_env,
             **self.engine_kwargs,
         )
 
@@ -450,6 +432,35 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         self.llm.shutdown()
 
 
+def _ray_scheduling_strategy_fn(num_gpus_per_instance: int, accelerator_type: str):
+    """
+    Create a Ray scheduling strategy for vLLM engine.
+
+    Args:
+        num_gpus_per_instance: The number of GPUs per instance.
+        accelerator_type: The accelerator type.
+
+    Returns:
+        The Ray scheduling strategy.
+    """
+
+    def _get_bundle() -> Dict[str, float]:
+        bundle: Dict[str, float] = {"GPU": 1, "CPU": 1}
+        if accelerator_type:
+            bundle[f"accelerator_type:{accelerator_type}"] = 0.001
+        return bundle
+
+    pg = ray.util.placement_group(
+        [_get_bundle()] * num_gpus_per_instance,
+        strategy="STRICT_PACK",
+    )
+    return dict(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            pg, placement_group_capture_child_tasks=True
+        )
+    )
+
+
 class vLLMEngineStage(StatefulStage):
     """
     A stage that runs vLLM engine.
@@ -496,31 +507,12 @@ class vLLMEngineStage(StatefulStage):
         # strategy in .map_batches() arguments and let vLLM Ray executor to
         # create placement groups for each TP/PP worker.
         if executor_backend == "ray" and num_gpus > 1:
-
-            def _scheduling_strategy_fn(
-                num_gpus_per_instance: int, accelerator_type: str
-            ):
-                def _get_bundle() -> Dict[str, float]:
-                    bundle: Dict[str, float] = {"GPU": 1, "CPU": 1}
-                    if accelerator_type:
-                        bundle[f"accelerator_type:{accelerator_type}"] = 0.001
-                    return bundle
-
-                pg = ray.util.placement_group(
-                    [_get_bundle()] * num_gpus_per_instance,
-                    strategy="STRICT_PACK",
-                )
-                return dict(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        pg, placement_group_capture_child_tasks=True
-                    )
-                )
-
-            ray_remote_args.update(
-                _scheduling_strategy_fn(
-                    num_gpus,
-                    accelerator_type,
-                )
+            # Note that we have to use partial() to pass a function
+            # instead of an object.
+            map_batches_kwargs["ray_remote_args_fn"] = partial(
+                _ray_scheduling_strategy_fn,
+                num_gpus,
+                accelerator_type,
             )
             num_gpus = 0
 
