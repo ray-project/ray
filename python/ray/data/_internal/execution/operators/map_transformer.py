@@ -170,12 +170,12 @@ class MapTransformer:
         return self._transform_fns
 
     def set_target_max_block_size(self, target_max_block_size: int):
-        assert (
-            self._output_block_size_option is None and target_max_block_size is not None
-        )
-        self._output_block_size_option = OutputBlockSizeOption(
-            target_max_block_size=target_max_block_size
-        )
+        if target_max_block_size is not None:
+            self._output_block_size_option = OutputBlockSizeOption(
+                target_max_block_size=target_max_block_size
+            )
+        elif self._output_block_size_option is not None:
+            self._output_block_size_option = None
 
     @property
     def target_max_block_size(self):
