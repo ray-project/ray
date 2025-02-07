@@ -80,39 +80,41 @@ class WorkerGroupContext:
     This stores the context that is shared when starting a worker group.
 
     Attributes:
+        train_fn: The training function to execute.
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
+        placement_strategy: Strategy for placing workers.
+        checkpoint: Optional checkpoint to restore from.
     """
 
+    train_fn: Callable[[], None]
     num_workers: int
     resources_per_worker: Dict[str, float]
+    placement_strategy: str = "PACK"
+    # TODO: Remove checkpoint from WorkerGroupContext
+    # and move it to CheckpointManager. Populate TrainContext
+    # similar to how the dataset shards are passed to the workers.
+    checkpoint: Optional[Checkpoint] = None
 
 
 class WorkerGroup:
     _worker_cls = RayTrainWorker
 
-    @staticmethod
+    @classmethod
     def create(
+        cls,
         train_run_context: TrainRunContext,
-        train_fn: Callable[[], None],
-        num_workers: int,
-        resources_per_worker: dict,
+        worker_group_context: WorkerGroupContext,
         callbacks: Optional[
             List[Union[WorkerGroupCallback, WorkerCallback, TrainContextCallback]]
         ] = None,
-        placement_strategy: str = "PACK",
-        checkpoint: Optional[Checkpoint] = None,
     ) -> "WorkerGroup":
         """Create and start a new worker group.
 
         Args:
             train_run_context: The training run context.
-            train_fn: The training function to execute.
-            num_workers: Number of workers to create.
-            resources_per_worker: Resources to allocate per worker.
+            worker_group_context: The worker group context.
             callbacks: Optional callbacks to attach.
-            placement_strategy: Strategy for placing workers.
-            checkpoint: Optional checkpoint to restore from.
 
         Returns:
             An active WorkerGroup instance.
@@ -121,14 +123,9 @@ class WorkerGroup:
             WorkerGroupStartupTimeoutError: If worker group startup times out.
             WorkerGroupStartupFailedError: If worker group fails to start.
         """
-        worker_group = WorkerGroup(train_run_context, callbacks)
-        worker_group._start(
-            train_fn,
-            num_workers,
-            resources_per_worker,
-            placement_strategy,
-            checkpoint,
-        )
+
+        worker_group = cls(train_run_context, callbacks)
+        worker_group._start(worker_group_context)
         return worker_group
 
     def __init__(
@@ -191,11 +188,7 @@ class WorkerGroup:
 
     def _start(
         self,
-        train_fn: Callable[[], None],
-        num_workers: int,
-        resources_per_worker: dict,
-        placement_strategy: str = "PACK",
-        checkpoint: Optional[Checkpoint] = None,
+        worker_group_context: WorkerGroupContext,
     ):
         """Internal method to start the worker group."""
         worker_group_state_builder = WorkerGroupStateBuilder()
@@ -203,37 +196,26 @@ class WorkerGroup:
         try:
             self._start_impl(
                 worker_group_state_builder,
-                train_fn,
-                num_workers,
-                resources_per_worker,
-                placement_strategy,
-                checkpoint,
+                worker_group_context,
             )
         except Exception as e:
-            if not self._worker_group_state:
+            if not self.has_started():
+                # Clean up partial worker group state.
                 worker_group_state_builder.shutdown()
             raise e
 
-        assert self._worker_group_state, "Worker group failed to start."
+        assert self.has_started(), "Worker group failed to start."
 
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
-        train_fn: Callable[[], None],
-        num_workers: int,
-        resources_per_worker: dict,
-        placement_strategy: str = "PACK",
-        checkpoint: Optional[Checkpoint] = None,
+        worker_group_context: WorkerGroupContext,
     ):
         """Implementation of worker group startup.
 
         Args:
             worker_group_state_builder: Builder for constructing worker group state.
-            train_fn: Training function to execute on workers.
-            num_workers: Number of workers to start.
-            resources_per_worker: Resources to allocate per worker.
-            placement_strategy: Strategy for placing workers.
-            checkpoint: Optional checkpoint to restore from.
+            worker_group_context: Context for the worker group.
 
         Raises:
             ValueError: If workers are already started.
@@ -242,12 +224,6 @@ class WorkerGroup:
         """
         self._assert_inactive()
 
-        worker_group_context = WorkerGroupContext(
-            num_workers=num_workers,
-            resources_per_worker=resources_per_worker,
-        )
-        self._worker_group_context = worker_group_context
-
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
         # are triggered before the `after_worker_group_start` callbacks.
@@ -255,12 +231,13 @@ class WorkerGroup:
             [callback.on_worker_group_start for callback in self._callbacks]
         ):
             pg = placement_group(
-                bundles=[resources_per_worker] * num_workers,
-                strategy=placement_strategy,
+                bundles=[worker_group_context.resources_per_worker]
+                * worker_group_context.num_workers,
+                strategy=worker_group_context.placement_strategy,
             )
             logger.info(
-                f"Attempting to start training worker group of size {num_workers} with "
-                f"the following resources: [{resources_per_worker}] * {num_workers}"
+                f"Attempting to start training worker group of size {worker_group_context.num_workers} with "
+                f"the following resources: [{worker_group_context.resources_per_worker}] * {worker_group_context.num_workers}"
             )
 
             # Wait for the placement group to be ready before proceeding
@@ -274,7 +251,7 @@ class WorkerGroup:
             except GetTimeoutError as timeout_exc:
                 remove_placement_group(pg)
                 raise WorkerGroupStartupTimeoutError(
-                    num_workers=num_workers
+                    num_workers=worker_group_context.num_workers
                 ) from timeout_exc
 
             # TODO: Figure out ordering between these different calls/callbacks.
@@ -292,7 +269,11 @@ class WorkerGroup:
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
-            workers = self._create_workers(num_workers, pg, resources_per_worker)
+            workers = self._create_workers(
+                worker_group_context.num_workers,
+                pg,
+                worker_group_context.resources_per_worker,
+            )
             worker_group_state_builder.with_workers(workers)
 
             # All the ray.get calls in this try block can possibly error if the
@@ -300,13 +281,15 @@ class WorkerGroup:
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
-                train_context_args = {"checkpoint": [checkpoint] * len(workers)}
+                train_context_args = {
+                    "checkpoint": [worker_group_context.checkpoint] * len(workers)
+                }
                 for callable in self._callbacks:
                     args = callable.before_init_train_context(workers)
                     for arg, arg_values in args.items():
-                        assert len(arg_values) == num_workers, (
+                        assert len(arg_values) == worker_group_context.num_workers, (
                             f"Callback {callable} returned {arg} with "
-                            f"{len(arg_values)} values, expected {num_workers}."
+                            f"{len(arg_values)} values, expected {worker_group_context.num_workers}."
                         )
                         assert (
                             arg not in train_context_args
@@ -328,7 +311,12 @@ class WorkerGroup:
 
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
-        ray_get_safe([worker.actor.run_train_fn.remote(train_fn) for worker in workers])
+        ray_get_safe(
+            [
+                worker.actor.run_train_fn.remote(worker_group_context.train_fn)
+                for worker in workers
+            ]
+        )
 
         for callback in self._callbacks:
             callback.after_worker_group_training_start(self)
@@ -403,7 +391,7 @@ class WorkerGroup:
         with invoke_context_managers(
             [callback.on_worker_group_shutdown for callback in self._callbacks]
         ):
-            if self._worker_group_state:
+            if self.has_started():
                 for callback in self._callbacks:
                     callback.before_worker_group_shutdown(self)
 
@@ -614,9 +602,12 @@ class WorkerGroup:
     # Utility Methods
     #####################################################################################
 
+    def has_started(self) -> bool:
+        return self._worker_group_state is not None
+
     def _assert_active(self):
         """Assert that the worker group is active (not shut down)."""
-        if not self._worker_group_state:
+        if not self.has_started():
             raise ValueError(
                 "Worker group is not active. "
                 "Call WorkerGroup.create() to create a new worker group."
@@ -624,7 +615,7 @@ class WorkerGroup:
 
     def _assert_inactive(self):
         """Assert that the worker group is inactive (shut down)."""
-        if self._worker_group_state:
+        if self.has_started():
             raise ValueError(
                 "Worker group is active. "
                 "Call WorkerGroup.shutdown() to shut down the worker group."

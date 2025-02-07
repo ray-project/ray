@@ -57,6 +57,9 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
 )
+from ray.train.v2._internal.execution.worker_group.worker_group import (
+    WorkerGroupContext,
+)
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.result import Result
@@ -136,7 +139,7 @@ class TrainController:
         ]
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
-        worker_group_callbacks_to_propagate = [report_handler] + [
+        self._worker_group_callbacks_to_propagate = [report_handler] + [
             c
             for c in self._callbacks
             if isinstance(
@@ -148,10 +151,7 @@ class TrainController:
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
         )
 
-        self._worker_group = self.worker_group_cls(
-            train_run_context=self._train_run_context,
-            callbacks=worker_group_callbacks_to_propagate,
-        )
+        self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
 
         # TODO: These can be attributes of a RunAttempt?
@@ -273,7 +273,9 @@ class TrainController:
         Returns:
             True if the worker group was successfully restarted, False otherwise.
         """
-        self._worker_group.shutdown()
+        if self._worker_group:
+            self._worker_group.shutdown()
+            self._worker_group = None
 
         # If there's a latest checkpoint that's been committed,
         # use it to restore the worker group.
@@ -283,16 +285,22 @@ class TrainController:
         )
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
 
+        worker_group_context = WorkerGroupContext(
+            train_fn=self._train_fn,
+            num_workers=num_workers,
+            resources_per_worker=resources_per_worker,
+            placement_strategy=placement_strategy,
+            checkpoint=latest_checkpoint,
+        )
+
         # Start the worker group with the latest checkpoint if there is one.
         # Otherwise, start the worker group with the checkpoint set by controller.
         # Finally, if there is no checkpoint, start the worker group with None.
         try:
-            self._worker_group.start(
-                train_fn=self._train_fn,
-                num_workers=num_workers,
-                resources_per_worker=resources_per_worker,
-                placement_strategy=placement_strategy,
-                checkpoint=latest_checkpoint,
+            self._worker_group = self.worker_group_cls.create(
+                train_run_context=self._train_run_context,
+                worker_group_context=worker_group_context,
+                callbacks=self._worker_group_callbacks_to_propagate,
             )
         except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError) as e:
             logger.error(
@@ -313,12 +321,14 @@ class TrainController:
             callback.after_controller_start()
 
     def _shutdown(self):
-        self._worker_group.shutdown()
+        if self._worker_group:
+            self._worker_group.shutdown()
+            self._worker_group = None
 
         for callback in self._controller_callbacks:
             callback.before_controller_shutdown()
 
-    def get_worker_group(self) -> WorkerGroup:
+    def get_worker_group(self) -> Optional[WorkerGroup]:
         return self._worker_group
 
     def get_state(self) -> TrainControllerState:

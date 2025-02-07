@@ -69,7 +69,6 @@ class DummyWorkerGroup(WorkerGroup):
 
     def shutdown(self):
         self._worker_group_state = None
-        self._worker_group_state = None
 
     # === Test methods ===
     def error_worker(self, worker_index):
@@ -169,7 +168,7 @@ def test_resize():
     ]
 
     assert isinstance(controller.get_state(), InitializingState)
-    assert worker_group.get_worker_group_state() is None
+    assert not worker_group.has_started()
 
     # Start with 1 worker
     scaling_policy.queue_recovery_decision(
@@ -177,13 +176,13 @@ def test_resize():
     )
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
-    assert worker_group.get_worker_group_state() is None
+    assert not worker_group.has_started()
 
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
+    assert worker_group.has_started()
     worker_group_state = worker_group.get_worker_group_state()
-    assert worker_group_state is not None
     assert len(worker_group_state.workers) == 1
 
     for decision in decisions:
@@ -206,9 +205,7 @@ def test_resize():
             assert isinstance(controller.get_state(), SchedulingState)
             controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), RunningState)
-            worker_group_state = worker_group.get_worker_group_state()
-            assert worker_group_state is not None
-            assert len(worker_group_state.workers) == decision.num_workers
+            assert len(worker_group.get_workers()) == decision.num_workers
 
 
 def test_failure_handling():
