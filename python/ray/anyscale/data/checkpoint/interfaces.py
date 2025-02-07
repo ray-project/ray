@@ -15,7 +15,10 @@ from ray.data.datasource.path_util import _unwrap_protocol
 class CheckpointBackend(Enum):
     """Supported backends for storing and reading checkpoint files.
 
-    Currently, there are two types of backends: batch-based and row-based.
+    Currently, there are two types of backends:
+        * Batch-based backends: CLOUD_OBJECT_STORAGE and FILE_STORAGE.
+        * Row-based backends: CLOUD_OBJECT_STORAGE_ROW and FILE_STORAGE_ROW.
+
     Their differences are as follows:
     1. Writing checkpoints:
        * Batch-based backends write a checkpoint file for each block.
@@ -37,21 +40,33 @@ class CheckpointBackend(Enum):
     # checkpoint loading overhead of the batch-based backends is acceptable
     # for all workloads.
 
-    # AWS S3, batched.
-    S3_BATCH = "S3_BATCH"
+    CLOUD_OBJECT_STORAGE = "CLOUD_OBJECT_STORAGE"
+    """
+    Batch-based checkpoint backend that uses cloud object storage, such as
+    AWS S3, Google Cloud Storage, etc.
+    """
 
-    # Disk/Filesystem, batched.
-    # Note: if the job is running on multiple nodes, the
-    # path must be a network-mounted filesystem (e.g. `/mnt/cluster_storage/`)
-    DISK_BATCH = "DISK_BATCH"
+    FILE_STORAGE = "FILE_STORAGE"
+    """
+    Batch based checkpoint backend that uses file system storage.
+    Note, when using this backend, the checkpoint path must be a network-mounted
+    file system (e.g. `/mnt/cluster_storage/`).
+    """
 
-    # AWS S3, row based. It is recommended to use the batched version above.
-    S3_ROW = "S3_ROW"
+    CLOUD_OBJECT_STORAGE_ROW = "CLOUD_OBJECT_STORAGE_ROW"
+    """
+    Batch-based checkpoint backend that uses cloud object storage, such as
+    AWS S3, Google Cloud Storage, etc.
+    It's more recommended to use the batch-based version.
+    """
 
-    # Disk/Filesystem, row based. It is recommended to use the batched version above.
-    # Note: if the job is running on multiple nodes, the
-    # path must be a network-mounted filesystem (e.g. `/mnt/cluster_storage/`)
-    DISK_ROW = "DISK_ROW"
+    FILE_STORAGE_ROW = "FILE_STORAGE_ROW"
+    """
+    Batch based checkpoint backend that uses file system storage.
+    Note, when using this backend, the checkpoint path must be a network-mounted
+    file system (e.g. `/mnt/cluster_storage/`).
+    It's more recommended to use the batch-based version.
+    """
 
 
 @dataclass
@@ -68,7 +83,7 @@ class CheckpointConfig:
             batch-based backend currently.
         fs: Optional filesystem object used to read/write checkpoint files.
             If not specified, constructs a Pyarrow FileSystem when necessary.
-        output_path: Optional path where checkpoint files are written.
+        checkpoint_path: Optional path where checkpoint files are written.
             If not specified, use default paths configured for each backend.
         filter_num_threads: Number of threads used to filter checkpointed rows.
             Only used for row-based backends.
@@ -84,7 +99,7 @@ class CheckpointConfig:
 
     fs: Optional[pyarrow.fs.FileSystem] = None
 
-    output_path: Optional[str] = None
+    checkpoint_path: Optional[str] = None
 
     filter_num_threads: int = 3
 
@@ -93,15 +108,15 @@ class CheckpointConfig:
     def is_row_based(self):
         """Whether the checkpoint backend is row-based."""
         return self.backend in [
-            CheckpointBackend.DISK_ROW,
-            CheckpointBackend.S3_ROW,
+            CheckpointBackend.FILE_STORAGE_ROW,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
         ]
 
     def is_batch_based(self):
         """Whether the checkpoint backend is batch-based."""
         return self.backend in [
-            CheckpointBackend.DISK_BATCH,
-            CheckpointBackend.S3_BATCH,
+            CheckpointBackend.FILE_STORAGE,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE,
         ]
 
     def id_column_name(self) -> Optional[str]:
@@ -147,40 +162,40 @@ class InvalidCheckpointingOperators(Exception):
 class CheckpointIO(abc.ABC):
     """Base class for checkpoint IO operations."""
 
-    def get_output_path(self, config: CheckpointConfig) -> str:
-        output_path = config.output_path
-        if output_path:
-            return output_path
+    def get_checkpoint_path(self, config: CheckpointConfig) -> str:
+        checkpoint_path = config.checkpoint_path
+        if checkpoint_path:
+            return checkpoint_path
         else:
-            default_output_path = self._get_default_ckpt_output_path()
-            if default_output_path is None:
-                raise ValueError("CheckpointConfig.output_path must be set")
-            return default_output_path
+            default_checkpoint_path = self._get_default_checkpoint_path()
+            if default_checkpoint_path is None:
+                raise ValueError("CheckpointConfig.checkpoint_path must be set")
+            return default_checkpoint_path
 
     @abc.abstractmethod
-    def _get_default_ckpt_output_path(self) -> Optional[str]:
+    def _get_default_checkpoint_path(self) -> Optional[str]:
         """Returns the default path where checkpoint files are written,
         or `None` if the path cannot be inferred."""
         ...
 
 
-class S3CheckpointIO(CheckpointIO):
-    """CheckpointIO for S3 backends."""
+class CloudObjectStorageCheckpointIO(CheckpointIO):
+    """CheckpointIO for cloud object storage backends."""
 
-    def get_output_path(self, config: CheckpointConfig) -> str:
-        return _unwrap_protocol(super().get_output_path(config))
+    def get_checkpoint_path(self, config: CheckpointConfig) -> str:
+        return _unwrap_protocol(super().get_checkpoint_path(config))
 
-    def _get_default_ckpt_output_path(self) -> Optional[str]:
+    def _get_default_checkpoint_path(self) -> Optional[str]:
         artifact_storage = os.environ.get("ANYSCALE_ARTIFACT_STORAGE")
         if artifact_storage is None:
             return None
         return f"{artifact_storage}/ray_data_checkpoint"
 
 
-class DiskCheckpointIO(CheckpointIO):
-    """CheckpointIO for disk backends."""
+class FileStorageCheckpointIO(CheckpointIO):
+    """CheckpointIO for FILE_STORAGE backends."""
 
-    def _get_default_ckpt_output_path(self) -> Optional[str]:
+    def _get_default_checkpoint_path(self) -> Optional[str]:
         return "/mnt/cluster_storage/ray_data_checkpoint"
 
 
@@ -191,7 +206,7 @@ class CheckpointFilter(CheckpointIO, abc.ABC):
 
     def __init__(self, config: CheckpointConfig):
         self.ckpt_config = config
-        self.output_path = self.get_output_path(config)
+        self.checkpoint_path = self.get_checkpoint_path(config)
         self.id_column = self.ckpt_config.id_column
         self.fs = self.ckpt_config.fs
         self.filter_num_threads = self.ckpt_config.filter_num_threads
@@ -206,18 +221,18 @@ class RowBasedCheckpointFilter(CheckpointFilter):
         provided `CheckpointConfig`."""
         assert config.is_row_based()
         backend = config.backend
-        if backend == CheckpointBackend.S3_ROW:
-            from ray.anyscale.data.checkpoint.checkpoint_s3_row import (
-                RowBasedS3CheckpointFilter,
+        if backend == CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW:
+            from ray.anyscale.data.checkpoint.checkpoint_cloud_object_storage_row import (
+                RowBasedCloudObjectStorageCheckpointFilter,
             )
 
-            return RowBasedS3CheckpointFilter(config)
-        if backend == CheckpointBackend.DISK_ROW:
-            from ray.anyscale.data.checkpoint.checkpoint_disk_row import (
-                RowBasedDiskCheckpointFilter,
+            return RowBasedCloudObjectStorageCheckpointFilter(config)
+        if backend == CheckpointBackend.FILE_STORAGE_ROW:
+            from ray.anyscale.data.checkpoint.checkpoint_file_storage_row import (
+                RowBasedFileStorageCheckpointFilter,
             )
 
-            return RowBasedDiskCheckpointFilter(config)
+            return RowBasedFileStorageCheckpointFilter(config)
 
         raise NotImplementedError(f"Backend {backend} not implemented")
 
@@ -257,16 +272,18 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         assert config.is_batch_based()
         backend = config.backend
 
-        if backend == CheckpointBackend.S3_BATCH:
-            from ray.anyscale.data.checkpoint.checkpoint_s3 import S3CheckpointFilter
-
-            return S3CheckpointFilter(config)
-        if backend == CheckpointBackend.DISK_BATCH:
-            from ray.anyscale.data.checkpoint.checkpoint_disk import (
-                DiskCheckpointFilter,
+        if backend == CheckpointBackend.CLOUD_OBJECT_STORAGE:
+            from ray.anyscale.data.checkpoint.checkpoint_cloud_object_storage import (
+                CloudObjectStorageCheckpointFilter,
             )
 
-            return DiskCheckpointFilter(config)
+            return CloudObjectStorageCheckpointFilter(config)
+        if backend == CheckpointBackend.FILE_STORAGE:
+            from ray.anyscale.data.checkpoint.checkpoint_file_storage import (
+                FileStorageCheckpointFilter,
+            )
+
+            return FileStorageCheckpointFilter(config)
 
         raise NotImplementedError(f"Backend {backend} not implemented")
 
@@ -334,14 +351,14 @@ class CheckpointWriter(CheckpointIO):
 
     def __init__(self, config: CheckpointConfig):
         self.ckpt_config = config
-        self.output_path = self.get_output_path(config)
+        self.checkpoint_path = self.get_checkpoint_path(config)
         self.id_col = self.ckpt_config.id_column
         self.fs = self.ckpt_config.fs
         self.write_num_threads = self.ckpt_config.write_num_threads
 
     def write_block_checkpoint(self, block: BlockAccessor):
         """Write a checkpoint for all rows in a single block to the checkpoint
-        output directory given by `self.output_path`.
+        output directory given by `self.checkpoint_path`.
 
         Subclasses of `CheckpointWriter` must implement this method."""
         raise NotImplementedError()
@@ -352,28 +369,30 @@ class CheckpointWriter(CheckpointIO):
         provided `CheckpointConfig`."""
         backend = config.backend
 
-        if backend == CheckpointBackend.S3_BATCH:
-            from ray.anyscale.data.checkpoint.checkpoint_s3 import S3CheckpointWriter
-
-            return S3CheckpointWriter(config)
-        if backend == CheckpointBackend.DISK_BATCH:
-            from ray.anyscale.data.checkpoint.checkpoint_disk import (
-                DiskCheckpointWriter,
+        if backend == CheckpointBackend.CLOUD_OBJECT_STORAGE:
+            from ray.anyscale.data.checkpoint.checkpoint_cloud_object_storage import (
+                CloudObjectStorageCheckpointWriter,
             )
 
-            return DiskCheckpointWriter(config)
-
-        if backend == CheckpointBackend.S3_ROW:
-            from ray.anyscale.data.checkpoint.checkpoint_s3_row import (
-                RowBasedS3CheckpointWriter,
+            return CloudObjectStorageCheckpointWriter(config)
+        if backend == CheckpointBackend.FILE_STORAGE:
+            from ray.anyscale.data.checkpoint.checkpoint_file_storage import (
+                FileStorageCheckpointWriter,
             )
 
-            return RowBasedS3CheckpointWriter(config)
-        if backend == CheckpointBackend.DISK_ROW:
-            from ray.anyscale.data.checkpoint.checkpoint_disk_row import (
-                RowBasedDiskCheckpointWriter,
+            return FileStorageCheckpointWriter(config)
+
+        if backend == CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW:
+            from ray.anyscale.data.checkpoint.checkpoint_cloud_object_storage_row import (
+                RowBasedCloudObjectStorageCheckpointWriter,
             )
 
-            return RowBasedDiskCheckpointWriter(config)
+            return RowBasedCloudObjectStorageCheckpointWriter(config)
+        if backend == CheckpointBackend.FILE_STORAGE_ROW:
+            from ray.anyscale.data.checkpoint.checkpoint_file_storage_row import (
+                RowBasedFileStorageCheckpointWriter,
+            )
+
+            return RowBasedFileStorageCheckpointWriter(config)
 
         raise NotImplementedError(f"Backend {backend} not implemented")

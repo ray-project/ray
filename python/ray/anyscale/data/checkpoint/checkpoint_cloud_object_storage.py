@@ -10,7 +10,7 @@ from ray.anyscale.data.checkpoint.interfaces import (
     BatchBasedCheckpointFilter,
     CheckpointConfig,
     CheckpointWriter,
-    S3CheckpointIO,
+    CloudObjectStorageCheckpointIO,
 )
 from ray.data import DataContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -20,8 +20,10 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class S3CheckpointFilter(BatchBasedCheckpointFilter, S3CheckpointIO):
-    """CheckpointFilter implementation for S3 backend, reading all
+class CloudObjectStorageCheckpointFilter(
+    BatchBasedCheckpointFilter, CloudObjectStorageCheckpointIO
+):
+    """CheckpointFilter implementation for CLOUD_OBJECT_STORAGE backend, reading all
     checkpoint files into object store prior to filtering rows."""
 
     def __init__(self, config: CheckpointConfig):
@@ -43,7 +45,7 @@ class S3CheckpointFilter(BatchBasedCheckpointFilter, S3CheckpointIO):
             return None
 
         file_paths = FileSelector(
-            f"{self.output_path}",
+            f"{self.checkpoint_path}",
             recursive=True,
             allow_not_found=True,
         )
@@ -63,11 +65,13 @@ class S3CheckpointFilter(BatchBasedCheckpointFilter, S3CheckpointIO):
         return builder.build()
 
     def delete_checkpoint(self):
-        self.fs.delete_dir(self.output_path)
+        self.fs.delete_dir(self.checkpoint_path)
 
 
-class S3CheckpointWriter(CheckpointWriter, S3CheckpointIO):
-    """CheckpointWriter implementation for S3 backend, writing one
+class CloudObjectStorageCheckpointWriter(
+    CheckpointWriter, CloudObjectStorageCheckpointIO
+):
+    """CheckpointWriter implementation for CLOUD_OBJECT_STORAGE backend, writing one
     checkpoint file per output block written."""
 
     def __init__(self, config: CheckpointConfig):
@@ -84,7 +88,7 @@ class S3CheckpointWriter(CheckpointWriter, S3CheckpointIO):
         if block.num_rows() == 0:
             return
 
-        split_bucket = self.output_path.split("/")
+        split_bucket = self.checkpoint_path.split("/")
         bucket, key_prefix = split_bucket[0], "/".join(split_bucket[1:])
         file_id = uuid.uuid4()
         file_key = f"{key_prefix}/{file_id}.csv"

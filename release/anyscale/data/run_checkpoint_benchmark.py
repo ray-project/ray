@@ -18,9 +18,13 @@ if __name__ != "__main__":
 run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 DATA_DIR = f"/mnt/cluster_storage/checkpoint_benchmark/data/{run_id}"
-CHECKPOINT_DIR_DISK = f"/mnt/cluster_storage/checkpoint_benchmark/checkpoints/{run_id}"
+CHECKPOINT_DIR_FILE_STORAGE = (
+    f"/mnt/cluster_storage/checkpoint_benchmark/checkpoints/{run_id}"
+)
 S3_BUCKET = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
-CHECKPOINT_DIR_S3 = f"{S3_BUCKET}/ray-data-tests/checkpoint_benchmark/{run_id}"
+CHECKPOINT_DIR_CLOUD_OBJECT_STORAGE = (
+    f"{S3_BUCKET}/ray-data-tests/checkpoint_benchmark/{run_id}"
+)
 INFERENCE_CONCURRENCY = 8
 TRANSFORM_SLEEP_S = 0.001
 
@@ -35,7 +39,13 @@ for workload_type in ["small", "large"]:
         SIZE_BYTES_PER_ROW = 10_000_000
         INFERENCE_BATCH_SIZE = 10
         INFERENCE_SLEEP_S = 0.04
-        BACKENDS = [None, "DISK_BATCH", "S3_BATCH", "DISK_ROW", "S3_ROW"]
+        BACKENDS = [
+            None,
+            "FILE_STORAGE",
+            "CLOUD_OBJECT_STORAGE",
+            "FILE_STORAGE_ROW",
+            "CLOUD_OBJECT_STORAGE_ROW",
+        ]
         NUM_OUTPUT_FILES = 100  # 1GB per file
     else:
         # 1M rows and 100KB per row.
@@ -44,7 +54,7 @@ for workload_type in ["small", "large"]:
         INFERENCE_BATCH_SIZE = 100
         INFERENCE_SLEEP_S = 0.2
         # Skip row-based backends because they are too slow.
-        BACKENDS = [None, "DISK_BATCH", "S3_BATCH"]
+        BACKENDS = [None, "FILE_STORAGE", "CLOUD_OBJECT_STORAGE"]
         NUM_OUTPUT_FILES = 1000  # 1GB per file
 
     for backend in BACKENDS:
@@ -53,29 +63,29 @@ for workload_type in ["small", "large"]:
 
         if backend is None:
             checkpoint_config = None
-        elif backend == "DISK_BATCH":
+        elif backend == "FILE_STORAGE":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.DISK_BATCH,
+                backend=CheckpointBackend.FILE_STORAGE,
                 id_column="id",
-                output_path=f"{CHECKPOINT_DIR_DISK}/{backend}",
+                checkpoint_path=f"{CHECKPOINT_DIR_FILE_STORAGE}/{backend}",
             )
-        elif backend == "DISK_ROW":
+        elif backend == "FILE_STORAGE_ROW":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.DISK_ROW,
+                backend=CheckpointBackend.FILE_STORAGE_ROW,
                 id_column="id",
-                output_path=f"{CHECKPOINT_DIR_DISK}/{backend}",
+                checkpoint_path=f"{CHECKPOINT_DIR_FILE_STORAGE}/{backend}",
             )
-        elif backend == "S3_BATCH":
+        elif backend == "CLOUD_OBJECT_STORAGE":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.S3_BATCH,
+                backend=CheckpointBackend.CLOUD_OBJECT_STORAGE,
                 id_column="id",
-                output_path=f"{CHECKPOINT_DIR_S3}/{backend}",
+                checkpoint_path=f"{CHECKPOINT_DIR_CLOUD_OBJECT_STORAGE}/{backend}",
             )
-        elif backend == "S3_ROW":
+        elif backend == "CLOUD_OBJECT_STORAGE_ROW":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.S3_ROW,
+                backend=CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
                 id_column="id",
-                output_path=f"{CHECKPOINT_DIR_S3}/{backend}",
+                checkpoint_path=f"{CHECKPOINT_DIR_CLOUD_OBJECT_STORAGE}/{backend}",
             )
         else:
             raise ValueError(f"Unknown checkpoint backend: {backend}")

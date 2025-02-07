@@ -17,24 +17,24 @@ logger = logging.Logger(__name__)
 
 
 def _parse_checkpoint_config(args: argparse.Namespace) -> Optional[CheckpointConfig]:
-    backend_str = args.checkpoint_backend.lower()
-    if backend_str == "none":
+    backend_str = args.checkpoint_backend.upper()
+    if backend_str == "NONE":
         return None
-    elif backend_str == "disk_batch":
-        backend = CheckpointBackend.DISK_BATCH
-    elif backend_str == "disk_row":
-        backend = CheckpointBackend.DISK_ROW
-    elif backend_str == "s3_batch":
-        backend = CheckpointBackend.S3_BATCH
-    elif backend_str == "s3_row":
-        backend = CheckpointBackend.S3_ROW
+    elif backend_str == "FILE_STORAGE":
+        backend = CheckpointBackend.FILE_STORAGE
+    elif backend_str == "FILE_STORAGE_ROW":
+        backend = CheckpointBackend.FILE_STORAGE_ROW
+    elif backend_str == "CLOUD_OBJECT_STORAGE":
+        backend = CheckpointBackend.CLOUD_OBJECT_STORAGE
+    elif backend_str == "CLOUD_OBJECT_STORAGE_ROW":
+        backend = CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW
     else:
         raise ValueError(f"Unknown checkpoint backend: {backend_str}")
 
     return CheckpointConfig(
         backend=backend,
         id_column="id",
-        output_path=args.checkpoint_output_path,
+        checkpoint_path=args.checkpoint_output_path,
     )
 
 
@@ -172,22 +172,22 @@ def clean_up_output_files(
     logger.info("Cleaning up output files")
     output_paths = [data_output_path]
     if checkpoint_config is not None:
-        assert checkpoint_config.output_path is not None
-        output_paths.append(checkpoint_config.output_path)
-    for output_path in output_paths:
-        logger.info("Cleaning up %s", output_path)
-        if output_path.startswith("s3://"):
+        assert checkpoint_config.checkpoint_path is not None
+        output_paths.append(checkpoint_config.checkpoint_path)
+    for checkpoint_path in output_paths:
+        logger.info("Cleaning up %s", checkpoint_path)
+        if checkpoint_path.startswith("s3://"):
             import boto3
 
             s3 = boto3.client("s3")
-            bucket, key = output_path[len("s3://") :].split("/", 1)
+            bucket, key = checkpoint_path[len("s3://") :].split("/", 1)
             s3.delete_object(Bucket=bucket, Key=key)
         else:
-            if not os.path.exists(output_path):
+            if not os.path.exists(checkpoint_path):
                 continue
             import shutil
 
-            shutil.rmtree(output_path)
+            shutil.rmtree(checkpoint_path)
 
 
 # This benchmark is triggered by `run_checkpoint_benchmark.py` in CI.

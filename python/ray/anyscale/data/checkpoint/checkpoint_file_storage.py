@@ -12,7 +12,7 @@ from ray.anyscale.data.checkpoint.interfaces import (
     BatchBasedCheckpointFilter,
     CheckpointConfig,
     CheckpointWriter,
-    DiskCheckpointIO,
+    FileStorageCheckpointIO,
 )
 from ray.data import DataContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -22,22 +22,22 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class DiskCheckpointFilter(BatchBasedCheckpointFilter, DiskCheckpointIO):
-    """CheckpointFilter implementation for disk backend, reading all
+class FileStorageCheckpointFilter(BatchBasedCheckpointFilter, FileStorageCheckpointIO):
+    """CheckpointFilter implementation for FILE_STORAGE backend, reading all
     checkpoint files into object store prior to filtering rows."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
 
-        if not os.path.exists(config.output_path):
+        if not os.path.exists(self.checkpoint_path):
             logger.warning(
-                f"Checkpoint directory {config.output_path} does not exist. "
+                f"Checkpoint directory {config.checkpoint_path} does not exist. "
                 f"No rows will be skipped from checkpoint filtering. "
                 f"Ensure that the correct checkpoint directory was configured."
             )
 
     def load_checkpoint(self) -> Block:
-        checkpoint_fpaths = glob.glob(f"{self.output_path}/*.csv")
+        checkpoint_fpaths = glob.glob(f"{self.checkpoint_path}/*.csv")
         if not checkpoint_fpaths:
             empty_block = pa.Table.from_pylist([])
             return empty_block
@@ -54,19 +54,19 @@ class DiskCheckpointFilter(BatchBasedCheckpointFilter, DiskCheckpointIO):
         return builder.build()
 
     def delete_checkpoint(self):
-        shutil.rmtree(self.output_path)
+        shutil.rmtree(self.checkpoint_path)
 
 
-class DiskCheckpointWriter(CheckpointWriter, DiskCheckpointIO):
-    """CheckpointWriter implementation for disk backend, writing one
+class FileStorageCheckpointWriter(CheckpointWriter, FileStorageCheckpointIO):
+    """CheckpointWriter implementation for FILE_STORAGE backend, writing one
     checkpoint file per output block written."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
 
         # If the checkpoint output directory does not exist, create it.
-        if not os.path.exists(config.output_path):
-            os.makedirs(config.output_path)
+        if not os.path.exists(config.checkpoint_path):
+            os.makedirs(config.checkpoint_path)
 
     def write_block_checkpoint(self, block: BlockAccessor):
         # Write a single checkpoint file for the block being written.
@@ -76,7 +76,7 @@ class DiskCheckpointWriter(CheckpointWriter, DiskCheckpointIO):
             return
 
         file_name = f"{uuid.uuid4()}.csv"
-        ckpt_file_path = os.path.join(self.output_path, file_name)
+        ckpt_file_path = os.path.join(self.checkpoint_path, file_name)
 
         checkpoint_ids_block = block.select(columns=[self.id_col])
 

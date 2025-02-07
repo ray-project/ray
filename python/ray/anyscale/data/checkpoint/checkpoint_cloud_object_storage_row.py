@@ -8,7 +8,7 @@ from ray.anyscale.data.checkpoint.interfaces import (
     CheckpointConfig,
     CheckpointWriter,
     RowBasedCheckpointFilter,
-    S3CheckpointIO,
+    CloudObjectStorageCheckpointIO,
 )
 from ray.data import DataContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -18,11 +18,13 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class RowBasedS3CheckpointFilter(RowBasedCheckpointFilter, S3CheckpointIO):
-    """CheckpointFilter implementation for S3 backend, reading
+class RowBasedCloudObjectStorageCheckpointFilter(
+    RowBasedCheckpointFilter, CloudObjectStorageCheckpointIO
+):
+    """CheckpointFilter implementation for CLOUD_OBJECT_STORAGE backend, reading
     one checkpoint file per input row.
 
-    For a more efficient implementation, see `S3CheckpointFilter`."""
+    For a more efficient implementation, see `CloudObjectStorageCheckpointFilter`."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
@@ -52,7 +54,7 @@ class RowBasedS3CheckpointFilter(RowBasedCheckpointFilter, S3CheckpointIO):
 
         def _get_file_info():
             return self.fs.get_file_info(
-                FileSelector(self.output_path, allow_not_found=True)
+                FileSelector(self.checkpoint_path, allow_not_found=True)
             )
 
         files = call_with_retry(
@@ -71,11 +73,13 @@ class RowBasedS3CheckpointFilter(RowBasedCheckpointFilter, S3CheckpointIO):
         return mask_file_exists
 
 
-class RowBasedS3CheckpointWriter(CheckpointWriter, S3CheckpointIO):
-    """CheckpointWriter implementation for S3 backend, writing
+class RowBasedCloudObjectStorageCheckpointWriter(
+    CheckpointWriter, CloudObjectStorageCheckpointIO
+):
+    """CheckpointWriter implementation for CLOUD_OBJECT_STORAGE backend, writing
     one checkpoint file per input row.
 
-    For a more efficient implementation, see `S3CheckpointWriter`."""
+    For a more efficient implementation, see `CloudObjectStorageCheckpointWriter`."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
@@ -85,11 +89,11 @@ class RowBasedS3CheckpointWriter(CheckpointWriter, S3CheckpointIO):
 
     def write_row_checkpoint(self, row: Dict[str, Any]):
         """Write a checkpoint for a single row to the checkpoint
-        output directory given by `self.output_path`.
+        output directory given by `self.checkpoint_path`.
 
         The name of the checkpoint file is `f"{row[self.id_col]}.jsonl"`."""
 
-        split_bucket = self.output_path.split("/")
+        split_bucket = self.checkpoint_path.split("/")
         bucket, key_prefix = split_bucket[0], "/".join(split_bucket[1:])
         row_id = row[self.id_col]
         file_key = f"{key_prefix}/{row_id}.jsonl"

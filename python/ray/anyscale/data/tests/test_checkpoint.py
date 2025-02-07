@@ -82,11 +82,11 @@ def generate_sample_physical_plan(generate_sample_data_csv, tmp_path):
 
 
 def generate_ckpt_config(
-    backend, output_path, id_col, fs, delete_checkpoint_on_success=True
+    backend, checkpoint_path, id_col, fs, delete_checkpoint_on_success=True
 ):
     return CheckpointConfig(
         backend=backend,
-        output_path=output_path,
+        checkpoint_path=checkpoint_path,
         id_column=id_col,
         fs=fs,
         delete_checkpoint_on_success=delete_checkpoint_on_success,
@@ -97,10 +97,13 @@ def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[int]:
     """Reads the checkpoint files and returns a sorted list of IDs
     which have been checkpointed."""
     backend = config.backend
-    ckpt_path = config.output_path
+    ckpt_path = config.checkpoint_path
     fs = config.fs
 
-    if backend in (CheckpointBackend.DISK_ROW, CheckpointBackend.S3_ROW):
+    if backend in (
+        CheckpointBackend.FILE_STORAGE_ROW,
+        CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
+    ):
         if fs is None:
             try:
                 actual_checkpoint_file_paths = [
@@ -126,7 +129,10 @@ def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[int]:
             ]
         )
 
-    if backend in (CheckpointBackend.DISK_BATCH, CheckpointBackend.S3_BATCH):
+    if backend in (
+        CheckpointBackend.FILE_STORAGE,
+        CheckpointBackend.CLOUD_OBJECT_STORAGE,
+    ):
         if fs is None:
             try:
                 actual_checkpoint_file_paths = [
@@ -172,7 +178,7 @@ def test_config_invalid_id_column(id_column):
         InvalidCheckpointingConfig,
         match="Checkpoint ID column",
     ):
-        generate_ckpt_config(CheckpointBackend.DISK_BATCH, "", id_column, None)
+        generate_ckpt_config(CheckpointBackend.FILE_STORAGE, "", id_column, None)
 
 
 class TestInsertCheckpointingLayerRule:
@@ -197,7 +203,7 @@ class TestInsertCheckpointingLayerRule:
 
         ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
         ctx.checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.DISK_ROW, ckpt_path, "id", None
+            CheckpointBackend.FILE_STORAGE_ROW, ckpt_path, "id", None
         )
 
         with pytest.raises(InvalidCheckpointingOperators, match="Sort"):
@@ -210,7 +216,7 @@ class TestInsertCheckpointingLayerRule:
         tmp_path,
     ):
         checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.DISK_ROW,
+            CheckpointBackend.FILE_STORAGE_ROW,
             os.path.join(tmp_path, "ckpt"),
             "id",
             None,
@@ -237,7 +243,7 @@ class TestInsertCheckpointingLayerRule:
     ):
         ctx = ray.data.DataContext.get_current()
         ctx.checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.DISK_ROW,
+            CheckpointBackend.FILE_STORAGE_ROW,
             os.path.join(tmp_path, "ckpt"),
             "id",
             None,
@@ -263,25 +269,25 @@ class TestInsertCheckpointingLayerRule:
 @pytest.mark.parametrize(
     "backend,fs,data_path",
     [
-        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE_ROW, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_ROW,
+            CheckpointBackend.FILE_STORAGE_ROW,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_ROW,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),
-        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_BATCH,
+            CheckpointBackend.FILE_STORAGE,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_BATCH,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),
@@ -341,25 +347,25 @@ def test_checkpoint(
 @pytest.mark.parametrize(
     "backend,fs,data_path",
     [
-        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE_ROW, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_ROW,
+            CheckpointBackend.FILE_STORAGE_ROW,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_ROW,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),
-        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_BATCH,
+            CheckpointBackend.FILE_STORAGE,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_BATCH,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),
@@ -412,25 +418,25 @@ def test_full_dataset_executed_for_non_write(
 @pytest.mark.parametrize(
     "backend,fs,data_path",
     [
-        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE_ROW, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_ROW,
+            CheckpointBackend.FILE_STORAGE_ROW,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_ROW,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),
-        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_BATCH,
+            CheckpointBackend.FILE_STORAGE,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_BATCH,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),
@@ -541,25 +547,25 @@ def test_recovery_skips_checkpointed_rows(
 @pytest.mark.parametrize(
     "backend,fs,data_path",
     [
-        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE_ROW, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_ROW,
+            CheckpointBackend.FILE_STORAGE_ROW,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_ROW,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),
-        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (CheckpointBackend.FILE_STORAGE, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK_BATCH,
+            CheckpointBackend.FILE_STORAGE,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
         ),
         (
-            CheckpointBackend.S3_BATCH,
+            CheckpointBackend.CLOUD_OBJECT_STORAGE,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
         ),

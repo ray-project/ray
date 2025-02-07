@@ -7,7 +7,7 @@ from typing import Any, Dict
 from ray.anyscale.data.checkpoint.interfaces import (
     CheckpointConfig,
     CheckpointWriter,
-    DiskCheckpointIO,
+    FileStorageCheckpointIO,
     RowBasedCheckpointFilter,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -16,20 +16,22 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class RowBasedDiskCheckpointFilter(RowBasedCheckpointFilter, DiskCheckpointIO):
-    """CheckpointFilter implementation for disk backend, reading
+class RowBasedFileStorageCheckpointFilter(
+    RowBasedCheckpointFilter, FileStorageCheckpointIO
+):
+    """CheckpointFilter implementation for FILE_STORAGE backend, reading
     one checkpoint file per input row.
 
-    For a more efficient implementation, see `DiskCheckpointFilter`."""
+    For a more efficient implementation, see `FileStorageCheckpointFilter`."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
 
         self._checkpoint_dir_does_not_exist = False
-        if not os.path.exists(config.output_path):
+        if not os.path.exists(self.checkpoint_path):
             self._checkpoint_dir_does_not_exist = True
             logger.warning(
-                f"Checkpoint directory {config.output_path} does not exist. "
+                f"Checkpoint directory {config.checkpoint_path} does not exist. "
                 f"No rows will be skipped from checkpoint filtering. "
                 f"Ensure that the correct checkpoint directory was configured."
             )
@@ -66,7 +68,7 @@ class RowBasedDiskCheckpointFilter(RowBasedCheckpointFilter, DiskCheckpointIO):
 
         def _exists(fpath: str):
             return os.path.exists(
-                os.path.join(self.output_path, fpath),
+                os.path.join(self.checkpoint_path, fpath),
             )
 
         with ThreadPoolExecutor(max_workers=self.filter_num_threads) as executor:
@@ -74,17 +76,17 @@ class RowBasedDiskCheckpointFilter(RowBasedCheckpointFilter, DiskCheckpointIO):
         return dict(zip(files, file_exists))
 
 
-class RowBasedDiskCheckpointWriter(CheckpointWriter, DiskCheckpointIO):
-    """CheckpointWriter implementation for disk backend, writing
+class RowBasedFileStorageCheckpointWriter(CheckpointWriter, FileStorageCheckpointIO):
+    """CheckpointWriter implementation for FILE_STORAGE backend, writing
     one checkpoint file per input row.
 
-    For a more efficient implementation, see `DiskCheckpointWriter`."""
+    For a more efficient implementation, see `FileStorageCheckpointWriter`."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
         # If the checkpoint output directory does not exist, create it.
-        if not os.path.exists(self.output_path):
-            os.makedirs(self.output_path)
+        if not os.path.exists(self.checkpoint_path):
+            os.makedirs(self.checkpoint_path)
 
     def write_block_checkpoint(self, block: BlockAccessor):
         with ThreadPoolExecutor(max_workers=self.write_num_threads) as executor:
@@ -106,12 +108,12 @@ class RowBasedDiskCheckpointWriter(CheckpointWriter, DiskCheckpointIO):
 
     def write_row_checkpoint(self, row: Dict[str, Any]):
         """Write a checkpoint for a single row to the checkpoint
-        output directory given by `self.output_path`.
+        output directory given by `self.checkpoint_path`.
 
         The name of the checkpoint file is `f"{row[self.id_col]}.jsonl"`."""
 
         row_id = row[self.id_col]
-        file_key = os.path.join(self.output_path, f"{row_id}.jsonl")
+        file_key = os.path.join(self.checkpoint_path, f"{row_id}.jsonl")
 
         file = Path(file_key)
         file.parent.mkdir(parents=True, exist_ok=True)
