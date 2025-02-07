@@ -519,6 +519,8 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
+    labels = ray._private.worker.global_worker.node._get_node_labels()
+    assert labels.get(op._OPERATOR_ID_LABEL_KEY) == op.id
     op.shutdown()
 
     # Tasks/actors should be cancelled/killed.
