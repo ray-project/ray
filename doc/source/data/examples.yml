@@ -36,4 +36,5 @@ examples:
     use_cases:
       - large language models
       - generative ai
+    contributor: community
     link: examples/data_juicer_distributed_data_processing
