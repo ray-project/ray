@@ -256,9 +256,6 @@ def main():
 
     if benchmark_config.task == "image_classification":
         factory = ImageClassificationFactory(benchmark_config)
-        import ipdb
-
-        ipdb.set_trace()
     else:
         raise ValueError
 
