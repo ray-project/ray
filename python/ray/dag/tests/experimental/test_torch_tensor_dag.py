@@ -85,10 +85,10 @@ class TorchTensorWorker:
             vals[i] = self.recv(tensor)
         return vals
 
-    def heavy_compute(self, tensor):
-        for _ in range(1000):
+    def compute_inc(self, tensor, repeat):
+        for _ in range(repeat):
             tensor += 1
-        return tensor[0].item(), tensor.shape, tensor.dtype
+        return tensor[-1].item(), tensor.shape, tensor.dtype
 
     def compute_with_tuple_args(self, args, i: int):
         shape, dtype, value = args[i]
@@ -307,23 +307,21 @@ def test_torch_tensor_nccl_overlap_collective(
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
     dtype = torch.float16
-    collective_shape = (100000000,)
-    compute_shape = (100000,)
+    coll_shape = (100_000_000,)
+    comp_shape = (100_000,)
+    comp_repeat = 1_000
     with InputNode() as inp:
-        collectives = [
-            worker.send.bind(collective_shape, dtype, inp) for worker in workers
+        coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
+        comp_inputs = [worker.send.bind(comp_shape, dtype, inp) for worker in workers]
+        comp_outputs = [
+            worker.compute_inc.bind(comp, comp_repeat)
+            for worker, comp in zip(workers, comp_inputs)
         ]
-        computes = [worker.send.bind(compute_shape, dtype, inp) for worker in workers]
-        computes = [
-            worker.heavy_compute.bind(compute)
-            for worker, compute in zip(workers, computes)
+        coll_values = collective.allreduce.bind(coll_inputs)
+        coll_outputs = [
+            worker.recv.bind(coll) for worker, coll in zip(workers, coll_values)
         ]
-        collectives = collective.allreduce.bind(collectives)
-        collectives = [
-            worker.recv.bind(collective)
-            for worker, collective in zip(workers, collectives)
-        ]
-        dag = MultiOutputNode(collectives + computes)
+        dag = MultiOutputNode(coll_outputs + comp_outputs)
 
     compiled_dag = dag.experimental_compile(
         _overlap_gpu_communication=overlap_gpu_communication
@@ -332,15 +330,15 @@ def test_torch_tensor_nccl_overlap_collective(
     elapses = []
     start = time.monotonic()
     for i in range(5):
-        iter_start = time.monotonic()
+        start = time.monotonic()
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
-        iter_duration = time.monotonic() - iter_start
-        elapses.append(iter_duration)
+        duration = time.monotonic() - start
+        elapses.append(duration)
         assert (
             result
-            == [(i * num_workers, collective_shape, dtype)] * num_workers
-            + [(i + 1000, compute_shape, dtype)] * num_workers
+            == [(i * num_workers, coll_shape, dtype)] * num_workers
+            + [(i + comp_repeat, comp_shape, dtype)] * num_workers
         )
     duration = time.monotonic() - start
     print(f"{overlap_gpu_communication=}, {duration=}")
@@ -383,9 +381,11 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
             for worker in workers
         ]
         recvs = [workers[0].recv.bind(sends[1]), workers[1].recv.bind(sends[0])]
-        colls = collective.allreduce.bind(coll_inputs)
-        coll_outputs = [worker.recv.bind(coll) for worker, coll in zip(workers, colls)]
-        dag = MultiOutputNode(recvs + coll_outputs)
+        coll_values = collective.allreduce.bind(coll_inputs)
+        coll_outputs = [
+            worker.recv.bind(coll) for worker, coll in zip(workers, coll_values)
+        ]
+        dag = MultiOutputNode(coll_outputs + recvs)
 
     compiled_dag = dag.experimental_compile(
         _overlap_gpu_communication=overlap_gpu_communication
@@ -394,15 +394,15 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
     elapses = []
     start = time.monotonic()
     for i in range(5):
-        iter_start = time.monotonic()
+        start = time.monotonic()
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
-        iter_duration = time.monotonic() - iter_start
-        elapses.append(iter_duration)
+        duration = time.monotonic() - start
+        elapses.append(duration)
         assert (
             result
-            == [(i, send_shape, dtype)] * num_workers
-            + [(i * num_workers, coll_shape, dtype)] * num_workers
+            == [(i * num_workers, coll_shape, dtype)] * num_workers
+            + [(i, send_shape, dtype)] * num_workers
         )
     duration = time.monotonic() - start
     print(f"{overlap_gpu_communication=}, {duration=}")
