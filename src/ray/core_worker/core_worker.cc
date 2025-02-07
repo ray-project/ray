@@ -2010,10 +2010,11 @@ Status CoreWorker::Contains(const ObjectID &object_id,
 
 // For any objects that are ErrorType::OBJECT_IN_PLASMA, we need to move them from
 // the ready set into the plasma_object_ids set to wait on them there.
-void MoveReadyPlasmaObjectsToPlasmaSet(std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
-                               absl::flat_hash_set<ObjectID> &memory_object_ids,
-                               absl::flat_hash_set<ObjectID> &plasma_object_ids,
-                               absl::flat_hash_set<ObjectID> &ready) {
+void MoveReadyPlasmaObjectsToPlasmaSet(
+    std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
+    absl::flat_hash_set<ObjectID> &memory_object_ids,
+    absl::flat_hash_set<ObjectID> &plasma_object_ids,
+    absl::flat_hash_set<ObjectID> &ready) {
   for (auto iter = ready.begin(); iter != ready.end(); iter++) {
     const auto &obj_id = *iter;
     auto found = memory_store->GetIfExists(obj_id);
