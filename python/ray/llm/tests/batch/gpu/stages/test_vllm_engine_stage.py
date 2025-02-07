@@ -115,7 +115,7 @@ def test_vllm_engine_stage_post_init(download_model_ckpt):
             "distributed_executor_backend": "ray",
         },
     }
-    scheduling_strategy = stage.map_batches_kwargs.pop("scheduling_strategy")
+    ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
     assert stage.map_batches_kwargs == {
         "zero_copy_batch": True,
         "concurrency": 1,
@@ -124,6 +124,7 @@ def test_vllm_engine_stage_post_init(download_model_ckpt):
         "num_gpus": 0,
         "runtime_env": {},
     }
+    scheduling_strategy = ray_remote_args_fn()["scheduling_strategy"]
     assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
 
     bundle_specs = scheduling_strategy.placement_group.bundle_specs

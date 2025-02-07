@@ -7,22 +7,17 @@ import time
 import uuid
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import TYPE_CHECKING, Any, Dict, AsyncIterator, Optional, List, Tuple
+from typing import Any, Dict, AsyncIterator, Optional, List, Tuple
 
 import ray
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-if TYPE_CHECKING:
-    import torch
-
-try:
-    import vllm
-except ImportError:
-    vllm = None
+vllm = try_import("vllm")
 
 
 logger = logging.getLogger(__name__)
@@ -62,8 +57,9 @@ class vLLMOutputData(BaseModel):
     generated_text: str = Field(default="")
     num_generated_tokens: int = Field(default=0)
 
-    # Embed fields.
-    embeddings: Optional["torch.Tensor"] = None
+    # Embed fields. The type should be torch.Tensor, but we use Any to avoid
+    # importing torch because of an error in sphinx-build with an unknown reason.
+    embeddings: Optional[Any] = None
 
     # Metrics fields.
     metrics: Optional[Dict[str, Any]] = None

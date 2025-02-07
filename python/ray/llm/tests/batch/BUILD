@@ -1,14 +1,14 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
-  files = glob(["test_*.py"], exclude=["test_vllm_engine_stage.py"]),
+  files = glob(["cpu/**/test_*.py"]),
   size = "small",
-  tags = ["exclusive", "team:llm"],
+  tags = ["exclusive", "cpu", "team:llm"],
   deps = ["//:ray_lib"],
 )
 
 py_test_module_list(
-  files = glob(["test_vllm_engine_stage.py"]),
+  files = glob(["gpu/**/test_*.py"]),
   size = "large",
   tags = ["exclusive", "gpu", "team:llm"],
   deps = ["//:ray_lib"],
