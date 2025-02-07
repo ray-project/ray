@@ -101,7 +101,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 if time.time() - start > self.CORE_WORKER_INIT_GRACE_PERIOD_S:
                     raise RuntimeError(
                         "CoreWorker didn't initialize within grace period of "
-                        f"{CORE_WORKER_INIT_GRACE_PERIOD_S}s."
+                        f"{self.CORE_WORKER_INIT_GRACE_PERIOD_S}s."
                     )
 
             self._core_worker = worker.core_worker
