@@ -274,8 +274,7 @@ class TrainController:
             True if the worker group was successfully restarted, False otherwise.
         """
         if self._worker_group:
-            self._worker_group.shutdown()
-            self._worker_group = None
+            self._shutdown_worker_group()
 
         # If there's a latest checkpoint that's been committed,
         # use it to restore the worker group.
@@ -322,11 +321,15 @@ class TrainController:
 
     def _shutdown(self):
         if self._worker_group:
-            self._worker_group.shutdown()
-            self._worker_group = None
+            self._shutdown_worker_group()
 
         for callback in self._controller_callbacks:
             callback.before_controller_shutdown()
+
+    def _shutdown_worker_group(self):
+        """Shutdown the worker group and set the worker group to None."""
+        self._worker_group.shutdown()
+        self._worker_group = None
 
     def get_worker_group(self) -> Optional[WorkerGroup]:
         return self._worker_group
