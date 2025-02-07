@@ -2,7 +2,6 @@ import copy
 import functools
 import logging
 import queue
-import time
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
@@ -614,8 +613,6 @@ class IMPALA(Algorithm):
                 len(episode_refs),
             )
 
-        time.sleep(0.01)
-
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
@@ -683,8 +680,6 @@ class IMPALA(Algorithm):
             data_packages_for_learner_group = self._pre_queue_episode_refs(
                 episode_refs, package_size=self.config.total_train_batch_size
             )
-
-        time.sleep(0.01)
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -760,8 +755,6 @@ class IMPALA(Algorithm):
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
-        time.sleep(0.01)
-
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
@@ -776,8 +769,6 @@ class IMPALA(Algorithm):
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                 )
-
-        time.sleep(0.01)
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
