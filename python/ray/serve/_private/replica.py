@@ -1645,7 +1645,6 @@ class UserCallableWrapper:
                         "Internal Server Error", status_code=500
                     )
                 )
-                logger.info(f"sending {response} from replica")
                 await self._send_user_result_over_asgi(response, asgi_args)
 
             if receive_task is not None and not receive_task.done():
