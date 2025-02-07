@@ -60,6 +60,9 @@ void StartStreamDump(
 
     // Exit at pipe read EOF.
     while (std::getline(*pipe_instream, newline)) {
+
+      std::cout << "Received newline " << newline << std::endl;
+
       // Backfill newliner for current segment.
       if (!pipe_instream->eof()) {
         newline += '\n';
@@ -69,6 +72,7 @@ void StartStreamDump(
       stream_dumper->content.emplace_back(std::move(newline));
     }
 
+    std::cout << "stop from getline loop" << std::endl;
     RAY_CHECK(pipe_instream->eof());
     {
       absl::MutexLock lock(&stream_dumper->mu);
@@ -258,6 +262,9 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 
   auto close_fn = [pipe_ostream, promise]() mutable {
     pipe_ostream->close();
+
+    std::cout << "request to stop" << std::endl;
+
     // Block until destruction finishes.
     promise->get_future().get();
   };
