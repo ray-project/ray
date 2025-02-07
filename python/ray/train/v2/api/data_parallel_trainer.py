@@ -83,6 +83,8 @@ class DataParallelTrainer:
         if metadata is not None:
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
+        tag_train_v2_trainer(self)
+
     def fit(self) -> Result:
         """Launches the Ray Train controller to run training on workers.
 
@@ -94,8 +96,6 @@ class DataParallelTrainer:
                 and the number of retries configured in `FailureConfig`
                 is exhausted.
         """
-        tag_train_v2_trainer(self)
-
         train_fn = construct_train_func(
             self.train_loop_per_worker,
             config=self.train_loop_config,
