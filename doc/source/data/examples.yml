@@ -28,4 +28,4 @@ examples:
     skill_level: beginner
     frameworks:
       - xgboost
-    link: ../train/examples/xgboost/xgboost_example
+    link: ../train/examples/xgboost/distributed-xgboost-lightgbm
