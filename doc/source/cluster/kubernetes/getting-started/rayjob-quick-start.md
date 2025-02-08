@@ -28,6 +28,7 @@ To understand the following content better, you should understand the difference
 
 * RayCluster configuration
   * `rayClusterSpec` - Defines the **RayCluster** custom resource to run the Ray job on.
+  * `clusterSelector` - Use existing **RayCluster** custom resources to run the Ray job instead of creating a new one. See [ray-job.use-existing-raycluster.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.use-existing-raycluster.yaml) for example configurations.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
   * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string.
@@ -77,9 +78,22 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 ## Step 3: Install a RayJob
 
+::::{tab-set}
+
+:::{tab-item} ARM64 (Apple silicon)
+```sh
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
+```
+:::
+
+:::{tab-item} x86-64 (Intel/Linux)
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
 ```
+:::
+
+::::
+
 
 ## Step 4: Verify the Kubernetes cluster status
 
@@ -163,9 +177,25 @@ kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/r
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
+::::{tab-set}
+
+:::{tab-item} ARM64 (Apple silicon)
+
+```sh
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
+```
+
+:::
+
+:::{tab-item} x86-64 (Intel/Linux)
+
 ```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
+
+:::
+
+::::
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
 Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted

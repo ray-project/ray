@@ -442,9 +442,7 @@ def test_schedule_replica():
     scheduler = default_impl.create_deployment_scheduler(
         cluster_node_info_cache,
         head_node_id_override="fake-head-node-id",
-        create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(
-            *args, **kwargs
-        ),
+        create_placement_group_fn_override=lambda request: MockPlacementGroup(request),
     )
 
     scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
@@ -897,7 +895,7 @@ class TestCompactScheduling:
             ),
         )
 
-        ray.util.placement_group
+        _ = ray.util.placement_group
         scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
 

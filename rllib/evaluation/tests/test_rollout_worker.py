@@ -215,13 +215,13 @@ class TestRolloutWorker(unittest.TestCase):
             .training(train_batch_size=20, minibatch_size=5, num_epochs=1)
         )
         algo = config.build()
-        results = algo.env_runner_group.foreach_worker(
+        results = algo.env_runner_group.foreach_env_runner(
             lambda w: w.total_rollout_fragment_length
         )
-        results2 = algo.env_runner_group.foreach_worker_with_id(
+        results2 = algo.env_runner_group.foreach_env_runner_with_id(
             lambda i, w: (i, w.total_rollout_fragment_length)
         )
-        results3 = algo.env_runner_group.foreach_worker(
+        results3 = algo.env_runner_group.foreach_env_runner(
             lambda w: w.foreach_env(lambda env: 1)
         )
         self.assertEqual(results, [10, 10, 10])

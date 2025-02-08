@@ -15,16 +15,6 @@
 namespace ray {
 namespace gcs {
 
-class Mockpair_hash : public pair_hash {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockGcsPlacementGroupSchedulerInterface
     : public GcsPlacementGroupSchedulerInterface {
  public:

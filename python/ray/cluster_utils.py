@@ -193,6 +193,7 @@ class Cluster:
             namespace=namespace,
             ignore_reinit_error=True,
             address=self.address,
+            _redis_username=self.redis_username,
             _redis_password=self.redis_password,
         )
         logger.info(output_info)
@@ -233,6 +234,9 @@ class Cluster:
                 )
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
+                self.redis_username = node_args.get(
+                    "redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+                )
                 self.redis_password = node_args.get(
                     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
                 )

@@ -609,14 +609,14 @@ def test_grpc_options():
     grpc_servicer_functions = ["fake.service.that.does.not.exist"]
     with pytest.raises(ModuleNotFoundError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "can't be imported!" in str(exception)
 
     # Not callable should raise ValueError.
     grpc_servicer_functions = ["ray.serve._private.constants.DEFAULT_HTTP_PORT"]
     with pytest.raises(ValueError) as exception:
         grpc_options = gRPCOptions(grpc_servicer_functions=grpc_servicer_functions)
-        grpc_options.grpc_servicer_func_callable
+        _ = grpc_options.grpc_servicer_func_callable
     assert "is not a callable function!" in str(exception)
 
 

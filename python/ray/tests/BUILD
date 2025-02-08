@@ -187,6 +187,7 @@ py_test_module_list(
     "test_runtime_env_plugin.py",
     "test_runtime_env_setup_func.py",
     "test_runtime_env_strong_type.py",
+    "test_runtime_env_py_executable.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
@@ -573,6 +574,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_conda_and_pip_5.py",
     "test_runtime_env_uv.py",
+    "test_runtime_env_uv_run.py",
   ],
   size = "large",
   tags = ["exclusive", "post_wheel_build", "team:core"],
@@ -759,6 +761,9 @@ py_test_module_list(
   name_suffix = "_debug_mode",
   tags = ["exclusive", "debug_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+  env = {
+    "RAY_DEBUG_MODE" : "1",
+  }
 )
 
 py_test_module_list(

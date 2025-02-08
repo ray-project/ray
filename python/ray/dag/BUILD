@@ -102,7 +102,6 @@ py_test(
 py_test_module_list(
     size = "medium",
     files = [
-        "tests/experimental/test_detect_deadlock_dag.py",
         "tests/experimental/test_multi_node_dag.py",
         "tests/experimental/test_mocked_nccl_dag.py",
         "tests/experimental/test_torch_tensor_dag.py",
@@ -135,7 +134,7 @@ py_test_module_list(
 
 py_test(
     name = "test_torch_tensor_dag_gpu",
-    size = "large",
+    size = "enormous",
     srcs = [
         "tests/experimental/test_torch_tensor_dag.py",
     ],

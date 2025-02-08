@@ -28,14 +28,15 @@ from ray.includes.common cimport (
     MultiItemPyCallback,
     OptionalItemPyCallback,
     StatusPyCallback,
+    CGetClusterStatusReply,
 )
 from ray.includes.optional cimport optional, make_optional
-from ray.core.generated import gcs_pb2
+from ray.core.generated import gcs_pb2, autoscaler_pb2
 from cython.operator import dereference, postincrement
 cimport cpython
 
 
-cdef class NewGcsClient:
+cdef class InnerGcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
 
@@ -45,7 +46,7 @@ cdef class NewGcsClient:
     @staticmethod
     def standalone(gcs_address: str,
                    cluster_id: Optional[str],
-                   timeout_ms: int) -> "NewGcsClient":
+                   timeout_ms: int) -> "InnerGcsClient":
         cdef GcsClientOptions gcs_options = None
         if cluster_id:
             gcs_options = GcsClientOptions.create(
@@ -64,7 +65,7 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 ConnectOnSingletonIoContext(dereference(inner), c_timeout_ms))
 
-        gcs_client = NewGcsClient()
+        gcs_client = InnerGcsClient()
         gcs_client.inner = inner
         return gcs_client
 
@@ -209,9 +210,7 @@ cdef class NewGcsClient:
     def async_internal_kv_put(
         self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
         timeout=None
-    ) -> Future[int]:
-        # TODO(ryw): the sync `internal_kv_put` returns bool while this async version
-        # returns int. We should make them consistent.
+    ) -> Future[bool]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -220,8 +219,8 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVPut(
                     ns, key, value, overwrite, timeout_ms,
-                    OptionalItemPyCallback[int](
-                        &convert_optional_int,
+                    OptionalItemPyCallback[c_bool](
+                        &convert_optional_bool,
                         assign_and_decrement_fut,
                         fut)))
         return asyncio.wrap_future(fut)
@@ -334,11 +333,14 @@ cdef class NewGcsClient:
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, timeout: Optional[float] = None
+        self, node_id: Optional[NodeID] = None, timeout: Optional[float] = None
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            optional[CNodeID] c_node_id
             fut = incremented_fut()
+        if node_id:
+            c_node_id = (<NodeID>node_id).native()
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().AsyncGetAll(
@@ -346,7 +348,8 @@ cdef class NewGcsClient:
                         convert_get_all_node_info,
                         assign_and_decrement_fut,
                         fut),
-                    timeout_ms))
+                    timeout_ms,
+                    c_node_id))
         return asyncio.wrap_future(fut)
 
     #############################################################
@@ -546,6 +549,28 @@ cdef class NewGcsClient:
 
         return serialized_reply
 
+    def async_get_cluster_status(
+        self,
+        timeout_s=None
+    ) -> Future[autoscaler_pb2.GetClusterStatusReply]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            fut = incremented_fut()
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get()
+                .Autoscaler()
+                .AsyncGetClusterStatus(
+                    timeout_ms,
+                    OptionalItemPyCallback[CGetClusterStatusReply](
+                        &convert_get_cluster_status_reply,
+                        assign_and_decrement_fut,
+                        fut
+                    )
+                )
+            )
+        return asyncio.wrap_future(fut)
+
     def report_autoscaling_state(
         self,
         serialzied_state: c_string,
@@ -582,6 +607,19 @@ cdef class NewGcsClient:
                 rejection_reason_message))
 
         return (is_accepted, rejection_reason_message.decode())
+
+    def report_cluster_config(
+                self,
+                serialized_cluster_config: c_string):
+        """Report cluster config to GCS"""
+        cdef:
+            int64_t timeout_ms = -1
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Autoscaler().ReportClusterConfig(
+                    timeout_ms, serialized_cluster_config
+                )
+            )
 
 
 # Util functions for async handling
@@ -682,6 +720,21 @@ cdef convert_get_all_actor_info(
             proto.ParseFromString(b)
             actor_table_data[ActorID.from_binary(proto.actor_id)] = proto
         return actor_table_data, None
+    except Exception as e:
+        return None, e
+
+cdef convert_get_cluster_status_reply(
+    CRayStatus status, optional[CGetClusterStatusReply]&& c_data
+) with gil: # -> Tuple[autoscaler_pb2.GetClusterStatusReply, Exception]
+    cdef c_string serialized_reply
+    try:
+        check_status_timeout_as_rpc_error(status)
+        assert c_data.has_value()
+        with nogil:
+            serialized_reply = c_data.value().SerializeAsString()
+        proto = autoscaler_pb2.GetClusterStatusReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
     except Exception as e:
         return None, e
 
