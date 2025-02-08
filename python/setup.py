@@ -351,6 +351,17 @@ if setup_spec.type == SetupType.RAY:
             set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
         )
 
+    # "llm" is not included in all, by design. vllm's dependency set is very
+    # large and specific, will likely run into dependency conflicts with other
+    # ML libraries. As a result, it is an "extra-extra" that is not part
+    # ray[all].
+    #
+    # ray[llm] depends on ray[data].
+    #
+    # Keep this in sync with python/requirements/llm/llm-requirements.txt
+    #
+    setup_spec.extras["llm"] = list(set(["vllm>=0.7.2"] + setup_spec.extras["data"]))
+
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
