@@ -2317,11 +2317,6 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
                                                            std::move(factory));
 }
 
-// TODO(hjiang): Current implementation is not the most ideal version, since it acquires a
-// global lock for all operations; it's acceptable for now since no heavy-lifted operation
-// is involved (considering the overall scheduling overhead is single-digit millisecond
-// magnitude). But a better solution is LRU cache native providing a native support for
-// sharding and `GetOrCreate` API.
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfoImpl(
     const std::string &serialized_runtime_env_info) const {
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
