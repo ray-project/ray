@@ -42,7 +42,8 @@ absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles;
 // ONCE** at program termination.
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
-  for (auto &[_, handle] : redirection_file_handles) {
+  for (auto &[stream_fd, handle] : redirection_file_handles) {
+    RAY_CHECK_OK(Close(stream_fd));
     handle.Close();
   }
 }
