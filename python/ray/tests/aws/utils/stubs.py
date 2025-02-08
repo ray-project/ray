@@ -280,8 +280,8 @@ def describe_instance_status_ok(ec2_client_stub, instance_ids):
                         "Details": [{"Status": "passed", "Name": "reachability"}],
                     },
                 }
+                for instance_id in instance_ids
             ]
-            for instance_id in instance_ids
         },
     )
 
