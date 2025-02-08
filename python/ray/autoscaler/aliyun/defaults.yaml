@@ -130,7 +130,6 @@ setup_commands:
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Install Ray
     - pip install pytest-runner
-    - pip install -U ray
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
