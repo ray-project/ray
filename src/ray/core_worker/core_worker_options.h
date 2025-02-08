@@ -80,8 +80,6 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         raylet_ip_address(""),
         driver_name(""),
-        stdout_file(""),
-        stderr_file(""),
         task_execution_callback(nullptr),
         check_signals(nullptr),
         gc_collect(nullptr),
@@ -138,10 +136,6 @@ struct CoreWorkerOptions {
   std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
-  /// The stdout file of this process.
-  std::string stdout_file;
-  /// The stderr file of this process.
-  std::string stderr_file;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
   /// The callback to be called when shutting down a `CoreWorker` instance.

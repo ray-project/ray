@@ -1301,13 +1301,6 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
     }
   }
 
-  if (!options_.stdout_file.empty()) {
-    worker_info.emplace("stdout_file", options_.stdout_file);
-  }
-  if (!options_.stderr_file.empty()) {
-    worker_info.emplace("stderr_file", options_.stderr_file);
-  }
-
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
   worker_data->mutable_worker_address()->set_raylet_id(rpc_address_.raylet_id());
   worker_data->mutable_worker_address()->set_ip_address(rpc_address_.ip_address());
