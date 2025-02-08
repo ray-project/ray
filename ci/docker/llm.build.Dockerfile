@@ -14,7 +14,6 @@ RUN <<EOF
 
 set -ex
 
-# TODO(comaniac): add other test dependencies here.
-pip install -c python/requirements_compiled.txt pytest aiohttp pillow
+pip install --no-deps -r python/requirements_compiled_rayllm_test_py311.txt
 
 EOF
