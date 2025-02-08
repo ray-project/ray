@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
@@ -55,12 +55,46 @@ const PlacementGroupTable = ({
     maxPage,
   } = sliceToPage(placementGroupList, pageNo, pageSize);
 
+  const hasGpuRows = useMemo(() => {
+    return list.some((pg) =>
+      pg.bundles.some((bundle) => bundle.unit_resources["GPU"] > 0),
+    );
+  }, [list]);
+
   const columns = [
     { label: "ID" },
     { label: "Name" },
     { label: "Job Id" },
     { label: "State" },
     { label: "Reserved Resources" },
+    ...(hasGpuRows
+      ? [
+          {
+            label: "GPU",
+            helpInfo: (
+              <Typography>
+                Usage of each GPU device. If no GPU usage is detected, here are the
+                potential root causes:
+                <br />
+                1. non-GPU Ray image is used on this node. Switch to a GPU Ray image
+                and try again. <br />
+                2. Non Nvidia GPUs are being used. Non Nvidia GPUs' utilizations are
+                not currently supported.
+                <br />
+                3. pynvml module raises an exception.
+              </Typography>
+            ),
+          },
+          {
+            label: "GRAM",
+            helpInfo: (
+              <Typography>
+                Actor's GRAM usage (from Worker Process). <br />
+              </Typography>
+            ),
+          },
+        ]
+      : []),
     { label: "Scheduling Detail" },
   ];
 
@@ -180,6 +214,16 @@ const PlacementGroupTable = ({
                   <TableCell align="center">
                     <BundleResourceRequirements bundles={bundles} />
                   </TableCell>
+                  {hasGpuRows && (
+                    <>
+                      <TableCell>
+                        <WorkerGpuRow workerPID={pid} gpus={gpus} />
+                      </TableCell>
+                      <TableCell>
+                        <WorkerGRAM workerPID={pid} gpus={gpus} />
+                      </TableCell>
+                    </>
+                  )}
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}
                   </TableCell>
