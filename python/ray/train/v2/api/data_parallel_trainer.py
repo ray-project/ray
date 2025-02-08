@@ -183,12 +183,21 @@ class DataParallelTrainer:
             controller.run()
             return controller.get_result()
 
-    @Deprecated
     @classmethod
+    @Deprecated
     def restore(cls, *args, **kwargs):
+        """Restores a Train experiment from a previously interrupted/failed run.
+
+        This method is deprecated and will be removed in a future release.
+        """
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
 
-    @Deprecated
     @classmethod
+    @Deprecated
     def can_restore(cls, *args, **kwargs):
+        """Checks if a Train experiment can be restored from a previously
+        interrupted/failed run.
+
+        This method is deprecated and will be removed in a future release.
+        """
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
