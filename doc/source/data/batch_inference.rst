@@ -5,9 +5,12 @@ End-to-end: Offline Batch Inference
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
-For an overview on why you should use Ray Data for offline batch inference, and how it compares to alternatives, see the :ref:`Ray Data Overview <data_overview>`.
+..
+ https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit#slide=id.g230eb261ad2_0_0
 
-.. figure:: images/batch_inference.png
+.. image:: images/stream-example.png
+   :width: 650px
+   :align: center
 
 
 .. _batch_inference_quickstart:

@@ -19,9 +19,6 @@ Use individual libraries for ML workloads. Click on the dropdowns for your workl
 Scale offline inference and training ingest with [Ray Data](data_quickstart) --
 a data processing library designed for ML.
 
-To learn more, see [Offline batch inference](batch_inference_overview) and
-[Data preprocessing and ingest for ML training](ml_ingest_overview).
-
 ````{note}
 To run this example, install Ray Data:
 
