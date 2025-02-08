@@ -4,6 +4,7 @@ import pytest
 
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.mark.parametrize(
@@ -43,6 +44,14 @@ def test_scaling_config_total_resources():
         "CPU": num_workers * num_cpus_per_worker,
         "GPU": num_workers * num_gpus_per_worker,
     }
+
+
+def test_trainer_restore():
+    with pytest.raises(DeprecationWarning):
+        DataParallelTrainer.restore("dummy")
+
+    with pytest.raises(DeprecationWarning):
+        DataParallelTrainer.can_restore("dummy")
 
 
 @pytest.mark.parametrize("env_v2_enabled", [True, False])

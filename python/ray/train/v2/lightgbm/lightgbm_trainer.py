@@ -140,8 +140,8 @@ class LightGBMTrainer(DataParallelTrainer):
             metadata=metadata,
         )
 
-    @Deprecated
     @classmethod
+    @Deprecated
     def get_model(
         cls,
         checkpoint: Checkpoint,
