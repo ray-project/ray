@@ -1,5 +1,5 @@
 name: "llmbuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py3.11"]
 dockerfile: ci/docker/llm.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
