@@ -1960,8 +1960,11 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
     This is used by the Python default_worker.py to preload modules.
     """
     for module_to_preload in module_names_to_import:
+        start_time = time.monotonic()
         try:
             importlib.import_module(module_to_preload)
+            elapsed_time = time.monotonic() - start_time
+            logger.error(f"Import {module_to_preload} takes {elapsed_time}")
         except ImportError:
             logger.exception(f'Failed to preload the module "{module_to_preload}"')
 
