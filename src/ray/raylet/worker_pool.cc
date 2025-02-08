@@ -264,52 +264,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     const WorkerPool::State &state) const {
   std::vector<std::string> options;
 
-  // Append Ray-defined per-job options here
-  std::string code_search_path;
-  if (language == Language::JAVA || language == Language::CPP) {
-    if (job_config) {
-      std::string code_search_path_str;
-      for (int i = 0; i < job_config->code_search_path_size(); i++) {
-        auto path = job_config->code_search_path(i);
-        if (i != 0) {
-          code_search_path_str += ":";
-        }
-        code_search_path_str += path;
-      }
-      if (!code_search_path_str.empty()) {
-        code_search_path = code_search_path_str;
-        if (language == Language::JAVA) {
-          code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-        } else if (language == Language::CPP) {
-          code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
-        } else {
-          RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
-        }
-        options.push_back(code_search_path_str);
-      }
-    }
-  }
-
-  // Append user-defined per-job options here
-  if (language == Language::JAVA) {
-    if (!job_config->jvm_options().empty()) {
-      options.insert(options.end(),
-                     job_config->jvm_options().begin(),
-                     job_config->jvm_options().end());
-    }
-  }
-
-  // Append startup-token for JAVA here
-  if (language == Language::JAVA) {
-    options.push_back("-Dray.raylet.startup-token=" +
-                      std::to_string(worker_startup_token_counter_));
-    options.push_back("-Dray.internal.runtime-env-hash=" +
-                      std::to_string(runtime_env_hash));
-  }
-
-  // Append user-defined per-process options here
-  options.insert(options.end(), dynamic_options.begin(), dynamic_options.end());
-
   // Extract pointers from the worker command to pass into execvpe.
   std::vector<std::string> worker_command_args;
   for (const auto &token : state.worker_command) {
@@ -359,11 +313,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
-  } else if (language == Language::CPP) {
-    worker_command_args.push_back("--startup_token=" +
-                                  std::to_string(worker_startup_token_counter_));
-    worker_command_args.push_back("--ray_runtime_env_hash=" +
-                                  std::to_string(runtime_env_hash));
   }
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
@@ -392,30 +341,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     RAY_LOG(DEBUG) << "Launch worker with " << kEnvVarKeyJobId << " " << job_id.Hex();
   }
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
-
-  // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
-  if (language == Language::CPP) {
-    // Set native library path for shared library search.
-    if (!native_library_path_.empty() || !code_search_path.empty()) {
-#if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
-      auto path_env_p = std::getenv(kLibraryPathEnvName);
-      std::string path_env = native_library_path_;
-      if (path_env_p != nullptr && strlen(path_env_p) != 0) {
-        path_env.append(":").append(path_env_p);
-      }
-      // Append per-job code search path to library path.
-      if (!code_search_path.empty()) {
-        path_env.append(":").append(code_search_path);
-      }
-      auto path_env_iter = env.find(kLibraryPathEnvName);
-      if (path_env_iter == env.end()) {
-        env.emplace(kLibraryPathEnvName, path_env);
-      } else {
-        env[kLibraryPathEnvName] = path_env_iter->second.append(":").append(path_env);
-      }
-#endif
-    }
-  }
 
   if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
       RayConfig::instance().preload_python_modules().size() > 0) {
