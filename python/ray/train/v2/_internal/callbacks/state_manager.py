@@ -59,30 +59,18 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             worker_group.get_worker_group_context()
         )
 
-        if worker_group_context is None:
-            logger.error(
-                "WorkerGroupContext is not available. "
-                "StateManagerCallback.before_worker_group_start cannot proceed."
-            )
-            return
-
         self._state_manager.create_train_run_attempt(
             run_id=self._run_id,
-            attempt_id=worker_group_context.session_id,
+            attempt_id=worker_group_context.run_attempt_id,
             num_workers=worker_group_context.num_workers,
             resources_per_worker=worker_group_context.resources_per_worker,
         )
 
     def after_worker_group_start(self, worker_group):
-
+        worker_group_context: WorkerGroupContext = (
+            worker_group.get_worker_group_context()
+        )
         worker_group_state: WorkerGroupState = worker_group.get_worker_group_state()
-
-        if worker_group_state is None:
-            logger.error(
-                "WorkerGroupState is not available. "
-                "StateManagerCallback.after_worker_group_start cannot proceed."
-            )
-            return
 
         self._state_manager.update_train_run_running(
             run_id=self._run_id,
@@ -90,7 +78,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
 
         self._state_manager.update_train_run_attempt_running(
             run_id=self._run_id,
-            attempt_id=worker_group_state.context.session_id,
+            attempt_id=worker_group_context.run_attempt_id,
             workers=worker_group_state.workers,
         )
 
@@ -154,7 +142,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
 
                 self._state_manager.update_train_run_attempt_errored(
                     run_id=self._run_id,
-                    attempt_id=worker_group.get_worker_group_context().session_id,
+                    attempt_id=worker_group.get_worker_group_context().run_attempt_id,
                     status_detail=format_errors(worker_group_status.errors),
                 )
                 return
@@ -163,7 +151,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
 
         self._state_manager.update_train_run_attempt_finished(
             run_id=self._run_id,
-            attempt_id=worker_group.get_worker_group_context().session_id,
+            attempt_id=worker_group.get_worker_group_context().run_attempt_id,
         )
 
     # def before_controller_shutdown(self):

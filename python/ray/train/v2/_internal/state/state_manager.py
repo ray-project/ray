@@ -131,6 +131,7 @@ class TrainStateManager:
             resources=resources,
             workers=[],  # Not started yet.
         )
+
         self._run_attempts[run_id][attempt_id] = run_attempt
         self._create_or_update_train_run_attempt(run_attempt)
 

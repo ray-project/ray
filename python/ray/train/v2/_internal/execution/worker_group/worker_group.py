@@ -80,6 +80,7 @@ class WorkerGroupContext:
     This stores the context that is shared when starting a worker group.
 
     Attributes:
+        run_attempt_id: The ID of the run attempt.
         train_fn: The training function to execute.
         num_workers: The number of workers in the worker group.
         resources_per_worker: The resources per worker.
@@ -87,6 +88,7 @@ class WorkerGroupContext:
         checkpoint: Optional checkpoint to restore from.
     """
 
+    run_attempt_id: str
     train_fn: Callable[[], None]
     num_workers: int
     resources_per_worker: Dict[str, float]
@@ -191,6 +193,7 @@ class WorkerGroup:
         worker_group_context: WorkerGroupContext,
     ):
         """Internal method to start the worker group."""
+
         worker_group_state_builder = WorkerGroupStateBuilder()
 
         try:
@@ -223,6 +226,7 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If workers fail during initialization.
         """
         self._assert_inactive()
+        self._worker_group_context = worker_group_context
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
@@ -230,6 +234,9 @@ class WorkerGroup:
         with invoke_context_managers(
             [callback.on_worker_group_start for callback in self._callbacks]
         ):
+            for callback in self._callbacks:
+                callback.before_worker_group_start(self)
+
             pg = placement_group(
                 bundles=[worker_group_context.resources_per_worker]
                 * worker_group_context.num_workers,
@@ -629,7 +636,10 @@ class WorkerGroup:
         return self._worker_group_state.workers
 
     def get_worker_group_context(self) -> WorkerGroupContext:
-        self._assert_active()
+        # self._assert_active()
+        # TODO: Figure out the right validation. This is needed before active.
+        # Consider passing in the worker group context to the constructor.
+        assert self._worker_group_context is not None
         return self._worker_group_context
 
     def get_worker_group_state(self) -> WorkerGroupState:

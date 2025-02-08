@@ -281,6 +281,7 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
 
         worker_group_context = WorkerGroupContext(
+            run_attempt_id=self._get_run_attempt_id(),
             train_fn=self._train_fn,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
