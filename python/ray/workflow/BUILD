@@ -29,6 +29,7 @@ LARGE_TESTS = [
 LARGE_ALL_CORE_TESTS = [
     "tests/test_http_events_2.py",
     "tests/test_events.py",
+    "tests/test_events_with_crash.py"
 ]
 
 # Tests that are failing and need to be fixed.
