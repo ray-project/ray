@@ -206,6 +206,7 @@ bool IsRayletFailed(const std::string &raylet_pid) {
 }
 
 void QuickExit() {
+  RAY_LOG(ERROR) << "Quick Exit is requested. The process is killed without any cleanup. Stacktrace:" << ray::StackTrace();
   ray::RayLog::ShutDownRayLog();
   _Exit(1);
 }
