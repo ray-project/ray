@@ -1,4 +1,3 @@
-from typing import List
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,53 +32,49 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingPolicy,
 )
 from ray.train.v2._internal.execution.worker_group import (
-    Worker,
     WorkerGroup,
-    WorkerGroupStatus,
+    WorkerGroupPollStatus,
     WorkerStatus,
+)
+from ray.train.v2._internal.execution.worker_group.worker_group import (
+    WorkerGroupContext,
+    WorkerGroupState,
 )
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 
 class DummyWorkerGroup(WorkerGroup):
+
+    _start_failure = None
+
     def __init__(self, *args, **kwargs):
-        self._active = False
-        self._num_workers = 0
-        self._latest_start_time = float("-inf")
+        self._worker_group_state = None
         self._worker_statuses = {}
 
-        self._start_failure = None
-
-    def poll_status(self, *args, **kwargs) -> WorkerGroupStatus:
-        return WorkerGroupStatus(
-            num_workers=self._num_workers,
-            latest_start_time=self._latest_start_time,
+    def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
+        return WorkerGroupPollStatus(
             worker_statuses=self._worker_statuses,
         )
 
-    def start(self, train_fn, num_workers: int, resources_per_worker: dict, **kwargs):
+    def _start(self, worker_group_context: WorkerGroupContext):
+        num_workers = worker_group_context.num_workers
         if self._start_failure:
             raise self._start_failure
 
-        self._num_workers = num_workers
-        self._latest_start_time = time_monotonic()
+        self._worker_group_state = WorkerGroupState(
+            start_time=time_monotonic(),
+            workers=[MagicMock() for i in range(num_workers)],
+            placement_group=MagicMock(),
+            sync_actor=None,
+        )
+
         self._worker_statuses = {
             i: WorkerStatus(running=True, error=None) for i in range(num_workers)
         }
 
     def shutdown(self):
-        self._num_workers = 0
-        self._worker_statuses = {}
-
-    def has_started(self) -> bool:
-        return self._num_workers > 0
-
-    def __len__(self) -> int:
-        return self._num_workers
-
-    def get_workers(self) -> List[Worker]:
-        return [MagicMock()] * self._num_workers
+        self._worker_group_state = None
 
     # === Test methods ===
     def error_worker(self, worker_index):
@@ -90,8 +85,9 @@ class DummyWorkerGroup(WorkerGroup):
         status = self._worker_statuses[worker_index]
         status.running = False
 
-    def set_start_failure(self, start_failure):
-        self._start_failure = start_failure
+    @classmethod
+    def set_start_failure(cls, start_failure):
+        cls._start_failure = start_failure
 
 
 class MockScalingPolicy(ScalingPolicy):
@@ -107,7 +103,7 @@ class MockScalingPolicy(ScalingPolicy):
         return NoopDecision()
 
     def make_decision_for_running_worker_group(
-        self, worker_group_status: WorkerGroupStatus
+        self, worker_group_status: WorkerGroupPollStatus
     ) -> ScalingDecision:
         if self._monitor_decision_queue:
             return self._monitor_decision_queue.pop(0)
@@ -127,7 +123,9 @@ class MockFailurePolicy(FailurePolicy):
 
         super().__init__(failure_config)
 
-    def make_decision(self, worker_group_status: WorkerGroupStatus) -> FailureDecision:
+    def make_decision(
+        self, worker_group_status: WorkerGroupPollStatus
+    ) -> FailureDecision:
         if self._decision_queue:
             return self._decision_queue.pop(0)
         return FailureDecision.NOOP
@@ -161,7 +159,6 @@ def test_resize():
         scaling_policy=scaling_policy,
         failure_policy=MockFailurePolicy(failure_config=None),
     )
-    worker_group = controller.get_worker_group()
 
     decisions = [
         NoopDecision(),
@@ -177,8 +174,7 @@ def test_resize():
     ]
 
     assert isinstance(controller.get_state(), InitializingState)
-    worker_group_status = worker_group.poll_status()
-    assert worker_group_status.num_workers == 0
+    assert controller.get_worker_group() is None
 
     # Start with 1 worker
     scaling_policy.queue_recovery_decision(
@@ -186,26 +182,31 @@ def test_resize():
     )
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), SchedulingState)
-    worker_group_status = worker_group.poll_status()
-    assert worker_group_status.num_workers == 0
+    assert controller.get_worker_group() is None
 
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
-    worker_group_status = worker_group.poll_status()
-    assert worker_group_status.num_workers == 1
+
+    worker_group = controller.get_worker_group()
+    assert worker_group is not None
+    assert worker_group.has_started()
+    num_workers = len(worker_group.get_workers())
+    assert num_workers == 1
 
     for decision in decisions:
-        prev_worker_group_status = worker_group_status
+        prev_num_workers = num_workers
 
         scaling_policy.queue_monitor_decision(decision)
 
         if isinstance(decision, NoopDecision):
             controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), RunningState)
-            worker_group_status = worker_group.poll_status()
-            assert (
-                worker_group_status.num_workers == prev_worker_group_status.num_workers
-            )
+
+            worker_group = controller.get_worker_group()
+            assert worker_group is not None
+            assert worker_group.has_started()
+            num_workers = len(worker_group.get_workers())
+            assert num_workers == prev_num_workers
         else:
             controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), ResizingState)
@@ -213,8 +214,12 @@ def test_resize():
             assert isinstance(controller.get_state(), SchedulingState)
             controller._run_control_loop_iteration()
             assert isinstance(controller.get_state(), RunningState)
-            worker_group_status = worker_group.poll_status()
-            assert worker_group_status.num_workers == decision.num_workers
+
+            worker_group = controller.get_worker_group()
+            assert worker_group is not None
+            assert worker_group.has_started()
+            num_workers = len(worker_group.get_workers())
+            assert num_workers == decision.num_workers
 
 
 def test_failure_handling():
@@ -227,7 +232,6 @@ def test_failure_handling():
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
     )
-    worker_group = controller.get_worker_group()
 
     assert isinstance(controller.get_state(), InitializingState)
     scaling_policy.queue_recovery_decision(
@@ -238,7 +242,7 @@ def test_failure_handling():
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
-    worker_group.error_worker(1)
+    controller.get_worker_group().error_worker(1)
     failure_policy.queue_decision(FailureDecision.RESTART)
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RestartingState)
@@ -251,7 +255,7 @@ def test_failure_handling():
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), RunningState)
 
-    worker_group.error_worker(3)
+    controller.get_worker_group().error_worker(3)
     failure_policy.queue_decision(FailureDecision.RAISE)
     controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
@@ -260,7 +264,7 @@ def test_failure_handling():
 @pytest.mark.parametrize(
     "error_type", [WorkerGroupStartupFailedError, WorkerGroupStartupTimeoutError(2)]
 )
-def test_worker_group_start_failure(error_type):
+def test_worker_group_start_failure(monkeypatch, error_type):
     """Check that controller can gracefully handle worker group start failures."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
@@ -271,9 +275,8 @@ def test_worker_group_start_failure(error_type):
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
     )
-
-    worker_group: DummyWorkerGroup = controller.get_worker_group()
-    worker_group.set_start_failure(error_type)
+    DummyWorkerGroup.set_start_failure(error_type)
+    monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
 
     assert isinstance(controller.get_state(), InitializingState)
 
@@ -290,7 +293,8 @@ def test_worker_group_start_failure(error_type):
     assert isinstance(controller.get_state(), ReschedulingState)
 
     # Let the worker group start successfully the 2nd time.
-    worker_group.set_start_failure(None)
+    DummyWorkerGroup.set_start_failure(None)
+    monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
@@ -315,6 +319,9 @@ def test_poll_frequency(monkeypatch):
         scaling_policy=None,
         failure_policy=None,
     )
+    # Mock worker group to avoid actual polling
+    controller._worker_group = MagicMock()
+
     num_polls = 5
     for _ in range(num_polls):
         controller._poll_workers()
@@ -347,7 +354,7 @@ def test_controller_callback():
         def before_controller_execute_failure_decision(
             self,
             failure_decision: FailureDecision,
-            worker_group_status: WorkerGroupStatus,
+            worker_group_status: WorkerGroupPollStatus,
         ):
             self.failure_decision_called = True
 
@@ -373,7 +380,6 @@ def test_controller_callback():
         failure_policy=failure_policy,
         callbacks=[callback],
     )
-    worker_group = controller.get_worker_group()
 
     controller._start()
     assert callback.start_called
@@ -392,7 +398,7 @@ def test_controller_callback():
     assert isinstance(callback.latest_state_update[0], SchedulingState)
     assert isinstance(callback.latest_state_update[1], RunningState)
 
-    worker_group.error_worker(1)
+    controller.get_worker_group().error_worker(1)
     failure_policy.queue_decision(FailureDecision.RAISE)
 
     assert not callback.failure_decision_called
