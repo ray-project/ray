@@ -215,6 +215,7 @@ class Stats:
 
         self._reduce_method = reduce
         self._window = window
+        self._inf_window = self._window in [None, float("inf")]
         self._ema_coeff = ema_coeff
 
         # Timing functionality (keep start times per thread).
@@ -233,7 +234,7 @@ class Stats:
         self._throughput = throughput if throughput is not True else 0.0
         if self._throughput is not False:
             assert self._reduce_method == "sum"
-            assert self._window in [None, float("inf")]
+            assert self._inf_window
             self._throughput_last_time = -1
 
     def push(self, value) -> None:
@@ -244,6 +245,8 @@ class Stats:
                 (`self.values`).
         """
         self.values.append(value)
+        if not self._inf_window and len(self.values) > 2 * self._window:
+            self.values = self.values[-self._window:]
 
     def __enter__(self) -> "Stats":
         """Called when entering a context (with which users can measure a time delta).
@@ -355,7 +358,7 @@ class Stats:
         self.values.extend(other.values)
 
         # Slice by window size, if provided.
-        if self._window not in [None, float("inf")]:
+        if not self._inf_window:
             self.values = self.values[-self._window :]
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
