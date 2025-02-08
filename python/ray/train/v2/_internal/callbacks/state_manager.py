@@ -15,9 +15,10 @@ from ray.train.v2._internal.execution.controller.state import (
     RestartingState,
     TrainControllerState,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
-from ray.train.v2._internal.execution.worker_group.worker_group import (
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroup,
     WorkerGroupContext,
+    WorkerGroupPollStatus,
     WorkerGroupState,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
@@ -138,7 +139,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         # Pass WorkerGroupState around and read WorkerGroupState.worker_group_status.
 
         # TODO: Set to `worker_group_state.worker_group_status` instead.
-        worker_group_status: WorkerGroupStatus = None
+        worker_group_status: WorkerGroupPollStatus = None
         if worker_group_status is not None:
             if worker_group_status.errors:
                 # ERROR CASE

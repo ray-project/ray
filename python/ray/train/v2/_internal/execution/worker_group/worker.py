@@ -39,7 +39,7 @@ class ActorMetadata:
     node_ip: str
     pid: int
     accelerator_ids: Dict[str, List[Union[int, str]]]
-    gpu_ids: Union[List[int], List[str]]
+    gpu_ids: Optional[Union[List[int], List[str]]] = None
 
     @cached_property
     def _repr(self) -> str:

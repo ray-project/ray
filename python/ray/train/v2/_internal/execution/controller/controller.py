@@ -195,9 +195,7 @@ class TrainController:
         controller_state = self.get_state()
 
         for callback in self._controller_callbacks:
-            callback.before_controller_execute_failure_decision(
-                failure_decision, worker_group_status
-            )
+            callback.before_controller_execute_failure_decision(failure_decision)
 
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
@@ -340,7 +338,7 @@ class TrainController:
         self._state = state
 
         for callback in self._controller_callbacks:
-            callback.after_controller_state_update(previous_state, state)
+            callback.after_controller_state_update(self, previous_state, state)
 
     def _step(self) -> TrainControllerLoopIterationResult:
         """Run a single iteration of the control loop.

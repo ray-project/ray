@@ -356,7 +356,10 @@ class WorkerGroup:
             )
             raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
-        workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
+        workers = [
+            Worker(actor, meta, resources_per_worker)
+            for actor, meta in zip(actors, actor_metadatas)
+        ]
         return WorkerGroup._assign_worker_ranks(workers)
 
     def _init_train_context_on_workers(

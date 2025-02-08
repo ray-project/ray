@@ -243,6 +243,7 @@ def test_group_workers_by_ip():
                     accelerator_ids={},
                     pid=0,
                 ),
+                resources={"CPU": 1},
             )
             for node_id in node_ids
         ]
@@ -277,6 +278,7 @@ def test_local_rank_assignment():
                     accelerator_ids={"GPU": gpu_id.split(",") if gpu_id else []},
                     pid=pid,
                 ),
+                resources={"CPU": 1},
             )
             for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids)
         ]

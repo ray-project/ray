@@ -355,7 +355,6 @@ def test_controller_callback():
         def before_controller_execute_failure_decision(
             self,
             failure_decision: FailureDecision,
-            worker_group_status: WorkerGroupPollStatus,
         ):
             self.failure_decision_called = True
 
