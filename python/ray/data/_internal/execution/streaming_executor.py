@@ -188,7 +188,10 @@ class StreamingExecutor(Executor, threading.Thread):
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
-            self.join(timeout=2.0)
+            try:
+                self.join(timeout=2.0)
+            except RuntimeError as e:
+                logger.exception(e)
             self._update_stats_metrics(
                 state="FINISHED" if exception is None else "FAILED",
                 force_update=True,
