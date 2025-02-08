@@ -194,9 +194,7 @@ class PhysicalOperator(Operator):
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
         self._output_block_size_option = None
-        self._output_block_size_option = self.set_target_max_block_size(
-            target_max_block_size
-        )
+        self.set_target_max_block_size(target_max_block_size)
         self._started = False
         self._in_task_submission_backpressure = False
         self._in_task_output_backpressure = False
