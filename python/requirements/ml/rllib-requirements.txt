@@ -9,3 +9,5 @@ rich==13.3.2
 msgpack
 msgpack-numpy
 ormsgpack
+
+mlagents==1.1.0
