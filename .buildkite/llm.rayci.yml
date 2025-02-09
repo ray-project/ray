@@ -1,7 +1,7 @@
 group: llm tests
 depends_on:
   - forge
-  - oss-ci-base_ml-multipy
+  - oss-ci-base_build-multipy
 steps:
   - name: llmbuild
     wanda: ci/docker/llm.build.wanda.yaml
