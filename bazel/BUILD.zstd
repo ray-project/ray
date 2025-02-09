@@ -1,0 +1,416 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load(
+    "@rules_license//rules:license.bzl",
+    "license",
+)
+
+package(default_applicable_licenses = ["license"])
+
+license(
+    name = "license",
+    package_name = "zstd",
+    additional_info = {
+        "homepage": "http://www.zstd.net",
+        "version": "1.5.5",
+        "pURL": "pkg:github/facebook/zstd@1.5.5",
+    },
+    copyright_notice = "Copyright (c) Meta Platforms, Inc. and affiliates",
+    license_kinds = [
+        "@rules_license//licenses/spdx:BSD-3-Clause",
+    ],
+    license_text = "LICENSE",
+    package_version = "1.5.5",
+)
+
+C_OPTS = select({
+    "@platforms//os:linux": [
+        "-Wa,--noexecstack",
+    ],
+    "//conditions:default": [],
+})
+
+LINK_OPTS = select({
+    "@platforms//os:linux": [
+        "-z",
+        "noexecstack",
+    ],
+    "//conditions:default": [],
+})
+
+cc_binary(
+    name = "zstd",
+    srcs = ["programs/zstdcli.c"],
+    copts = C_OPTS,
+    defines = [
+        "ZSTD_NOBENCH",
+        "ZSTD_NODICT",
+        "ZSTD_MULTITHREAD",
+    ],
+    linkopts = LINK_OPTS,
+    visibility = ["//visibility:public"],
+    deps = [":zstd_cmd"],
+)
+
+cc_library(
+    name = "zstd_cmd",
+    srcs = glob(
+        [
+            "programs/*.c",
+            "programs/*.h",
+        ],
+        exclude = [
+            "programs/datagen.*",
+            "programs/platform.h",
+            "programs/util.h",
+            "programs/zstdcli.c",
+        ],
+    ),
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    linkstatic = True,
+    deps = [
+        ":datagen",
+        ":legacy",
+        ":libzstd",
+        ":mem",
+        ":util",
+        ":xxhash",
+        ":zdict",
+    ],
+)
+
+cc_library(
+    name = "datagen",
+    srcs = ["programs/datagen.c"],
+    hdrs = ["programs/datagen.h"],
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    deps = [
+        ":compiler",
+        ":mem",
+        ":util",
+    ],
+)
+
+cc_library(
+    name = "util",
+    hdrs = [
+        "programs/platform.h",
+        "programs/util.h",
+    ],
+    deps = [":mem"],
+)
+
+cc_library(
+    name = "libzstd",
+    hdrs = ["lib/zstd.h"],
+    strip_include_prefix = "lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":common",
+        ":compress",
+        ":decompress",
+    ],
+)
+
+cc_library(
+    name = "allocations",
+    hdrs = [
+        "lib/common/allocations.h",
+    ],
+    strip_include_prefix = "lib",
+    deps = [
+        ":common_deps",
+        ":mem",
+        ":zstd_internal",
+    ],
+)
+
+cc_library(
+    name = "compress",
+    srcs = [
+        "lib/compress/hist.c",
+    ] + glob([
+        "lib/compress/zstd*.c",
+    ]),
+    hdrs = glob([
+        "lib/compress/zstd*.h",
+    ]) + [
+        "lib/compress/clevels.h",
+    ],
+    copts = C_OPTS,
+    defines = [
+        "ZSTD_MULTITHREAD",
+    ],
+    linkopts = LINK_OPTS,
+    deps = [
+        ":allocations",
+        ":bitstream",
+        ":common",
+    ],
+)
+
+cc_library(
+    name = "decompress",
+    srcs = glob(["lib/decompress/zstd*.c"]) + [
+        "lib/decompress/huf_decompress_amd64.S",
+        "lib/decompress/zstd_ddict.h",
+        "lib/decompress/zstd_decompress_block.h",
+        "lib/decompress/zstd_decompress_internal.h",
+    ],
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    local_defines = ["ZSTD_ENABLE_ASM_X86_64_BMI2=1"],
+    deps = [
+        ":allocations",
+        ":common",
+        ":legacy",
+    ],
+)
+
+cc_library(
+    name = "legacy",
+    srcs = glob(
+        ["lib/legacy/*.c"],
+        exclude = [
+            "lib/legacy/zstd_v01.c",
+            "lib/legacy/zstd_v02.c",
+            "lib/legacy/zstd_v03.c",
+            "lib/legacy/zstd_v04.c",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "lib/legacy/*.h",
+        ],
+        exclude = [
+            "lib/legacy/zstd_v01.h",
+            "lib/legacy/zstd_v02.h",
+            "lib/legacy/zstd_v03.h",
+            "lib/legacy/zstd_v04.h",
+        ],
+    ),
+    copts = C_OPTS,
+    defines = [
+        "ZSTD_LEGACY_SUPPORT=5",
+    ],
+    linkopts = LINK_OPTS,
+    deps = [
+        ":common",
+        ":debug",
+        ":zstd_internal",
+    ],
+)
+
+cc_library(
+    name = "zdict",
+    srcs = glob(["lib/dictBuilder/*.c"]) + [
+        "lib/dictBuilder/cover.h",
+        "lib/dictBuilder/divsufsort.h",
+    ],
+    hdrs = [
+        "lib/zdict.h",
+    ],
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    deps = [
+        ":common",
+        ":compress",
+    ],
+)
+
+cc_library(
+    name = "compiler",
+    hdrs = [
+        "lib/common/compiler.h",
+        "lib/common/portability_macros.h",
+    ],
+    includes = ["lib/common"],
+)
+
+cc_library(
+    name = "cpu",
+    hdrs = [
+        "lib/common/cpu.h",
+    ],
+)
+
+cc_library(
+    name = "bitstream",
+    hdrs = [
+        "lib/common/bits.h",
+        "lib/common/bitstream.h",
+    ],
+)
+
+cc_library(
+    name = "entropy",
+    srcs = [
+        "lib/common/entropy_common.c",
+        "lib/common/fse_decompress.c",
+        "lib/compress/fse_compress.c",
+        "lib/compress/huf_compress.c",
+        "lib/decompress/huf_decompress.c",
+        "lib/decompress/huf_decompress_amd64.S",
+    ],
+    hdrs = [
+        "lib/common/fse.h",
+        "lib/common/huf.h",
+        "lib/compress/hist.h",
+    ],
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    deps = [
+        ":bitstream",
+        ":compiler",
+        ":debug",
+        ":errors",
+        ":mem",
+        ":zstd_internal",
+    ],
+)
+
+cc_library(
+    name = "errors",
+    srcs = ["lib/common/error_private.c"],
+    hdrs = [
+        "lib/common/error_private.h",
+        "lib/zstd_errors.h",
+    ],
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    deps = [
+        ":common_deps",
+        ":compiler",
+        ":debug",
+    ],
+)
+
+cc_library(
+    name = "mem",
+    hdrs = [
+        "lib/common/mem.h",
+    ],
+    deps = [
+        ":common_deps",
+        ":debug",
+    ],
+)
+
+cc_library(
+    name = "common_deps",
+    hdrs = [
+        "lib/common/compiler.h",
+        "lib/common/zstd_deps.h",
+    ],
+)
+
+cc_library(
+    name = "pool",
+    srcs = ["lib/common/pool.c"],
+    hdrs = [
+        "lib/common/pool.h",
+    ],
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    deps = [
+        ":allocations",
+        ":debug",
+        ":entropy",
+        ":threading",
+        ":zstd_common",
+    ],
+)
+
+cc_library(
+    name = "threading",
+    srcs = ["lib/common/threading.c"],
+    hdrs = [
+        "lib/common/threading.h",
+    ],
+    copts = C_OPTS,
+    defines = [
+        "ZSTD_MULTITHREAD",
+    ],
+    linkopts = LINK_OPTS + [
+        "-pthread",
+    ],
+    deps = [":debug"],
+)
+
+cc_library(
+    name = "xxhash",
+    srcs = ["lib/common/xxhash.c"],
+    hdrs = [
+        "lib/common/xxhash.h",
+    ],
+    copts = C_OPTS,
+    defines = [
+        "XXH_NAMESPACE=ZSTD_",
+    ],
+    linkopts = LINK_OPTS,
+    deps = [
+        ":mem",
+    ],
+)
+
+cc_library(
+    name = "zstd_common",
+    srcs = ["lib/common/zstd_common.c"],
+    hdrs = [
+        "lib/zstd.h",
+    ],
+    copts = C_OPTS,
+    linkopts = LINK_OPTS,
+    deps = [
+        ":compiler",
+        ":debug",
+        ":entropy",
+        ":errors",
+        ":mem",
+        ":xxhash",
+        ":zstd_internal",
+    ],
+)
+
+cc_library(
+    name = "zstd_internal",
+    hdrs = [
+        "lib/common/zstd_internal.h",
+        "lib/common/zstd_trace.h",
+        "lib/zstd.h",
+    ],
+    deps = [
+        ":common_deps",
+        ":compiler",
+        ":cpu",
+        ":mem",
+        ":xxhash",
+    ],
+)
+
+cc_library(
+    name = "debug",
+    srcs = ["lib/common/debug.c"],
+    hdrs = ["lib/common/debug.h"],
+    copts = C_OPTS,
+    includes = ["lib/common"],
+    linkopts = LINK_OPTS,
+)
+
+cc_library(
+    name = "common",
+    deps = [
+        ":bitstream",
+        ":compiler",
+        ":cpu",
+        ":debug",
+        ":entropy",
+        ":errors",
+        ":mem",
+        ":pool",
+        ":threading",
+        ":xxhash",
+        ":zstd_common",
+    ],
+)
