@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional
+import threading
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
@@ -534,6 +535,7 @@ class RuntimeContext(object):
 
 
 _runtime_context = None
+_runtime_context_lock = threading.Lock()
 
 
 @PublicAPI
@@ -557,8 +559,9 @@ def get_runtime_context() -> RuntimeContext:
             ray.get_runtime_context().get_task_id()
 
     """
-    global _runtime_context
-    if _runtime_context is None:
-        _runtime_context = RuntimeContext(ray._private.worker.global_worker)
+    with _runtime_context_lock:
+        global _runtime_context
+        if _runtime_context is None:
+            _runtime_context = RuntimeContext(ray._private.worker.global_worker)
 
-    return _runtime_context
+        return _runtime_context
