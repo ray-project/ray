@@ -137,9 +137,6 @@ class TorchLearner(Learner):
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         # TODO (sven): Causes weird cuda error when WandB is used.
         #  Diagnosis thus far:
         #  - All peek values during metrics.reduce are non-tensors.
@@ -154,14 +151,15 @@ class TorchLearner(Learner):
         gradients = self.compute_gradients(loss_per_module)
 
         with contextlib.ExitStack() as stack:
-            for mod in self.module.values():
-                stack.enter_context(mod.no_sync())
+            if self.config.num_learners > 1:
+                for mod in self.module.values():
+                    stack.enter_context(mod.no_sync())
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+        return fwd_out, loss_per_module, {}
 
     @override(Learner)
     def compute_gradients(

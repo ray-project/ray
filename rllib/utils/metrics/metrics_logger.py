@@ -109,14 +109,7 @@ class MetricsLogger:
         self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
-        # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
-        #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
-        #  An actual RLock, however, breaks our current OfflineData and
-        #  OfflinePreLearner logic, in which the Learner (which contains a
-        #  MetricsLogger) is serialized and deserialized. We will have to fix this
-        #  offline RL logic first, then can remove this hack here and return to always
-        #  using the RLock.
-        self._threading_lock = _DummyRLock()
+        self._thread_save = False
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -129,6 +122,9 @@ class MetricsLogger:
             Whether `key` could be found in self.stats.
         """
         return self._key_in_stats(key)
+
+    def thread_save(self, thread_save: bool):
+        self._thread_save = thread_save
 
     def peek(
         self,
@@ -199,15 +195,14 @@ class MetricsLogger:
         struct = self._get_key(key)
 
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
-        with self._threading_lock:
-            if isinstance(struct, Stats):
-                return struct.peek(throughput=throughput)
+        if isinstance(struct, Stats):
+            return struct.peek(throughput=throughput)
 
-            ret = tree.map_structure(
-                lambda s: s.peek(throughput=throughput),
-                struct.copy(),
-            )
-            return ret
+        ret = tree.map_structure(
+            lambda s: s.peek(throughput=throughput),
+            struct.copy(),
+        )
+        return ret
 
     @staticmethod
     def peek_results(results: Any) -> Any:
@@ -345,31 +340,31 @@ class MetricsLogger:
 
         self._check_tensor(key, value)
 
-        with self._threading_lock:
-            # `key` doesn't exist -> Automatically create it.
-            if not self._key_in_stats(key):
-                self._set_key(
-                    key,
-                    (
-                        Stats.similar_to(value, init_value=value.values)
-                        if isinstance(value, Stats)
-                        else Stats(
-                            value,
-                            reduce=reduce,
-                            window=window,
-                            ema_coeff=ema_coeff,
-                            clear_on_reduce=clear_on_reduce,
-                            throughput=with_throughput,
-                        )
-                    ),
-                )
-            # If value itself is a `Stats`, we merge it on time axis into self's
-            # `Stats`.
-            elif isinstance(value, Stats):
-                self._get_key(key).merge_on_time_axis(value)
-            # Otherwise, we just push the value into self's `Stats`.
-            else:
-                self._get_key(key).push(value)
+        # `key` doesn't exist -> Automatically create it.
+        if not self._key_in_stats(key):
+            self._set_key(
+                key,
+                (
+                    Stats.similar_to(value, init_value=value.values)
+                    if isinstance(value, Stats)
+                    else Stats(
+                        value,
+                        reduce=reduce,
+                        window=window,
+                        ema_coeff=ema_coeff,
+                        clear_on_reduce=clear_on_reduce,
+                        throughput=with_throughput,
+                        thread_save=self._thread_save,
+                    )
+                ),
+            )
+        # If value itself is a `Stats`, we merge it on time axis into self's
+        # `Stats`.
+        elif isinstance(value, Stats):
+            self._get_key(key).merge_on_time_axis(value)
+        # Otherwise, we just push the value into self's `Stats`.
+        else:
+            self._get_key(key).push(value)
 
     def log_dict(
         self,
@@ -473,8 +468,7 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
-        with self._threading_lock:
-            tree.map_structure_with_path(_map, stats_dict)
+        tree.map_structure_with_path(_map, stats_dict)
 
     def merge_and_log_n_dicts(
         self,
@@ -656,6 +650,7 @@ class MetricsLogger:
                         window=window,
                         ema_coeff=ema_coeff,
                         clear_on_reduce=clear_on_reduce,
+                        thread_save=self._thread_save,
                     )
 
                 # Create a new Stats object to merge everything into as parallel,
@@ -772,6 +767,7 @@ class MetricsLogger:
                     window=window,
                     ema_coeff=ema_coeff,
                     clear_on_reduce=clear_on_reduce,
+                    thread_save=self._thread_save,
                 ),
             )
 
@@ -892,34 +888,21 @@ class MetricsLogger:
         # throw an error).
         PATH = None
 
-        def _reduce(path, stats):
+        def _reduce(path, stats: Stats):
             nonlocal PATH
             PATH = path
             return stats.reduce()
 
-        # Create a shallow (yet nested) copy of `self.stats` in case we need to reset
-        # some of our stats due to this `reduce()` call and Stats having
-        # `self.clear_on_reduce=True`. In the latter case we would receive a new empty
-        # `Stats` object from `stat.reduce()` with the same settings as existing one and
-        # can now re-assign it to `self.stats[key]`, while we return from this method
-        # the properly reduced, but not cleared/emptied new `Stats`.
         if key is not None:
-            stats_to_return = self._get_key(key, key_error=False)
+            subset_to_return = self._get_key(key, key_error=False)
         else:
-            stats_to_return = self.stats
+            subset_to_return = self.stats
 
         try:
-            with self._threading_lock:
-                assert (
-                    not self.tensor_mode
-                ), "Can't reduce if `self.tensor_mode` is True!"
-                reduced = copy.deepcopy(
-                    tree.map_structure_with_path(_reduce, stats_to_return)
-                )
-                if key is not None:
-                    self._set_key(key, reduced)
-                else:
-                    self.stats = reduced
+            assert not self.tensor_mode, "Can't reduce if `self.tensor_mode` is True!"
+            reduced_subset_to_return = tree.map_structure_with_path(
+                _reduce, subset_to_return
+            )
         # Provide proper error message if reduction fails due to bad data.
         except Exception as e:
             raise ValueError(
@@ -932,10 +915,10 @@ class MetricsLogger:
 
         # Return (reduced) `Stats` objects as leafs.
         if return_stats_obj:
-            return stats_to_return
+            return reduced_subset_to_return
         # Return actual (reduced) values (not reduced `Stats` objects) as leafs.
         else:
-            return self.peek_results(stats_to_return)
+            return self.peek_results(reduced_subset_to_return)
 
     def activate_tensor_mode(self):
         """Switches to tensor-mode, in which in-graph tensors can be logged.
@@ -950,7 +933,6 @@ class MetricsLogger:
         them TODO (sven) continue docstring
 
         """
-        self._threading_lock.acquire()
         assert not self.tensor_mode
         self._tensor_mode = True
 
@@ -969,7 +951,6 @@ class MetricsLogger:
         for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
             self._get_key(key).set_to_numpy_values(values)
-        self._threading_lock.release()
 
     @property
     def tensor_mode(self):
@@ -1033,8 +1014,7 @@ class MetricsLogger:
         # Key already in self -> Erase internal values list with [`value`].
         if self._key_in_stats(key):
             stats = self._get_key(key)
-            with self._threading_lock:
-                stats.values = [value]
+            stats.values = [value]
         # Key cannot be found in `self` -> Simply log as a (new) value.
         else:
             self.log_value(
@@ -1061,9 +1041,8 @@ class MetricsLogger:
             logger.reset()
             check(logger.reduce(), {})
         """
-        with self._threading_lock:
-            self.stats = {}
-            self._tensor_keys = set()
+        self.stats = {}
+        self._tensor_keys = set()
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -1090,8 +1069,7 @@ class MetricsLogger:
             # Convert keys to strings for msgpack-friendliness.
             stats_dict["--".join(path)] = stats.get_state()
 
-        with self._threading_lock:
-            tree.map_structure_with_path(_map, self.stats)
+        tree.map_structure_with_path(_map, self.stats)
 
         return {"stats": stats_dict}
 
@@ -1101,9 +1079,8 @@ class MetricsLogger:
         Args:
             state: The state to set `self` to.
         """
-        with self._threading_lock:
-            for flat_key, stats_state in state["stats"].items():
-                self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
+        for flat_key, stats_state in state["stats"].items():
+            self._set_key(flat_key.split("--"), Stats.from_state(stats_state))
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.
@@ -1137,50 +1114,34 @@ class MetricsLogger:
     def _set_key(self, flat_key, stats):
         flat_key = force_tuple(tree.flatten(flat_key))
 
-        with self._threading_lock:
-            _dict = self.stats
-            for i, key in enumerate(flat_key):
-                # If we are at the end of the key sequence, set
-                # the key, no matter, whether it already exists or not.
-                if i == len(flat_key) - 1:
-                    _dict[key] = stats
-                    return
-                # If an intermediary key in the sequence is missing,
-                # add a sub-dict under this key.
-                if key not in _dict:
-                    _dict[key] = {}
-                _dict = _dict[key]
+        _dict = self.stats
+        for i, key in enumerate(flat_key):
+            # If we are at the end of the key sequence, set
+            # the key, no matter, whether it already exists or not.
+            if i == len(flat_key) - 1:
+                _dict[key] = stats
+                return
+            # If an intermediary key in the sequence is missing,
+            # add a sub-dict under this key.
+            if key not in _dict:
+                _dict[key] = {}
+            _dict = _dict[key]
 
     def _del_key(self, flat_key, key_error=False):
         flat_key = force_tuple(tree.flatten(flat_key))
 
-        with self._threading_lock:
-            # Erase the tensor key as well, if applicable.
-            if flat_key in self._tensor_keys:
-                self._tensor_keys.discard(flat_key)
+        # Erase the tensor key as well, if applicable.
+        if flat_key in self._tensor_keys:
+            self._tensor_keys.discard(flat_key)
 
-            # Erase the key from the (nested) `self.stats` dict.
-            _dict = self.stats
-            try:
-                for i, key in enumerate(flat_key):
-                    if i == len(flat_key) - 1:
-                        del _dict[key]
-                        return
-                    _dict = _dict[key]
-            except KeyError as e:
-                if key_error:
-                    raise e
-
-
-class _DummyRLock:
-    def acquire(self, blocking=True, timeout=-1):
-        return True
-
-    def release(self):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        pass
+        # Erase the key from the (nested) `self.stats` dict.
+        _dict = self.stats
+        try:
+            for i, key in enumerate(flat_key):
+                if i == len(flat_key) - 1:
+                    del _dict[key]
+                    return
+                _dict = _dict[key]
+        except KeyError as e:
+            if key_error:
+                raise e
