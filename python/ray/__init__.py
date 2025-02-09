@@ -285,9 +285,9 @@ __all__ += [
 # checking support these imports must be kept in sync between type checking and
 # runtime behavior.
 if TYPE_CHECKING:
-    from . import autoscaler
-    from . import data
-    from . import workflow
+    from ray import autoscaler
+    from ray import data
+    from ray import workflow
 else:
 
     def __getattr__(name: str):
