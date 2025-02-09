@@ -265,6 +265,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -336,6 +337,7 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -370,6 +372,9 @@ class Dataset:
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         plan = self._plan.copy()
         map_op = MapRows(
@@ -413,6 +418,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -561,6 +567,7 @@ class Dataset:
             num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -630,6 +637,7 @@ class Dataset:
             fn_constructor_kwargs=fn_constructor_kwargs,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=ray_remote_args_fn,
             **ray_remote_args,
@@ -649,6 +657,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]],
         num_cpus: Optional[float],
         num_gpus: Optional[float],
+        memory: Optional[float],
         concurrency: Optional[Union[int, Tuple[int, int]]],
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         **ray_remote_args,
@@ -671,6 +680,9 @@ class Dataset:
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         batch_format = _apply_batch_format(batch_format)
 
@@ -1103,6 +1115,7 @@ class Dataset:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
@@ -1168,6 +1181,7 @@ class Dataset:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
@@ -1201,6 +1215,9 @@ class Dataset:
 
         if num_gpus is not None:
             ray_remote_args["num_gpus"] = num_gpus
+
+        if memory is not None:
+            ray_remote_args["memory"] = memory
 
         plan = self._plan.copy()
         op = FlatMap(

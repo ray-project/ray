@@ -52,11 +52,15 @@ from overlapping.
         with InputNode() as inp:
             branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
             branches = [
-                branch.with_type_hint(
-                    TorchTensorType(
-                        transport="nccl", _static_shape=True, _direct_return=True
-                    )
+                branch.with_tensor_transport(
+                    transport="nccl", _static_shape=True, _direct_return=True
                 )
+                # For a ray version before 2.42, use `with_type_hint()` instead.
+                # branch.with_type_hint(
+                #     TorchTensorType(
+                #         transport="nccl", _static_shape=True, _direct_return=True
+                #     )
+                # )
                 for branch in branches
             ]
             branches = [receiver.recv_and_matmul.bind(branch) for branch in branches]
