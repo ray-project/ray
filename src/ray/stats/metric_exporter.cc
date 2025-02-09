@@ -97,7 +97,6 @@ void OpenCensusProtoExporter::ExportViewData(
 void OpenCensusProtoExporter::SendData(const rpc::ReportOCMetricsRequest &request) {
   RAY_LOG(DEBUG) << "Exporting metrics, metrics: " << request.metrics_size()
                  << ", payload size: " << request.ByteSizeLong();
-  RAY_LOG(INFO) << "SendData at " << absl::FormatTime(absl::Now());
   absl::MutexLock l(&mu_);
   client_->ReportOCMetrics(
       request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
