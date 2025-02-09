@@ -252,7 +252,7 @@ def get_gpu_cards_from_vm(vm, desired_gpu_number, is_dynamic_pci_passthrough):
 
 
 def plug_gpu_cards_to_vm(
-    pyvmomi_sdk_provider, vm_name: str, gpu_cards: list, is_dynamic_pci_passthrough
+    pyvmomi_sdk_provider, vm_name: str, gpu_cards: list, is_dynamic_pci_passthrough, MMIO_size
 ):
     """
     This function helps to add a list of gpu to a VM by PCI passthrough. Steps:
@@ -268,10 +268,11 @@ def plug_gpu_cards_to_vm(
     config_spec = vim.vm.ConfigSpec()
 
     # The below 2 advanced configs are needed for a VM to have a passthru PCI device
-    config_spec.extraConfig = [
-        vim.option.OptionValue(key="pciPassthru.64bitMMIOSizeGB", value="64"),
-        vim.option.OptionValue(key="pciPassthru.use64bitMMIO", value="TRUE"),
-    ]
+    if is_dynamic_pci_passthrough:
+        config_spec.extraConfig = [
+            vim.option.OptionValue(key="pciPassthru.64bitMMIOSizeGB", value=str(MMIO_size)),
+            vim.option.OptionValue(key="pciPassthru.use64bitMMIO", value="TRUE"),
+        ]
 
     # PCI passthru device requires the memory to be hard reserved.
     config_spec.memoryReservationLockedToMax = True
