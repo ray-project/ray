@@ -6,6 +6,7 @@ exclude: |
     python/ray/dashboard/client/public/|
     python/ray/tests/test_cli_patterns|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
+    release/release_logs/|
     doc/external/|
     doc/source/
   )
