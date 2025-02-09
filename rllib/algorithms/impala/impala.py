@@ -496,7 +496,8 @@ class IMPALAConfig(AlgorithmConfig):
             # which slots to mask out).
             connector.prepend(AddOneTsToEpisodesAndTruncate())
             # Remove the NumpyToTensor connector if we have the GPULoaderThreads.
-            connector.remove(NumpyToTensor)
+            if self.num_gpus_per_learner > 0:
+                connector.remove(NumpyToTensor)
         return connector
 
 
