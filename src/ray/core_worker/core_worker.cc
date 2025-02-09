@@ -372,6 +372,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+  RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options_.debug_source;
+
   // Notify that core worker is initialized.
   absl::Cleanup initialzed_scope_guard = [this] {
     absl::MutexLock lock(&initialize_mutex_);
@@ -1297,13 +1299,6 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
     if (!options_.driver_name.empty()) {
       worker_info.emplace("name", options_.driver_name);
     }
-  }
-
-  if (!options_.stdout_file.empty()) {
-    worker_info.emplace("stdout_file", options_.stdout_file);
-  }
-  if (!options_.stderr_file.empty()) {
-    worker_info.emplace("stderr_file", options_.stderr_file);
   }
 
   auto worker_data = std::make_shared<rpc::WorkerTableData>();

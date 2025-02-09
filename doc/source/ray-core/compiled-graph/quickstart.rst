@@ -7,7 +7,7 @@ This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
 .. testcode::
 
-    pip install "ray[cg]"
+    pip install "ray[cgraph]"
     
     # For a ray version before 2.41, use the following instead:
     # pip install "ray[adag]"
