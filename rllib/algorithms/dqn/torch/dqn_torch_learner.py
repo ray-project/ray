@@ -238,11 +238,11 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
         # in order to keep them history free).
         self.metrics.log_dict(
             {
-                QF_LOSS_KEY: total_loss,
-                QF_MEAN_KEY: possibly_masked_mean(q_selected),
-                QF_MAX_KEY: possibly_masked_max(q_selected),
-                QF_MIN_KEY: possibly_masked_min(q_selected),
-                TD_ERROR_MEAN_KEY: possibly_masked_mean(td_error),
+                QF_LOSS_KEY: total_loss.item(),
+                QF_MEAN_KEY: possibly_masked_mean(q_selected).item(),
+                QF_MAX_KEY: possibly_masked_max(q_selected).item(),
+                QF_MIN_KEY: possibly_masked_min(q_selected).item(),
+                TD_ERROR_MEAN_KEY: possibly_masked_mean(td_error).item(),
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
@@ -262,22 +262,21 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
                                 torch.sum(fwd_out[QF_PROBS].mean(dim=0) * z, dim=1)
                             ).mean(dim=0)
                         )
-                    ),
+                    ).item(),
                     # The total variation distance should measure the distance between
                     # return distributions of different actions. This should (at least
                     # mildly) increase during training when the agent differentiates
                     # more between actions.
-                    "dist_total_variation_dist": torch.diff(
-                        fwd_out[QF_PROBS].mean(dim=0), dim=0
-                    )
+                    "dist_total_variation_dist": 0.5
+                    * torch.diff(fwd_out[QF_PROBS].mean(dim=0), dim=0)
                     .abs()
                     .sum()
-                    * 0.5,
+                    .item(),
                     # The maximum distance between the action distributions. This metric
                     # should increase over the course of training.
                     "dist_max_abs_distance": torch.max(
                         torch.diff(fwd_out[QF_PROBS].mean(dim=0), dim=0).abs()
-                    ),
+                    ).item(),
                     # Mean shannon entropy of action distributions. This should decrease
                     # over the course of training.
                     "action_dist_mean_entropy": torch.mean(
@@ -286,7 +285,7 @@ class DQNTorchLearner(DQNLearner, TorchLearner):
                             * torch.log(fwd_out[QF_PROBS].mean(dim=0))
                         ).sum(dim=1),
                         dim=0,
-                    ),
+                    ).item(),
                 },
                 key=module_id,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).

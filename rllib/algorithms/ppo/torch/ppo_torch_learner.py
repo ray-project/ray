@@ -122,14 +122,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # Log important loss stats.
         self.metrics.log_dict(
             {
-                POLICY_LOSS_KEY: -possibly_masked_mean(surrogate_loss),
-                VF_LOSS_KEY: mean_vf_loss,
-                LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
+                POLICY_LOSS_KEY: -possibly_masked_mean(surrogate_loss).item(),
+                VF_LOSS_KEY: mean_vf_loss.item(),
+                LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss.item(),
                 LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
                     batch[Postprocessing.VALUE_TARGETS], value_fn_out
-                ),
-                ENTROPY_KEY: mean_entropy,
-                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+                ).item(),
+                ENTROPY_KEY: mean_entropy.item(),
+                LEARNER_RESULTS_KL_KEY: mean_kl_loss.item(),
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).

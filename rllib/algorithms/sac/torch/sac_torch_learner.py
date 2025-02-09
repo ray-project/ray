@@ -200,17 +200,17 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
         # in order to keep them history free).
         self.metrics.log_dict(
             {
-                POLICY_LOSS_KEY: actor_loss,
-                QF_LOSS_KEY: critic_loss,
-                "alpha_loss": alpha_loss,
-                "alpha_value": alpha,
-                "log_alpha_value": torch.log(alpha),
+                POLICY_LOSS_KEY: actor_loss.item(),
+                QF_LOSS_KEY: critic_loss.item(),
+                "alpha_loss": alpha_loss.item(),
+                "alpha_value": alpha.item(),
+                "log_alpha_value": torch.log(alpha).item(),
                 "target_entropy": self.target_entropy[module_id],
-                LOGPS_KEY: torch.mean(fwd_out["logp_resampled"]),
-                QF_MEAN_KEY: torch.mean(fwd_out["q_curr"]),
-                QF_MAX_KEY: torch.max(fwd_out["q_curr"]),
-                QF_MIN_KEY: torch.min(fwd_out["q_curr"]),
-                TD_ERROR_MEAN_KEY: torch.mean(td_error),
+                LOGPS_KEY: torch.mean(fwd_out["logp_resampled"]).item(),
+                QF_MEAN_KEY: torch.mean(fwd_out["q_curr"]).item(),
+                QF_MAX_KEY: torch.max(fwd_out["q_curr"]).item(),
+                QF_MIN_KEY: torch.min(fwd_out["q_curr"]).item(),
+                TD_ERROR_MEAN_KEY: torch.mean(td_error).item(),
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
@@ -218,11 +218,9 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
         # If twin Q networks should be used add a critic loss for the twin Q network.
         # Note, we need this in the `self.compute_gradients()` to optimize.
         if config.twin_q:
-            self.metrics.log_dict(
-                {
-                    QF_TWIN_LOSS_KEY: critic_twin_loss,
-                },
-                key=module_id,
+            self.metrics.log_value(
+                key=(module_id, QF_TWIN_LOSS_KEY),
+                value=critic_twin_loss.item(),
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
