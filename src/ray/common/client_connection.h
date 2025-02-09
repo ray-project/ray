@@ -48,7 +48,11 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 /// A generic type representing a client connection to a server. This typename
 /// can be used to write messages synchronously to the server.
 class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
+ private:
+  struct Tag {};
+
  public:
+  ServerConnection(Tag, local_stream_socket &&socket);
   ServerConnection(const ServerConnection &) = delete;
   ServerConnection &operator=(const ServerConnection &) = delete;
 
@@ -135,7 +139,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
  protected:
   /// A private constructor for a server connection.
-  ServerConnection(local_stream_socket &&socket);
+  explicit ServerConnection(local_stream_socket &&socket);
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
@@ -192,8 +196,18 @@ using MessageHandler = std::function<void(
 /// writing messages to the client, like in ServerConnection, this typename can
 /// also be used to process messages asynchronously from client.
 class ClientConnection : public ServerConnection {
+ private:
+  struct Tag {};
+
  public:
   using std::enable_shared_from_this<ServerConnection>::shared_from_this;
+
+  ClientConnection(Tag,
+                   MessageHandler &message_handler,
+                   local_stream_socket &&socket,
+                   const std::string &debug_label,
+                   const std::vector<std::string> &message_type_enum_names,
+                   int64_t error_message_type);
 
   ClientConnection(const ClientConnection &) = delete;
   ClientConnection &operator=(const ClientConnection &) = delete;
