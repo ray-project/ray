@@ -80,7 +80,7 @@ def vtrace_torch(
     clip_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
     clip_pg_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
 ):
-    """V-trace for softmax policies implemented with torch.
+    r"""V-trace for softmax policies implemented with torch.
 
     Calculates V-trace actor critic targets for softmax polices as described in
     "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner

@@ -424,7 +424,7 @@ def test_invalid_arguments():
             ValueError,
             match=f"The keyword '{keyword}' only accepts None, "
             "a non-negative integer, "
-            "'streaming' \(for generators\), or 'dynamic'",
+            r"'streaming' \(for generators\), or 'dynamic'",
         ):
             ray.remote(**{keyword: v})(f)
 
