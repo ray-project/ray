@@ -1,7 +1,7 @@
 import logging
 import os
 import json
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Any, Type
 
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -28,6 +28,7 @@ class RuntimeEnvPlugin(ABC):
     priority: int = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
 
     @staticmethod
+    @abstractmethod
     def validate(runtime_env_dict: dict) -> None:
         """Validate user entry for this plugin.
 
@@ -41,9 +42,11 @@ class RuntimeEnvPlugin(ABC):
         """
         pass
 
+    @abstractmethod
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         return []
 
+    @abstractmethod
     async def create(
         self,
         uri: Optional[str],
@@ -69,6 +72,7 @@ class RuntimeEnvPlugin(ABC):
         """
         return 0
 
+    @abstractmethod
     def modify_context(
         self,
         uris: List[str],
@@ -89,6 +93,7 @@ class RuntimeEnvPlugin(ABC):
         """
         return
 
+    @abstractmethod
     def delete_uri(self, uri: str, logger: logging.Logger) -> float:
         """Delete the the runtime environment given uri.
 
