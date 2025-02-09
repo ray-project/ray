@@ -59,10 +59,16 @@ TEST(NewlinerSinkTest, AppendAndFlushTest) {
     auto logger = CreateLogger();
     constexpr std::string_view kContent = "hello";
 
+    // Before flush, nothing's streamed to stdout because no newliner.
     testing::internal::CaptureStdout();
     logger->log(spdlog::level::info, kContent);
+    std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_TRUE(stdout_content.empty());
+
+    // Buffered content streamed after flush.
+    testing::internal::CaptureStdout();
     logger->flush();
-    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
   }
 
@@ -83,11 +89,17 @@ TEST(NewlinerSinkTest, AppendAndFlushTest) {
     auto logger = CreateLogger();
     constexpr std::string_view kContent = "hello\nworld";
 
+    // Before flush, only content before newliner is streamed.
     testing::internal::CaptureStdout();
     logger->log(spdlog::level::info, kContent);
+    std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, "hello\n");
+
+    // Buffered content streamed after flush.
+    testing::internal::CaptureStdout();
     logger->flush();
-    const std::string stdout_content = testing::internal::GetCapturedStdout();
-    EXPECT_EQ(stdout_content, kContent);
+    stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, "world");
   }
 
   // Case-5: multiple writes.
@@ -96,12 +108,23 @@ TEST(NewlinerSinkTest, AppendAndFlushTest) {
     constexpr std::string_view kContent1 = "hello\nworld";
     constexpr std::string_view kContent2 = "hello\nworld\n";
 
+    // Content before newliner is streamed before flush.
     testing::internal::CaptureStdout();
     logger->log(spdlog::level::info, kContent1);
+    std::string stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, "hello\n");
+
+    // Stream content with trailing newliner flushes everything.
+    testing::internal::CaptureStdout();
     logger->log(spdlog::level::info, kContent2);
+    stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_EQ(stdout_content, "worldhello\nworld\n");
+
+    // All content streamed and flushed.
+    testing::internal::CaptureStdout();
     logger->flush();
-    const std::string stdout_content = testing::internal::GetCapturedStdout();
-    EXPECT_EQ(stdout_content, absl::StrFormat("%s%s", kContent1, kContent2));
+    stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_TRUE(stdout_content.empty());
   }
 }
 
