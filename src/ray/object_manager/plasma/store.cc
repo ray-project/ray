@@ -113,7 +113,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
-  RAY_LOG(ERROR) << "[myan] RAY_LOG_IS_LEVEL_ENABLED=" << RAY_LOG_ENABLED(INFO); 
+  RAY_LOG(ERROR) << "[myan] RAY_LOG_IS_LEVEL_ENABLED=" << RAY_LOG_ENABLED(INFO);
   RAY_LOG(INFO) << "[myan] Creating PlasmaStore...";
   ray::SetCloseOnExec(acceptor_);
 
