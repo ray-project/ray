@@ -81,7 +81,7 @@ export const JobRow = ({ job }: JobRowProps) => {
         </Tooltip>
       </TableCell>
       <TableCell align="center">
-        <JobStatusWithIcon job={job} />
+        <JobStatusWithIcon job={job} killable />
       </TableCell>
       <TableCell align="center">
         {message ? (
