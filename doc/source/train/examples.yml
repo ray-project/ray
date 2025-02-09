@@ -171,6 +171,4 @@ examples:
     frameworks:
       - xgboost
     skill_level: beginner
-    use_cases:
-      - tabular data
     link: examples/xgboost/distributed-xgboost-lightgbm
