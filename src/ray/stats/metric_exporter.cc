@@ -103,7 +103,7 @@ void OpenCensusProtoExporter::SendData(const rpc::ReportOCMetricsRequest &reques
       request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
         RAY_UNUSED(reply);
         if (!status.ok()) {
-          RAY_LOG_EVERY_N(WARNING, 1)
+          RAY_LOG_EVERY_N(WARNING, 10000)
               << "Export metrics to agent failed: " << status
               << ". This won't affect Ray, but you can lose metrics from the cluster.";
         }
