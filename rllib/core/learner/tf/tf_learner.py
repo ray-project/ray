@@ -121,7 +121,7 @@ class TfLearner(Learner):
             optimizer.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
-    def restore_from_path(self, path: Union[str, pathlib.Path]) -> None:
+    def restore_from_path(self, path: Union[str, pathlib.Path], **args) -> None:
         # This operation is potentially very costly because a MultiRLModule is created
         # at build time, destroyed, and then a new one is created from a checkpoint.
         # However, it is necessary due to complications with the way that Ray Tune
@@ -130,7 +130,7 @@ class TfLearner(Learner):
         # made to the learner's modules, the module created by Tune is destroyed and
         # then rebuilt from the checkpoint.
         with self._strategy.scope():
-            super().restore_from_path(path)
+            super().restore_from_path(path, **args)
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
