@@ -10,6 +10,8 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple, TypedDict, Union
 
+import time
+
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
 
@@ -464,6 +466,14 @@ class ReporterAgent(
         )
 
     async def ReportOCMetrics(self, request, context):
+        start_time = time.time()
+        logger.info(
+            f"ReportOCMetrics start_time: {time.strftime('%Y-%m-%d %H:%M:%S.', time.localtime(start_time))}{str(start_time % 1)[2:5]}"
+        )
+        if not hasattr(self, "delay"):
+            logger.info("ReportOCMetrics delay 15 seconds")
+            time.sleep(15)
+            self.delay = True
         # Do nothing if metrics collection is disabled.
         if self._metrics_collection_disabled:
             return reporter_pb2.ReportOCMetricsReply()
@@ -476,6 +486,8 @@ class ReporterAgent(
             self._metrics_agent.proxy_export_metrics(request.metrics, worker_id)
         except Exception:
             logger.error(traceback.format_exc())
+        end_time = time.time()
+        logger.info(f"ReportOCMetrics time: {end_time - start_time} seconds")
         return reporter_pb2.ReportOCMetricsReply()
 
     @staticmethod

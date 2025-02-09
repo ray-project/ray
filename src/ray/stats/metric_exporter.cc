@@ -97,12 +97,13 @@ void OpenCensusProtoExporter::ExportViewData(
 void OpenCensusProtoExporter::SendData(const rpc::ReportOCMetricsRequest &request) {
   RAY_LOG(DEBUG) << "Exporting metrics, metrics: " << request.metrics_size()
                  << ", payload size: " << request.ByteSizeLong();
+  RAY_LOG(INFO) << "SendData at " << absl::FormatTime(absl::Now());
   absl::MutexLock l(&mu_);
   client_->ReportOCMetrics(
       request, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
         RAY_UNUSED(reply);
         if (!status.ok()) {
-          RAY_LOG_EVERY_N(WARNING, 10000)
+          RAY_LOG_EVERY_N(WARNING, 1)
               << "Export metrics to agent failed: " << status
               << ". This won't affect Ray, but you can lose metrics from the cluster.";
         }
