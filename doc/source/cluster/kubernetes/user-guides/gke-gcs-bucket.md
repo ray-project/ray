@@ -14,7 +14,7 @@ Run this and all following commands on your local machine or on the [Google Clou
 ```bash
 gcloud container clusters create cloud-bucket-cluster \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
-    --zone=us-west1-b --machine-type e2-standard-8 \
+    --zone=us-west1-b --machine-type e2-standard-8 --addons=RayOperator \
     --workload-pool=my-project-id.svc.id.goog # Replace my-project-id with your GCP project ID
 ```
 
