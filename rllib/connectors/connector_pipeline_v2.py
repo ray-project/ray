@@ -142,12 +142,8 @@ class ConnectorPipelineV2(ConnectorV2):
         """
         idx = -1
         for i, c in enumerate(self.connectors):
-            if (
-                (isinstance(name_or_class, type) and c.__class__ is name_or_class)
-                or (
-                    isinstance(name_or_class, str)
-                    and c.__class__.__name__ == name_or_class
-                )
+            if (isinstance(name_or_class, type) and c.__class__ is name_or_class) or (
+                isinstance(name_or_class, str) and c.__class__.__name__ == name_or_class
             ):
                 idx = i
                 break
