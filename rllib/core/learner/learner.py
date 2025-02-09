@@ -1,9 +1,9 @@
 import abc
 from collections import defaultdict
 import copy
-from functools import partial
 import logging
 import numpy
+import platform
 from typing import (
     Any,
     Callable,
@@ -55,12 +55,13 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    DATASET_NUM_ITERS_TRAINED,
+    DATASET_NUM_ITERS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
-    LEARNER_CONNECTOR_TIMER,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
     WEIGHTS_SEQ_NO,
 )
@@ -231,6 +232,9 @@ class Learner(Checkpointable):
         self.config = config.copy(copy_frozen=False)
         self._module_spec: Optional[MultiRLModuleSpec] = module_spec
         self._module_obj: Optional[MultiRLModule] = module
+
+        # Make node and device of this Learner available.
+        self._node = platform.node()
         self._device = None
 
         # Set a seed, if necessary.
@@ -287,15 +291,20 @@ class Learner(Checkpointable):
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        # TODO (sven): Figure out which space to provide here. For now,
-        #  it doesn't matter, as the default connector piece doesn't use
-        #  this information anyway.
-        #  module_spec = self._module_spec.as_multi_rl_module_spec()
-        self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=None,
-            input_action_space=None,
-            device=self._device,
-        )
+        self._learner_connector = None
+        # If the Algorithm uses aggregation actors to run episodes through the learner
+        # connector, its Learners don't need a connector pipelines and instead learn
+        # directly from pre-loaded batches already on the GPU.
+        if self.config.num_aggregator_actors_per_learner == 0:
+            # TODO (sven): Figure out which space to provide here. For now,
+            #  it doesn't matter, as the default connector piece doesn't use
+            #  this information anyway.
+            #  module_spec = self._module_spec.as_multi_rl_module_spec()
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=None,
+                input_action_space=None,
+                device=self._device,
+            )
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -303,6 +312,9 @@ class Learner(Checkpointable):
         # Configure, construct, and register all optimizers needed to train
         # `self.module`.
         self.configure_optimizers()
+
+        # Log the number of trainable/non-trainable parameters.
+        self._log_trainable_parameters()
 
         self._is_built = True
 
@@ -315,6 +327,14 @@ class Learner(Checkpointable):
     def module(self) -> MultiRLModule:
         """The MultiRLModule that is being trained."""
         return self._module
+
+    @property
+    def node(self) -> Any:
+        return self._node
+
+    @property
+    def device(self) -> Any:
+        return self._device
 
     def register_optimizer(
         self,
@@ -877,7 +897,7 @@ class Learner(Checkpointable):
         use the `forward_train()` outputs of the RLModule(s) to compute the required
         loss tensors.
         See here for a custom loss function example script:
-        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py  # noqa
+        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py  # noqa
 
         Args:
             fwd_out: Output from a call to the `forward_train()` method of the
@@ -1107,48 +1127,50 @@ class Learner(Checkpointable):
 
         i = 0
         logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
-        for batch in self.iterator.iter_batches(
-            # Note, this needs to be one b/c data is already mapped to
-            # `MultiAgentBatch`es of `minibatch_size`.
-            batch_size=1,
-            _finalize_fn=_finalize_fn,
-            **kwargs,
-        ):
-            # Update the iteration counter.
-            i += 1
+        while num_iters is None or i < num_iters:
+            for batch in self.iterator.iter_batches(
+                # Note, this needs to be one b/c data is already mapped to
+                # `MultiAgentBatch`es of `minibatch_size`.
+                batch_size=1,
+                _finalize_fn=_finalize_fn,
+                **kwargs,
+            ):
+                # TODO (simon): Add metrics for the `dataset_num_iter`.
+                # Update the iteration counter.
+                i += 1
 
-            # Note, `_finalize_fn`  must return a dictionary.
-            batch = batch["batch"]
-            logger.debug(
-                f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
-            )
-            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-            # found in this batch. If not, throw an error.
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains one or more ModuleIDs that are not in this "
-                    f"Learner! Found IDs: {unknown_module_ids}"
+                # Note, `_finalize_fn`  must return a dictionary.
+                batch = batch["batch"]
+                logger.debug(
+                    f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
                 )
+                # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+                # found in this batch. If not, throw an error.
+                unknown_module_ids = set(batch.policy_batches.keys()) - set(
+                    self.module.keys()
+                )
+                if len(unknown_module_ids) > 0:
+                    raise ValueError(
+                        "Batch contains one or more ModuleIDs that are not in this "
+                        f"Learner! Found IDs: {unknown_module_ids}"
+                    )
 
-            # Log metrics.
-            self._log_steps_trained_metrics(batch)
+                # Log metrics.
+                self._log_steps_trained_metrics(batch)
 
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                batch.policy_batches
-            )
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
+                # Make the actual in-graph/traced `_update` call. This should return
+                # all tensor values (no numpy).
+                fwd_out, loss_per_module, tensor_metrics = self._update(
+                    batch.policy_batches
+                )
+                # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+                # to actual (numpy) values.
+                self.metrics.tensors_to_numpy(tensor_metrics)
 
-            self._set_slicing_by_batch_id(batch, value=False)
-            # If `num_iters` is reached break and return.
-            if num_iters and i == num_iters:
-                break
+                self._set_slicing_by_batch_id(batch, value=False)
+                # If `num_iters` is reached break and return.
+                if num_iters and i == num_iters:
+                    break
 
         logger.debug(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
@@ -1162,6 +1184,18 @@ class Learner(Checkpointable):
                 value=loss,
                 window=1,
             )
+        # Record the number of batches pulled from the dataset in this RLlib iteration.
+        self.metrics.log_value(
+            DATASET_NUM_ITERS_TRAINED,
+            i,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            DATASET_NUM_ITERS_TRAINED_LIFETIME,
+            i,
+            reduce="sum",
+        )
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
         # TODO (simon): Check, if this should stay here, when running multiple
@@ -1320,42 +1354,58 @@ class Learner(Checkpointable):
         # actual batch/episodes objects).
         if isinstance(batch, ray.ObjectRef):
             batch = ray.get(batch)
-        if isinstance(episodes, ray.ObjectRef) or (
-            isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef)
-        ):
+        if isinstance(episodes, ray.ObjectRef):
             episodes = ray.get(episodes)
-            episodes = tree.flatten(episodes)
+        elif isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
+            # It's possible that individual refs are invalid due to the EnvRunner
+            # that produced the ref has crashed or had its entire node go down.
+            # In this case, try each ref individually and collect only valid results.
+            try:
+                episodes = tree.flatten(ray.get(episodes))
+            except ray.exceptions.OwnerDiedError:
+                episode_refs = episodes
+                episodes = []
+                for ref in episode_refs:
+                    try:
+                        episodes.extend(ray.get(ref))
+                    except ray.exceptions.OwnerDiedError:
+                        pass
 
-        # Call the learner connector.
-        if episodes is not None:
+        # Call the learner connector on the given `episodes` (if we have one).
+        if episodes is not None and self._learner_connector is not None:
             # Call the learner connector pipeline.
-            with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
-                shared_data = {}
-                batch = self._learner_connector(
-                    rl_module=self.module,
-                    batch=batch if batch is not None else {},
-                    episodes=episodes,
-                    shared_data=shared_data,
-                )
-                # Convert to a batch.
-                # TODO (sven): Try to not require MultiAgentBatch anymore.
-                batch = MultiAgentBatch(
-                    {
-                        module_id: (
-                            SampleBatch(module_data, _zero_padded=True)
-                            if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                            else SampleBatch(module_data)
-                        )
-                        for module_id, module_data in batch.items()
-                    },
-                    env_steps=sum(len(e) for e in episodes),
-                )
+            shared_data = {}
+            batch = self._learner_connector(
+                rl_module=self.module,
+                batch=batch if batch is not None else {},
+                episodes=episodes,
+                shared_data=shared_data,
+                metrics=self.metrics,
+            )
+            # Convert to a batch.
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {
+                    module_id: (
+                        SampleBatch(module_data, _zero_padded=True)
+                        if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                        else SampleBatch(module_data)
+                    )
+                    for module_id, module_data in batch.items()
+                },
+                env_steps=sum(len(e) for e in episodes),
+            )
         # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
+        # If we have already an `MultiAgentBatch` but with `numpy` array, convert to tensors.
+        elif isinstance(batch, MultiAgentBatch) and isinstance(
+            next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+        ):
+            batch = self._convert_batch_type(batch)
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
@@ -1377,12 +1427,7 @@ class Learner(Checkpointable):
         self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
-            if self._learner_connector is not None:
-                batch_iter = partial(
-                    MiniBatchCyclicIterator, _uses_new_env_runners=True
-                )
-            else:
-                batch_iter = MiniBatchCyclicIterator
+            batch_iter = MiniBatchCyclicIterator
         elif num_epochs > 1:
             # `minibatch_size` was not set but `num_epochs` > 1.
             # Under the old training stack, users could do multiple epochs
@@ -1595,6 +1640,15 @@ class Learner(Checkpointable):
                 f"`params` ({params}) must be a list of framework-specific parameters "
                 "(variables)!"
             )
+
+    def _log_trainable_parameters(self) -> None:
+        """Logs the number of trainable and non-trainable parameters to self.metrics.
+
+        Use MetricsLogger (self.metrics) tuple-keys:
+        (ALL_MODULES, NUM_TRAINABLE_PARAMETERS) and
+        (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS) with EMA.
+        """
+        pass
 
     def _check_is_built(self, error: bool = True) -> bool:
         if self.module is None:

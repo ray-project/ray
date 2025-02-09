@@ -36,6 +36,8 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_vector[c_string] GetAllAvailableResources()
         c_vector[c_string] GetAllTotalResources()
         unordered_map[CNodeID, c_int64_t] GetDrainingNodes()
+        unique_ptr[c_string] GetInternalKV(
+          const c_string &namespace, const c_string &key)
         c_vector[c_string] GetAllTaskEvents()
         unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)
         unique_ptr[c_string] GetAllResourceUsage()
@@ -62,7 +64,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
             const c_string &node_ip_address,
             c_string *node_to_connect)
         CRayStatus GetNode(
-          const c_string &node_id,
+          const c_string &node_id_hex_str,
           c_string *node_info)
 
 cdef extern from * namespace "ray::gcs" nogil:
@@ -102,10 +104,10 @@ cdef extern from * namespace "ray::gcs" nogil:
       RAY_CHECK_OK(status) << "Failed to connect to redis.";
 
       auto cli = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(std::move(redis_client)), io_service);
+        std::make_unique<RedisStoreClient>(std::move(redis_client)));
 
       bool ret_val = false;
-      cli->Get("session", key, [&](std::optional<std::string> result) {
+      cli->Get("session", key, {[&](std::optional<std::string> result) {
         if (result.has_value()) {
           *data = result.value();
           ret_val = true;
@@ -114,7 +116,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                         << " from persistent storage.";
           ret_val = false;
         }
-      });
+      }, io_service});
       io_service.run_for(std::chrono::milliseconds(1000));
 
       return ret_val;

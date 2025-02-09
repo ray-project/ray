@@ -1,6 +1,6 @@
 .. note::
 
-    Ray 2.40 uses :doc:`RLlib's new API stack </rllib/rllib-new-api-stack>` by default.
+    Ray 2.40 uses RLlib's new API stack by default.
     The Ray team has mostly completed transitioning algorithms, example scripts, and
     documentation to the new code base.
 

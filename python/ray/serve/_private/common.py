@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from starlette.types import Scope
 
@@ -550,6 +550,12 @@ class RunningReplicaInfo:
         )
 
 
+@dataclass(frozen=True)
+class DeploymentTargetInfo:
+    is_available: bool
+    running_replicas: List[RunningReplicaInfo]
+
+
 class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
@@ -568,7 +574,7 @@ class MultiplexedReplicaInfo:
 class gRPCRequest:
     """Sent from the GRPC proxy to replicas on both unary and streaming codepaths."""
 
-    grpc_user_request: bytes
+    user_request_proto: Any
 
 
 class RequestProtocol(str, Enum):

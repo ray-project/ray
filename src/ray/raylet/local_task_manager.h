@@ -297,6 +297,8 @@ class LocalTaskManager : public ILocalTaskManager {
           capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the running task ids in this scheduling class.
+    ///
+    /// TODO(hjiang): Store cgroup manager along with task id as the value for map.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     const uint64_t capacity;

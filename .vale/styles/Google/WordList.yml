@@ -40,7 +40,7 @@ swap:
   check box: checkbox
   CLI: command-line tool
   click on: click|click in
-  Cloud: Google Cloud Platform|GCP
+#  Cloud: Google Cloud Platform|GCP  # commented out due to recursive bug (e.g. still reporting error for "Cloud" in "Google Cloud Platform") and other cloud platform (e.g. Alibaba Cloud)
   Container Engine: Kubernetes Engine
   content type: media type
   curated roles: predefined roles

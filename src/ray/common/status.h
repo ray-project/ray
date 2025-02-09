@@ -32,20 +32,15 @@
 #include <iosfwd>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
 
-namespace boost {
-
-namespace system {
-
+namespace boost::system {
 class error_code;
-
-}  // namespace system
-
-}  // namespace boost
+}  // namespace boost::system
 
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
@@ -327,6 +322,12 @@ class RAY_EXPORT Status {
   int rpc_code() const { return ok() ? -1 : state_->rpc_code; }
 
   std::string message() const { return ok() ? "" : state_->msg; }
+
+  template <typename... T>
+  Status &operator<<(T &&...msg) {
+    absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
+    return *this;
+  }
 
  private:
   struct State {

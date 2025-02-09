@@ -1,0 +1,7 @@
+name: "llmbuild"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py3.11"]
+dockerfile: ci/docker/llm.build.Dockerfile
+srcs:
+  - python/requirements_compiled_rayllm_test_py311.txt
+tags:
+  - cr.ray.io/rayproject/llmbuild

@@ -155,8 +155,8 @@ class VPG(Algorithm):
 
     def _sample_episodes(self):
         # How many episodes to sample from each EnvRunner?
-        num_episodes_per_env_runner = (
-            self.config.num_episodes_per_train_batch // self.config.num_env_runners
+        num_episodes_per_env_runner = self.config.num_episodes_per_train_batch // (
+            self.config.num_env_runners or 1
         )
         # Send parallel remote requests to sample and get the metrics.
         sampled_data = self.env_runner_group.foreach_env_runner(

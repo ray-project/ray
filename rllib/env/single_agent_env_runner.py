@@ -5,6 +5,7 @@ import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
+import ray
 from gymnasium.wrappers.vector import DictInfoToList
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -307,6 +308,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -366,6 +368,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             for env_index in range(self.num_envs):
@@ -390,8 +393,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         "on_episode_end", env_index, episodes
                     )
 
-                    # Then finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(episodes[env_index].to_numpy())
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(episodes[env_index])
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
@@ -432,8 +440,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     continue
                 eps.validate()
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-                # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(eps.finalize())
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    # Any possibly compress observations.
+                    ongoing_episodes_to_return.append(eps.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    ongoing_episodes_to_return.append(eps)
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
@@ -530,6 +544,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
                 if (
                     isinstance(rl_module_state, dict)
                     and DEFAULT_MODULE_ID in rl_module_state
@@ -728,6 +744,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=episodes,
                 explore=explore,
                 shared_data=shared_data,
+                metrics=self.metrics,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).

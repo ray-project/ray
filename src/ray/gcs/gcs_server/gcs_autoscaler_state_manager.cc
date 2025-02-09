@@ -27,12 +27,16 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
-    rpc::NodeManagerClientPool &raylet_client_pool)
+    rpc::NodeManagerClientPool &raylet_client_pool,
+    InternalKVInterface &kv,
+    instrumented_io_context &io_context)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
-      raylet_client_pool_(raylet_client_pool) {}
+      raylet_client_pool_(raylet_client_pool),
+      kv_(kv),
+      io_context_(io_context) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -94,6 +98,22 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+}
+
+void GcsAutoscalerStateManager::HandleReportClusterConfig(
+    rpc::autoscaler::ReportClusterConfigRequest request,
+    rpc::autoscaler::ReportClusterConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+  // Save to kv for persistency in case of GCS FT.
+  kv_.Put(kGcsAutoscalerStateNamespace,
+          kGcsAutoscalerClusterConfigKey,
+          request.cluster_config().SerializeAsString(),
+          /*overwrite=*/true,
+          {[send_reply_callback = std::move(send_reply_callback)](bool added) {
+             send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+           },
+           io_context_});
 }
 
 void GcsAutoscalerStateManager::HandleGetClusterStatus(
@@ -198,8 +218,7 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   (*node_info->second.second.mutable_resources_available()) = node.resources_total();
 }
 
-void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
-    const rpc::ResourcesData &data) {
+void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
@@ -210,21 +229,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   }
 
   auto &new_data = iter->second.second;
-
-  (*new_data.mutable_resource_load()) = data.resource_load();
-  (*new_data.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-
-  if (data.resources_total_size() > 0) {
-    (*new_data.mutable_resources_total()) = data.resources_total();
-  }
-
-  (*new_data.mutable_resources_available()) = data.resources_available();
-
-  new_data.set_object_pulls_queued(data.object_pulls_queued());
-  new_data.set_idle_duration_ms(data.idle_duration_ms());
-  new_data.set_is_draining(data.is_draining());
-  new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
-
+  new_data = std::move(data);
   // Last update time
   iter->second.first = absl::Now();
 }
