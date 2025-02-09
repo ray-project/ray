@@ -113,6 +113,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
+  RAY_LOG(ERROR) << "[myan] RAY_LOG_IS_LEVEL_ENABLED=" << RAY_LOG_ENABLED(INFO); 
+  RAY_LOG(INFO) << "[myan] Creating PlasmaStore...";
   ray::SetCloseOnExec(acceptor_);
 
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
@@ -129,7 +131,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
 PlasmaStore::~PlasmaStore() {}
 
 void PlasmaStore::Start() {
-  RAY_LOG(INFO) << "Starting the PlasmaStore...";
+  RAY_LOG(INFO) << "[myan] Starting the PlasmaStore...";
   // Start listening for clients.
   DoAccept();
 }
@@ -273,11 +275,11 @@ bool PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 
 bool PlasmaStore::ReleaseObject(const ObjectID &object_id,
                                 const std::shared_ptr<Client> &client) {
-  RAY_LOG(INFO) << "Releasing object..." << object_id;
+  RAY_LOG(INFO) << "[myan] Releasing object..." << object_id;
   auto entry = object_lifecycle_mgr_.GetObject(object_id);
-  RAY_LOG(INFO) << "Get Entry..." << object_id;
+  RAY_LOG(INFO) << "[myan] Get Entry..." << object_id;
   if (entry != nullptr) {
-    RAY_LOG(INFO) << "Entry is not null..." << object_id;
+    RAY_LOG(INFO) << "[myan] Entry is not null..." << object_id;
     // Remove the client from the object's array of clients.
     return RemoveFromClientObjectIds(object_id, client);
   }
@@ -411,7 +413,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     ReplyToCreateClient(client, object_id, request->request_id());
   } break;
   case fb::MessageType::PlasmaAbortRequest: {
-    RAY_LOG(INFO) << "Received abort request...";
+    RAY_LOG(INFO) << "[myan] Received abort request...";
     RAY_RETURN_NOT_OK(ReadAbortRequest(input, input_size, &object_id));
     RAY_CHECK(AbortObject(object_id, client) == 1) << "To abort an object, the only "
                                                       "client currently using it "
@@ -429,12 +431,12 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   case fb::MessageType::PlasmaReleaseRequest: {
     // May unmap: client knows a fallback-allocated fd is involved.
     // Should unmap: server finds refcnt == 0 -> need to be unmapped.
-    RAY_LOG(INFO) << "Received release request...";
+    RAY_LOG(INFO) << "[myan] Received release request...";
     bool may_unmap;
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
-    RAY_LOG(INFO) << "Successfully read the release request..." << object_id;
+    RAY_LOG(INFO) << "[myan] Successfully read the release request..." << object_id;
     bool should_unmap = ReleaseObject(object_id, client);
-    RAY_LOG(INFO) << "Successfully released the object..." << object_id;
+    RAY_LOG(INFO) << "[myan] Successfully released the object..." << object_id;
     if (!may_unmap) {
       RAY_CHECK(!should_unmap)
           << "Plasma client thinks a mmap should not be unmapped but server thinks so. "
@@ -449,7 +451,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
 
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
-    RAY_LOG(INFO) << "Received abort request...";
+    RAY_LOG(INFO) << "[myan] Received abort request...";
     std::vector<ObjectID> object_ids;
     std::vector<PlasmaError> error_codes;
     RAY_RETURN_NOT_OK(ReadDeleteRequest(input, input_size, &object_ids));

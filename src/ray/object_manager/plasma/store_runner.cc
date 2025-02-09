@@ -106,6 +106,7 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     // Create noop monitor for Windows.
     fs_monitor_ = std::make_unique<ray::FileSystemMonitor>();
 #endif
+    RAY_LOG(INFO) << "[myan] Creating the PlasmaStore...";
     store_.reset(new PlasmaStore(main_service_,
                                  *allocator_,
                                  *fs_monitor_,
@@ -115,7 +116,9 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
                                  object_store_full_callback,
                                  add_object_callback,
                                  delete_object_callback));
+    RAY_LOG(INFO) << "[myan] Starting the PlasmaStore...";
     store_->Start();
+    RAY_LOG(INFO) << "[myan] PlasmaStore started.";
   }
   main_service_.run();
   Shutdown();
