@@ -67,6 +67,7 @@ def test_module_side_handler(default_module_config):
             method_name="test",
             query={},
             headers={},
+            match_info={},
             body=b"",
         )
     )
@@ -82,6 +83,7 @@ def test_module_side_handler(default_module_config):
             method_name="echo",
             query={},
             headers={},
+            match_info={},
             body=b"a new dashboard",
         )
     )
@@ -98,6 +100,7 @@ def test_module_side_handler(default_module_config):
             query={},
             headers={},
             body=b"",
+            match_info={},
         )
     )
     response = subprocess.parent_bound_queue.get()
