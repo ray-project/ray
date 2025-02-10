@@ -55,6 +55,7 @@ import {
   ServeSystemDetailPage,
 } from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
+import { VirtualClustersPage } from "./pages/virtual_cluster/VirtualClusters";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
@@ -343,6 +344,10 @@ const App = () => {
                     <Route element={<StateApiLogsListPage />} path="" />
                     <Route element={<StateApiLogViewerPage />} path="viewer" />
                   </Route>
+                  <Route
+                    element={<VirtualClustersPage />}
+                    path="virtual-clusters"
+                  />
                 </Route>
                 <Route element={<CMDResult />} path="/cmd/:cmd/:ip/:pid" />
               </Routes>

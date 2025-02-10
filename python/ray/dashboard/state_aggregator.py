@@ -598,7 +598,7 @@ class StateAPIManager:
                     if "memory" in resource:
                         entry["resources_total"][resource] = readable_memory(value)
                 for resource, value in entry["resources_total"].items():
-                    if resource in ["memory", "CPU", "object_store_memory"]:
+                    if "_group_" not in resource and not resource.startswith("node:"):
                         entry["resources_usage"][
                             resource
                         ] = f"""{entry["resources_available"][resource]} / {value}"""

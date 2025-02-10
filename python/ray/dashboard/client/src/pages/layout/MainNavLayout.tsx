@@ -102,6 +102,11 @@ const NAV_ITEMS = [
     path: "/logs",
     id: "logs",
   },
+  {
+    title: "VClusters",
+    path: "/virtual-clusters",
+    id: "virtual-clusters",
+  },
 ];
 
 const MainNavBar = () => {
