@@ -120,7 +120,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared_2_cpus):
         (128, 128),
     ],
 )
-def test_repartition_max_rows_per_block(
+def test_repartition_target_num_rows_per_block(
     ray_start_regular_shared_2_cpus,
     total_rows,
     target_num_rows_per_block,
