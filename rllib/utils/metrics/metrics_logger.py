@@ -1,5 +1,6 @@
 import copy
 import logging
+import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
@@ -110,6 +111,7 @@ class MetricsLogger:
         self._tensor_mode = False
         self._tensor_keys = set()
         self._thread_save = False
+        self._struct_lock = threading.Lock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -898,10 +900,13 @@ class MetricsLogger:
         else:
             subset_to_return = self.stats
 
+        with self._struct_lock:
+            frozen_subset_to_return = tree.map_structure(lambda s: s, subset_to_return)
+
         try:
             assert not self.tensor_mode, "Can't reduce if `self.tensor_mode` is True!"
             reduced_subset_to_return = tree.map_structure_with_path(
-                _reduce, subset_to_return
+                _reduce, frozen_subset_to_return
             )
         # Provide proper error message if reduction fails due to bad data.
         except Exception as e:
@@ -1119,12 +1124,14 @@ class MetricsLogger:
             # If we are at the end of the key sequence, set
             # the key, no matter, whether it already exists or not.
             if i == len(flat_key) - 1:
-                _dict[key] = stats
+                with self._struct_lock:
+                    _dict[key] = stats
                 return
             # If an intermediary key in the sequence is missing,
             # add a sub-dict under this key.
             if key not in _dict:
-                _dict[key] = {}
+                with self._struct_lock:
+                    _dict[key] = {}
             _dict = _dict[key]
 
     def _del_key(self, flat_key, key_error=False):
@@ -1139,7 +1146,8 @@ class MetricsLogger:
         try:
             for i, key in enumerate(flat_key):
                 if i == len(flat_key) - 1:
-                    del _dict[key]
+                    with self._struct_lock:
+                        del _dict[key]
                     return
                 _dict = _dict[key]
         except KeyError as e:
