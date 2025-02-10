@@ -26,11 +26,15 @@ def mock_dataloader(num_batches: int = 64, batch_size: int = 32):
 
 
 class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
-    def get_train_dataloader(self, batch_size: int):
-        return mock_dataloader(num_batches=1024, batch_size=batch_size)
+    def get_train_dataloader(self):
+        return mock_dataloader(
+            num_batches=1024, batch_size=self.config.train_batch_size
+        )
 
-    def get_val_dataloader(self, batch_size: int):
-        return mock_dataloader(num_batches=512, batch_size=batch_size)
+    def get_val_dataloader(self):
+        return mock_dataloader(
+            num_batches=512, batch_size=self.config.validation_batch_size
+        )
 
 
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
@@ -62,14 +66,12 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
 
 class ImageClassificationFactory(BenchmarkFactory):
     def get_dataloader_factory(self) -> BaseDataLoaderFactory:
-        if self.benchmark_config.dataloader_type == DataloaderType.MOCK:
-            return ImageClassificationMockDataLoaderFactory()
-        elif self.benchmark_config.dataloader_type == DataloaderType.RAY_DATA:
-            return ImageClassificationRayDataLoaderFactory()
-        else:
-            raise ValueError(
-                f"Invalid dataloader type: {self.benchmark_config.dataloader_type}"
-            )
+        data_factory_cls = {
+            DataloaderType.MOCK: ImageClassificationMockDataLoaderFactory,
+            DataloaderType.RAY_DATA: ImageClassificationRayDataLoaderFactory,
+        }[self.benchmark_config.dataloader_type]
+
+        return data_factory_cls(self.benchmark_config.dataloader_config)
 
     def get_model(self) -> torch.nn.Module:
         return torchvision.models.resnet50(weights=None)
