@@ -47,6 +47,8 @@ stop = {
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0 * (args.num_agents or 1),
 }
 
+args.no_tune = True
+args.local_mode = True
 
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
