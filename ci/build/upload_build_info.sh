@@ -32,5 +32,5 @@ mkdir -p "$BAZEL_LOG_DIR"
 ./ci/build/get_build_info.py > "$BAZEL_LOG_DIR"/metadata.json
 
 pip install -U --ignore-installed -c "${RAY_DIR}/python/requirements_compiled.txt" \
-  docker aws_requests_auth boto3 urllib3 cryptography pyopenssl
+  aws_requests_auth requests
 python .buildkite/copy_files.py --destination logs --path "$BAZEL_LOG_DIR"
