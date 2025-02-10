@@ -48,6 +48,7 @@ class AggregateFn:
     Example:
         .. testcode::
 
+            import ray
             from ray.data.aggregate import AggregateFn
 
             # A simple aggregator that counts how many rows there are per group
