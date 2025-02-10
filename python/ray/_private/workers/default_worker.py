@@ -11,7 +11,6 @@ import ray._private.utils
 import ray.actor
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
-from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
 from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 
 parser = argparse.ArgumentParser(
