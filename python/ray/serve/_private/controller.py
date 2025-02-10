@@ -765,6 +765,17 @@ class ServeController:
 
         self.application_state_manager.save_checkpoint()
 
+    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+        """
+        Deploy a single application
+        (as deploy_applications(), but it only takes a single name and deployment args).
+        This primarily exists as a shim to avoid
+        changing Java code in https://github.com/ray-project/ray/pull/49168,
+        and could be removed if the Java code was refactored
+        to use the new bulk deploy_applications API.
+        """
+        self.deploy_applications({name: deployment_args_list})
+
     def apply_config(
         self,
         config: ServeDeploySchema,
