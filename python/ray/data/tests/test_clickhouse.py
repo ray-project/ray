@@ -619,7 +619,7 @@ class TestClickHouseDatasink:
         datasink._table_settings = table_settings
         with patch.object(datasink, "_table_exists", return_value=False), patch(
             "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
-        ) as mock_client:
+        ):
             arrays = []
             for field in schema:
                 if pa.types.is_integer(field.type):

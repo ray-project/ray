@@ -185,7 +185,10 @@ class ClickHouseDatasink(Datasink):
                 try:
                     result = local_client.query(check_query)
                     return bool(result and len(result.result_rows) > 0)
-                except:
+                except Exception as e:
+                    logger.warning(
+                        f"Could not verify if table {fq_table_name} exists: {e}"
+                    )
                     return False
 
             def _generate_create_table_sql(
