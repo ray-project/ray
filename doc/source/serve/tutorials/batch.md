@@ -80,11 +80,15 @@ the maximum possible batch size that Ray Serve executes at once.
 :start-after: __doc_deploy_begin__
 ```
 
-## Deploy the Deployment
+## Deploying the Serve Application
+
+### Option 1: Deploying using the Serve CLI
 Deploy the deployment by running the following through the terminal.
 ```console
 $ serve run tutorial_batch:generator
 ```
+
+
 
 Define a [Ray remote task](ray-remote-functions) to send queries in
 parallel. While Serve is running, open a separate terminal window, and run the 
@@ -119,6 +123,7 @@ print("Result returned:", results)
 You should get an output like the following. The first batch has a 
 batch size of 1, and the subsequent queries have a batch size of 4. Even though the client script issues each 
 query independently, Ray Serve evaluates them in batches.
+
 ```python
 (pid=...) Our input array has length: 1
 (pid=...) Our input array has length: 4
@@ -144,7 +149,7 @@ Result returned: [
 ]
 ```
 
-## Deploy the Deployment using Python API
+## Option 2:Deploying using the Python API
 If you want to evaluate a whole batch in Python, Ray Serve allows you to send
 queries with the Python API. A batch of queries can either come from the web server
 or the Python API.
