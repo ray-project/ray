@@ -11,7 +11,7 @@ steps:
     parallelism: 2
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild --test-env=ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT=1

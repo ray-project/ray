@@ -21,7 +21,7 @@ install_tools() {
     # Install packages
     apt-get update
     apt-get install -y \
-        awscli docker-ce-cli build-essential python-is-python3 python3-pip 
+        awscli docker-ce-cli build-essential python-is-python3 python3-pip
 }
 
 

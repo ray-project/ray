@@ -1,4 +1,4 @@
-group: anyscale ragbot 
+group: anyscale ragbot
 steps:
   - label: ":tapioca: anyscale ragbot: ray doc"
     key: anyscale_ragbot_doc_build

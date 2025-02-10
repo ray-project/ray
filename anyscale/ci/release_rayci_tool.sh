@@ -5,7 +5,7 @@ TOOL_NAME="$1"
 TOOL_BAZEL_TARGET="$2"
 TOOL_BIN_PATH=${TOOL_BAZEL_TARGET/:/\/}
 
-# build 
+# build
 bazel clean
 # the --incompatible_use_python_toolchains and --python_path are needed for compatibility with the hermetic_python rules
 bazel build "$TOOL_BAZEL_TARGET" --build_python_zip --enable_runfiles --incompatible_use_python_toolchains=false --python_path=python
