@@ -43,6 +43,7 @@ absl::flat_hash_map<int, RedirectionFileHandle> redirection_file_handles;
 std::once_flag stream_exit_once_flag;
 void SyncOnStreamRedirection() {
   for (auto &[stream_fd, handle] : redirection_file_handles) {
+    // `dup2` leaves two pipe write fd, have to close them both.
     RAY_CHECK_OK(Close(stream_fd));
     handle.Close();
   }
