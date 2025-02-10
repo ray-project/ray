@@ -83,7 +83,7 @@ py_test(
 
 py_test(
     name = "test_actor_pool_map_operator",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_actor_pool_map_operator.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
