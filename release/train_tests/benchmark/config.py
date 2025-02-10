@@ -26,7 +26,6 @@ class BenchmarkConfig(BaseModel):
     # FailureConfig
     max_failures: int = 0
 
-    # Model
     task: str = "image_classification"
 
     # Data
@@ -44,6 +43,7 @@ class BenchmarkConfig(BaseModel):
 
     # Validation
     validate_every_n_steps: int = -1
+    skip_validation_step: bool = False
     skip_validation_at_epoch_end: bool = False
 
     # Logging

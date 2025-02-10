@@ -151,17 +151,22 @@ class TrainLoopRunner:
             input_batch, labels = batch
 
             with self._metrics["validation/step"].timer():
-                with torch.no_grad():
-                    out = self.model(input_batch)
-                    loss = self.loss_fn(out, labels)
-                    total_loss += loss
-                    num_rows += len(labels)
-                    self._metrics["validation/rows_processed"].add(len(labels))
+                if not self.benchmark_config.skip_validation_step:
+                    total_loss += self.validate_step(input_batch, labels)
+
+            num_rows += len(labels)
+            self._metrics["validation/rows_processed"].add(len(labels))
 
             with self._metrics["validation/iter_batch"].timer():
                 batch = self.get_next_batch(self.val_dataloader)
 
         return {"validation/loss": total_loss.item() / num_rows}
+
+    def validate_step(self, input_batch, labels):
+        with torch.no_grad():
+            out = self.model(input_batch)
+            loss = self.loss_fn(out, labels)
+        return loss
 
     def report_checkpoint(self, metrics, checkpoint):
         ray.train.report(metrics, checkpoint=checkpoint)
