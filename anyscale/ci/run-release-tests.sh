@@ -44,7 +44,11 @@ gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
 pip3 install --user -U pip
 pip3 install --user -r release/requirements_buildkite.txt
 pip3 install --user --no-deps -e release/
-export RELEASE_QUEUE_DEFAULT="ondemand"
+if [[ "${BUILDKITE_PIPELINE_ID}" == "0194d305-a31d-40b8-9ffd-122388f1f14e" ]]; then
+    export RELEASE_QUEUE_DEFAULT="rayturbo_small_queue"
+else
+    export RELEASE_QUEUE_DEFAULT="ondemand"
+fi
 export RELEASE_AWS_BUCKET="runtime-release-test-artifacts"
 RAY_WANT_COMMIT_IN_IMAGE="$(cat .UPSTREAM)"
 export RAY_WANT_COMMIT_IN_IMAGE
