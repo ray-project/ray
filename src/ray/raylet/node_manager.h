@@ -43,8 +43,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
-namespace ray {
-namespace raylet {
+namespace ray::raylet {
 
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
@@ -225,6 +224,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
+
+  /// This is created for unit test purpose so that we don't need to create
+  /// a node manager in order to test HandleReportWorkerBacklog.
+  static void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
+                                        rpc::ReportWorkerBacklogReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback,
+                                        WorkerPoolInterface &worker_pool,
+                                        ILocalTaskManager &local_task_manager);
 
  private:
   // Removes the worker from node_manager's leased_workers_ map.
@@ -920,5 +927,4 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
 };
 
-}  // namespace raylet
-}  // namespace ray
+}  // namespace ray::raylet
