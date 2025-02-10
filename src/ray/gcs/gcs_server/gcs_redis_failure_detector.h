@@ -58,7 +58,7 @@ class GcsRedisFailureDetector {
   std::shared_ptr<RedisClient> redis_client_;
 
   /// The runner to run function periodically.
-  std::unique_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// A function is called when redis is detected to be unavailable.
   std::function<void()> callback_;

@@ -853,6 +853,7 @@ class Worker:
         object_refs: list,
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
+        skip_deserialization: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -869,8 +870,10 @@ class Worker:
                 Exception object, whether to return them as values in the
                 returned list. If False, then the first found exception will be
                 raised.
+            skip_deserialization: If true, only the buffer will be released and
+                the object associated with the buffer will not be deserailized.
         Returns:
-            list: List of deserialized objects
+            list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
         """
@@ -889,7 +892,6 @@ class Worker:
             Tuple[ray._raylet.Buffer, bytes]
         ] = self.core_worker.get_objects(
             object_refs,
-            self.current_task_id,
             timeout_ms,
         )
 
@@ -903,6 +905,9 @@ class Worker:
                     debugger_breakpoint = metadata_fields[1][
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
+        if skip_deserialization:
+            return None, debugger_breakpoint
+
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
@@ -1413,6 +1418,8 @@ def init(
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
+        _redis_username: Prevents external clients without the username
+            from connecting to Redis if provided.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -1471,6 +1478,9 @@ def init(
         "_driver_object_store_memory", None
     )
     _memory: Optional[int] = kwargs.pop("_memory", None)
+    _redis_username: str = kwargs.pop(
+        "_redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+    )
     _redis_password: str = kwargs.pop(
         "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
     )
@@ -1697,6 +1707,7 @@ def init(
             labels=labels,
             num_redis_shards=None,
             redis_max_clients=None,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
             huge_pages=None,
@@ -1774,6 +1785,7 @@ def init(
             node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
@@ -2262,6 +2274,7 @@ def connect(
     entrypoint: str = "",
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
+    debug_source: str = "",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2289,6 +2302,7 @@ def connect(
         worker_launched_time_ms: The time when the worker process for this worker
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
+        debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2356,8 +2370,6 @@ def connect(
             )
 
     driver_name = ""
-    log_stdout_file_path = ""
-    log_stderr_file_path = ""
     interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
@@ -2462,8 +2474,6 @@ def connect(
         node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
-        log_stdout_file_path,
-        log_stderr_file_path,
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
@@ -2473,10 +2483,8 @@ def connect(
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
+        debug_source,
     )
-
-    # Notify raylet that the core worker is ready.
-    worker.core_worker.notify_raylet()
 
     if mode == SCRIPT_MODE:
         worker_id = worker.worker_id
@@ -2995,7 +3003,6 @@ def wait(
             ray_waitables,
             num_returns,
             timeout_milliseconds,
-            worker.current_task_id,
             fetch_local,
         )
         return ready_ids, remaining_ids

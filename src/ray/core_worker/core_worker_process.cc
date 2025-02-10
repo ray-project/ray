@@ -28,7 +28,7 @@ std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
-  core_worker_process.reset(new CoreWorkerProcessImpl(options));
+  core_worker_process = std::make_unique<CoreWorkerProcessImpl>(options);
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -79,13 +79,20 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
-    std::stringstream app_name;
-    app_name << LanguageString(options_.language) << "-core-"
-             << WorkerTypeString(options_.worker_type);
+    std::stringstream app_name_ss;
+    app_name_ss << LanguageString(options_.language) << "-core-"
+                << WorkerTypeString(options_.worker_type);
     if (!worker_id_.IsNil()) {
-      app_name << "-" << worker_id_;
+      app_name_ss << "-" << worker_id_;
     }
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
+    const std::string app_name = app_name_ss.str();
+    const std::string log_filepath =
+        RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+    RayLog::StartRayLog(app_name,
+                        RayLogLevel::INFO,
+                        log_filepath,
+                        ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+                        ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols
@@ -130,8 +137,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   {
     // Initialize global worker instance.
     auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_ = worker;
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get() = worker;
   }
 
   // Initialize event framework.
@@ -248,8 +255,8 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   core_worker->RunTaskExecutionLoop();
   RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
   {
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_.reset();
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get().reset();
   }
 }
 
@@ -262,19 +269,19 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
   global_worker->Shutdown();
   {
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_.reset();
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get().reset();
   }
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  return core_worker_;
+  const auto read_locked = core_worker_.LockForRead();
+  return read_locked.Get();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  if (!core_worker_) {
+  const auto read_locked = core_worker_.LockForRead();
+  if (!read_locked.Get()) {
     // This could only happen when the worker has already been shutdown.
     // In this case, we should exit without crashing.
     // TODO (scv119): A better solution could be returning error code
@@ -290,8 +297,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
     }
     QuickExit();
   }
-  RAY_CHECK(core_worker_) << "core_worker_ must not be NULL";
-  return core_worker_;
+  RAY_CHECK(read_locked.Get()) << "core_worker_ must not be NULL";
+  return read_locked.Get();
 }
 
 }  // namespace core

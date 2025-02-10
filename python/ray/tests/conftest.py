@@ -14,7 +14,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
-from typing import List, Tuple
+from typing import List, Optional
 from unittest import mock
 import psutil
 import pytest
@@ -44,6 +44,9 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
+# TODO (mengjin) Improve the logging in the conftest files so that the logger can log
+# information in stdout as well as stderr and replace the print statements in the test
+# files
 logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
@@ -57,7 +60,9 @@ def pre_envs(monkeypatch):
     yield
 
 
-def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
+def wait_for_redis_to_start(
+    redis_ip_address: str, redis_port: bool, password=None, username=None
+):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -66,7 +71,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        password: The password of the redis server.
+        username: The username of the Redis server.
+        password: The password of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -74,7 +80,7 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     import redis
 
     redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password
+        host=redis_ip_address, port=redis_port, username=username, password=password
     )
     # Wait for the Redis server to start.
     num_retries = START_REDIS_WAIT_RETRIES
@@ -174,6 +180,49 @@ def is_process_listen_to_port(pid, port):
     return False
 
 
+def find_user_process_by_port_and_status(
+    port: int, statuses_to_check: Optional[list[str]]
+):
+    """
+    Test helper function to find the processes that have a connection to a provided
+    port and with statuses in the provided list.
+
+    Args:
+        port: The port to check.
+        statuses_to_check: The list of statuses to check. If None, the function will not
+            check the status of the connection.
+
+    Returns:
+        The first process that have a connection
+    """
+    # Here the function finds all the processes and checks if each of them is with the
+    # provided port and status. This is inefficient comparing to leveraging
+    # psutil.net_connections to directly filter the processes by port. However, the
+    # method is chosen because the net_connections method will need root access to run
+    # on macOS: https://psutil.readthedocs.io/en/latest/#psutil.net_connections.
+    # Therefore, the current solution is chosen to make the function work for all
+    processes = []
+    for pid in psutil.pids():
+        process = psutil.Process(pid)
+        try:
+            conns = process.connections()
+            for conn in conns:
+                if conn.laddr.port == port:
+                    if statuses_to_check is None or conn.status in statuses_to_check:
+                        processes.append(process)
+        except (psutil.AccessDenied, psutil.ZombieProcess, psutil.NoSuchProcess):
+            continue
+
+    if not processes:
+        print(
+            f"Failed to find processes that have connections to the port {port} and "
+            f"with connection status in {statuses_to_check}.  It could "
+            "be because the process needs higher privilege to access its "
+            "information or the port is not listened by any processes."
+        )
+    return processes
+
+
 def redis_alive(port, enable_tls):
     try:
         # If there is no redis libs installed, skip the check.
@@ -236,11 +285,6 @@ def start_redis(db_dir):
     retry_num = 0
     while True:
         is_need_restart = False
-        # Setup external Redis and env var for initialization.
-        redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
-        redis_ports = list(
-            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
-        )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
@@ -249,22 +293,50 @@ def start_redis(db_dir):
         while len(redis_ports) != redis_replicas():
             temp_dir = ray._private.utils.get_ray_temp_dir()
             port, free_port = find_available_port(49159, 55535, 2)
-            node_id, proc = start_redis_instance(
-                temp_dir,
-                port,
-                enable_tls=enable_tls,
-                replica_of=leader_port,
-                leader_id=leader_id,
-                db_dir=db_dir,
-                free_port=free_port,
-            )
             try:
+                node_id = None
+                proc = None
+                node_id, proc = start_redis_instance(
+                    temp_dir,
+                    port,
+                    enable_tls=enable_tls,
+                    replica_of=leader_port,
+                    leader_id=leader_id,
+                    db_dir=db_dir,
+                    free_port=free_port,
+                )
                 wait_for_condition(
                     redis_alive, 3, 100, port=port, enable_tls=enable_tls
                 )
             except Exception as e:
-                print(e)
+                print(f"Fails to start redis on port {port} with exception {e}")
+                if (
+                    proc is not None
+                    and proc.process is not None
+                    and proc.process.poll() is None
+                ):
+                    proc.process.kill()
+
+                # TODO (mengjin) Here we added more debug logs here to help further
+                # troubleshoot the potential race condition where the available port
+                # we found above is taken by another process and the Redis server
+                # cannot be started. Here we won't fail the test but we can check the
+                # output log of the test to further investigate the issue if needed.
+                if "Redis process exited unexpectedly" in str(e):
+                    # Output the process that listens to the port
+                    processes = find_user_process_by_port_and_status(
+                        port, [psutil.CONN_LISTEN]
+                    )
+
+                    for process in processes:
+                        print(
+                            f"Another process({process.pid}) with command"
+                            f"\"{' '.join(process.args)}\" is listening on the port"
+                            f"{port}"
+                        )
+
                 continue
+
             redis_ports.append(port)
             if leader_port is None:
                 leader_port = port
@@ -477,6 +549,13 @@ def ray_start_regular_with_external_redis(request, external_redis):
 def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_regular_shared_2_cpus(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
         yield res
 
 
@@ -1126,7 +1205,6 @@ def append_short_test_summary(rep):
         # ":" is not legal in filenames in windows
         test_name = test_name.replace(":", "$")
 
-    header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
 
     if rep.passed and os.path.exists(summary_file):
@@ -1147,13 +1225,6 @@ def append_short_test_summary(rep):
     if not hasattr(rep.longrepr, "chain"):
         return
 
-    if not os.path.exists(header_file):
-        with open(header_file, "wt") as fp:
-            test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
-            job_id = os.environ.get("BUILDKITE_JOB_ID")
-
-            fp.write(f"### Pytest failures for: [{test_label}](#{job_id})\n\n")
-
     # Use `wt` here to overwrite so we only have one result per test (exclude retries)
     with open(summary_file, "wt") as fp:
         fp.write(_get_markdown_annotation(rep))
@@ -1172,12 +1243,10 @@ def _get_markdown_annotation(rep) -> str:
     markdown += "<details>\n"
     markdown += f"<summary>{short_message}</summary>\n\n"
 
-    # Add link to test definition
+    # Add location to the test definition
     test_file, test_lineno, _test_node = rep.location
-    test_path, test_url = _get_repo_github_path_and_link(
-        os.path.abspath(test_file), test_lineno
-    )
-    markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n\n"
+    test_path = os.path.abspath(test_file)
+    markdown += f"Test location: {test_path}:{test_lineno}\n\n"
 
     # Print main traceback
     markdown += "##### Traceback\n\n"
@@ -1185,27 +1254,20 @@ def _get_markdown_annotation(rep) -> str:
     markdown += str(main_tb)
     markdown += "\n```\n\n"
 
-    # Print link to test definition in github
-    path, url = _get_repo_github_path_and_link(main_loc.path, main_loc.lineno)
-    markdown += f"[{path}:{main_loc.lineno}]({url})\n\n"
+    # Print test definition location
+    markdown += f"{main_loc.path}:{main_loc.lineno}\n\n"
 
     # If this is a longer exception chain, users can expand the full traceback
     if len(rep.longrepr.chain) > 1:
         markdown += "<details><summary>Full traceback</summary>\n\n"
 
-        # Here we just print each traceback and the link to the respective
-        # lines in GutHub
+        # Here we just print each traceback and the respective lines.
         for tb, loc, _ in rep.longrepr.chain:
-            if loc:
-                path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
-                github_link = f"[{path}:{loc.lineno}]({url})\n\n"
-            else:
-                github_link = ""
-
             markdown += "```\n"
             markdown += str(tb)
             markdown += "\n```\n\n"
-            markdown += github_link
+            if loc:
+                markdown += f"{loc.path}:{loc.lineno}\n\n"
 
         markdown += "</details>\n"
 
@@ -1226,19 +1288,6 @@ def _get_pip_packages() -> List[str]:
         return list(freeze.freeze())
     except Exception:
         return ["invalid"]
-
-
-def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
-    base_url = "https://github.com/ray-project/ray/blob/{commit}/{path}#L{lineno}"
-
-    commit = os.environ.get("BUILDKITE_COMMIT")
-
-    if not commit:
-        return file, ""
-
-    path = file.split("com_github_ray_project_ray/")[-1]
-
-    return path, base_url.format(commit=commit, path=path, lineno=lineno)
 
 
 def create_ray_logs_for_failed_test(rep):

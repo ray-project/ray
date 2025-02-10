@@ -1,22 +1,38 @@
-from typing import Sequence
+import asyncio
+from typing import Callable, List, Optional, Sequence, Tuple
+from unittest.mock import Mock
 
 import grpc
 from grpc.aio._server import Server
 
-from ray.serve._private.constants import SERVE_GRPC_OPTIONS
+from ray.serve.config import gRPCOptions
+from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
+from ray.serve._private.constants import DEFAULT_GRPC_SERVER_OPTIONS
 
 
-class gRPCServer(Server):
-    """Custom gRPC server to override gRPC method methods.
+class gRPCGenericServer(Server):
+    """Custom gRPC server that will override all service method handlers.
 
     Original implementation see: https://github.com/grpc/grpc/blob/
         60c1701f87cacf359aa1ad785728549eeef1a4b0/src/python/grpcio/grpc/aio/_server.py
     """
 
-    def __init__(self, service_handler_factory, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.service_handler_factory = service_handler_factory
+    def __init__(
+        self,
+        service_handler_factory: Callable,
+        *,
+        extra_options: Optional[List[Tuple[str, str]]] = None,
+    ):
+        super().__init__(
+            thread_pool=None,
+            generic_handlers=(),
+            interceptors=(),
+            maximum_concurrent_rpcs=None,
+            compression=None,
+            options=DEFAULT_GRPC_SERVER_OPTIONS + (extra_options or []),
+        )
         self.generic_rpc_handlers = []
+        self.service_handler_factory = service_handler_factory
 
     def add_generic_rpc_handlers(
         self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
@@ -51,33 +67,33 @@ class gRPCServer(Server):
         super().add_generic_rpc_handlers(generic_rpc_handlers)
 
 
-def create_serve_grpc_server(service_handler_factory):
-    """Custom function to create Serve's gRPC server.
+async def start_grpc_server(
+    service_handler_factory: Callable,
+    grpc_options: gRPCOptions,
+    *,
+    event_loop: asyncio.AbstractEventLoop,
+    enable_so_reuseport: bool = False,
+) -> asyncio.Task:
+    """Start a gRPC server that handles requests with the service handler factory.
 
-    This function works similar to `grpc.server()`, but it creates a Serve defined
-    gRPC server in order to override the `unary_unary` and `unary_stream` methods
-
-    See: https://grpc.github.io/grpc/python/grpc.html#grpc.server
+    Returns a task that blocks until the server exits (e.g., due to error).
     """
-    return gRPCServer(
-        thread_pool=None,
-        generic_handlers=(),
-        interceptors=(),
-        options=SERVE_GRPC_OPTIONS,
-        maximum_concurrent_rpcs=None,
-        compression=None,
-        service_handler_factory=service_handler_factory,
+    from ray.serve._private.default_impl import add_grpc_address
+
+    server = gRPCGenericServer(
+        service_handler_factory,
+        extra_options=[("grpc.so_reuseport", str(int(enable_so_reuseport)))],
     )
+    add_grpc_address(server, f"[::]:{grpc_options.port}")
 
+    # Add built-in gRPC service and user-defined services to the server.
+    # We pass a mock servicer because the actual implementation will be overwritten
+    # in the gRPCGenericServer implementation.
+    mock_servicer = Mock()
+    for servicer_fn in [
+        add_RayServeAPIServiceServicer_to_server
+    ] + grpc_options.grpc_servicer_func_callable:
+        servicer_fn(mock_servicer, server)
 
-class DummyServicer:
-    """Dummy servicer for gRPC server to call on.
-
-    This is a dummy class that just pass through when calling on any method.
-    User defined servicer function will attempt to add the method on this class to the
-    gRPC server, but our gRPC server will override the caller to call gRPCProxy.
-    """
-
-    def __getattr__(self, attr):
-        # No-op pass through. Just need this to act as the callable.
-        pass
+    await server.start()
+    return event_loop.create_task(server.wait_for_termination())

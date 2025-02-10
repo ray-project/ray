@@ -19,12 +19,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t object_timeout_milliseconds() const
 
-        int64_t get_timeout_milliseconds() const
-
-        int64_t worker_get_request_size() const
-
-        int64_t worker_fetch_request_size() const
-
         int64_t raylet_client_num_connect_attempts() const
 
         int64_t raylet_client_connect_timeout_milliseconds() const
@@ -100,3 +94,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int gcs_rpc_server_reconnect_timeout_s() const
 
         int maximum_gcs_destroyed_actor_cached_count() const
+
+        c_bool record_task_actor_creation_sites() const

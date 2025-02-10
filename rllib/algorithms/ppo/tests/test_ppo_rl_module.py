@@ -7,8 +7,8 @@ import tree
 
 import ray
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
+from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+    DefaultPPOTorchRLModule,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -32,15 +32,6 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
     loss = actor_loss + critic_loss
 
     return loss
-
-
-def _get_ppo_module(env, lstm, observation_space):
-    return PPOTorchRLModule(
-        observation_space=observation_space,
-        action_space=env.action_space,
-        model_config=DefaultModelConfig(use_lstm=lstm),
-        catalog_class=PPOCatalog,
-    )
 
 
 def _get_input_batch_from_obs(obs, lstm):
@@ -75,11 +66,13 @@ class TestPPO(unittest.TestCase):
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
 
-            module = _get_ppo_module(
-                env=env,
-                lstm=lstm,
+            module = DefaultPPOTorchRLModule(
                 observation_space=preprocessor.observation_space,
+                action_space=env.action_space,
+                model_config=DefaultModelConfig(use_lstm=lstm),
+                catalog_class=PPOCatalog,
             )
+
             obs, _ = env.reset()
             obs = preprocessor.transform(obs)
 
@@ -109,10 +102,11 @@ class TestPPO(unittest.TestCase):
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
 
-            module = _get_ppo_module(
-                env=env,
-                lstm=lstm,
+            module = DefaultPPOTorchRLModule(
                 observation_space=preprocessor.observation_space,
+                action_space=env.action_space,
+                model_config=DefaultModelConfig(use_lstm=lstm),
+                catalog_class=PPOCatalog,
             )
 
             # collect a batch of data

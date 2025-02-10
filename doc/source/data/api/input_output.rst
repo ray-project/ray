@@ -64,6 +64,15 @@ Text
 
    read_text
 
+Audio
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_audio
+
 Avro
 ----
 
@@ -212,6 +221,16 @@ Lance
    :toctree: doc/
 
    read_lance
+   Dataset.write_lance
+
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
 
 Dask
 ----
@@ -280,6 +299,15 @@ TensorFlow
 
    from_tf
 
+Video
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_videos
+
 WebDataset
 ----------
 
@@ -315,6 +343,8 @@ Datasink API
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
+   datasource.WriteResult
+   datasource.WriteReturnType
 
 Partitioning API
 ----------------
@@ -342,3 +372,12 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+Shuffling API
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig

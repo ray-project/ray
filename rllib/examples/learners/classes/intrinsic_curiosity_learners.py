@@ -3,9 +3,7 @@ from typing import Any, List, Optional
 import gymnasium as gym
 import torch
 
-from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
-    DQNRainbowTorchLearner,
-)
+from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
@@ -23,7 +21,7 @@ from ray.rllib.utils.typing import EpisodeType
 ICM_MODULE_ID = "_intrinsic_curiosity_model"
 
 
-class DQNTorchLearnerWithCuriosity(DQNRainbowTorchLearner):
+class DQNTorchLearnerWithCuriosity(DQNTorchLearner):
     def build(self) -> None:
         super().build()
         add_intrinsic_curiosity_connectors(self)

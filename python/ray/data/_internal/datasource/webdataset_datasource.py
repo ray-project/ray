@@ -3,12 +3,12 @@
 
 import fnmatch
 import io
+import json
 import re
 import tarfile
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-import ray
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -163,7 +163,7 @@ def _group_by_keys(
         if suffix in current_sample:
             raise ValueError(
                 f"{fname}: duplicate file name in tar file "
-                + f"{suffix} {current_sample.keys()}"
+                + f"{suffix} {current_sample.keys()}, tar is {meta['__url__']}"
             )
         if suffixes is None or _check_suffix(suffix, suffixes):
             current_sample[suffix] = value
@@ -201,8 +201,6 @@ def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] 
             else:
                 sample[key] = np.asarray(PIL.Image.open(io.BytesIO(value)))
         elif extension == "json":
-            import json
-
             sample[key] = json.loads(value)
         elif extension == "npy":
             import numpy as np
@@ -259,8 +257,6 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
             )
             sample[key] = stream.getvalue()
         elif extension == "json":
-            import json
-
             sample[key] = json.dumps(value).encode("utf-8")
         elif extension == "npy":
             import numpy as np
@@ -314,6 +310,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         filerename: Optional[Union[bool, callable, list]] = None,
         suffixes: Optional[Union[bool, callable, list]] = None,
         verbose_open: bool = False,
+        expand_json: bool = False,
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -323,6 +320,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         self.filerename = filerename
         self.suffixes = suffixes
         self.verbose_open = verbose_open
+        self.expand_json = expand_json
 
     def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
@@ -342,6 +340,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         Yields:
             List[Dict[str, Any]]: List of sample (list of length 1).
         """
+
         import pandas as pd
 
         def get_tar_file_iterator():
@@ -353,13 +352,34 @@ class WebDatasetDatasource(FileBasedDatasource):
             )
 
         # S3 can raise transient errors during iteration
-        ctx = ray.data.DataContext.get_current()
         files = iterate_with_retry(
-            get_tar_file_iterator, "iterate tar file", match=ctx.retried_io_errors
+            get_tar_file_iterator,
+            "iterate tar file",
+            match=self._data_context.retried_io_errors,
         )
 
         samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)
         for sample in samples:
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=_default_decoder)
-            yield pd.DataFrame({k: [v] for k, v in sample.items()})
+            if self.expand_json:
+                if isinstance(sample["json"], bytes):
+                    parsed_json = json.loads(sample["json"].decode("utf-8"))
+                elif isinstance(sample["json"], str):
+                    parsed_json = json.loads(sample["json"])
+                elif isinstance(sample["json"], dict):
+                    parsed_json = sample["json"]
+                else:
+                    raise TypeError(
+                        f"Unsupported data type" f" {type(sample['json'])} for sample"
+                    )
+                for k, v in parsed_json.items():
+                    if k not in sample:
+                        sample[k] = []
+                    sample[k].append(v)
+            yield pd.DataFrame(
+                {
+                    k: v if isinstance(v, list) and len(v) == 1 else [v]
+                    for k, v in sample.items()
+                }
+            )

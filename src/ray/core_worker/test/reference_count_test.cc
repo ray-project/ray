@@ -823,12 +823,12 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
 
   auto publisher = std::make_shared<pubsub::MockPublisher>();
   auto subscriber = std::make_shared<pubsub::MockSubscriber>();
-  auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+  auto rc = std::make_shared<ReferenceCounter>(
       rpc::Address(), publisher.get(), subscriber.get(), [](const NodeID &node_id) {
         return true;
-      }));
+      });
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService(), rc);
+  CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));

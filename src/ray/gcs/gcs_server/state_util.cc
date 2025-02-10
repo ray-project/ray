@@ -14,15 +14,13 @@
 
 #include "ray/gcs/gcs_server/state_util.h"
 
-#include <unordered_map>
-
 namespace ray {
 namespace gcs {
 
 void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                       std::unordered_map<google::protobuf::Map<std::string, double>,
-                                          rpc::ResourceDemand> *aggregate_load) {
-  auto load = resources_data.resource_load_by_shape();
+                       absl::flat_hash_map<google::protobuf::Map<std::string, double>,
+                                           rpc::ResourceDemand> *aggregate_load) {
+  const auto &load = resources_data.resource_load_by_shape();
   for (const auto &demand : load.resource_demands()) {
     auto &aggregate_demand = (*aggregate_load)[demand.shape()];
     aggregate_demand.set_num_ready_requests_queued(
