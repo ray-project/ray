@@ -202,6 +202,8 @@ class TrainLoopRunner:
         self._train_epoch_idx = train_state["epoch"]
         self._train_batch_idx = train_state["batch_idx"]
 
+        self._metrics = torch.load(os.path.join(local_dir, "metrics.pt"))
+
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
                 f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
@@ -217,6 +219,7 @@ class TrainLoopRunner:
         torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
         torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
         torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
+        torch.save(self._metrics.copy(), os.path.join(local_dir, "metrics.pt"))
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
