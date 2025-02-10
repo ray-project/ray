@@ -48,7 +48,7 @@ std::string ExtractKey(const std::string &key) {
 
 StoreClientInternalKV::StoreClientInternalKV(std::unique_ptr<StoreClient> store_client)
     : delegate_(std::move(store_client)),
-      table_name_(TablePrefix_Name(TablePrefix::KV)) {}
+      table_name_(TablePrefix_Name(rpc::TablePrefix::KV)) {}
 
 void StoreClientInternalKV::Get(const std::string &ns,
                                 const std::string &key,
