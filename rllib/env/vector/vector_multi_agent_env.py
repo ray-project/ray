@@ -24,6 +24,10 @@ class VectorMultiAgentEnv:
     _np_random: Optional[np.random.Generator] = None
     _np_random_seed: Optional[int] = None
 
+    # @OldAPIStack, use `observation_spaces` and `action_spaces`, instead.
+    observation_space: Optional[gym.Space] = None
+    action_space: Optional[gym.Space] = None
+
     # TODO (simon): Add docstrings, when final design is clear.
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None

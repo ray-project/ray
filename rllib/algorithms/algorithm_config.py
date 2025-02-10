@@ -996,16 +996,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = EnvToModulePipeline(
@@ -1078,16 +1078,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = ModuleToEnvPipeline(

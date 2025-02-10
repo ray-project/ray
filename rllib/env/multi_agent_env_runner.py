@@ -43,6 +43,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    SAMPLE_TIMER,
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
@@ -363,6 +364,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         while (
             (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
         ):
+            if any(
+                any(a_eps.is_done for a_eps in eps.agent_episodes.values())
+                for eps in episodes
+            ):
+                print("Start")
             # Act randomly.
             if random_actions:
                 # Only act (randomly) for those agents that had an observation.
@@ -428,9 +434,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             observations, rewards, terminateds, truncateds, infos = results
 
             call_on_episode_start = set()
+            extra_model_outputs = defaultdict(dict)
             for env_index in range(self.num_envs):
-                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-                extra_model_output[WEIGHTS_SEQ_NO] = self._weights_seq_no
+
+                for col, ma_dict_list in to_env.items():
+                    ma_dict = ma_dict_list[env_index]
+                    for agent_id, val in ma_dict.items():
+                        extra_model_outputs[agent_id][col] = val
+                        extra_model_outputs[agent_id][
+                            WEIGHTS_SEQ_NO
+                        ] = self._weights_seq_no
+                extra_model_outputs = dict(extra_model_outputs)
 
                 # Episode has no data in it yet -> Was just reset and needs to be called
                 # with its `add_env_reset()` method.
@@ -445,15 +459,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 else:
                     # Only increase ts when we actually stepped (not reset'd as a reset
                     # does not count as a timestep).
-                    ts += 1
+                    ts += self._increase_sampled_metrics(
+                        1, observations[env_index], episodes[env_index]
+                    )
                     episodes[env_index].add_env_step(
-                        observation=observations[env_index],
-                        action=actions[env_index],
-                        reward=rewards[env_index],
+                        observations=observations[env_index],
+                        actions=actions[env_index],
+                        rewards=rewards[env_index],
                         infos=infos[env_index],
-                        terminated=terminateds[env_index],
-                        truncated=truncateds[env_index],
-                        extra_model_outputs=extra_model_output,
+                        terminateds=terminateds[env_index],
+                        truncateds=truncateds[env_index],
+                        extra_model_outputs=extra_model_outputs,
                     )
 
             # Env-to-module connector pass (cache results as we will do the RLModule
@@ -504,9 +520,24 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                     # Create a new episode object with no data in it and execute
                     # `on_episode_created` callback (before the `env.reset()` call).
-                    episodes[env_index] = SingleAgentEpisode(
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
+                    episodes[env_index] = MultiAgentEpisode(
+                        observation_space={
+                            aid: self.env.envs[
+                                env_index
+                            ].unwrapped.get_observation_space(aid)
+                            for aid in self.env.envs[
+                                env_index
+                            ].unwrapped.possible_agents
+                        },
+                        action_space={
+                            aid: self.env.envs[env_index].unwrapped.get_action_space(
+                                aid
+                            )
+                            for aid in self.env.envs[
+                                env_index
+                            ].unwrapped.possible_agents
+                        },
+                        agent_to_module_mapping_fn=self.config.policy_mapping_fn,
                     )
                     self._make_on_episode_callback(
                         "on_episode_created",
@@ -532,10 +563,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             for eps in self._episodes:
                 # Just started Episodes do not have to be returned. There is no data
                 # in them anyway.
-                if eps.t == 0:
+                if eps.env_t == 0:
                     continue
                 eps.validate()
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
+
+                self._prune_zero_len_sa_episodes(eps)
 
                 # Numpy'ize the episode.
                 if self.config.episodes_to_numpy:
@@ -548,7 +581,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
 
-        self._increase_sampled_metrics(ts, len(done_episodes_to_return))
+        # self._increase_sampled_metrics(ts, len(done_episodes_to_return))
 
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
@@ -568,7 +601,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Set the initial obs and infos in the episodes.
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
-                observation=observations[env_index],
+                observations=observations[env_index],
                 infos=infos[env_index],
             )
 
@@ -826,6 +859,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Continue collecting into the cut Episode chunk.
         self._episode = ongoing_episode_continuation
+
+        self._increase_sampled_metrics()
 
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
@@ -1332,20 +1367,22 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             EpisodeID, List[MultiAgentEpisode]
         ] = defaultdict(list)
 
-    def _new_episode(self):
-        return MultiAgentEpisode(
+    def _new_episode(self, env_index, episodes=None):
+        episodes = episodes if episodes is not None else self._episodes
+        episodes[env_index] = MultiAgentEpisode(
             observation_space={
-                aid: self.env.unwrapped.get_observation_space(aid)
-                for aid in self.env.unwrapped.possible_agents
+                aid: self.env.envs[env_index].unwrapped.get_observation_space(aid)
+                for aid in self.env.envs[env_index].unwrapped.possible_agents
             },
             action_space={
-                aid: self.env.unwrapped.get_action_space(aid)
-                for aid in self.env.unwrapped.possible_agents
+                aid: self.env.envs[env_index].unwrapped.get_action_space(aid)
+                for aid in self.env.envs[env_index].unwrapped.possible_agents
             },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
+        self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, episode=None):
+    def _make_on_episode_callback(self, which: str, idx: int, episode=None):
         episode = episode if episode is not None else self._episode
         make_callback(
             which,
@@ -1357,7 +1394,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 metrics_logger=self.metrics,
                 env=self.env.unwrapped,
                 rl_module=self.module,
-                env_index=0,
+                env_index=idx,
             ),
         )
 

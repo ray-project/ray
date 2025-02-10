@@ -83,6 +83,12 @@ class UnBatchToIndividualItems(ConnectorV2):
                         # AgentIDs whose SingleAgentEpisodes are already done, should
                         # not send any data back to the EnvRunner for further
                         # processing.
+                        try:
+                            print(episodes[0])
+                            print(episodes[0].agent_episodes)
+                        except:
+                            print(f"Something is wrong: {episodes}")
+
                         if episodes[0].agent_episodes[agent_id].is_done:
                             continue
 

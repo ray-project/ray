@@ -78,9 +78,9 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
                 reset_mask
             ), f"`options['reset_mask': mask]` must contain a boolean array, got reset_mask={reset_mask}"
 
-            self._terminations[reset_mask] = False
-            self._truncations[reset_mask] = False
-            self._autoreset_envs[reset_mask] = False
+            # self._terminations[reset_mask] = False
+            # self._truncations[reset_mask] = False
+            # self._autoreset_envs[reset_mask] = False
 
             for i, (env, single_seed, env_mask) in enumerate(
                 zip(self.envs, seed, reset_mask)
@@ -93,8 +93,8 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
 
         else:
 
-            self._terminations = np.zeros((self.num_envs,), dtype=np.bool_)
-            self._truncations = np.zeros((self.num_envs,), dtype=np.bool_)
+            # self._terminations = np.zeros((self.num_envs,), dtype=np.bool_)
+            # self._truncations = np.zeros((self.num_envs,), dtype=np.bool_)
             self._autoreset_envs = np.zeros((self.num_envs,), dtype=np.bool_)
 
             for i, (env, single_seed) in enumerate(zip(self.envs, seed)):
@@ -117,21 +117,24 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
                 if self._autoreset_envs[i]:
                     self._observations[i], self._infos[i] = self.envs[i].reset()
 
-                    self._rewards[i] = 0.0
-                    self._terminations[i] = False
-                    self._truncations[i] = False
+                    # self._rewards[i] = {aid: 0.0 for aid in action}
+                    # self._terminations[i] = {}
+                    # self._truncations[i] = False
                 else:
                     (
                         self._observations[i],
                         self._rewards[i],
                         self._terminations[i],
                         self._truncations[i],
-                        self._infos[0],
+                        self._infos[i],
                     ) = self.envs[i].step(action)
             else:
                 raise ValueError(f"Unexpected autoreset mode: {self.autoreset_mode}")
 
-        self._autoreset_envs = np.logical_or(self._terminations, self._truncations)
+        self._autoreset_envs = np.logical_or(
+            np.array([t["__all__"] for t in self._terminations]),
+            np.array([t["__all__"] for t in self._truncations]),
+        )
 
         return (
             deepcopy(self._observations) if self.copy else self._observations,
