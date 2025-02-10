@@ -269,6 +269,9 @@ def main():
         run_config=ray.train.RunConfig(
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
             name=date_str(include_ms=True),
+            failure_config=ray.train.FailureConfig(
+                max_failures=benchmark_config.max_failures
+            ),
         ),
         datasets=factory.get_ray_datasets(),
     )

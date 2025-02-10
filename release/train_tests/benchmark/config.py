@@ -23,6 +23,9 @@ class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
 
+    # FailureConfig
+    max_failures: int = 0
+
     # Model
     task: str = "image_classification"
 
@@ -34,6 +37,9 @@ class BenchmarkConfig(BaseModel):
 
     # Training
     num_epochs: int = 1
+    # Maximum number of steps to train for each epoch.
+    # Set this to -1 to train on the entire dataset.
+    max_steps_per_epoch: int = -1
     skip_train_step: bool = False
 
     # Validation
