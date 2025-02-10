@@ -349,9 +349,7 @@ class ReporterAgent(
             # psutil does not give a meaningful logical cpu count when in a K8s pod, or
             # in a container in general.
             # Use ray._private.utils for this instead.
-            logical_cpu_count = utils.get_num_cpus(
-                override_docker_cpu_warning=True
-            )
+            logical_cpu_count = utils.get_num_cpus(override_docker_cpu_warning=True)
             # (Override the docker warning to avoid dashboard log spam.)
 
             # The dashboard expects a physical CPU count as well.
