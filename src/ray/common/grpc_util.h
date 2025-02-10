@@ -155,6 +155,23 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
+/// Debug string for a google protobuf map.
+template <class K, class V>
+inline std::string DebugString(const ::google::protobuf::Map<K, V> &pb_map) {
+  std::stringstream ss;
+  ss << "{";
+  bool first = true;
+  for (const auto &pair : pb_map) {
+    if (!first) {
+      ss << ",";
+      first = false;
+    }
+    ss << pair.first << ":" << pair.second;
+  }
+  ss << "}";
+  return ss.str();
+}
+
 inline grpc::ChannelArguments CreateDefaultChannelArguments() {
   grpc::ChannelArguments arguments;
   if (::RayConfig::instance().grpc_client_keepalive_time_ms() > 0) {

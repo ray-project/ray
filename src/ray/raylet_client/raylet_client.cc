@@ -520,6 +520,34 @@ void RayletClient::GetResourceLoad(
   grpc_client_->GetResourceLoad(request, callback);
 }
 
+void RayletClient::CancelTasksWithResourceShapes(
+    const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+    const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) {
+  rpc::CancelTasksWithResourceShapesRequest request;
+  std::stringstream resource_shapes_str;
+  resource_shapes_str << "[";
+
+  bool first = true;
+  for (const auto &resource_shape : resource_shapes) {
+    if (!first) {
+      resource_shapes_str << ",";
+    }
+    rpc::CancelTasksWithResourceShapesRequest::ResourceShape *resource_shape_proto =
+        request.add_resource_shapes();
+    resource_shape_proto->mutable_resource_shape()->insert(resource_shape.begin(),
+                                                           resource_shape.end());
+    resource_shapes_str << DebugString(resource_shape);
+  }
+
+  resource_shapes_str << "]";
+  request.set_failure_type(
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+  request.set_failure_message(
+      "Canceling tasks with resource shapes " + resource_shapes_str.str() +
+      "because there are not enough resources for the " + "tasks on the whole cluster.");
+  grpc_client_->CancelTasksWithResourceShapes(request, callback);
+}
+
 void RayletClient::NotifyGCSRestart(
     const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
   rpc::NotifyGCSRestartRequest request;
