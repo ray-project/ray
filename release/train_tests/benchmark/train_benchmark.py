@@ -1,4 +1,3 @@
-import argparse
 import collections
 import os
 import pprint
@@ -14,7 +13,7 @@ from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.util import date_str
 import torch
 
-from config import BenchmarkConfig
+from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
 from image_classification.factory import ImageClassificationFactory
 
@@ -251,30 +250,9 @@ def train_fn_per_worker(config):
             json.dump(metrics, f)
 
 
-def parse_cli_args():
-    parser = argparse.ArgumentParser()
-    for field, field_info in BenchmarkConfig.model_fields.items():
-        field_type = field_info.annotation
-        assert field_type
-
-        if field_type is bool:
-            assert (
-                not field_info.default
-            ), "Only supports bool flags that are False by default."
-            parser.add_argument(
-                f"--{field}", action="store_true", default=field_info.default
-            )
-        else:
-            parser.add_argument(
-                f"--{field}", type=field_type, default=field_info.default
-            )
-    args = parser.parse_args()
-    return BenchmarkConfig(**vars(args))
-
-
 def main():
-    benchmark_config = parse_cli_args()
-    print(benchmark_config.model_dump_json(indent=2))
+    benchmark_config: BenchmarkConfig = cli_to_config()
+    pprint.pprint(benchmark_config.__dict__, indent=2)
 
     if benchmark_config.task == "image_classification":
         factory = ImageClassificationFactory(benchmark_config)
