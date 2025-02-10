@@ -307,8 +307,6 @@ class ClickHouseDatasink(Datasink):
                 row_count = arrow_table.num_rows
                 create_needed = False
                 if mode in ("overwrite", "create"):
-                    # For "overwrite", we already dropped table in on_write_start(),
-                    # so it won't exist now. We'll always create a new table.
                     create_needed = True
                 elif mode == "append":
                     # If table doesn't exist, create it
@@ -322,7 +320,7 @@ class ClickHouseDatasink(Datasink):
                         create_table_template,
                     )
                     local_client.command(create_sql)
-                # Possibly chunk the arrow table if it's large
+                # Chunk the arrow table if it's large
                 if max_insert_block_rows and row_count > max_insert_block_rows:
                     total_inserted = 0
                     offset = 0
