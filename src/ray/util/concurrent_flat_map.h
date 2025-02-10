@@ -20,10 +20,10 @@ namespace ray {
 // A flat map that's protected by a single mutex with read/write locks.
 //
 // Use when expecting one of the following:
-// mininal thread contention
-// trivially copyable values
-// majority reads
-// If these don't describe your use case, prefer boost::concurrent_flat_map
+// - mininal thread contention
+// - trivially copyable values
+// - majority reads
+// If these don't describe your use case, prefer boost::concurrent_flat_map.
 template <typename KeyType, typename ValueType>
 class ConcurrentFlatMap {
  public:
