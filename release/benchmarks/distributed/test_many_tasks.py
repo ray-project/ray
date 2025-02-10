@@ -18,7 +18,7 @@ sleep_time = 300
 def test_max_running_tasks(num_tasks):
     cpus_per_task = 0.25
 
-    @ray.remote(num_cpus=cpus_per_task)
+    @ray.remote(num_cpus=cpus_per_task, runtime_env={"env_vars": {"FOO": "bar"}})
     def task():
         time.sleep(sleep_time)
 
