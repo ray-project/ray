@@ -1384,6 +1384,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
+  // Used as the factory function for [OverrideTaskOrActorRuntimeEnvInfo] to create in LRU
+  // cache.
+  std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfoImpl(
+      const std::string &serialized_runtime_env_info) const;
+
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder,
       const JobID &job_id,
