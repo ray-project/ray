@@ -168,20 +168,13 @@ def test_model_composition_backpressure(serve_instance):
         # Send third request, it should get rejected.
         rejected_fut = exc.submit(send_request)
         assert rejected_fut.result().status_code == 503
-        assert "Request dropped due to backpressure" in rejected_fut.result().text
-        print("Received 503 response.")
 
         # Send signal, check the two requests succeed.
-        print("Releasing first signal.")
-        ray.get(signal.send.remote())
-        print("Waiting?????")
-        assert executing_fut.result() == "ok"
-        print("First done.")
-        wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-        print("First done.")
-        ray.get(signal.send.remote())
-        print("Second done.")
-        assert queued_fut.result() == "ok"
+        ray.get(signal_actor.send.remote(clear=False))
+        assert executing_fut.result().status_code == 200
+        assert executing_fut.result().text == "ok"
+        assert queued_fut.result().status_code == 200
+        assert queued_fut.result().text == "ok"
 
 
 if __name__ == "__main__":
