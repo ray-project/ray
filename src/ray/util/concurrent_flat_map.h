@@ -25,7 +25,8 @@ class ConcurrentFlatMap {
     write_lock.Get().reserve(size);
   }
 
-  std::optional<ValueType> Get(const KeyType &key) const {
+  template <typename KeyLike>
+  std::optional<ValueType> Get(const KeyLike &key) const {
     std::optional<ValueType> result;
     auto read_lock = map_.LockForRead();
     const auto &map = read_lock.Get();
@@ -38,7 +39,8 @@ class ConcurrentFlatMap {
 
   // Returns true if key existed and visitor was called.
   // Write-only overload.
-  bool WriteVisit(const KeyType &key, const std::function<void(ValueType &)> &visitor) {
+  template <typename KeyLike>
+  bool WriteVisit(const KeyLike &key, const std::function<void(ValueType &)> &visitor) {
     auto write_lock = map_.LockForWrite();
     auto &map = write_lock.Get();
     const auto it = map.find(key);
@@ -50,7 +52,8 @@ class ConcurrentFlatMap {
   }
 
   // Returns true if key existed and visitor was called.
-  bool ReadVisit(const KeyType &key,
+  template <typename KeyLike>
+  bool ReadVisit(const KeyLike &key,
                  const std::function<void(const ValueType &)> &visitor) const {
     auto read_lock = map_.LockForRead();
     const auto &map = read_lock.Get();
@@ -72,7 +75,8 @@ class ConcurrentFlatMap {
     }
   }
 
-  bool Contains(const KeyType &key) const {
+  template <typename KeyLike>
+  bool Contains(const KeyLike &key) const {
     auto read_lock = map_.LockForRead();
     return read_lock.Get().contains(key);
   }
