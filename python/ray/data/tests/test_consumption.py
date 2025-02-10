@@ -165,7 +165,7 @@ def test_count_after_partial_execution(ray_start_regular):
     DS_ROW_COUNT = FILE_ROW_COUNT * SCALE_FACTOR
     paths = ["example://iris.csv"] * SCALE_FACTOR
     ds = ray.data.read_csv(paths)
-    for batch in ds.iter_batches(batch_size=1):
+    for batch in ds.iter_batches(prefetch_batches=0, batch_size=1):
         # Take one batch and break to simulate partial iteration/execution.
         break
     # Row count should be unknown after partial execution.
