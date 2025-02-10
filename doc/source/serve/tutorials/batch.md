@@ -17,6 +17,11 @@ This tutorial is a guide for serving online queries when your model can take adv
 
 For _offline_ batch inference with large datasets, see [batch inference with Ray Data](batch_inference_home).
 
+## Prerequisites
+
+```python
+pip install "ray[serve] transformers"
+```
 
 ## Define the Deployment
 Open a new Python file called `tutorial_batch.py`. First, import Ray Serve and some other helpers.
