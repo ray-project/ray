@@ -1313,8 +1313,8 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            "ray.get\(\) can only be called once "
-            "on a CompiledDAGRef, and it was already called."
+            r"ray.get\(\) can only be called once "
+            r"on a CompiledDAGRef, and it was already called."
         ),
     ):
         ray.get(ref)
