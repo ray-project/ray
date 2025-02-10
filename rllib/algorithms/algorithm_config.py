@@ -76,6 +76,7 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
+from ray.util import log_once
 
 Space = gym.Space
 
@@ -4712,14 +4713,15 @@ class AlgorithmConfig(_Config):
             return
 
         # Warn about new API stack on by default.
-        logger.warning(
-            f"You are running {self.algo_class.__name__} on the new API stack! "
-            "This is the new default behavior for this algorithm. If you don't "
-            "want to use the new API stack, set `config.api_stack("
-            "enable_rl_module_and_learner=False,"
-            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-        )
+        if log_once(f"{self.algo_class.__name__}_on_new_api_stack"):
+            logger.warning(
+                f"You are running {self.algo_class.__name__} on the new API stack! "
+                "This is the new default behavior for this algorithm. If you don't "
+                "want to use the new API stack, set `config.api_stack("
+                "enable_rl_module_and_learner=False,"
+                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
 
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.

@@ -137,9 +137,6 @@ class TorchLearner(Learner):
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         # TODO (sven): Causes weird cuda error when WandB is used.
         #  Diagnosis thus far:
         #  - All peek values during metrics.reduce are non-tensors.
@@ -162,7 +159,7 @@ class TorchLearner(Learner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+        return fwd_out, loss_per_module, {}
 
     @override(Learner)
     def compute_gradients(
@@ -614,11 +611,13 @@ class TorchLearner(Learner):
         for key in off_policyness.keys():
             mid = key[0]
             if Columns.LOSS_MASK not in batch[mid]:
-                off_policyness[key] = torch.mean(off_policyness[key])
+                off_policyness[key] = torch.mean(off_policyness[key]).item()
             else:
                 mask = batch[mid][Columns.LOSS_MASK]
                 num_valid = torch.sum(mask)
-                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
+                off_policyness[key] = (
+                    torch.sum(off_policyness[key][mask]) / num_valid
+                ).item()
         self.metrics.log_dict(off_policyness, window=1)
 
     @override(Learner)
