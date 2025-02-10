@@ -515,8 +515,8 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 def setup(app):
     # Only generate versions JSON during RTD build
-    # if os.getenv("READTHEDOCS") == "True":
-    generate_versions_json()
+    if os.getenv("READTHEDOCS") == "True":
+        generate_versions_json()
 
     pregenerate_example_rsts(app)
 
