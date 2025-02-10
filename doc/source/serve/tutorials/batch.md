@@ -90,14 +90,38 @@ the maximum possible batch size that Ray Serve executes at once.
 ### Option 1: Deploying using the Serve CLI
 Deploy the deployment by running the following through the terminal.
 ```console
-$ serve run tutorial_batch:generator
+$ serve run tutorial_batch:generator --name "Text-Completion-App"
 ```
 
+Note that the `--name` argument is optional. If you do not specify a name, the app will be named `default`. Naming the app is useful if you are running multiple apps on the same machine, and also for being able to create a new handle to the app.
+
+### Option 2: Deploying using the Python API
+You can also deploy the application using Serve's Python API using the `serve.run()` function. This is creates a serve handle that you can use to query the model. Add the following to the Python script `tutorial_batch.py`:
+
+```python
+from ray.serve.handle import DeploymentHandle
+
+handle: DeploymentHandle = serve.run(generator, name="Text-Completion-App")
+```
+
+This handle can now be used to query the model-- see the "Query using Serve handle" section below. Giving the app a name makes it easier to create a new handle to the app by running the following:
+
+```python
+handle = serve.get_deployment_handle("BatchTextGenerator", app_name="Text-Completion-App")
+```
+
+## Querying the Model
 
 
-Define a [Ray remote task](ray-remote-functions) to send queries in
-parallel. While Serve is running, open a separate terminal window, and run the 
-following in an interactive Python shell or a separate Python script:
+#### Using curl (single request)
+```console
+$ curl "http://localhost:8000/?text=Once+upon+a+time"
+```
+
+However, this will return a single response, not a batch. In order to query the model in parallel, we'll need to use the Python API.
+
+#### Using Python requests (batching)
+Let's extend the previous example to send HTTP requests in parallel using [Ray remote tasks](ray-remote-functions). First, define a remote task that sends a single request to localhost:
 
 ```python
 import ray
@@ -106,7 +130,7 @@ import numpy as np
 
 @ray.remote
 def send_query(text):
-    resp = requests.get("http://localhost:8000/?text={}".format(text))
+    resp = requests.post("http://localhost:8000/", params={"text": text})
     return resp.text
 
 # Use Ray to send all queries in parallel
@@ -124,56 +148,15 @@ texts = [
 results = ray.get([send_query.remote(text) for text in texts])
 print("Result returned:", results)
 ```
+One advantage of this batching approach is that you do not need to have the Serve handle object, you can just send requests to the HTTP endpoint.
 
-You should get an output like the following. The first batch has a 
-batch size of 1, and the subsequent queries have a batch size of 4. Even though the client script issues each 
-query independently, Ray Serve evaluates them in batches.
-
-```python
-(pid=...) Our input array has length: 1
-(pid=...) Our input array has length: 4
-(pid=...) Our input array has length: 4
-Result returned: [
-    'Once upon a time, when I got to look at and see the work of my parents (I still can\'t stand them,) they said, "Boys, you\'re going to like it if you\'ll stay away from him or make him look',
-
-    "Hi my name is Lewis and I like to look great. When I'm not playing against, it's when I play my best and always feel most comfortable. I get paid by the same people who make my games, who work hardest for me.", 
-
-    "My name is Mary, and my favorite person in these two universes, the Green Lantern and the Red Lantern, are the same, except they're two of the Green Lanterns, but they also have their own different traits. Now their relationship is known", 
-
-    'My name is Clara and I am married and live in Philadelphia. I am an English language teacher and translator. I am passionate about the issues that have so inspired me and my journey. My story begins with the discovery of my own child having been born', 
-
-    'My name is Julien and I like to travel with my son on vacations... In fact I really prefer to spend more time with my son."\n\nIn 2011, the following year he was diagnosed with terminal Alzheimer\'s disease, and since then,', 
-
-    "Today I accidentally got lost and went on another tour in August. My story was different, but it had so many emotions that it made me happy. I'm proud to still be able to go back to Oregon for work.\n\nFor the longest", 
-
-    'My greatest wish is to return your loved ones to this earth where they can begin their own free and prosperous lives. This is true only on occasion as it is not intended or even encouraged to be so.\n\nThe Gospel of Luke 8:29', 
-
-    'In a galaxy far far away, the most brilliant and powerful beings known would soon enter upon New York, setting out to restore order to the state. When the world turned against them, Darth Vader himself and Obi-Wan Kenobi, along with the Jedi', 
-
-    'My best talent is that I can make a movie with somebody who really has a big and strong voice. I do believe that they would be great writers. I can tell you that to make sure."\n\n\nWith this in mind, "Ghostbusters'
-]
-```
-
-## Option 2:Deploying using the Python API
-If you want to evaluate a whole batch in Python, Ray Serve allows you to send
-queries with the Python API. A batch of queries can either come from the web server
-or the Python API.
-
-To query the deployment with the Python API, use `serve.run()`, which is part
-of the Python API, instead of running `serve run` from the console. Add the following
-to the Python script `tutorial_batch.py`:
+### Option 2: Query using Serve handle (batching)
+You can query the model directly using the deployment handle:
 
 ```python
-from ray.serve.handle import DeploymentHandle
+import ray
+from ray import serve
 
-handle: DeploymentHandle = serve.run(generator)
-```
-
-Generally, to enqueue a query, you can call `handle.method.remote(data)`. This call 
-immediately returns a `DeploymentResponse`. You can call `.result()` to 
-retrieve the result. Add the following to the same Python script.
-
-```python
 input_batch = [
     'Once upon a time,',
     'Hi my name is Lewis and I like to',
@@ -187,15 +170,26 @@ input_batch = [
 ]
 print("Input batch is", input_batch)
 
-import ray
+# initialize using the 'auto' option to connect to the already-running Ray cluster
+ray.init(address="auto")
+
+handle = serve.get_deployment_handle("BatchTextGenerator", app_name="Text-Completion-App")
 responses = [handle.handle_batch.remote(batch) for batch in input_batch]
 results = [r.result() for r in responses]
 print("Result batch is", results)
 ```
 
-Finally, run the script.
-```console
-$ python tutorial_batch.py
+Both querying approaches will produce similar output, showing how the requests are processed in batches:
+```python
+Result returned: [
+    'Once upon a time, when I got to...',
+    'Hi my name is Lewis and I like to...',
+    'My name is Mary, and my favorite...',
+    'My name is Clara and I am...',
+    'My name is Julien and I like to...',
+    'Today I accidentally...',
+    'My greatest wish is to...',
+    'In a galaxy far far away...',
+    'My best talent is...',
+]
 ```
-
-You should get an output similar to the previous example.
