@@ -92,7 +92,7 @@ class ImageClassificationFactory(BenchmarkFactory):
             DataloaderType.RAY_DATA: ImageClassificationRayDataLoaderFactory,
         }[self.benchmark_config.dataloader_type]
 
-        return data_factory_cls(self.benchmark_config.dataloader_config)
+        return data_factory_cls(self.benchmark_config)
 
     def get_model(self) -> torch.nn.Module:
         return torchvision.models.resnet50(weights=None)

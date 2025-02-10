@@ -2110,13 +2110,21 @@
   variations:
     - __suffix__: full_training
       run:
-        timeout: 3600
+        timeout: 1800
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16
 
     - __suffix__: skip_training
       run:
-        timeout: 1800
+        timeout: 900
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_at_epoch_end
+
+    - __suffix__: skip_training.fault_tolerance
+      run:
+        timeout: 3600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_step --validate_every_n_steps=500 --num_epochs=8 --max_failures=6
+        prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 3
+
+
 
 - name: train_horovod_multi_node_test
   group: Train tests

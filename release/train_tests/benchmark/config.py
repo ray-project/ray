@@ -36,9 +36,6 @@ class BenchmarkConfig(BaseModel):
 
     # Training
     num_epochs: int = 1
-    # Maximum number of steps to train for each epoch.
-    # Set this to -1 to train on the entire dataset.
-    max_steps_per_epoch: int = -1
     skip_train_step: bool = False
 
     # Validation
