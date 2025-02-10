@@ -9,6 +9,11 @@ import pyarrow as pa
 import pytest
 
 import ray
+from packaging.version import parse as parse_version
+from ray._private.utils import _get_pyarrow_version
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    combine_chunks,
+)
 from ray.data._internal.util import is_nan
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -644,9 +649,7 @@ def test_groupby_tabular_max(
     ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
 ):
     # Test built-in max aggregation
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_tabular_max with: {seed}")
-    random.seed(seed)
+    random.seed(1738727165)
     xs = list(range(100))
     random.shuffle(xs)
 
@@ -1188,7 +1191,10 @@ def test_groupby_map_groups_for_pandas(
     expected = pd.DataFrame(
         {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
     )
-    assert mapped.to_pandas().equals(expected)
+
+    result = mapped.sort(["A", "C"]).to_pandas()
+
+    pd.testing.assert_frame_equal(expected, result)
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
@@ -1215,8 +1221,10 @@ def test_groupby_map_groups_for_arrow(
     expected = pa.Table.from_pydict(
         {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1], "C": [0.4, 0.6, 1]}
     )
-    result = pa.Table.from_pandas(mapped.to_pandas())
-    assert result.equals(expected)
+
+    result = mapped.sort(["A", "C"]).take_batch(batch_format="pyarrow")
+
+    assert expected == combine_chunks(result)
 
 
 def test_groupby_map_groups_for_numpy(
@@ -1236,9 +1244,12 @@ def test_groupby_map_groups_for_numpy(
         return {"group": group["group"] + 1, "value": group["value"] + 1}
 
     ds = ds.groupby("group").map_groups(func, batch_format="numpy")
+
     expected = pa.Table.from_pydict({"group": [2, 2, 3, 3], "value": [2, 3, 4, 5]})
-    result = pa.Table.from_pandas(ds.to_pandas())
-    assert result.equals(expected)
+
+    result = ds.sort(["group", "value"]).take_batch(batch_format="pyarrow")
+
+    assert expected == result
 
 
 def test_groupby_map_groups_with_different_types(
@@ -1253,13 +1264,13 @@ def test_groupby_map_groups_with_different_types(
         ]
     )
 
-    def func(group):
+    def func(batch):
         # Test output type is Python list, different from input type.
-        value = int(group["value"][0])
-        return {"out": np.array([value])}
+        return {"group": [batch["group"][0]], "out": [min(batch["value"])]}
 
     ds = ds.groupby("group").map_groups(func)
-    assert sorted([x["out"] for x in ds.take()]) == [1, 3]
+
+    assert [x["out"] for x in ds.sort("group").take_all()] == [1, 3]
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1312,6 +1323,11 @@ def test_groupby_map_groups_extra_args(
     assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
 
 
+_NEED_UNWRAP_ARROW_SCALAR = parse_version(_get_pyarrow_version()) <= parse_version(
+    "9.0.0"
+)
+
+
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
 def test_groupby_map_groups_multicolumn(
@@ -1329,17 +1345,32 @@ def test_groupby_map_groups_multicolumn(
         num_parts
     )
 
+    should_unwrap_pa_scalars = ds_format == "pyarrow" and _NEED_UNWRAP_ARROW_SCALAR
+
+    def _map_group(df):
+        # NOTE: Since we're grouping by A and B, these columns will be bearing
+        #       the same values.
+        a = df["A"][0]
+        b = df["B"][0]
+        return {
+            # NOTE: PA 9.0 requires explicit unwrapping into Python objects
+            "A": [a.as_py() if should_unwrap_pa_scalars else a],
+            "B": [b.as_py() if should_unwrap_pa_scalars else b],
+            "count": [len(df["A"])],
+        }
+
     agg_ds = ds.groupby(["A", "B"]).map_groups(
-        lambda df: {"count": [len(df["A"])]}, batch_format=ds_format
+        _map_group,
+        batch_format=ds_format,
     )
-    assert agg_ds.count() == 6
-    assert agg_ds.take_all() == [
-        {"count": 17},
-        {"count": 16},
-        {"count": 17},
-        {"count": 17},
-        {"count": 17},
-        {"count": 16},
+
+    assert agg_ds.sort(["A", "B"]).take_all() == [
+        {"A": 0, "B": 0, "count": 17},
+        {"A": 0, "B": 1, "count": 16},
+        {"A": 0, "B": 2, "count": 17},
+        {"A": 1, "B": 0, "count": 17},
+        {"A": 1, "B": 1, "count": 17},
+        {"A": 1, "B": 2, "count": 16},
     ]
 
 
@@ -1367,19 +1398,41 @@ def test_groupby_map_groups_multicolumn_with_nan(
         ]
     ).repartition(num_parts)
 
+    should_unwrap_pa_scalars = ds_format == "pyarrow" and _NEED_UNWRAP_ARROW_SCALAR
+
+    def _map_group(df):
+        # NOTE: Since we're grouping by A and B, these columns will be bearing
+        #       the same values
+        a = df["A"][0]
+        b = df["B"][0]
+        return {
+            # NOTE: PA 9.0 requires explicit unwrapping into Python objects
+            "A": [a.as_py() if should_unwrap_pa_scalars else a],
+            "B": [b.as_py() if should_unwrap_pa_scalars else b],
+            "count": [len(df["A"])],
+        }
+
     agg_ds = ds.groupby(["A", "B"]).map_groups(
-        lambda df: {"count": [len(df["A"])]}, batch_format=ds_format
+        _map_group,
+        batch_format=ds_format,
     )
-    assert agg_ds.count() == 7
-    assert agg_ds.take_all() == [
-        {"count": 16},
-        {"count": 16},
-        {"count": 16},
-        {"count": 16},
-        {"count": 16},
-        {"count": 15},
-        {"count": 5},
+
+    rows = agg_ds.sort(["A", "B"]).take_all()
+
+    # NOTE: Nans are not comparable directly, hence
+    #       we have to split the assertion in 2
+    assert rows[:-1] == [
+        {"A": 0.0, "B": 0.0, "count": 16},
+        {"A": 0.0, "B": 1.0, "count": 16},
+        {"A": 0.0, "B": 2.0, "count": 16},
+        {"A": 1.0, "B": 0.0, "count": 16},
+        {"A": 1.0, "B": 1.0, "count": 16},
+        {"A": 1.0, "B": 2.0, "count": 15},
     ]
+
+    assert (
+        np.isnan(rows[-1]["A"]) and np.isnan(rows[-1]["B"]) and rows[-1]["count"] == 5
+    )
 
 
 def test_groupby_map_groups_with_partial():
