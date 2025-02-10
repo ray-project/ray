@@ -1344,11 +1344,11 @@ class Dataset:
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`.
 
-        When `target_num_rows_per_block` is set, it overrides `num_blocks` and
-        repartitions :class:`Dataset` to honor target number of rows per
-        :ref:`blocks <dataset_concept>`. Note that the system will internally figure
-        out the number of rows per :ref:`blocks <dataset_concept>` for optimal
-        execution, based on the `target_num_rows_per_block`.
+        When `target_num_rows_per_block` is set, it repartitions :class:`Dataset`
+        to honor target number of rows per :ref:`blocks <dataset_concept>`. Note
+        that the system will internally figure out the number of rows per
+        :ref:`blocks <dataset_concept>` for optimal execution, based on the
+        `target_num_rows_per_block`.
 
         This method can be useful to tune the performance of your pipeline. To learn
         more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
@@ -1387,6 +1387,9 @@ class Dataset:
                 requires all-to-all data movement. When shuffle is disabled,
                 output blocks are created from adjacent input blocks,
                 minimizing data movement.
+
+            Note that either `num_blocks` or `target_num_rows_per_block` must be set
+            here, but not both.
 
         Returns:
             The repartitioned :class:`Dataset`.
