@@ -3943,10 +3943,12 @@ class Dataset:
         self,
         table: str,
         dsn: str,
-        overwrite: bool = False,
+        *,
+        mode: Literal["create", "append", "overwrite"] = "create",
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
         table_settings: Optional[Dict[str, Any]] = None,
+        max_insert_block_rows: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -3967,7 +3969,7 @@ class Dataset:
                 ds.write_clickhouse(
                     table="default.my_table",
                     dsn="clickhouse+http://user:pass@localhost:8123/default",
-                    overwrite=True,
+                    mode="overwrite",
                     table_settings={"engine": "ReplacingMergeTree()", "order_by": "id"}
                 )
 
@@ -3978,9 +3980,15 @@ class Dataset:
                 (e.g., "clickhouse+http://username:password@host:8123/default").
                 For more information, see `ClickHouse Connection String doc
                 <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
-            overwrite: If True, any existing table with the same name will be dropped
-                before writing new data. If False, data will be appended if the table
-                already exists, otherwise the table is created.
+            mode: One of "create", "append", or "overwrite":
+
+                * "create": Create a new table; fail if it already exists.
+
+                * "append": Use an existing table if present, otherwise create one;
+                    data will be appended to the table.
+
+                * "overwrite": Drop an existing table (if any) and re-create it.
+
             client_settings: Optional ClickHouse server settings to be used with the
                 session/every request. For more information, see
                 `ClickHouse Client Settings doc
@@ -4015,6 +4023,9 @@ class Dataset:
                     custom ClickHouse settings (e.g. `{"settings": "index_granularity=8192"}`).
 
                 Any other keys in this dictionary are ignored.
+            max_insert_block_rows: If you have extremely large blocks, specifying
+                a limit here will chunk the insert into multiple smaller insert calls.
+                Defaults to None (no chunking).
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -4024,10 +4035,11 @@ class Dataset:
         datasink = ClickHouseDatasink(
             table=table,
             dsn=dsn,
-            overwrite=overwrite,
+            mode=mode,
             client_settings=client_settings,
             client_kwargs=client_kwargs,
             table_settings=table_settings,
+            max_insert_block_rows=max_insert_block_rows,
         )
         self.write_datasink(
             datasink,

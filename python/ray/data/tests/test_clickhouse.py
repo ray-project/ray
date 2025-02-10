@@ -392,72 +392,100 @@ def patch_global_get_client(mock_clickhouse_sink_client):
 
 @pytest.mark.usefixtures("ray_local_mode")
 class TestClickHouseDatasink:
+    """Tests for TestClickHouseDatasink."""
+
     @pytest.fixture
     def datasink(self, mock_clickhouse_sink_client):
         sink = ClickHouseDatasink(
             table="default.test_table",
             dsn="clickhouse+http://user:pass@localhost:8123/default",
-            overwrite=False,
+            mode="append",
             table_settings={"engine": "MergeTree()"},
         )
-        sink._driver_client = mock_clickhouse_sink_client
         return sink
 
-    @pytest.mark.parametrize("overwrite", [True, False])
+    @pytest.mark.parametrize("mode", ["overwrite", "append", "create"])
     @pytest.mark.parametrize("table_exists", [True, False])
-    def test_on_write_start(
-        self, datasink, mock_clickhouse_sink_client, overwrite, table_exists
+    def test_on_write_start_modes(
+        self, datasink, mock_clickhouse_sink_client, mode, table_exists
     ):
-        datasink._overwrite = overwrite
+        datasink._mode = mode
         with patch.object(
             datasink, "_table_exists", return_value=table_exists
         ) as mock_tbl_exists, patch.object(
             datasink, "_get_existing_order_by", return_value="(prev_col)"
         ) as mock_get_order:
-            datasink.on_write_start()
-            if overwrite and table_exists:
+            if mode == "create" and table_exists:
+                with pytest.raises(RuntimeError, match="already exists.*create"):
+                    datasink.on_write_start()
                 mock_tbl_exists.assert_called_once()
-                mock_get_order.assert_called_once()
-                mock_clickhouse_sink_client.command.assert_called_with(
-                    "DROP TABLE IF EXISTS default.test_table"
-                )
-                assert datasink._table_settings["order_by"] == "(prev_col)"
-            elif overwrite and not table_exists:
-                mock_tbl_exists.assert_called_once()
-                mock_get_order.assert_not_called()
-                mock_clickhouse_sink_client.command.assert_called_with(
-                    "DROP TABLE IF EXISTS default.test_table"
-                )
-            else:
-                mock_tbl_exists.assert_not_called()
                 mock_get_order.assert_not_called()
                 mock_clickhouse_sink_client.command.assert_not_called()
+            else:
+                if mode == "overwrite":
+                    datasink.on_write_start()
+                    mock_tbl_exists.assert_called_once()
+                    if table_exists:
+                        mock_get_order.assert_called_once()
+                        mock_clickhouse_sink_client.command.assert_called_with(
+                            "DROP TABLE IF EXISTS default.test_table"
+                        )
+                        assert datasink._table_settings["order_by"] == "(prev_col)"
+                    else:
+                        mock_get_order.assert_not_called()
+                        mock_clickhouse_sink_client.command.assert_called_with(
+                            "DROP TABLE IF EXISTS default.test_table"
+                        )
+                elif mode == "append":
+                    datasink.on_write_start()
+                    mock_tbl_exists.assert_called_once()
+                    if table_exists:
+                        mock_get_order.assert_called_once()
+                        assert datasink._table_settings["order_by"] == "(prev_col)"
+                        mock_clickhouse_sink_client.command.assert_not_called()
+                    else:
+                        mock_get_order.assert_not_called()
+                        mock_clickhouse_sink_client.command.assert_not_called()
+                elif mode == "create":
+                    datasink.on_write_start()
+                    mock_tbl_exists.assert_called_once()
+                    mock_get_order.assert_not_called()
+                    mock_clickhouse_sink_client.command.assert_not_called()
 
-    @pytest.mark.parametrize("overwrite", [True, False])
+    @pytest.mark.parametrize("mode", ["overwrite", "append"])
     @pytest.mark.parametrize("table_exists", [True, False])
     @pytest.mark.parametrize("user_order_by", [None, "user_defined_col", "tuple()"])
     def test_write_behavior(
         self,
         datasink,
         mock_clickhouse_sink_client,
-        overwrite,
+        mode,
         table_exists,
         user_order_by,
     ):
-        datasink._overwrite = overwrite
+        datasink._mode = mode
         if user_order_by is not None:
             datasink._table_settings["order_by"] = user_order_by
         else:
             datasink._table_settings.pop("order_by", None)
-        datasink._table_exists = MagicMock(return_value=table_exists)
-        mock_clickhouse_sink_client.insert_arrow.return_value = QuerySummary(
-            {"written_rows": 3}
-        )
-        rb = pa.record_batch([pa.array([1, 2, 3])], names=["col1"])
-        block_data = pa.Table.from_batches([rb])
-        ctx = TaskContext(1)
-        datasink.write([block_data], ctx=ctx)
-        mock_clickhouse_sink_client.insert_arrow.assert_called()
+
+        with patch.object(datasink, "_table_exists", return_value=table_exists), patch(
+            "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+        ):
+            rb = pa.record_batch([pa.array([1, 2, 3])], names=["col1"])
+            block_data = pa.Table.from_batches([rb])
+            ctx = TaskContext(1)
+            results = datasink.write([block_data], ctx=ctx)
+            assert results == [3]
+            mock_clickhouse_sink_client.insert_arrow.assert_called()
+
+    def test_on_write_complete_aggregation(self, datasink):
+        write_results = [[3, 4, 5]]
+        with patch("logging.Logger.info") as mock_log_info:
+            datasink.on_write_complete(write_results)
+            mock_log_info.assert_any_call(
+                "ClickHouseDatasink on_write_complete: inserted 12 total rows into default.test_table."
+            )
 
     @pytest.mark.parametrize(
         "schema, expected_order_by",
@@ -471,8 +499,11 @@ class TestClickHouseDatasink:
     def test_pick_best_arrow_field_for_order_by(
         self, datasink, mock_clickhouse_sink_client, schema, expected_order_by
     ):
-        with patch.object(datasink, "_table_exists", return_value=False):
-            datasink._existing_order_by = None
+        datasink._mode = "overwrite"
+        datasink._table_settings.pop("order_by", None)  # ensure it's not set
+        with patch.object(datasink, "_table_exists", return_value=False), patch(
+            "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+        ):
             empty_table = pa.Table.from_batches([], schema=schema)
             datasink.write([empty_table], ctx=None)
             mock_clickhouse_sink_client.insert_arrow.assert_called()
@@ -484,10 +515,7 @@ class TestClickHouseDatasink:
                 "CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree() ORDER BY col1",
                 "col1",
             ),
-            (
-                "CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree()",
-                None,
-            ),
+            ("CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree()", None),
             (
                 "CREATE TABLE default.test_table (col1 Int32) ORDER BY city ENGINE = MergeTree()",
                 "city",
@@ -587,22 +615,23 @@ class TestClickHouseDatasink:
         expected_order_by_part,
         expected_clauses,
     ):
-        datasink._overwrite = True
-        datasink._table_exists = MagicMock(return_value=False)
+        datasink._mode = "overwrite"
         datasink._table_settings = table_settings
-        arrays = []
-        for field in schema:
-            if pa.types.is_integer(field.type):
-                arrays.append(pa.array([1, 2, 3]))
-            elif pa.types.is_timestamp(field.type):
-                arrays.append(pa.array([1, 2, 3], type=pa.timestamp("ns")))
-            else:
-                arrays.append(pa.array(["a", "b", "c"]))
-        block_data = pa.Table.from_arrays(arrays, names=[f.name for f in schema])
-        with patch.object(mock_clickhouse_sink_client, "command") as mock_command:
+        with patch.object(datasink, "_table_exists", return_value=False), patch(
+            "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+        ) as mock_client:
+            arrays = []
+            for field in schema:
+                if pa.types.is_integer(field.type):
+                    arrays.append(pa.array([1, 2, 3]))
+                elif pa.types.is_timestamp(field.type):
+                    arrays.append(pa.array([1, 2, 3], type=pa.timestamp("ns")))
+                else:
+                    arrays.append(pa.array(["a", "b", "c"]))
+            block_data = pa.Table.from_arrays(arrays, names=[f.name for f in schema])
             datasink.write([block_data], ctx=TaskContext(1))
             create_sql = None
-            for call_arg in mock_command.call_args_list:
+            for call_arg in mock_clickhouse_sink_client.command.call_args_list:
                 sql_arg = call_arg[0][0]
                 if "CREATE TABLE" in sql_arg:
                     create_sql = sql_arg
