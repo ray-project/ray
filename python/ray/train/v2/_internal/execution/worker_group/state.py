@@ -29,6 +29,10 @@ class WorkerGroupState:
     workers: List[Worker]
     sync_actor: ActorHandle
 
+    @property
+    def num_workers(self) -> int:
+        return len(self.workers)
+
     def shutdown(self):
         _shutdown_workers(self.workers)
         _shutdown_placement_group(self.placement_group)

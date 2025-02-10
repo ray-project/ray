@@ -4,7 +4,10 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroupPollStatus,
+    WorkerGroupState,
+)
 
 
 class FixedScalingPolicy(ScalingPolicy):
@@ -17,6 +20,8 @@ class FixedScalingPolicy(ScalingPolicy):
         )
 
     def make_decision_for_running_worker_group(
-        self, worker_group_status: WorkerGroupPollStatus
+        self,
+        worker_group_state: WorkerGroupState,
+        worker_group_status: WorkerGroupPollStatus,
     ) -> ScalingDecision:
         return NoopDecision()

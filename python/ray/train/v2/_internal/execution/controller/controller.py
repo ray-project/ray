@@ -387,10 +387,9 @@ class TrainController:
                     failure_decision, worker_group_status
                 )
             else:
-                scaling_decision = (
-                    self._scaling_policy.make_decision_for_running_worker_group(
-                        worker_group_status
-                    )
+                scaling_decision = self._scaling_policy.make_decision_for_running_worker_group(
+                    worker_group_state=self.get_worker_group().get_worker_group_state(),
+                    worker_group_status=worker_group_status,
                 )
 
                 if isinstance(scaling_decision, ResizeDecision):
