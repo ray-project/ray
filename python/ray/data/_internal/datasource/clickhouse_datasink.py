@@ -109,7 +109,6 @@ class ClickHouseDatasink(Datasink[None]):
                         f"Existing ORDER BY for table {self._table}: {self._table_settings.get('order_by')}"
                     )
                 drop_sql = self._DROP_TABLE_TEMPLATE.format(table_name=self._table)
-                logger.info(f"overwrite=True => {drop_sql}")
                 client.command(drop_sql)
             except Exception as e:
                 logger.warning(f"Failed to drop table {self._table}: {e}")
