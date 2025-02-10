@@ -77,9 +77,6 @@ void StartStreamDump(
     // Pre-allocate stream buffer to avoid excessive syscall.
     // TODO(hjiang): Should resize without initialization.
     std::string readsome_buffer(buf_size, '\0');
-    // Logging are written in lines, `last_line` records part of the strings left in
-    // last `read` syscall.
-    std::string last_line;
 
     std::string cur_new_line{"a"};
     while (pipe_instream->read(cur_new_line.data(), /*count=*/1)) {
@@ -95,22 +92,11 @@ void StartStreamDump(
         cur_new_line += cur_readsome_buffer;
       }
 
-      // After we read a chunk of bytes continuously, split into lines, send to write
-      // thread and multiple sinks.
-      std::vector<std::string_view> newlines = absl::StrSplit(cur_new_line, '\n');
-      for (size_t idx = 0; !newlines.empty() && idx < newlines.size() - 1; ++idx) {
-        std::string cur_segment = std::move(last_line);
-        last_line.clear();
-        cur_segment += newlines[idx];
-        cur_segment += '\n';
-
+      // Already read all we have at the moment, stream into logger.
+      {
         absl::MutexLock lock(&stream_dumper->mu);
-        stream_dumper->content.emplace_back(std::move(cur_segment));
-      }
-
-      // Record last segment.
-      if (!newlines.empty()) {
-        last_line = newlines.back();
+        stream_dumper->content.emplace_back(std::move(cur_new_line));
+        cur_new_line.clear();
       }
 
       // Read later bytes in blocking style.
@@ -119,9 +105,6 @@ void StartStreamDump(
 
     // Reached EOF.
     absl::MutexLock lock(&stream_dumper->mu);
-    if (!last_line.empty()) {
-      stream_dumper->content.emplace_back(std::move(last_line));
-    }
     stream_dumper->stopped = true;
   }).detach();
 
