@@ -95,7 +95,6 @@ class _NcclGroup(GPUCommunicator):
             # Driver does not have a rank.
             self._comm = None
 
-        self._cuda_stream: "cp.cuda.ExternalStream"
         self._send_stream: "cp.cuda.ExternalStream"
         self._recv_stream: "cp.cuda.ExternalStream"
         self._coll_stream: "cp.cuda.ExternalStream"
@@ -108,9 +107,6 @@ class _NcclGroup(GPUCommunicator):
 
             # TODO(swang): Allow default device to be overridden.
             device = torch_utils.get_devices()[0]
-            self._cuda_stream = cp.cuda.ExternalStream(
-                cuda_stream, device_id=device.index
-            )
 
             if use_communication_streams:
                 import torch
@@ -125,9 +121,10 @@ class _NcclGroup(GPUCommunicator):
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
             else:
-                self._send_stream = self._cuda_stream
-                self._recv_stream = self._cuda_stream
-                self._coll_stream = self._cuda_stream
+                stream = cp.cuda.ExternalStream(cuda_stream, device_id=device.index)
+                self._send_stream = stream
+                self._recv_stream = stream
+                self._coll_stream = stream
 
         self._closed = False
 
@@ -191,6 +188,10 @@ class _NcclGroup(GPUCommunicator):
             # TODO(rui): find a better approach
             self._send_stream.synchronize()
 
+        import torch
+
+        buf.record_stream(torch.cuda.ExternalStream(self._send_stream.ptr))
+
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
         self._comm.send(
@@ -252,7 +253,7 @@ class _NcclGroup(GPUCommunicator):
             # need to synchronize here and check that the channel is still open to
             # ensure that the receive buffer is valid.
             # TODO(swang): Avoid CUDA synchronization.
-            self._cuda_stream.synchronize()
+            self._recv_stream.synchronize()
 
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
@@ -287,7 +288,7 @@ class _NcclGroup(GPUCommunicator):
         # ensure that the receive buffer is valid.
         # TODO(swang): Avoid CUDA synchronization.
         if not self._use_communication_streams:
-            self._cuda_stream.synchronize()
+            self._coll_stream.synchronize()
 
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
