@@ -582,7 +582,7 @@ class Learner(Checkpointable):
                         )
                     self.metrics.log_value(
                         key=(module_id, f"gradients_{optimizer_name}_global_norm"),
-                        value=global_norm,
+                        value=global_norm.item(),
                         window=1,
                     )
                 postprocessed_grads.update(grad_dict_to_clip)
@@ -595,7 +595,7 @@ class Learner(Checkpointable):
                 )
                 self.metrics.log_value(
                     key=(module_id, f"gradients_{optimizer_name}_global_norm"),
-                    value=global_norm,
+                    value=global_norm.item(),
                     window=1,
                 )
 

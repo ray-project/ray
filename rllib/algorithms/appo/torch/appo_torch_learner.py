@@ -204,7 +204,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
                 ENTROPY_KEY: -mean_entropy_loss.item(),
                 LEARNER_RESULTS_KL_KEY: convert_to_numpy(mean_kl_loss),
                 LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
-                    self.curr_kl_coeffs_per_module[module_id]
+                    self.curr_kl_coeffs_per_module[module_id].item()
                 ),
             },
             key=module_id,
