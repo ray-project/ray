@@ -49,6 +49,8 @@ class IMPALALearner(Learner):
 
         # Make the MetricsLogger of this Learner thread-save.
         self.metrics.thread_save(True)
+        self._num_updates = 0
+        self._num_updates_lock = threading.Lock()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -129,7 +131,13 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
-        return self.metrics.reduce()
+        with self._num_updates_lock:
+            count = self._num_updates
+        if count >= 100:
+            with self._num_updates_lock:
+                self._num_updates = 0
+            return self.metrics.reduce()
+        return {}
 
     @override(Learner)
     def update_from_episodes(
