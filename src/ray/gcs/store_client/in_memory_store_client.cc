@@ -23,14 +23,11 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      Postable<void(bool)> callback) {
   auto &table = GetOrCreateMutableTable(table_name);
   bool inserted = false;
-  if (table.Contains(key)) {
-    if (overwrite) {
-      table.Insert(key, std::move(data));
-      inserted = true;
-    }
-  } else {
-    table.Insert(key, std::move(data));
+  if (overwrite) {
+    table.InsertOrAssign(key, std::move(data));
     inserted = true;
+  } else {
+    inserted = table.Emplace(key, std::move(data));
   }
   std::move(callback).Post("GcsInMemoryStore.Put", inserted);
   return Status::OK();

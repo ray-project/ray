@@ -1,4 +1,16 @@
-
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/mutex_protected.h"
@@ -82,11 +94,18 @@ class ConcurrentFlatMap {
   }
 
   template <typename KeyLike, typename... Args>
-  void Insert(KeyLike &&keyArg, Args &&...args) {
+  void InsertOrAssign(KeyLike &&keyArg, Args &&...args) {
     auto write_lock = map_.LockForWrite();
-    // Note: not using emplace as it won't replace value if key already exists.
     write_lock.Get().insert_or_assign(std::forward<KeyLike>(keyArg),
                                       ValueType(std::forward<Args>(args)...));
+  }
+
+  template <typename KeyLike, typename... Args>
+  bool Emplace(KeyLike &&keyArg, Args &&...args) {
+    auto write_lock = map_.LockForWrite();
+    const auto [_, inserted] = write_lock.Get().emplace(
+        std::forward<KeyLike>(keyArg), ValueType(std::forward<Args>(args)...));
+    return inserted;
   }
 
   bool Erase(const KeyType &key) {
