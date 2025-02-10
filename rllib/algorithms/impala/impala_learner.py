@@ -193,7 +193,7 @@ class _GPULoaderThread(threading.Thread):
 
         # Load the batch onto the GPU device.
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
-            ma_batch_on_gpu = ma_batch_on_cpu.to_device(self._device, pin_memory=True)
+            ma_batch_on_gpu = ma_batch_on_cpu.to_device(self._device, pin_memory=False)
 
         if isinstance(self._out_queue, CircularBuffer):
             ts_dropped = self._out_queue.add(ma_batch_on_gpu)
