@@ -4,14 +4,11 @@ import threading
 import time
 from typing import Any, Dict, Union
 
-import tree  # pip install dm_tree
-
 import ray
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -47,8 +44,13 @@ class IMPALALearner(Learner):
     def build(self) -> None:
         super().build()
 
-        # Make the MetricsLogger of this Learner thread-save.
-        self.metrics.thread_save(True)
+        # TODO (sven): We replace the dummy RLock here for APPO/IMPALA, b/c these algos
+        #  require this for thread safety reasons.
+        #  An RLock breaks our current OfflineData and OfflinePreLearner logic, in which
+        #  the Learner (which contains a MetricsLogger) is serialized and deserialized.
+        #  We will have to fix this offline RL logic first, then can remove this hack
+        #  here and return to always using the RLock.
+        self.metrics._threading_lock = threading.RLock()
         self._num_updates = 0
         self._num_updates_lock = threading.Lock()
 
@@ -94,6 +96,7 @@ class IMPALALearner(Learner):
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
             metrics_logger=self.metrics,
+            learner=self,
         )
         self._learner_thread.start()
 
@@ -138,58 +141,6 @@ class IMPALALearner(Learner):
                 self._num_updates = 0
             return self.metrics.reduce()
         return {}
-
-    @override(Learner)
-    def update_from_episodes(
-        self,
-        episodes: Any,
-        *,
-        timesteps: Dict[str, Any],
-        **kwargs,
-    ) -> ResultDict:
-        global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
-
-        if isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
-            try:
-                episodes = tree.flatten(ray.get(episodes))
-            except ray.exceptions.OwnerDiedError:
-                episode_refs = episodes
-                episodes = []
-                for ref in episode_refs:
-                    try:
-                        episodes.extend(ray.get(ref))
-                    except ray.exceptions.OwnerDiedError:
-                        pass
-
-        # Call the learner connector pipeline.
-        shared_data = {}
-        batch = self._learner_connector(
-            rl_module=self.module,
-            batch={},
-            episodes=episodes,
-            shared_data=shared_data,
-            metrics=self.metrics,
-        )
-        # Convert to a batch.
-        # TODO (sven): Try to not require MultiAgentBatch anymore.
-        batch = MultiAgentBatch(
-            {
-                module_id: (
-                    SampleBatch(module_data, _zero_padded=True)
-                    if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                    else SampleBatch(module_data)
-                )
-                for module_id, module_data in batch.items()
-            },
-            env_steps=sum(len(e) for e in episodes),
-        )
-
-        return self.update_from_batch(
-            batch=batch,
-            timesteps=timesteps,
-            **kwargs,
-        )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -272,10 +223,12 @@ class _LearnerThread(threading.Thread):
         update_method,
         in_queue: deque,
         metrics_logger,
+        learner,
     ):
         super().__init__(name="_LearnerThread")
         self.daemon = True
         self.metrics: MetricsLogger = metrics_logger
+        self.learner = learner
         self.stopped = False
 
         self._update_method = update_method
@@ -296,7 +249,7 @@ class _LearnerThread(threading.Thread):
             else:
                 # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
                 while not self._in_queue:
-                    time.sleep(0.0001)
+                    time.sleep(0.001)
                 # Consume from the left (oldest batches first).
                 # If we consumed from the right, we would run into the danger of
                 # learning from newer batches (left side) most times, BUT sometimes
@@ -313,6 +266,8 @@ class _LearnerThread(threading.Thread):
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
+            with self.learner._num_updates_lock:
+                self.learner._num_updates += 1
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):

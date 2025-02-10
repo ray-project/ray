@@ -118,19 +118,19 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # the policy loss.
         if config.beta == 0.0:
             self.metrics.log_dict(
-                {POLICY_LOSS_KEY: policy_loss.item()}, key=module_id, window=1
+                {POLICY_LOSS_KEY: policy_loss}, key=module_id, window=1
             )
         # Log more stats, if using the MARWIL loss.
         else:
             ma_sqd_adv_norms = self.moving_avg_sqd_adv_norms_per_module[module_id]
             self.metrics.log_dict(
                 {
-                    POLICY_LOSS_KEY: policy_loss.item(),
-                    VF_LOSS_KEY: mean_vf_loss.item(),
+                    POLICY_LOSS_KEY: policy_loss,
+                    VF_LOSS_KEY: mean_vf_loss,
                     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
                         batch[Postprocessing.VALUE_TARGETS], value_fn_out
-                    ).item(),
-                    LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: ma_sqd_adv_norms.item(),
+                    ),
+                    LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: ma_sqd_adv_norms,
                 },
                 key=module_id,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).

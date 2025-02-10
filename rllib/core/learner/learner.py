@@ -582,7 +582,7 @@ class Learner(Checkpointable):
                         )
                     self.metrics.log_value(
                         key=(module_id, f"gradients_{optimizer_name}_global_norm"),
-                        value=global_norm.item(),
+                        value=global_norm,
                         window=1,
                     )
                 postprocessed_grads.update(grad_dict_to_clip)
@@ -595,7 +595,7 @@ class Learner(Checkpointable):
                 )
                 self.metrics.log_value(
                     key=(module_id, f"gradients_{optimizer_name}_global_norm"),
-                    value=global_norm.item(),
+                    value=global_norm,
                     window=1,
                 )
 
@@ -1165,7 +1165,7 @@ class Learner(Checkpointable):
                 )
                 # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
                 # to actual (numpy) values.
-                # self.metrics.tensors_to_numpy(tensor_metrics)
+                self.metrics.tensors_to_numpy(tensor_metrics)
 
                 self._set_slicing_by_batch_id(batch, value=False)
                 # If `num_iters` is reached break and return.
@@ -1458,7 +1458,7 @@ class Learner(Checkpointable):
 
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
             # to actual (numpy) values.
-            # self.metrics.tensors_to_numpy(tensor_metrics)
+            self.metrics.tensors_to_numpy(tensor_metrics)
 
             # Log all individual RLModules' loss terms and its registered optimizers'
             # current learning rates.
