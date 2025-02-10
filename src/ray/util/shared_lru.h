@@ -199,8 +199,8 @@ class ThreadSafeSharedLruCache final {
   // WARNING: Currently factory cannot have exception thrown.
   // TODO(hjiang): [factory] should support template.
   template <typename KeyLike>
-  std::shared_ptr<Val> GetOrCreate(KeyLike &&key,
-                                   std::function<std::shared_ptr<Val>(Key)> factory) {
+  std::shared_ptr<Val> GetOrCreate(
+      KeyLike &&key, std::function<std::shared_ptr<Val>(const Key &)> factory) {
     std::shared_ptr<CreationToken> creation_token;
 
     {
@@ -222,13 +222,12 @@ class ThreadSafeSharedLruCache final {
         });
 
         // Creation finished.
-        auto val = creation_token->val;
         --creation_token->count;
         if (creation_token->count == 0) {
           // [creation_iter] could be invalidated here due to new insertion/deletion.
           ongoing_creation_.erase(key);
         }
-        return val;
+        return creation_token->val;
       }
 
       // Current thread is the first one to request for the key-value pair, perform
