@@ -100,7 +100,6 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -131,7 +130,6 @@ if __name__ == "__main__":
             elif changed_file.startswith("python/ray/tune"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -187,7 +185,6 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_WORKFLOW_AFFECTED = 1
                 RAY_CI_DATA_AFFECTED = 1
@@ -324,7 +321,6 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
                 RAY_CI_CPP_AFFECTED = 1
@@ -348,8 +344,6 @@ if __name__ == "__main__":
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
-                RAY_CI_RLLIB_AFFECTED = 1
-                RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
