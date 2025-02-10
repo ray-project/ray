@@ -26,6 +26,7 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_split.h"
 #include "ray/util/spdlog_fd_sink.h"
+#include "ray/util/spdlog_newliner_sink.h"
 #include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
@@ -174,7 +175,13 @@ std::shared_ptr<spdlog::logger> CreateLogger(
         stream_redirect_opt.file_path);
   }
   file_sink->set_level(spdlog::level::info);
-  sinks.emplace_back(std::move(file_sink));
+  // Spdlog logger's formatter only applies for its sink (which is newliner sink here),
+  // but not internal sinks recursively (aka, rotation file sink won't be set); so have to
+  // manually set formatter here.
+  file_sink->set_formatter(std::make_unique<spdlog::pattern_formatter>(
+      "%v", spdlog::pattern_time_type::local, std::string("")));
+  auto newliner_sink = std::make_shared<spdlog_newliner_sink_st>(std::move(file_sink));
+  sinks.emplace_back(std::move(newliner_sink));
 
   // Setup fd sink for stdout and stderr.
 #if defined(__APPLE__) || defined(__linux__)

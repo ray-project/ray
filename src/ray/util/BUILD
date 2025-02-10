@@ -261,6 +261,7 @@ ray_cc_library(
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
+        ":spdlog_newliner_sink",
         "@boost//:iostreams",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:inlined_vector",
