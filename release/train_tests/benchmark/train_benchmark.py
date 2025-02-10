@@ -40,8 +40,14 @@ class TrainLoopRunner:
         # Load checkpoint if available.
         checkpoint = ray.train.get_checkpoint()
         if checkpoint:
-            with checkpoint.as_directory() as temp_checkpoint_dir:
-                self.load_checkpoint(temp_checkpoint_dir)
+            with tempfile.TemporaryDirectory(
+                dir="/mnt/local_storage"
+            ) as temp_checkpoint_dir:
+                with self._metrics["checkpoint/download"].timer():
+                    checkpoint.to_directory(temp_checkpoint_dir)
+
+                with self._metrics["checkpoint/load"].timer():
+                    self.load_checkpoint(temp_checkpoint_dir)
 
         # Performance metrics
         self._metrics = collections.defaultdict(lambda: Timer())
@@ -259,6 +265,17 @@ class TrainLoopRunner:
             metrics["validation/global_throughput"] = (
                 metrics["validation/local_throughput"] * num_workers
             )
+
+        # Extra time that each worker spends to restore from checkpoint,
+        # which includes downloading the checkpoint, loading the checkpoint,
+        # and skipping through batches that were already processed.
+        restoration_time = (
+            self._metrics["checkpoint/download"].get()
+            + self._metrics["checkpoint/load"].get()
+            + self._metrics["train/iter_skip_batch"].get()
+        )
+        if restoration_time > 0:
+            metrics["checkpoint/restoration_time"] = restoration_time
 
         # Dataloader metrics (ex: Ray Data stats)
         metrics.update(self.factory.get_dataloader_metrics())
