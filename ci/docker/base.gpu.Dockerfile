@@ -54,7 +54,5 @@ WORKDIR /ray
 COPY . .
 
 RUN bash --login -ie -c '\
-    BUILD=1 ./ci/env/install-dependencies.sh \
-    RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh \
-    pip uninstall -y ray \
+    BUILD=1 SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh \
 '
