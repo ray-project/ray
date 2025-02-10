@@ -1,5 +1,6 @@
 import collections
 import os
+import logging
 import pprint
 import tempfile
 import json
@@ -16,6 +17,8 @@ import torch
 from config import BenchmarkConfig, cli_to_config
 from factory import BenchmarkFactory
 from image_classification.factory import ImageClassificationFactory
+
+logger = logging.getLogger(__name__)
 
 
 # TODO: Pull out common logic into a base class, and make this a TorchTrainLoopRunner.
@@ -53,7 +56,7 @@ class TrainLoopRunner:
                 self.validate_and_checkpoint()
 
             if ray.train.get_context().get_world_rank() == 0:
-                pprint.pprint(self.get_metrics())
+                logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
     def train_epoch(self):
         with self._metrics["train/epoch"].timer():
@@ -61,7 +64,7 @@ class TrainLoopRunner:
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            print(f"Training starting @ epoch={self._train_epoch_idx}")
+            logger.info(f"[Training] Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
 
@@ -70,7 +73,11 @@ class TrainLoopRunner:
         with self._metrics["train/iter_first_batch"].timer():
             batch = self.get_next_batch(train_dataloader)
 
-        # TODO: Handle the case where we restored to a middle of the epoch.
+        # Skip through batches if we restored to a middle of the epoch.
+        # TODO: Compare this baseline to the data checkpointing approach once we have it.
+        for _ in range(self._train_batch_idx):
+            with self._metrics["train/iter_skip_batch"].timer():
+                self.get_next_batch(train_dataloader)
 
         while batch:
             input_batch, labels = batch
@@ -82,26 +89,33 @@ class TrainLoopRunner:
             self._train_batch_idx += 1
             self._metrics["train/rows_processed"].add(len(labels))
 
-            if (
-                self.benchmark_config.validate_every_n_steps > 0
-                and self._train_batch_idx % self.benchmark_config.validate_every_n_steps
-                == 0
-            ):
+            if self._should_validate_during_epoch():
                 self.validate_and_checkpoint()
 
-            if (
-                self.benchmark_config.log_metrics_every_n_steps > 0
-                and self._train_batch_idx
-                % self.benchmark_config.log_metrics_every_n_steps
-                == 0
-            ):
-                pprint.pprint(self.get_metrics())
+            if self._should_log_metrics():
+                logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
             with self._metrics["train/iter_batch"].timer():
                 batch = self.get_next_batch(train_dataloader)
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
+
+    def _should_validate_during_epoch(self) -> bool:
+        """Handles the validate_every_n_steps logic."""
+        return (
+            self.benchmark_config.validate_every_n_steps > 0
+            and self._train_batch_idx % self.benchmark_config.validate_every_n_steps
+            == 0
+        )
+
+    def _should_log_metrics(self) -> bool:
+        """Handles the log_metrics_every_n_steps logic."""
+        return (
+            self.benchmark_config.log_metrics_every_n_steps > 0
+            and self._train_batch_idx % self.benchmark_config.log_metrics_every_n_steps
+            == 0
+        )
 
     def get_next_batch(self, dataloader):
         try:
@@ -133,8 +147,9 @@ class TrainLoopRunner:
 
     def validate(self) -> Dict[str, float]:
         if ray.train.get_context().get_world_rank() == 0:
-            print(
-                f"Validation starting @ epoch={self._train_epoch_idx}, batch={self._train_batch_idx}"
+            logger.info(
+                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
+                f"batch={self._train_batch_idx}"
             )
 
         val_dataloader = self.factory.get_val_dataloader()
@@ -180,9 +195,13 @@ class TrainLoopRunner:
         train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
         self._train_epoch_idx = train_state["epoch"]
         self._train_batch_idx = train_state["batch_idx"]
-        print(
-            f"[Fault Tolerance] Restored to epoch={self._train_epoch}, train_batch_idx={self._train_batch_idx}"
-        )
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
+                f"{ray.train.get_checkpoint()}"
+            )
 
     def save_checkpoint(self, local_dir: str):
         train_state = {
@@ -192,6 +211,12 @@ class TrainLoopRunner:
         torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
         torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
         torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
+
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
+                f"train_batch_idx={self._train_batch_idx}"
+            )
 
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.
@@ -257,7 +282,7 @@ def train_fn_per_worker(config):
 
 def main():
     benchmark_config: BenchmarkConfig = cli_to_config()
-    pprint.pprint(benchmark_config.__dict__, indent=2)
+    logger.info(pprint.pformat(benchmark_config.__dict__, indent=2))
 
     if benchmark_config.task == "image_classification":
         factory = ImageClassificationFactory(benchmark_config)
@@ -285,10 +310,10 @@ def main():
     with open(METRICS_OUTPUT_PATH, "r") as f:
         metrics = json.load(f)
 
-    print("-" * 80)
-    print("Final metrics:")
-    pprint.pprint(metrics)
-    print("-" * 80)
+    final_metrics_str = (
+        "Final metrics:\n" + "-" * 80 + "\n" + pprint.pformat(metrics) + "\n" + "-" * 80
+    )
+    logger.info(final_metrics_str)
 
     # Write metrics as a release test result.
     safe_write_to_results_json(metrics)
