@@ -238,8 +238,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "compat",
-    hdrs = ["compat.h"],
     srcs = ["compat.cc"],
+    hdrs = ["compat.h"],
     deps = [
         ":logging",
         "//src/ray/common:status",
@@ -304,5 +304,13 @@ ray_cc_library(
     hdrs = ["mutex_protected.h"],
     deps = [
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "concurrent_flat_map",
+    hdrs = ["concurrent_flat_map.h"],
+    deps = [
+        ":mutex_protected",
     ],
 )

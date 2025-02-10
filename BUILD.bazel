@@ -2317,7 +2317,7 @@ ray_cc_library(
     ],
     deps = [
         ":ray_common",
-        "//src/ray/util",
+        "//src/ray/util:concurrent_flat_map",
         "@com_google_absl//absl/container:node_hash_map",
     ],
 )
