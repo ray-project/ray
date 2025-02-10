@@ -51,7 +51,7 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
 # We will attempt to slice blocks whose size exceeds this factor *
-# target_max_rows_per_block. We will warn the user if slicing fails and we produce
+# target_num_rows_per_block. We will warn the user if slicing fails and we produce
 # blocks with more rows than this threshold.
 MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
 

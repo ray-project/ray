@@ -1337,14 +1337,18 @@ class Dataset:
     def repartition(
         self,
         num_blocks: int,
-        max_num_rows_per_block: Optional[int] = None,
+        target_num_rows_per_block: Optional[int] = None,
         *,
         shuffle: bool = False,
     ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of
-        :ref:`blocks <dataset_concept>`. When `max_num_rows_per_block` is set, it
-        overrides `num_blocks` and repartitions :class:`Dataset` to honor at most
-        maximum rows per :ref:`blocks <dataset_concept>`.
+        :ref:`blocks <dataset_concept>`.
+
+        When `target_num_rows_per_block` is set, it overrides `num_blocks` and
+        repartitions :class:`Dataset` to honor target number of rows per
+        :ref:`blocks <dataset_concept>`. Note that the system will internally figure
+        out the number of rows per :ref:`blocks <dataset_concept>` for optimal
+        execution, based on the `target_num_rows_per_block`.
 
         This method can be useful to tune the performance of your pipeline. To learn
         more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
@@ -1375,7 +1379,8 @@ class Dataset:
 
         Args:
             num_blocks: The number of blocks.
-            max_num_rows_per_block: The maximum number of rows per block to partition.
+            target_num_rows_per_block: The target number of rows per block to
+                repartition.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1387,16 +1392,22 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        if max_num_rows_per_block is not None and shuffle:
+        if (num_blocks is not None) == (target_num_rows_per_block is not None):
             raise ValueError(
-                "`shuffle` must be False when `max_num_rows_per_block` is set."
+                "Either `num_blocks` or `target_num_rows_per_block` must be set, "
+                "but not both."
+            )
+
+        if target_num_rows_per_block is not None and shuffle:
+            raise ValueError(
+                "`shuffle` must be False when `target_num_rows_per_block` is set."
             )
 
         plan = self._plan.copy()
-        if max_num_rows_per_block is not None:
+        if target_num_rows_per_block is not None:
             op = StreamingRepartition(
                 self._logical_plan.dag,
-                max_num_rows_per_block=max_num_rows_per_block,
+                target_num_rows_per_block=target_num_rows_per_block,
             )
         else:
             op = Repartition(

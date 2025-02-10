@@ -136,7 +136,7 @@ def plan_streaming_repartition_op(
     input_physical_dag = physical_children[0]
     compute = get_compute(op._compute)
     transform_fn = BuildOutputBlocksMapTransformFn.for_blocks()
-    transform_fn.set_target_max_rows_per_block(op.max_num_rows_per_block)
+    transform_fn.set_target_num_rows_per_block(op.target_num_rows_per_block)
     map_transformer = MapTransformer([transform_fn])
     return MapOperator.create(
         map_transformer,

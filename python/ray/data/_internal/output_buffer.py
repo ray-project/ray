@@ -9,12 +9,12 @@ from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, MAX_SAFE_ROWS_PER_BLOCK
 @dataclass
 class OutputBlockSizeOption:
     target_max_block_size: Optional[int] = None
-    target_max_rows_per_block: Optional[int] = None
+    target_num_rows_per_block: Optional[int] = None
 
     def __post_init__(self) -> None:
         assert (self.target_max_block_size is None) != (
-            self.target_max_rows_per_block is None
-        ), "Exactly one of target_max_block_size or target_max_rows_per_block must be set."
+            self.target_num_rows_per_block is None
+        ), "Exactly one of target_max_block_size or target_num_rows_per_block must be set."
 
 
 class BlockOutputBuffer:
@@ -74,9 +74,9 @@ class BlockOutputBuffer:
 
     def _exceeded_buffer_row_limit(self) -> bool:
         return (
-            self._output_block_size_option.target_max_rows_per_block is not None
+            self._output_block_size_option.target_num_rows_per_block is not None
             and self._buffer.num_rows()
-            > self._output_block_size_option.target_max_rows_per_block
+            > self._output_block_size_option.target_num_rows_per_block
         )
 
     def _exceeded_buffer_size_limit(self) -> bool:
@@ -111,10 +111,10 @@ class BlockOutputBuffer:
         # are more than 50% above the target rows per block, because this ensures that
         # the last block produced will be at least half the target row count.
         return (
-            self._output_block_size_option.target_max_rows_per_block is not None
+            self._output_block_size_option.target_num_rows_per_block is not None
             and block.num_rows()
             >= MAX_SAFE_ROWS_PER_BLOCK_FACTOR
-            * self._output_block_size_option.target_max_rows_per_block
+            * self._output_block_size_option.target_num_rows_per_block
         )
 
     def next(self) -> Block:
@@ -127,7 +127,7 @@ class BlockOutputBuffer:
 
         target_num_rows = None
         if self._exceeded_block_row_slice_limit(block):
-            target_num_rows = self._output_block_size_option.target_max_rows_per_block
+            target_num_rows = self._output_block_size_option.target_num_rows_per_block
         elif self._exceeded_block_size_slice_limit(block):
             num_bytes_per_row = block.size_bytes() // block.num_rows()
             target_num_rows = max(

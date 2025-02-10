@@ -104,21 +104,21 @@ class MapTransformFn:
         else:
             return self._output_block_size_option.target_max_block_size
 
-    def set_target_max_rows_per_block(self, target_max_rows_per_block: int):
+    def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
         assert (
             self._output_block_size_option is None
-            and target_max_rows_per_block is not None
+            and target_num_rows_per_block is not None
         )
         self._output_block_size_option = OutputBlockSizeOption(
-            target_max_rows_per_block=target_max_rows_per_block
+            target_num_rows_per_block=target_num_rows_per_block
         )
 
     @property
-    def target_max_rows_per_block(self):
+    def target_num_rows_per_block(self):
         if self._output_block_size_option is None:
             return None
         else:
-            return self._output_block_size_option.target_max_rows_per_block
+            return self._output_block_size_option.target_num_rows_per_block
 
 
 class MapTransformer:
@@ -184,21 +184,21 @@ class MapTransformer:
         else:
             return self._output_block_size_option.target_max_block_size
 
-    def set_target_max_rows_per_block(self, target_max_rows_per_block: int):
+    def set_target_num_rows_per_block(self, target_num_rows_per_block: int):
         assert (
             self._output_block_size_option is None
-            and target_max_rows_per_block is not None
+            and target_num_rows_per_block is not None
         )
         self._output_block_size_option = OutputBlockSizeOption(
-            target_max_rows_per_block=target_max_rows_per_block
+            target_num_rows_per_block=target_num_rows_per_block
         )
 
     @property
-    def target_max_rows_per_block(self):
+    def target_num_rows_per_block(self):
         if self._output_block_size_option is None:
             return None
         else:
-            return self._output_block_size_option.target_max_rows_per_block
+            return self._output_block_size_option.target_num_rows_per_block
 
     def init(self) -> None:
         """Initialize the transformer.
