@@ -27,7 +27,7 @@ class AggregateFn:
 
     Args:
         init: Function that creates an initial aggregator for each group. Receives a key
-            (the group key) and returns the initial accumulator state (commonly 0, 
+            (the group key) and returns the initial accumulator state (commonly 0,
             an empty list, or an empty dictionary).
         accumulate_block: Function that processes an entire block of rows at once. It receives the
             current accumulator and a block of rows, then returns an updated accumulator.
