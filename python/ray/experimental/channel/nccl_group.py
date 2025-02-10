@@ -95,10 +95,10 @@ class _NcclGroup(GPUCommunicator):
             # Driver does not have a rank.
             self._comm = None
 
-        self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
-        self._send_stream: Optional["cp.cuda.ExternalStream"] = None
-        self._recv_stream: Optional["cp.cuda.ExternalStream"] = None
-        self._coll_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._cuda_stream: "cp.cuda.ExternalStream"
+        self._send_stream: "cp.cuda.ExternalStream"
+        self._recv_stream: "cp.cuda.ExternalStream"
+        self._coll_stream: "cp.cuda.ExternalStream"
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
 
@@ -266,6 +266,12 @@ class _NcclGroup(GPUCommunicator):
     ):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
+
+        import torch
+
+        # Record send_buf is used by the collective stream
+        # so that torch's CudaCachingAllocator does not reuse the memory.
+        send_buf.record_stream(torch.cuda.ExternalStream(self._coll_stream.ptr))
 
         self._comm.allReduce(
             self.nccl_util.get_tensor_ptr(send_buf),
