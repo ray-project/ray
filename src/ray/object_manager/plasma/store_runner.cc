@@ -46,7 +46,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
   if (fallback_directory.empty()) {
     fallback_directory = "/tmp";
   }
-  RAY_LOG(INFO) << "Starting object store with directory " << plasma_directory
+  RAY_LOG(INFO) << "[myan] Starting object store with directory " << plasma_directory
                 << ", fallback " << fallback_directory << ", and huge page support "
                 << (hugepages_enabled ? "enabled" : "disabled");
 #ifdef __linux__

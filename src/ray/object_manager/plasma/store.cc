@@ -470,14 +470,14 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     }
   } break;
   case fb::MessageType::PlasmaSealRequest: {
-    RAY_LOG(INFO) << "Received seal request...";
+    RAY_LOG(INFO) << "[myan] Received seal request...";
     RAY_RETURN_NOT_OK(ReadSealRequest(input, input_size, &object_id));
     SealObjects({object_id});
     RAY_RETURN_NOT_OK(SendSealReply(client, object_id, PlasmaError::OK));
   } break;
   case fb::MessageType::PlasmaEvictRequest: {
     // This code path should only be used for testing.
-    RAY_LOG(INFO) << "Received Evict request...";
+    RAY_LOG(INFO) << "[myan] Received Evict request...";
     int64_t num_bytes;
     RAY_RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
     int64_t num_bytes_evicted = object_lifecycle_mgr_.RequireSpace(num_bytes);
@@ -487,18 +487,18 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     RAY_RETURN_NOT_OK(SendConnectReply(client, allocator_.GetFootprintLimit()));
   } break;
   case fb::MessageType::PlasmaDisconnectClient:
-    RAY_LOG(INFO) << "Received Disconnect request...";
+    RAY_LOG(INFO) << "[myan] Received Disconnect request...";
     RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
     DisconnectClient(client);
     return Status::Disconnected("The Plasma Store client is disconnected.");
     break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
-    RAY_LOG(INFO) << "Received DebugString request...";
+    RAY_LOG(INFO) << "[myan] Received DebugString request...";
     RAY_RETURN_NOT_OK(SendGetDebugStringReply(
         client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
   } break;
   default:
-    RAY_LOG(INFO) << "Received request falls into default...";
+    RAY_LOG(INFO) << "[myan] Received request falls into default...";
     // This code should be unreachable.
     RAY_CHECK(0);
   }
@@ -526,7 +526,7 @@ void PlasmaStore::ProcessCreateRequests() {
     retry_after_ms = delay_on_oom_ms_;
 
     if (!dumped_on_oom_) {
-      RAY_LOG(INFO) << "Plasma store at capacity\n" << GetDebugDump();
+      RAY_LOG(INFO) << "[myan] Plasma store at capacity\n" << GetDebugDump();
       dumped_on_oom_ = true;
     }
   } else {
@@ -577,7 +577,7 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 
 void PlasmaStore::PrintAndRecordDebugDump() const {
   absl::MutexLock lock(&mutex_);
-  RAY_LOG(INFO) << GetDebugDump();
+  RAY_LOG(INFO) << "[myan] " << GetDebugDump();
   stats_timer_ = execute_after(
       io_context_,
       [this]() { PrintAndRecordDebugDump(); },
