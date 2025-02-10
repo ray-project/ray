@@ -353,6 +353,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<WorkerInterface> GetRegisteredDriver(
       const std::shared_ptr<ClientConnection> &connection) const;
 
+  /// Get the registered driver by worker id or nullptr if not found.
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const;
+
   /// Disconnect a registered worker.
   ///
   /// \param worker The worker to disconnect. The worker must be registered.

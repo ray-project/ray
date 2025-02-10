@@ -1853,7 +1853,8 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
                                             rpc::ReportWorkerBacklogReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  if (worker_pool_.GetRegisteredWorker(worker_id) == nullptr) {
+  if (worker_pool_.GetRegisteredWorker(worker_id) == nullptr &&
+      worker_pool_.GetRegisteredDriver(worker_id) == nullptr) {
     // The worker is already disconnected.
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
