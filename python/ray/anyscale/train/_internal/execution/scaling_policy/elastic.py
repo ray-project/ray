@@ -15,7 +15,10 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroupState,
+    WorkerGroupPollStatus,
+)
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
@@ -74,9 +77,7 @@ class ElasticScalingPolicy(ScalingPolicy):
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
         )
 
-    def make_decision_for_non_running_worker_group(
-        self, worker_group_status: WorkerGroupStatus
-    ) -> ScalingDecision:
+    def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         self._maybe_send_resource_request()
 
         allocated_resources = self._get_allocated_resources()
@@ -102,7 +103,9 @@ class ElasticScalingPolicy(ScalingPolicy):
         return decision
 
     def make_decision_for_running_worker_group(
-        self, worker_group_status: WorkerGroupStatus
+        self,
+        worker_group_state: WorkerGroupState,
+        worker_group_status: WorkerGroupPollStatus,
     ) -> ScalingDecision:
         self._maybe_send_resource_request()
 
@@ -110,7 +113,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         # The latest restart time and the latest monitor time (whichever is later)
         # determine the time of the next resize consideration.
         latest_consideration_time = max(
-            worker_group_status.latest_start_time, self._latest_monitor_time
+            worker_group_state.start_time, self._latest_monitor_time
         )
 
         now = time_monotonic()
@@ -133,7 +136,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         if allocated_resources is None:
             return NoopDecision()
         decision = self._get_resize_decision(allocated_resources)
-        if decision.num_workers == worker_group_status.num_workers:
+        if decision.num_workers == worker_group_state.num_workers:
             logger.info(
                 "Did not detect any changes in the cluster resources. "
                 "Training will continue with the same worker group size "
@@ -144,7 +147,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         logger.info(
             "Detected changes in the cluster resources. "
             "Deciding to resize the worker group from "
-            f"{worker_group_status.num_workers} -> {decision.num_workers} workers."
+            f"{worker_group_state.num_workers} -> {decision.num_workers} workers."
         )
         return decision
 

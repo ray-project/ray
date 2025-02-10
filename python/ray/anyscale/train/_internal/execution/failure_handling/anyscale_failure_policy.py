@@ -7,7 +7,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     DefaultFailurePolicy,
     FailureDecision,
 )
-from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
+from ray.train.v2._internal.execution.worker_group import WorkerGroupPollStatus
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,9 @@ def _contains_preemption_error(errors: Dict[str, Exception]) -> bool:
 
 
 class AnyscaleFailurePolicy(DefaultFailurePolicy):
-    def make_decision(self, worker_group_status: WorkerGroupStatus) -> FailureDecision:
+    def make_decision(
+        self, worker_group_status: WorkerGroupPollStatus
+    ) -> FailureDecision:
         # TODO: Generic hardware failures (node/GPU failures) should be handled
         # the same way as preemption errors. These are expected errors when
         # running at larger scale for longer durations and should always be retried

@@ -11,7 +11,8 @@ from ray.anyscale.train.api.config import ScalingConfig
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.scaling_policy import NoopDecision, ResizeDecision
 from ray.train.v2._internal.execution.worker_group import (
-    WorkerGroupStatus,
+    WorkerGroupPollStatus,
+    WorkerGroupState,
     WorkerStatus,
 )
 from ray.train.v2._internal.util import time_monotonic
@@ -39,15 +40,22 @@ def patch_ray_get():
         yield
 
 
-def _get_mock_worker_group_status(
-    num_workers: int, latest_start_time: float
-) -> WorkerGroupStatus:
-    return WorkerGroupStatus(
-        num_workers=num_workers,
-        latest_start_time=latest_start_time,
+def _get_mock_worker_group_status(num_workers: int) -> WorkerGroupPollStatus:
+    return WorkerGroupPollStatus(
         worker_statuses={
             i: WorkerStatus(running=True, error=None) for i in range(num_workers)
         },
+    )
+
+
+def _get_mock_worker_group_state(
+    num_workers: int, start_time: float
+) -> WorkerGroupState:
+    return WorkerGroupState(
+        start_time=start_time,
+        placement_group=MagicMock(),
+        workers=[MagicMock() for _ in range(num_workers)],
+        sync_actor=MagicMock(),
     )
 
 
@@ -66,25 +74,23 @@ def test_recovery_decision():
     mock_coordinator = policy._autoscaling_coordinator
 
     # No resources are available
-    worker_group_status = _get_mock_worker_group_status(0, float("-inf"))
-    decision = policy.make_decision_for_non_running_worker_group(worker_group_status)
+    decision = policy.make_decision_for_non_running_worker_group()
     assert isinstance(decision, NoopDecision)
 
     # Resources for < min workers are available
     mock_coordinator._allocated_resources = [resources_per_worker] * (min_workers - 1)
-    decision = policy.make_decision_for_non_running_worker_group(worker_group_status)
+    decision = policy.make_decision_for_non_running_worker_group()
     assert isinstance(decision, NoopDecision)
 
     # Resources for >= min workers are available
     mock_coordinator._allocated_resources = [resources_per_worker] * min_workers
-    decision = policy.make_decision_for_non_running_worker_group(worker_group_status)
+    decision = policy.make_decision_for_non_running_worker_group()
     assert isinstance(decision, ResizeDecision)
     assert decision.num_workers == min_workers
 
     mock_coordinator._allocated_resources = [resources_per_worker] * max_workers
 
-    worker_group_status = _get_mock_worker_group_status(min_workers, time_monotonic())
-    decision = policy.make_decision_for_non_running_worker_group(worker_group_status)
+    decision = policy.make_decision_for_non_running_worker_group()
     assert isinstance(decision, ResizeDecision)
     assert decision.num_workers == max_workers
 
@@ -108,9 +114,8 @@ def test_monitor_recently_started_worker_group():
 
     with freeze_time() as frozen_time:
         # The worker group just started
-        worker_group_status = _get_mock_worker_group_status(
-            min_workers, time_monotonic()
-        )
+        worker_group_state = _get_mock_worker_group_state(min_workers, time_monotonic())
+        worker_group_status = _get_mock_worker_group_status(min_workers)
 
         # Advance time partway through the monitor interval
         frozen_time.tick(delta=monitor_interval_s / 2)
@@ -122,14 +127,20 @@ def test_monitor_recently_started_worker_group():
         )
 
         assert isinstance(
-            policy.make_decision_for_running_worker_group(worker_group_status),
+            policy.make_decision_for_running_worker_group(
+                worker_group_state=worker_group_state,
+                worker_group_status=worker_group_status,
+            ),
             NoopDecision,
         )
 
         frozen_time.tick(delta=monitor_interval_s / 2)
 
         # The monitor interval has passed, should detect resources and resize
-        decision = policy.make_decision_for_running_worker_group(worker_group_status)
+        decision = policy.make_decision_for_running_worker_group(
+            worker_group_state=worker_group_state,
+            worker_group_status=worker_group_status,
+        )
         assert isinstance(decision, ResizeDecision)
         assert decision.num_workers == max_workers - 1
 
@@ -152,27 +163,35 @@ def test_monitor_long_running_worker_group():
     mock_coordinator = policy._autoscaling_coordinator
 
     with freeze_time() as frozen_time:
-        worker_group_status = _get_mock_worker_group_status(
-            min_workers, time_monotonic()
-        )
+        worker_group_state = _get_mock_worker_group_state(min_workers, time_monotonic())
+        worker_group_status = _get_mock_worker_group_status(min_workers)
         mock_coordinator._allocated_resources = [resources_per_worker] * min_workers
 
         # The worker group has been running for a while at the same size
         frozen_time.tick(monitor_interval_s * 60)
 
         # Consider resizing.
-        decision = policy.make_decision_for_running_worker_group(worker_group_status)
+        decision = policy.make_decision_for_running_worker_group(
+            worker_group_state=worker_group_state,
+            worker_group_status=worker_group_status,
+        )
         assert isinstance(decision, NoopDecision)
 
         # We recently considered resizing, so we should wait until the next interval
         # to consider again --> no-op even if new resources are available
         mock_coordinator._allocated_resources = [resources_per_worker] * max_workers
         frozen_time.tick(monitor_interval_s / 2)
-        decision = policy.make_decision_for_running_worker_group(worker_group_status)
+        decision = policy.make_decision_for_running_worker_group(
+            worker_group_state=worker_group_state,
+            worker_group_status=worker_group_status,
+        )
         assert isinstance(decision, NoopDecision)
 
         frozen_time.tick(monitor_interval_s / 2)
-        decision = policy.make_decision_for_running_worker_group(worker_group_status)
+        decision = policy.make_decision_for_running_worker_group(
+            worker_group_state=worker_group_state,
+            worker_group_status=worker_group_status,
+        )
         assert isinstance(decision, ResizeDecision)
         assert decision.num_workers == max_workers
 
@@ -237,7 +256,8 @@ def test_request_and_clear():
         )
 
     with freeze_time() as frozen_time:
-        worker_group_status = _get_mock_worker_group_status(2, time_monotonic())
+        worker_group_state = _get_mock_worker_group_state(2, time_monotonic())
+        worker_group_status = _get_mock_worker_group_status(2)
 
         # Test request_resources is called when the controller starts.
         policy.after_controller_start()
@@ -248,11 +268,17 @@ def test_request_and_clear():
         # `make_decision_for_running_worker_group`,
         # if `AUTOSCALING_REQUESTS_INTERVAL_S` has passed.
         frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
-        policy.make_decision_for_running_worker_group(worker_group_status)
+        policy.make_decision_for_running_worker_group(
+            worker_group_state=worker_group_state,
+            worker_group_status=worker_group_status,
+        )
         assert mock_coordinator.request_resources.remote.call_count == 1
 
         frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
-        policy.make_decision_for_running_worker_group(worker_group_status)
+        policy.make_decision_for_running_worker_group(
+            worker_group_state=worker_group_state,
+            worker_group_status=worker_group_status,
+        )
         assert mock_coordinator.request_resources.remote.call_count == 2
         assert_resource_request_called_with()
 
