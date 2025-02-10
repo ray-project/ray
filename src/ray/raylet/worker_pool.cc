@@ -357,8 +357,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
-    worker_command_args.push_back("--runtime-env-hash=" +
-                                  std::to_string(runtime_env_hash));
+    // worker_command_args.push_back("--runtime-env-hash=" +
+    //                               std::to_string(runtime_env_hash));
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
@@ -368,8 +368,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
     worker_command_args.push_back("--language=" + Language_Name(language));
-    worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                  serialized_runtime_env_context);
+    // worker_command_args.push_back("--serialized-runtime-env-context=" +
+    //                               serialized_runtime_env_context);
   } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
              worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
     // Check that the arg really is the path to the setup worker before erasing it, to
@@ -417,15 +417,15 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     }
   }
 
-  if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
-      RayConfig::instance().preload_python_modules().size() > 0) {
-    std::string serialized_preload_python_modules =
-        absl::StrJoin(RayConfig::instance().preload_python_modules(), ",");
-    RAY_LOG(DEBUG) << "Starting worker with preload_python_modules "
-                   << serialized_preload_python_modules;
-    worker_command_args.push_back("--worker-preload-modules=" +
-                                  serialized_preload_python_modules);
-  }
+  // if (language == Language::PYTHON && worker_type == rpc::WorkerType::WORKER &&
+  //     RayConfig::instance().preload_python_modules().size() > 0) {
+  //   std::string serialized_preload_python_modules =
+  //       absl::StrJoin(RayConfig::instance().preload_python_modules(), ",");
+  //   RAY_LOG(DEBUG) << "Starting worker with preload_python_modules "
+  //                  << serialized_preload_python_modules;
+  //   worker_command_args.push_back("--worker-preload-modules=" +
+  //                                 serialized_preload_python_modules);
+  // }
 
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
