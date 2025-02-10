@@ -139,7 +139,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
  protected:
   /// A private constructor for a server connection.
-  explicit ServerConnection(local_stream_socket &&socket);
+  explicit ServerConnection(local_stream_socket &&socket)
+      : ServerConnection(Tag{}, std::move(socket)) {}
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
@@ -251,7 +252,13 @@ class ClientConnection : public ServerConnection {
                    local_stream_socket &&socket,
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names,
-                   int64_t error_message_type);
+                   int64_t error_message_type)
+      : ClientConnection(Tag{},
+                         message_handler,
+                         std::move(socket),
+                         debug_label,
+                         message_type_enum_names,
+                         error_message_type) {}
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
