@@ -35,6 +35,7 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
+from ray.data._internal.datasource.clickhouse_datasink import ClickHouseDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
@@ -3930,6 +3931,79 @@ class Dataset:
             dataset=dataset,
             max_retry_cnt=max_retry_cnt,
             overwrite_table=overwrite_table,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    def write_clickhouse(
+        self,
+        table: str,
+        dsn: str,
+        overwrite: bool = False,
+        client_settings: Optional[Dict[str, Any]] = None,
+        client_kwargs: Optional[Dict[str, Any]] = None,
+        table_settings: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write the dataset to a ClickHouse dataset table.
+
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pandas as pd
+
+                docs = [{"title": "ClickHouse Datasource test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_clickhouse(
+                    table="my_project_id",
+                    dsn="http://username:password@host:8123/default",
+                    overwrite=True
+                )
+
+        Args:
+            table: Fully qualified table identifier (e.g., "default.my_table").
+                The table is created if it doesn't already exist.
+            dsn: A string in DSN (Data Source Name) HTTP format
+                (e.g., "clickhouse+http://username:password@host:8123/default").
+                For more information, see `ClickHouse Connection String doc
+                <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
+            overwrite: If True, any existing table with the same name will be dropped
+                before writing new data. If False, data will be appended if the table
+                already exists, otherwise the table is created.
+            client_settings: Optional ClickHouse server settings to be used with the
+                session/every request. For more information, see
+                `ClickHouse Client Settings doc
+                <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+            client_kwargs: Additional keyword arguments to pass to the
+                ClickHouse client. For more information, see
+                `ClickHouse Core Settings doc
+                <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
+            table_settings: A dictionary containing additional table creation
+                instructions. For example, specifying engine, order_by, partition_by,
+                primary_key, or custom settings. For example:
+                ``{"engine": "ReplacingMergeTree()", "order_by": "id"}``.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+        """  # noqa: E501
+        datasink = ClickHouseDatasink(
+            table=table,
+            dsn=dsn,
+            overwrite=overwrite,
+            client_settings=client_settings,
+            client_kwargs=client_kwargs,
+            table_settings=table_settings,
         )
         self.write_datasink(
             datasink,

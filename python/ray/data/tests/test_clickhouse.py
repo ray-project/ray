@@ -1,11 +1,23 @@
-import re
 from unittest import mock
-from unittest.mock import MagicMock
+import re
 
-import pyarrow as pa
 import pytest
-
+import pyarrow as pa
+from unittest.mock import MagicMock, patch
+import ray
+from clickhouse_connect.driver.summary import QuerySummary
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
+from ray.data._internal.datasource.clickhouse_datasink import ClickHouseDatasink
+
+
+@pytest.fixture(autouse=True)
+def patch_clickhouse_get_client():
+    with patch("clickhouse_connect.get_client") as mock_factory:
+        mock_instance = MagicMock()
+        mock_instance.insert_arrow.return_value = QuerySummary({"written_rows": 3})
+        mock_factory.return_value = mock_instance
+        yield mock_instance
 
 
 @pytest.fixture
@@ -354,6 +366,119 @@ class TestClickHouseDatasource:
             ds = ClickHouseDatasource(table=table_name, dsn=dsn, filter=None)
         assert "WHERE" not in ds._query
         assert ds._filter is None
+
+
+@pytest.fixture(scope="session")
+def ray_local_mode():
+    ray.init(local_mode=True, num_cpus=1)
+    yield
+    ray.shutdown()
+
+
+@pytest.fixture
+def mock_clickhouse_sink_client():
+    client = MagicMock()
+    client.insert_arrow.return_value = QuerySummary({"written_rows": 3})
+    return client
+
+
+@pytest.fixture(autouse=True)
+def patch_global_get_client(mock_clickhouse_sink_client):
+    with patch(
+        "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+    ):
+        yield
+
+
+@pytest.mark.usefixtures("ray_local_mode")
+class TestClickHouseDatasink:
+    @pytest.fixture
+    def datasink(self, mock_clickhouse_sink_client):
+        sink = ClickHouseDatasink(
+            table="default.test_table",
+            dsn="clickhouse+http://user:pass@localhost:8123/default",
+            overwrite=False,
+            table_settings={"engine": "MergeTree()"},
+        )
+        sink._driver_client = mock_clickhouse_sink_client
+        return sink
+
+    @pytest.mark.parametrize("overwrite", [True, False])
+    @pytest.mark.parametrize("table_exists", [True, False])
+    def test_on_write_start(
+        self, datasink, mock_clickhouse_sink_client, overwrite, table_exists
+    ):
+        datasink._overwrite = overwrite
+        with patch.object(
+            datasink, "_table_exists", return_value=table_exists
+        ) as mock_tbl_exists, patch.object(
+            datasink, "_get_existing_order_by", return_value="(prev_col)"
+        ) as mock_get_order:
+            datasink.on_write_start()
+            if overwrite and table_exists:
+                mock_tbl_exists.assert_called_once()
+                mock_get_order.assert_called_once()
+                mock_clickhouse_sink_client.command.assert_called_with(
+                    "DROP TABLE IF EXISTS default.test_table"
+                )
+                assert datasink._existing_order_by == "(prev_col)"
+            elif overwrite and not table_exists:
+                mock_tbl_exists.assert_called_once()
+                mock_get_order.assert_not_called()
+                mock_clickhouse_sink_client.command.assert_called_with(
+                    "DROP TABLE IF EXISTS default.test_table"
+                )
+            else:
+                mock_tbl_exists.assert_not_called()
+                mock_get_order.assert_not_called()
+                mock_clickhouse_sink_client.command.assert_not_called()
+
+    @pytest.mark.parametrize("overwrite", [True, False])
+    @pytest.mark.parametrize("table_exists", [True, False])
+    @pytest.mark.parametrize("existing_order_by", [None, "(my_old_col)"])
+    @pytest.mark.parametrize("user_order_by", [None, "user_defined_col", "tuple()"])
+    def test_write_behavior(
+        self,
+        datasink,
+        mock_clickhouse_sink_client,
+        overwrite,
+        table_exists,
+        existing_order_by,
+        user_order_by,
+    ):
+        datasink._overwrite = overwrite
+        if user_order_by is not None:
+            datasink._table_settings["order_by"] = user_order_by
+        else:
+            datasink._table_settings.pop("order_by", None)
+        datasink._table_exists = MagicMock(return_value=table_exists)
+        datasink._existing_order_by = existing_order_by
+        mock_clickhouse_sink_client.insert_arrow.return_value = QuerySummary(
+            {"written_rows": 3}
+        )
+        rb = pa.record_batch([pa.array([1, 2, 3])], names=["col1"])
+        block_data = pa.Table.from_batches([rb])
+        ctx = TaskContext(1)
+        datasink.write([block_data], ctx=ctx)
+        mock_clickhouse_sink_client.insert_arrow.assert_called()
+
+    @pytest.mark.parametrize(
+        "schema, expected_order_by",
+        [
+            (pa.schema([]), "tuple()"),
+            (pa.schema([("ts", pa.timestamp("ns")), ("col2", pa.string())]), "ts"),
+            (pa.schema([("col1", pa.string()), ("val", pa.int64())]), "val"),
+            (pa.schema([("s1", pa.string()), ("s2", pa.large_string())]), "s1"),
+        ],
+    )
+    def test_pick_best_arrow_field_for_order_by(
+        self, datasink, mock_clickhouse_sink_client, schema, expected_order_by
+    ):
+        with patch.object(datasink, "_table_exists", return_value=False):
+            datasink._existing_order_by = None
+            empty_table = pa.Table.from_batches([], schema=schema)
+            datasink.write([empty_table], ctx=None)
+            mock_clickhouse_sink_client.insert_arrow.assert_called()
 
 
 if __name__ == "__main__":
