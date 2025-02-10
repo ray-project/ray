@@ -263,6 +263,7 @@ class SubprocessModuleHandle:
         body = b""
         query = {}
         headers = {}
+        match_info = {}
         if request is not None:
             body = await request.read()
             query = dict(request.query)

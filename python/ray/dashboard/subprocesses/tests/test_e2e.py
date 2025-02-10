@@ -68,6 +68,7 @@ def test_module_side_handler(default_module_config):
             query={},
             headers={},
             body=b"",
+            match_info={},
         )
     )
     response = subprocess.parent_bound_queue.get()
@@ -83,6 +84,7 @@ def test_module_side_handler(default_module_config):
             query={},
             headers={},
             body=b"a new dashboard",
+            match_info={},
         )
     )
     response = subprocess.parent_bound_queue.get()
@@ -98,6 +100,7 @@ def test_module_side_handler(default_module_config):
             query={},
             headers={},
             body=b"",
+            match_info={},
         )
     )
     response = subprocess.parent_bound_queue.get()
