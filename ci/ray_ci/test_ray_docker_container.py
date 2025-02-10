@@ -101,7 +101,7 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray:{sha}-{pv}-cu121 "
                 f"ray:{sha}-{pv}-cu121_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
@@ -127,7 +127,7 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
