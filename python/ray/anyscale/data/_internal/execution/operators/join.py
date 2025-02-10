@@ -224,23 +224,3 @@ class JoinOperator(HashShufflingOperatorBase):
         )
 
         return aggregator_total_memory_required
-
-    def _get_default_aggregator_ray_remote_args(
-        self,
-        *,
-        num_partitions: int,
-        num_aggregators: int,
-        partition_size_hint: Optional[int] = None,
-    ):
-        shuffle_base_remote_args = super()._get_default_aggregator_ray_remote_args(
-            num_partitions=num_partitions,
-            num_aggregators=num_aggregators,
-            partition_size_hint=partition_size_hint,
-        )
-
-        return {
-            **shuffle_base_remote_args,
-            # TODO elaborate (avoid co-locating large number of aggregators onto the
-            #      same node to prevent spilling/OOMs/OODs)
-            "scheduling_strategy": "SPREAD",
-        }

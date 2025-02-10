@@ -107,8 +107,7 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             name=(
                 f"HashAggregate("
                 f"num_partitions={num_partitions}, "
-                f"key_columns={key_columns}, "
-                f"fn=[{','.join([f.name for f in aggregation_fns])}]"
+                f"key_columns={key_columns}"
                 f")"
             ),
             input_ops=[input_op],
@@ -136,7 +135,9 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         )
 
     def _get_default_aggregator_num_cpus(self):
-        return self.data_context.default_aggregate_operator_actor_num_cpus_per_partition
+        return (
+            self.data_context.default_hash_aggregate_operator_actor_num_cpus_per_partition
+        )
 
     @classmethod
     def _estimate_aggregator_memory_allocation(

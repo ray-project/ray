@@ -821,6 +821,10 @@ class HashShufflingOperatorBase(PhysicalOperator):
         remote_args = {
             "num_cpus": aggregator_num_cpus * partition_aggregator_ratio,
             "memory": aggregator_total_memory_required,
+            # NOTE: By default aggregating actors should be spread across available
+            #       nodes to prevent any single node being overloaded with a "thundering
+            #       herd"
+            "scheduling_strategy": "SPREAD",
         }
 
         return remote_args
@@ -869,7 +873,9 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         )
 
     def _get_default_aggregator_num_cpus(self):
-        return self.data_context.default_shuffle_operator_actor_num_cpus_per_partition
+        return (
+            self.data_context.default_hash_shuffle_operator_actor_num_cpus_per_partition
+        )
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -933,9 +939,13 @@ class AggregatorPool:
         self._aggregation_factory_ref: ObjectRef[
             StatefulShuffleAggregationFactory
         ] = ray.put(aggregation_factory)
-        self._aggregator_ray_remote_args: Dict[str, Any] = aggregator_ray_remote_args
 
-        logger.debug(f"Aggregator's remote args: {aggregator_ray_remote_args}")
+        self._aggregator_ray_remote_args: Dict[
+            str, Any
+        ] = self._derive_aggregator_ray_remote_args(
+            aggregator_ray_remote_args,
+            self._aggregator_partition_map,
+        )
 
     def start(self):
         for aggregator_id in range(self._num_aggregators):
@@ -943,18 +953,8 @@ class AggregatorPool:
 
             assert len(target_partition_ids) > 0
 
-            num_cpus_allocated = self._aggregator_ray_remote_args.get("num_cpus", 1)
-
-            # NOTE: ShuffleAggregator is configured as threaded actor to provide
-            #       to allow multiple requests being handled "concurrently" (par GIL) --
-            #       while it's not a real concurrency in its fullest of senses, having
-            #       multiple Python threads allows as to parallelize all activities not
-            #       requiring the GIL (inside Ray Core) such that concurrent request
-            #       handling tasks are only blocked on GIL and are ready to execute as
-            #       soon as it's released
             aggregator = ShuffleAggregator.options(
-                max_concurrency=int(num_cpus_allocated),
-                **self._aggregator_ray_remote_args,
+                **self._aggregator_ray_remote_args
             ).remote(aggregator_id, target_partition_ids, self._aggregation_factory_ref)
 
             self._aggregators.append(aggregator)
@@ -986,9 +986,47 @@ class AggregatorPool:
 
         return partition_id % self._num_aggregators
 
+    @staticmethod
+    def _derive_aggregator_ray_remote_args(
+        aggregator_ray_remote_args: Dict[str, Any],
+        aggregator_partition_map: Dict[int, List[int]],
+    ):
+        # TODO add test for
+
+        max_partitions_per_aggregator = max(
+            [len(ps) for ps in aggregator_partition_map.values()]
+        )
+
+        # NOTE: ShuffleAggregator is configured as threaded actor to allow for
+        #       multiple requests to be handled "concurrently" (par GIL) --
+        #       while it's not a real concurrency in its fullest of senses, having
+        #       multiple Python threads allows as to parallelize all activities not
+        #       requiring the GIL (inside Ray Core) such that concurrent request
+        #       handling tasks are only blocked on GIL and are ready to execute as
+        #       soon as it's released.
+        finalized_remote_args = {
+            # Max concurrency is configured as a max of
+            #   - Max number of partitions allocated per aggregator
+            #   - Minimum concurrency configured
+            "max_concurrency": max(
+                max_partitions_per_aggregator,
+                ShuffleAggregator._DEFAULT_ACTOR_MAX_CONCURRENCY,
+            ),
+            **aggregator_ray_remote_args,
+        }
+
+        logger.debug(f"Shuffle aggregator's remote args: {finalized_remote_args}")
+
+        return finalized_remote_args
+
 
 @ray.remote
 class ShuffleAggregator:
+
+    # Default minimum value of `max_concurrency` configured
+    # for a `ShuffleAggregator` actor
+    _DEFAULT_ACTOR_MAX_CONCURRENCY = 1
+
     def __init__(
         self,
         aggregator_id: int,
