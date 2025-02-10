@@ -28,7 +28,7 @@ namespace gcs {
 
 namespace {
 
-ExponentialBackOff CreateDefaultBackoff() {
+ExponentialBackoff CreateDefaultBackoff() {
   // std::chrono conversions are unwieldy but safer.
   // ms -> ns
   using std::chrono::duration_cast;
@@ -44,7 +44,7 @@ ExponentialBackOff CreateDefaultBackoff() {
           milliseconds(
               RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms()))
           .count();
-  return ExponentialBackOff(
+  return ExponentialBackoff(
       initial_delay_ns,
       RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
       max_delay_ns);
@@ -307,7 +307,7 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group,
-    ExponentialBackOff backoff,
+    ExponentialBackoff backoff,
     bool is_feasible) {
   RAY_LOG(DEBUG).WithField(placement_group->GetPlacementGroupID())
       << "Failed to create placement group " << placement_group->GetName()
@@ -591,7 +591,7 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
 
   auto on_done = [placement_group_id, reply, send_reply_callback](
                      const Status &status,
-                     const std::optional<PlacementGroupTableData> &result) {
+                     const std::optional<rpc::PlacementGroupTableData> &result) {
     if (result) {
       reply->mutable_placement_group_table_data()->CopyFrom(*result);
     }
@@ -645,40 +645,40 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
   auto limit = request.has_limit() ? request.limit() : -1;
 
   RAY_LOG(DEBUG) << "Getting all placement group info.";
-  auto on_done =
-      [this, reply, send_reply_callback, limit](
-          const absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData> &result) {
-        // Set the total number of pgs.
-        auto total_pgs = result.size();
-        reply->set_total(total_pgs);
+  auto on_done = [this, reply, send_reply_callback, limit](
+                     const absl::flat_hash_map<PlacementGroupID,
+                                               rpc::PlacementGroupTableData> &result) {
+    // Set the total number of pgs.
+    auto total_pgs = result.size();
+    reply->set_total(total_pgs);
 
-        auto count = 0;
-        for (const auto &[placement_group_id, data] : result) {
-          if (limit != -1 && count >= limit) {
-            break;
-          }
-          count += 1;
+    auto count = 0;
+    for (const auto &[placement_group_id, data] : result) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
 
-          auto it = registered_placement_groups_.find(placement_group_id);
-          // If the pg entry exists in memory just copy from it since
-          // it has less stale data. It is useful because we don't
-          // persist placement group entry every time we update
-          // stats.
-          if (it != registered_placement_groups_.end()) {
-            reply->add_placement_group_table_data()->CopyFrom(
-                it->second->GetPlacementGroupTableData());
-          } else {
-            reply->add_placement_group_table_data()->CopyFrom(data);
-          }
-        }
+      auto it = registered_placement_groups_.find(placement_group_id);
+      // If the pg entry exists in memory just copy from it since
+      // it has less stale data. It is useful because we don't
+      // persist placement group entry every time we update
+      // stats.
+      if (it != registered_placement_groups_.end()) {
+        reply->add_placement_group_table_data()->CopyFrom(
+            it->second->GetPlacementGroupTableData());
+      } else {
+        reply->add_placement_group_table_data()->CopyFrom(data);
+      }
+    }
 
-        RAY_LOG(DEBUG) << "Finished getting all placement group info.";
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      };
+    RAY_LOG(DEBUG) << "Finished getting all placement group info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
   Status status =
       gcs_table_storage_->PlacementGroupTable().GetAll({std::move(on_done), io_context_});
   if (!status.ok()) {
-    on_done(absl::flat_hash_map<PlacementGroupID, PlacementGroupTableData>());
+    on_done(absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData>());
   }
   ++counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST];
 }
@@ -719,7 +719,7 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
     // Check whether the placement group does not exist or is removed.
     auto on_done = [this, placement_group_id, callback](
                        const Status &status,
-                       const std::optional<PlacementGroupTableData> &result) {
+                       const std::optional<rpc::PlacementGroupTableData> &result) {
       if (!status.ok()) {
         callback(status);
         return;
@@ -758,7 +758,7 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
 void GcsPlacementGroupManager::AddToPendingQueue(
     std::shared_ptr<GcsPlacementGroup> pg,
     std::optional<int64_t> rank,
-    std::optional<ExponentialBackOff> exp_backer) {
+    std::optional<ExponentialBackoff> exp_backer) {
   if (!rank) {
     rank = absl::GetCurrentTimeNanos();
   }

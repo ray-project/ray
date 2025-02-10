@@ -351,6 +351,17 @@ if setup_spec.type == SetupType.RAY:
             set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
         )
 
+    # "llm" is not included in all, by design. vllm's dependency set is very
+    # large and specific, will likely run into dependency conflicts with other
+    # ML libraries. As a result, it is an "extra-extra" that is not part
+    # ray[all].
+    #
+    # ray[llm] depends on ray[data].
+    #
+    # Keep this in sync with python/requirements/llm/llm-requirements.txt
+    #
+    setup_spec.extras["llm"] = list(set(["vllm>=0.7.2"] + setup_spec.extras["data"]))
+
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
@@ -545,7 +556,7 @@ def build(build_python, build_java, build_cpp):
     # version of Python to build packages inside the build.sh script. Note
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
-    if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
+    if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
@@ -560,19 +571,20 @@ def build(build_python, build_java, build_cpp):
             env=dict(os.environ, CC="gcc"),
         )
 
-    # runtime env agent dependenceis
-    runtime_env_agent_pip_packages = ["aiohttp"]
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
-        ]
-        + runtime_env_agent_pip_packages
-    )
+        # runtime env agent dependenceis
+        runtime_env_agent_pip_packages = ["aiohttp"]
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--target="
+                + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
+            ]
+            + runtime_env_agent_pip_packages
+        )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
@@ -800,7 +812,6 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
             "serve=ray.serve.scripts:cli",
         ]

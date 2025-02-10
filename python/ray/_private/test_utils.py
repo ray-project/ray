@@ -19,6 +19,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
 from dataclasses import dataclass
@@ -868,7 +869,7 @@ def wait_until_succeeded_without_exception(
     Return:
         Whether exception occurs within a timeout.
     """
-    if type(exceptions) != tuple:
+    if isinstance(type(exceptions), tuple):
         raise Exception("exceptions arguments should be given as a tuple")
 
     time_elapsed = 0

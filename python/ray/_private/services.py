@@ -1627,7 +1627,7 @@ def start_raylet(
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert node_manager_port is not None and type(node_manager_port) == int
+    assert node_manager_port is not None and type(node_manager_port) is int
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1707,7 +1707,6 @@ def start_raylet(
             f"--raylet-name={raylet_name}",
             f"--redis-address={redis_address}",
             f"--metrics-agent-port={metrics_agent_port}",
-            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--runtime-env-agent-port={runtime_env_agent_port}",

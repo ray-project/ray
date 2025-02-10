@@ -32,6 +32,7 @@
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/util/container_util.h"
 #include "ray/util/event.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/util.h"
@@ -371,6 +372,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       exiting_detail_(std::nullopt),
       pid_(getpid()),
       runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
+  RAY_LOG(DEBUG) << "Creating core worker with debug source: " << options_.debug_source;
+
   // Notify that core worker is initialized.
   absl::Cleanup initialzed_scope_guard = [this] {
     absl::MutexLock lock(&initialize_mutex_);
@@ -1298,13 +1301,6 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
     }
   }
 
-  if (!options_.stdout_file.empty()) {
-    worker_info.emplace("stdout_file", options_.stdout_file);
-  }
-  if (!options_.stderr_file.empty()) {
-    worker_info.emplace("stderr_file", options_.stderr_file);
-  }
-
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
   worker_data->mutable_worker_address()->set_raylet_id(rpc_address_.raylet_id());
   worker_data->mutable_worker_address()->set_ip_address(rpc_address_.ip_address());
@@ -2009,19 +2005,18 @@ Status CoreWorker::Contains(const ObjectID &object_id,
 
 // For any objects that are ErrorType::OBJECT_IN_PLASMA, we need to move them from
 // the ready set into the plasma_object_ids set to wait on them there.
-void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
-                               WorkerContext &worker_context,
-                               absl::flat_hash_set<ObjectID> &memory_object_ids,
-                               absl::flat_hash_set<ObjectID> &plasma_object_ids,
-                               absl::flat_hash_set<ObjectID> &ready) {
-  for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
-    auto current = iter++;
-    const auto &mem_id = *current;
-    auto found = memory_store->GetIfExists(mem_id);
+void MoveReadyPlasmaObjectsToPlasmaSet(
+    std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
+    absl::flat_hash_set<ObjectID> &memory_object_ids,
+    absl::flat_hash_set<ObjectID> &plasma_object_ids,
+    absl::flat_hash_set<ObjectID> &ready) {
+  for (auto iter = ready.begin(); iter != ready.end(); iter++) {
+    const auto &obj_id = *iter;
+    auto found = memory_store->GetIfExists(obj_id);
     if (found != nullptr && found->IsInPlasmaError()) {
-      plasma_object_ids.insert(mem_id);
-      ready.erase(mem_id);
-      memory_object_ids.erase(current);
+      plasma_object_ids.insert(obj_id);
+      ready.erase(iter);
+      memory_object_ids.erase(obj_id);
     }
   }
 }
@@ -2093,8 +2088,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
   }
   if (fetch_local) {
-    RetryObjectInPlasmaErrors(
-        memory_store_, worker_context_, memory_object_ids, plasma_object_ids, ready);
+    MoveReadyPlasmaObjectsToPlasmaSet(
+        memory_store_, memory_object_ids, plasma_object_ids, ready);
     if (static_cast<int>(ready.size()) < num_objects && !plasma_object_ids.empty()) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,

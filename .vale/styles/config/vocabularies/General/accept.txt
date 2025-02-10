@@ -17,5 +17,9 @@ GKE
 namespace
 ARM
 breakpoint
-deduplicate[s]
-deduplication
+deduplicate(s)?
+[Dd]eduplication
+Alibaba
+LSH
+BTS
+[Mm]ultimodal

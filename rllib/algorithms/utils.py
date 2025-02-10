@@ -48,11 +48,13 @@ class AggregatorActor(FaultAwareApply):
 
         # Set device and node.
         self._node = platform.node()
-        self._device = torch.device(
-            f"cuda:{ray.get_gpu_ids()[0]}"
-            if self.config.num_gpus_per_learner > 0
-            else "cpu"
-        )
+        self._device = torch.device("cpu")
+        # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
+        # self._device = torch.device(
+        #    f"cuda:{ray.get_gpu_ids()[0]}"
+        #    if self.config.num_gpus_per_learner > 0
+        #    else "cpu"
+        # )
         self.metrics = MetricsLogger()
 
         # Create the RLModule.
@@ -72,13 +74,24 @@ class AggregatorActor(FaultAwareApply):
         )
 
     def get_batch(self, episode_refs: List[ray.ObjectRef]):
-        episodes: List[EpisodeType] = tree.flatten(ray.get(episode_refs))
+        episodes: List[EpisodeType] = []
+        # It's possible that individual refs are invalid due to the EnvRunner
+        # that produced the ref has crashed or had its entire node go down.
+        # In this case, try each ref individually and collect only valid results.
+        try:
+            episodes = tree.flatten(ray.get(episode_refs))
+        except ray.exceptions.OwnerDiedError:
+            for ref in episode_refs:
+                try:
+                    episodes.extend(ray.get(ref))
+                except ray.exceptions.OwnerDiedError:
+                    pass
 
         env_steps = sum(len(e) for e in episodes)
 
         # If we have enough episodes collected to create a single train batch, pass
         # them at once through the connector to recieve a single train batch.
-        batch_on_gpu = self._learner_connector(
+        batch = self._learner_connector(
             episodes=episodes,
             rl_module=self._module,
             metrics=self.metrics,
@@ -86,13 +99,13 @@ class AggregatorActor(FaultAwareApply):
         # Convert to a dict into a `MultiAgentBatch`.
         # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
         #  batch iterators support splitting over a dict).
-        ma_batch_on_gpu = MultiAgentBatch(
+        ma_batch = MultiAgentBatch(
             policy_batches={
-                pid: SampleBatch(batch) for pid, batch in batch_on_gpu.items()
+                pid: SampleBatch(pol_batch) for pid, pol_batch in batch.items()
             },
             env_steps=env_steps,
         )
-        return ma_batch_on_gpu
+        return ma_batch
 
     def get_metrics(self):
         return self.metrics.reduce()
