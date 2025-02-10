@@ -49,6 +49,7 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 /// can be used to write messages synchronously to the server.
 class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
  private:
+  // Tag to allow `make_shared` inside of the class.
   struct Tag {};
 
  public:
@@ -198,6 +199,7 @@ using MessageHandler = std::function<void(
 /// also be used to process messages asynchronously from client.
 class ClientConnection : public ServerConnection {
  private:
+  // Tag to allow `make_shared` inside of the class.
   struct Tag {};
 
  public:
