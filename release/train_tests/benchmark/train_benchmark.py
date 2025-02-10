@@ -27,10 +27,6 @@ class TrainLoopRunner:
         model = factory.get_model()
         self.model = ray.train.torch.prepare_model(model)
 
-        # TODO: Might want to re-initialize dataloaders at the start of every epoch.
-        self.train_dataloader = factory.get_train_dataloader()
-        self.val_dataloader = factory.get_val_dataloader()
-
         self.loss_fn = factory.get_loss_fn()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
@@ -67,10 +63,12 @@ class TrainLoopRunner:
         if ray.train.get_context().get_world_rank() == 0:
             print(f"Training starting @ epoch={self._train_epoch_idx}")
 
+        train_dataloader = self.factory.get_train_dataloader()
+
         # NOTE: Time the first batch separately since it includes the dataset
         # pipeline warmup time.
         with self._metrics["train/iter_first_batch"].timer():
-            batch = self.get_next_batch(self.train_dataloader)
+            batch = self.get_next_batch(train_dataloader)
 
         # TODO: Handle the case where we restored to a middle of the epoch.
 
@@ -100,7 +98,7 @@ class TrainLoopRunner:
                 pprint.pprint(self.get_metrics())
 
             with self._metrics["train/iter_batch"].timer():
-                batch = self.get_next_batch(self.train_dataloader)
+                batch = self.get_next_batch(train_dataloader)
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
@@ -139,13 +137,15 @@ class TrainLoopRunner:
                 f"Validation starting @ epoch={self._train_epoch_idx}, batch={self._train_batch_idx}"
             )
 
+        val_dataloader = self.factory.get_val_dataloader()
+
         self.model.eval()
 
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
         with self._metrics["validation/iter_first_batch"].timer():
-            batch = self.get_next_batch(self.val_dataloader)
+            batch = self.get_next_batch(val_dataloader)
 
         while batch:
             input_batch, labels = batch
@@ -158,7 +158,7 @@ class TrainLoopRunner:
             self._metrics["validation/rows_processed"].add(len(labels))
 
             with self._metrics["validation/iter_batch"].timer():
-                batch = self.get_next_batch(self.val_dataloader)
+                batch = self.get_next_batch(val_dataloader)
 
         return {"validation/loss": total_loss.item() / num_rows}
 
