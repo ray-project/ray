@@ -160,8 +160,8 @@ def test_count_edge_case(ray_start_regular):
 
 
 def test_count_after_partial_execution(ray_start_regular):
-    SCALE_FACTOR=1
-    FILE_ROW_COUNT=150
+    SCALE_FACTOR = 1
+    FILE_ROW_COUNT = 150
     DS_ROW_COUNT = FILE_ROW_COUNT * SCALE_FACTOR
     paths = ["example://iris.csv"] * SCALE_FACTOR
     ds = ray.data.read_csv(paths)
