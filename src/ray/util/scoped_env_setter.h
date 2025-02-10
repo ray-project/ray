@@ -28,6 +28,9 @@ class ScopedEnvSetter {
   ScopedEnvSetter(const char *env_name, const char *value);
   ~ScopedEnvSetter();
 
+  ScopedEnvSetter(const ScopedEnvSetter &) = delete;
+  ScopedEnvSetter &operator=(const ScopedEnvSetter &) = delete;
+
  private:
   std::string env_name_;
   std::optional<std::string> old_value_;
