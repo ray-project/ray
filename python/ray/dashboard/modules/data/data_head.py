@@ -147,7 +147,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 text=str(e),
             )
 
-    async def run(self, server):
+    async def run(self):
         pass
 
     @staticmethod

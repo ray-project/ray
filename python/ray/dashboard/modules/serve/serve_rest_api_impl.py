@@ -258,7 +258,13 @@ def create_serve_rest_api(
 
                 return self._controller
 
-        async def run(self, server):
+        async def run(self, *args, **kwargs):
+            """
+            This method is for both DashboardHeadModule and DashboardAgentModule.
+            The former needs run(self), the latter needs run(self, server).
+
+            We don't need to do anything here anyway.
+            """
             pass
 
         @staticmethod

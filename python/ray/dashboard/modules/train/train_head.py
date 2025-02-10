@@ -181,7 +181,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     def is_minimal_module():
         return False
 
-    async def run(self, server):
+    async def run(self):
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(self.gcs_aio_client)
 

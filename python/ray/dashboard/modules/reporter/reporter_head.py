@@ -695,7 +695,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         channel = init_grpc_channel(ip_port, options=options, asynchronous=True)
         return reporter_pb2_grpc.ReporterServiceStub(channel)
 
-    async def run(self, server):
+    async def run(self):
         self._state_api_data_source_client = StateDataSourceClient(
             self.aiogrpc_gcs_channel, self.gcs_aio_client
         )

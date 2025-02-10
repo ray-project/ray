@@ -530,7 +530,7 @@ Windows powershell users need additional escaping:
     "--dashboard-grpc-port",
     type=int,
     default=None,
-    help="The port for the dashboard head to listen for grpc on.",
+    help="No longer used.",
 )
 @click.option(
     "--runtime-env-agent-port",
@@ -781,7 +781,6 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
-        dashboard_grpc_port=dashboard_grpc_port,
         runtime_env_agent_port=runtime_env_agent_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
