@@ -89,10 +89,18 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     CORE_WORKER_INIT_GRACE_PERIOD_S = 1
 
     def __init__(self):
+        # NOTE(edoakes): do not access this field directly. Use the `core_worker`
+        # property instead to handle initialization race conditions.
         self._core_worker: Optional["ray._raylet.CoreWorker"] = None
 
     @property
     def core_worker(self) -> "ray._raylet.CoreWorker":
+        """Get the core_worker initialized in this process.
+
+        In rare cases, the core worker may not be fully initialized by the time an I/O
+        worker begins to execute an operation because there is no explicit flag set to
+        indicate that the Python layer is ready to execute tasks.
+        """
         if self._core_worker is None:
             worker = ray._private.worker.global_worker
             start = time.time()
