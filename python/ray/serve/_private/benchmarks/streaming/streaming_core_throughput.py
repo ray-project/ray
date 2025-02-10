@@ -78,6 +78,8 @@ def main(
         trial_runtime=trial_runtime,
     )
 
+    print("Starting benchmarking")
+
     mean, stddev = ray.get(h.run_benchmark.remote())
     print(
         "Core Actors streaming throughput ({}) {}: {} +- {} tokens/s".format(
