@@ -819,8 +819,8 @@ RAY_CONFIG(bool, emit_event_to_log_file, false)
 RAY_CONFIG(std::string, event_level, "warning")
 
 /// RPC timeout for the metrics exporter to report metrics to the metrics agent.
-/// The default is 10 seconds. If set to -1, the RPC deadline will not be set.
-RAY_CONFIG(int64_t, metrics_report_rpc_timeout_ms, 10000)
+/// The default is 500 milliseconds. If set to -1, the RPC deadline will not be set.
+RAY_CONFIG(int64_t, metrics_report_rpc_timeout_ms, 500)
 
 /// Whether to avoid scheduling cpu requests on gpu nodes
 RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
