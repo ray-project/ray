@@ -2,7 +2,6 @@ import copy
 import functools
 import logging
 import queue
-import time
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
@@ -13,7 +12,7 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
+from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate, NumpyToTensor
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
@@ -491,11 +490,14 @@ class IMPALAConfig(AlgorithmConfig):
             input_action_space,
             device,
         )
-        # Extend all episodes by one artificial timestep to allow the value function net
-        # to compute the bootstrap values (and add a mask to the batch to know, which
-        # slots to mask out).
         if self.add_default_connectors_to_learner_pipeline:
+            # Extend all episodes by one artificial timestep to allow the value function
+            # net to compute the bootstrap values (and add a mask to the batch to know,
+            # which slots to mask out).
             connector.prepend(AddOneTsToEpisodesAndTruncate())
+            # Remove the NumpyToTensor connector if we have the GPULoaderThreads.
+            if self.num_aggregator_actors_per_learner > 0:
+                connector.remove(NumpyToTensor)
         return connector
 
 
@@ -612,8 +614,6 @@ class IMPALA(Algorithm):
                 len(episode_refs),
             )
 
-        time.sleep(0.01)
-
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
@@ -681,8 +681,6 @@ class IMPALA(Algorithm):
             data_packages_for_learner_group = self._pre_queue_episode_refs(
                 episode_refs, package_size=self.config.total_train_batch_size
             )
-
-        time.sleep(0.01)
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -758,8 +756,6 @@ class IMPALA(Algorithm):
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
-        time.sleep(0.01)
-
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
@@ -774,8 +770,6 @@ class IMPALA(Algorithm):
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                 )
-
-        time.sleep(0.01)
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):

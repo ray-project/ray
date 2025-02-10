@@ -25,8 +25,8 @@ class Result(ResultV1):
     ) -> "Result":
         raise NotImplementedError("`Result.from_path` is not implemented yet.")
 
-    @Deprecated
     @property
+    @Deprecated
     def config(self) -> Optional[Dict[str, Any]]:
         raise DeprecationWarning(
             "The `config` property for a `ray.train.Result` is deprecated, "

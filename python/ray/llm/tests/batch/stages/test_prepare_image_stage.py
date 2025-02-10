@@ -46,21 +46,23 @@ async def test_prepare_image_udf_basic(mock_image_processor, mock_image):
     udf = PrepareImageUDF(data_column="__data")
 
     # Test batch with one message containing an image URL
-    batch = [
-        {
-            "messages": [
-                {
-                    "content": [
-                        {"type": "image", "image": "http://example.com/image.jpg"}
-                    ]
-                }
-            ]
-        }
-    ]
+    batch = {
+        "__data": [
+            {
+                "messages": [
+                    {
+                        "content": [
+                            {"type": "image", "image": "http://example.com/image.jpg"}
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
 
     results = []
-    async for result in udf.udf(batch):
-        results.append(result)
+    async for result in udf(batch):
+        results.append(result["__data"][0])
 
     assert len(results) == 1
     assert "image" in results[0]
@@ -74,22 +76,24 @@ async def test_prepare_image_udf_multiple_images(mock_image_processor, mock_imag
     udf = PrepareImageUDF(data_column="__data")
 
     # Test batch with multiple images in one message
-    batch = [
-        {
-            "messages": [
-                {
-                    "content": [
-                        {"type": "image", "image": "http://example.com/image1.jpg"},
-                        {"type": "image", "image": "http://example.com/image2.jpg"},
-                    ]
-                }
-            ]
-        }
-    ]
+    batch = {
+        "__data": [
+            {
+                "messages": [
+                    {
+                        "content": [
+                            {"type": "image", "image": "http://example.com/image1.jpg"},
+                            {"type": "image", "image": "http://example.com/image2.jpg"},
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
 
     results = []
-    async for result in udf.udf(batch):
-        results.append(result)
+    async for result in udf(batch):
+        results.append(result["__data"][0])
 
     assert len(results) == 1
     assert len(results[0]["image"]) == 2
@@ -101,14 +105,14 @@ async def test_prepare_image_udf_no_images(mock_image_processor):
     udf = PrepareImageUDF(data_column="__data")
 
     # Test batch with no images
-    batch = [{"messages": [{"content": "Hello, world!"}]}]
+    batch = {"__data": [{"messages": [{"content": "Hello, world!"}]}]}
 
     results = []
-    async for result in udf.udf(batch):
-        results.append(result)
+    async for result in udf(batch):
+        results.append(result["__data"][0])
 
     assert len(results) == 1
-    assert results[0] == {}
+    assert results[0] == {"messages": [{"content": "Hello, world!"}]}
 
 
 @pytest.mark.asyncio
@@ -143,14 +147,16 @@ async def test_prepare_image_udf_invalid_image_type(mock_image_processor):
     udf = PrepareImageUDF(data_column="__data")
 
     # Test batch with invalid image type
-    batch = [
-        {
-            "messages": [
-                {"content": [{"type": "image", "image": 123}]}  # Invalid image type
-            ]
-        }
-    ]
+    batch = {
+        "__data": [
+            {
+                "messages": [
+                    {"content": [{"type": "image", "image": 123}]}  # Invalid image type
+                ]
+            }
+        ]
+    }
 
     with pytest.raises(ValueError, match="Cannot handle image type"):
-        async for _ in udf.udf(batch):
+        async for _ in udf(batch):
             pass

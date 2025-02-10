@@ -231,7 +231,6 @@ ray_cc_test(
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
         "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/cleanup",
     ],
     size = "small",
     tags = ["team:core"],
@@ -293,6 +292,18 @@ ray_cc_test(
     srcs = ["spdlog_fd_sink_test.cc"],
     deps = [
         "//src/ray/util:spdlog_fd_sink",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "spdlog_newliner_sink_test",
+    srcs = ["spdlog_newliner_sink_test.cc"],
+    deps = [
+        "//src/ray/util:spdlog_fd_sink",
+        "//src/ray/util:spdlog_newliner_sink",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
