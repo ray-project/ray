@@ -166,6 +166,7 @@ def test_model_composition_backpressure(serve_instance):
         done, _ = wait(
             [executing_fut, queued_fut], timeout=0.1, return_when=FIRST_COMPLETED
         )
+        assert len(done) == 0
 
         # Send third request, it should get rejected.
         rejected_fut = exc.submit(send_request)
