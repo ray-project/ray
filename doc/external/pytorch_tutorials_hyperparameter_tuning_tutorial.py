@@ -193,7 +193,7 @@ class Net(nn.Module):
 
 #     with TemporaryDirectory() as tmpdir:
 #         torch.save(checkpoint_data, os.path.join(tmpdir, "checkpoint.pt"))
-
+    
 #         train.report(
 #             {"loss": val_loss / val_steps, "accuracy": correct / total},
 #             checkpoint=Checkpoint.from_directory(tmpdir),
