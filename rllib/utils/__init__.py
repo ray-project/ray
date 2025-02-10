@@ -1,3 +1,4 @@
+from collections import deque
 import contextlib
 from functools import partial
 
@@ -83,7 +84,7 @@ def force_list(elements=None, to_tuple=False):
         ctor()
         if elements is None
         else ctor(elements)
-        if type(elements) in [list, set, tuple]
+        if type(elements) in [list, set, tuple, deque]
         else ctor([elements])
     )
 
