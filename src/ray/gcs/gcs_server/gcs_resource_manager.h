@@ -38,6 +38,12 @@ namespace gcs {
 class GcsNodeManager;
 class GcsServer;
 
+using UpdateNodeResourceUsagePostable =
+    Postable<void(NodeID node_id,
+                  int64_t idle_duration_ms,
+                  google::protobuf::RepeatedPtrField<std::string> node_activity,
+                  bool is_draining)>;
+
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resource_manager` to `cluster_resource_manager`, and all logic related to
 /// resource modification should directly depend on `cluster_resource_manager`, while
@@ -60,11 +66,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
-  explicit GcsResourceManager(instrumented_io_context &io_context,
-                              ClusterResourceManager &cluster_resource_manager,
-                              GcsNodeManager &gcs_node_manager,
-                              NodeID local_node_id,
-                              ClusterTaskManager *cluster_task_manager = nullptr);
+  explicit GcsResourceManager(
+      instrumented_io_context &io_context,
+      ClusterResourceManager &cluster_resource_manager,
+      UpdateNodeResourceUsagePostable update_node_resource_usage_postable_,
+      NodeID local_node_id,
+      ClusterTaskManager *cluster_task_manager = nullptr);
 
   virtual ~GcsResourceManager() = default;
 
@@ -196,7 +203,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   ClusterResourceManager &cluster_resource_manager_;
-  GcsNodeManager &gcs_node_manager_;
+  UpdateNodeResourceUsagePostable update_node_resource_usage_postable_;
   NodeID local_node_id_;
   ClusterTaskManager *cluster_task_manager_;
   /// Num of alive nodes in the cluster.

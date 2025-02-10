@@ -31,8 +31,14 @@ class GcsResourceManagerTest : public ::testing::Test {
   GcsResourceManagerTest()
       : cluster_resource_manager_(io_service_),
         gcs_node_manager_(std::make_unique<gcs::MockGcsNodeManager>()) {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
+    auto update_node_resource_usage_postable = gcs::UpdateNodeResourceUsagePostable{
+        [](NodeID, int64_t, google::protobuf::RepeatedPtrField<std::string>, bool) {},
+        io_service_};
+    gcs_resource_manager_ =
+        std::make_shared<gcs::GcsResourceManager>(io_service_,
+                                                  cluster_resource_manager_,
+                                                  update_node_resource_usage_postable,
+                                                  NodeID::FromRandom());
   }
 
   void UpdateFromResourceViewSync(

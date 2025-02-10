@@ -282,12 +282,13 @@ class ClusterTaskManagerTest : public ::testing::Test {
             id_,
             *scheduler_,
             /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+            [this](const NodeID &node_id) {
               node_info_calls_++;
+              std::shared_ptr<const rpc::GcsNodeInfo> node_info;
               if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
+                node_info = std::make_shared<const rpc::GcsNodeInfo>(node_info_[node_id]);
               }
-              return nullptr;
+              return node_info;
             },
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; },

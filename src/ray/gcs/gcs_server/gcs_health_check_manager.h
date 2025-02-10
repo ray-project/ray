@@ -23,6 +23,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/thread_checker.h"
@@ -55,7 +56,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   /// health check failure.
   static std::shared_ptr<GcsHealthCheckManager> Create(
       instrumented_io_context &io_service,
-      std::function<void(const NodeID &)> on_node_death_callback,
+      Postable<void(const NodeID &)> on_node_death_callback,
       int64_t initial_delay_ms = RayConfig::instance().health_check_initial_delay_ms(),
       int64_t timeout_ms = RayConfig::instance().health_check_timeout_ms(),
       int64_t period_ms = RayConfig::instance().health_check_period_ms(),
@@ -90,7 +91,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
 
  private:
   GcsHealthCheckManager(instrumented_io_context &io_service,
-                        std::function<void(const NodeID &)> on_node_death_callback,
+                        Postable<void(const NodeID &)> on_node_death_callback,
                         int64_t initial_delay_ms,
                         int64_t timeout_ms,
                         int64_t period_ms,
@@ -157,7 +158,7 @@ class GcsHealthCheckManager : public std::enable_shared_from_this<GcsHealthCheck
   instrumented_io_context &io_service_;
 
   /// Callback when the node failed.
-  std::function<void(const NodeID &)> on_node_death_callback_;
+  Postable<void(const NodeID &)> on_node_death_callback_;
 
   /// The context of the health check for each nodes.
   /// Only living nodes are bookkept, while failed one will be removed.
