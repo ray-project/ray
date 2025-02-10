@@ -231,6 +231,7 @@ ClickHouse
    :toctree: doc/
 
    read_clickhouse
+   Dataset.write_clickhouse
 
 Dask
 ----

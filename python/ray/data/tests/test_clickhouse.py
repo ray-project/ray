@@ -421,7 +421,7 @@ class TestClickHouseDatasink:
                 mock_clickhouse_sink_client.command.assert_called_with(
                     "DROP TABLE IF EXISTS default.test_table"
                 )
-                assert datasink._existing_order_by == "(prev_col)"
+                assert datasink._table_settings["order_by"] == "(prev_col)"
             elif overwrite and not table_exists:
                 mock_tbl_exists.assert_called_once()
                 mock_get_order.assert_not_called()
@@ -435,7 +435,6 @@ class TestClickHouseDatasink:
 
     @pytest.mark.parametrize("overwrite", [True, False])
     @pytest.mark.parametrize("table_exists", [True, False])
-    @pytest.mark.parametrize("existing_order_by", [None, "(my_old_col)"])
     @pytest.mark.parametrize("user_order_by", [None, "user_defined_col", "tuple()"])
     def test_write_behavior(
         self,
@@ -443,7 +442,6 @@ class TestClickHouseDatasink:
         mock_clickhouse_sink_client,
         overwrite,
         table_exists,
-        existing_order_by,
         user_order_by,
     ):
         datasink._overwrite = overwrite
@@ -452,7 +450,6 @@ class TestClickHouseDatasink:
         else:
             datasink._table_settings.pop("order_by", None)
         datasink._table_exists = MagicMock(return_value=table_exists)
-        datasink._existing_order_by = existing_order_by
         mock_clickhouse_sink_client.insert_arrow.return_value = QuerySummary(
             {"written_rows": 3}
         )
@@ -479,6 +476,142 @@ class TestClickHouseDatasink:
             empty_table = pa.Table.from_batches([], schema=schema)
             datasink.write([empty_table], ctx=None)
             mock_clickhouse_sink_client.insert_arrow.assert_called()
+
+    @pytest.mark.parametrize(
+        "ddl_str, expected_order_by",
+        [
+            (
+                "CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree() ORDER BY col1",
+                "col1",
+            ),
+            (
+                "CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree()",
+                None,
+            ),
+            (
+                "CREATE TABLE default.test_table (col1 Int32) ORDER BY city ENGINE = MergeTree()",
+                "city",
+            ),
+            (
+                "CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree() PARTITION BY toYYYYMMDD(date_col)",
+                None,
+            ),
+        ],
+    )
+    def test_get_existing_order_by(
+        self, datasink, mock_clickhouse_sink_client, ddl_str, expected_order_by
+    ):
+        mock_clickhouse_sink_client.command.return_value = ddl_str
+        result = datasink._get_existing_order_by(
+            mock_clickhouse_sink_client, "default.test_table"
+        )
+        assert result == expected_order_by
+
+    @pytest.mark.parametrize(
+        "table_settings, schema, expected_engine, expected_order_by_part, expected_clauses",
+        [
+            (
+                {},
+                pa.schema([("col1", pa.int32())]),
+                "MergeTree()",
+                "ORDER BY col1",
+                [],
+            ),
+            (
+                {"engine": "ReplacingMergeTree()"},
+                pa.schema([("col1", pa.int32())]),
+                "ReplacingMergeTree()",
+                "ORDER BY col1",
+                [],
+            ),
+            (
+                {"order_by": "user_col"},
+                pa.schema([("col1", pa.int32())]),
+                "MergeTree()",
+                "ORDER BY user_col",
+                [],
+            ),
+            (
+                {"partition_by": "toYYYYMMDD(ts)"},
+                pa.schema([("ts", pa.timestamp("ns"))]),
+                "MergeTree()",
+                "ORDER BY ts",
+                ["PARTITION BY toYYYYMMDD(ts)"],
+            ),
+            (
+                {"primary_key": "id"},
+                pa.schema([("id", pa.int64()), ("val", pa.string())]),
+                "MergeTree()",
+                "ORDER BY id",
+                ["PRIMARY KEY (id)"],
+            ),
+            (
+                {"settings": "index_granularity=8192"},
+                pa.schema([("id", pa.int64())]),
+                "MergeTree()",
+                "ORDER BY id",
+                ["SETTINGS index_granularity=8192"],
+            ),
+            (
+                {
+                    "engine": "SummingMergeTree()",
+                    "order_by": "col2",
+                    "partition_by": "toYYYYMMDD(ts)",
+                    "primary_key": "id",
+                    "settings": "index_granularity=8192",
+                },
+                pa.schema(
+                    [
+                        ("id", pa.int64()),
+                        ("col2", pa.float64()),
+                        ("ts", pa.timestamp("ns")),
+                    ]
+                ),
+                "SummingMergeTree()",
+                "ORDER BY col2",
+                [
+                    "PARTITION BY toYYYYMMDD(ts)",
+                    "PRIMARY KEY (id)",
+                    "SETTINGS index_granularity=8192",
+                ],
+            ),
+        ],
+    )
+    def test_generate_create_table_sql(
+        self,
+        datasink,
+        mock_clickhouse_sink_client,
+        table_settings,
+        schema,
+        expected_engine,
+        expected_order_by_part,
+        expected_clauses,
+    ):
+        datasink._overwrite = True
+        datasink._table_exists = MagicMock(return_value=False)
+        datasink._table_settings = table_settings
+        arrays = []
+        for field in schema:
+            if pa.types.is_integer(field.type):
+                arrays.append(pa.array([1, 2, 3]))
+            elif pa.types.is_timestamp(field.type):
+                arrays.append(pa.array([1, 2, 3], type=pa.timestamp("ns")))
+            else:
+                arrays.append(pa.array(["a", "b", "c"]))
+        block_data = pa.Table.from_arrays(arrays, names=[f.name for f in schema])
+        with patch.object(mock_clickhouse_sink_client, "command") as mock_command:
+            datasink.write([block_data], ctx=TaskContext(1))
+            create_sql = None
+            for call_arg in mock_command.call_args_list:
+                sql_arg = call_arg[0][0]
+                if "CREATE TABLE" in sql_arg:
+                    create_sql = sql_arg
+                    break
+            assert create_sql is not None, "No CREATE TABLE statement was generated!"
+            assert f"ENGINE = {expected_engine}" in create_sql
+            assert expected_order_by_part in create_sql
+            for clause in expected_clauses:
+                assert clause in create_sql
 
 
 if __name__ == "__main__":

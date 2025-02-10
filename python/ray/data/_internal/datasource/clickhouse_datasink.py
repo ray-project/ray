@@ -39,22 +39,6 @@ class ClickHouseDatasink(Datasink[None]):
             instructions. For example, specifying engine, order_by, partition_by,
             primary_key, or custom settings:
             ``{"engine": "ReplacingMergeTree()", "order_by": "id"}``.
-
-    Example:
-        .. code-block:: python
-
-            import ray
-            from ray.data._internal.datasource.clickhouse_datasink import ClickHouseDatasink
-
-            ds = ray.data.range(100)
-            ds.write(
-                datasource=ClickHouseDatasink(
-                    table="default.my_table",
-                    dsn="clickhouse+http://user:pass@localhost:8123/default",
-                    overwrite=True,
-                    table_settings={"engine": "ReplacingMergeTree()", "order_by": "id"}
-                )
-            )
     """
 
     _CREATE_TABLE_TEMPLATE = """
@@ -92,8 +76,6 @@ class ClickHouseDatasink(Datasink[None]):
         self._client_settings = client_settings or {}
         self._client_kwargs = client_kwargs or {}
         self._table_settings = table_settings or {}
-        # We may store the old ORDER BY if overwriting an existing table
-        self._existing_order_by: Optional[str] = None
 
     def _init_client(self):
         _check_import(self, module="clickhouse_connect", package="clickhouse-connect")
@@ -115,15 +97,17 @@ class ClickHouseDatasink(Datasink[None]):
             client = None
             try:
                 client = self._init_client()
-                if self._table_exists(client, self._table):
+                if (
+                    self._table_exists(client, self._table)
+                    and self._table_settings.get("order_by") is None
+                ):
                     # Attempt to capture the existing ORDER BY
-                    self._existing_order_by = self._get_existing_order_by(
+                    self._table_settings["order_by"] = self._get_existing_order_by(
                         client, self._table
                     )
                     logger.info(
-                        f"Existing ORDER BY for table {self._table}: {self._existing_order_by}"
+                        f"Existing ORDER BY for table {self._table}: {self._table_settings.get('order_by')}"
                     )
-                # Drop table
                 drop_sql = self._DROP_TABLE_TEMPLATE.format(table_name=self._table)
                 logger.info(f"overwrite=True => {drop_sql}")
                 client.command(drop_sql)
@@ -149,14 +133,7 @@ class ClickHouseDatasink(Datasink[None]):
             overwrite: bool,
             table_settings: Dict[str, Any],
             create_table_template: str,
-            existing_order_by: Optional[str],
         ):
-            """
-            A remote function that:
-            - Converts the block to a pyarrow.Table
-            - Creates the table if needed
-            - Inserts rows via the arrow-based insert
-            """
             from ray.data.block import BlockAccessor
 
             client = self._init_client()
@@ -172,7 +149,6 @@ class ClickHouseDatasink(Datasink[None]):
                         table,
                         table_settings,
                         create_table_template,
-                        existing_order_by,
                     )
                     client.command(create_sql)
                 client.insert_arrow(table, arrow_table)
@@ -187,17 +163,11 @@ class ClickHouseDatasink(Datasink[None]):
             table_name: str,
             tbl_settings: Dict[str, Any],
             template: str,
-            existing_order_by: Optional[str],
         ) -> str:
             engine = tbl_settings.get("engine", "MergeTree()")
-            user_order_by = tbl_settings.get("order_by")
-            if user_order_by is None:
-                if existing_order_by:
-                    order_by = existing_order_by
-                else:
-                    order_by = _pick_best_arrow_field_for_order_by(schema)
-            else:
-                order_by = user_order_by
+            order_by = tbl_settings.get("order_by")
+            if order_by is None:
+                order_by = _pick_best_arrow_field_for_order_by(schema)
             additional_clauses = []
             if "partition_by" in tbl_settings:
                 additional_clauses.append(
@@ -230,15 +200,12 @@ class ClickHouseDatasink(Datasink[None]):
         def _pick_best_arrow_field_for_order_by(schema: pyarrow.Schema) -> str:
             if len(schema) == 0:
                 return "tuple()"
-            # 1) first timestamp
             for f in schema:
                 if pat.is_timestamp(f.type):
                     return f.name
-            # 2) first non-string
             for f in schema:
                 if not (pat.is_string(f.type) or pat.is_large_string(f.type)):
                     return f.name
-            # 3) fallback to first column or tuple()
             return schema[0].name
 
         def _arrow_type_name_local(arrow_type: pyarrow.DataType) -> str:
@@ -301,7 +268,6 @@ class ClickHouseDatasink(Datasink[None]):
                 return f"Decimal({precision}, {scale})"
             return arrow_to_ch.get(name, "String")
 
-        # Dispatch a remote task for each block
         tasks = []
         for block in blocks:
             tasks.append(
@@ -311,22 +277,9 @@ class ClickHouseDatasink(Datasink[None]):
                     self._overwrite,
                     self._table_settings,
                     self._CREATE_TABLE_TEMPLATE,
-                    self._existing_order_by,
                 )
             )
-        # Wait for all to finish
         ray.get(tasks)
-
-    def _create_client(self):
-        """
-        A local helper to create clickhouse_connect client used in on_write_start,
-        or anywhere else on driver side.
-        """
-        import clickhouse_connect
-
-        return clickhouse_connect.get_client(
-            dsn=self._dsn, settings=self._client_settings, **self._client_kwargs
-        )
 
     def _table_exists(self, client, fq_table_name: str) -> bool:
         try:

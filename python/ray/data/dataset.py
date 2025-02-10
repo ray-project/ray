@@ -3938,6 +3938,7 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @ConsumptionAPI
     def write_clickhouse(
         self,
         table: str,
@@ -3961,12 +3962,13 @@ class Dataset:
                 import ray
                 import pandas as pd
 
-                docs = [{"title": "ClickHouse Datasource test"} for key in range(4)]
+                docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
                 ds = ray.data.from_pandas(pd.DataFrame(docs))
                 ds.write_clickhouse(
-                    table="my_project_id",
-                    dsn="http://username:password@host:8123/default",
-                    overwrite=True
+                    table="default.my_table",
+                    dsn="clickhouse+http://user:pass@localhost:8123/default",
+                    overwrite=True,
+                    table_settings={"engine": "ReplacingMergeTree()", "order_by": "id"}
                 )
 
         Args:
@@ -3983,14 +3985,36 @@ class Dataset:
                 session/every request. For more information, see
                 `ClickHouse Client Settings doc
                 <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
-            client_kwargs: Additional keyword arguments to pass to the
+            client_kwargs: Optional keyword arguments to pass to the
                 ClickHouse client. For more information, see
                 `ClickHouse Core Settings doc
                 <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
-            table_settings: A dictionary containing additional table creation
-                instructions. For example, specifying engine, order_by, partition_by,
-                primary_key, or custom settings. For example:
-                ``{"engine": "ReplacingMergeTree()", "order_by": "id"}``.
+            table_settings: Optional dictionary containing additional table creation instructions.
+                The recognized keys are:
+
+                * engine (default: `"MergeTree()"`):
+                    Specifies the engine for the `CREATE TABLE` statement. For example,
+                    `{"engine": "ReplacingMergeTree()"}`.
+
+                * order_by:
+                    Sets the `ORDER BY` clause in the `CREATE TABLE` statement, iff not provided.
+                    When overwriting an existing table, its previous `ORDER BY` (if any) is reused.
+                    Otherwise, a “best” column is selected automatically (favoring a timestamp column,
+                    then a non-string column, and lastly the first column).
+
+                * partition_by:
+                    If present, adds a `PARTITION BY <value>` clause to the `CREATE TABLE` statement.
+                    For example, `{"partition_by": "toYYYYMMDD(event_time)"}`.
+
+                * primary_key:
+                    If present, adds a `PRIMARY KEY (<value>)` clause. For example,
+                    `{"primary_key": "id"}`.
+
+                * settings:
+                    Appends a `SETTINGS <value>` clause to the `CREATE TABLE` statement, allowing
+                    custom ClickHouse settings (e.g. `{"settings": "index_granularity=8192"}`).
+
+                Any other keys in this dictionary are ignored.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
