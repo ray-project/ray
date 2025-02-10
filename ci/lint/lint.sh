@@ -27,6 +27,7 @@ pre_commit() {
     rst-inline-touching-normal
     python-check-mock-methods
     clang-format
+    shellcheck
     docstyle
     check-import-order
     check-cpp-files-inclusion
