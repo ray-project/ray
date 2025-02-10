@@ -90,8 +90,8 @@ repos:
       - id: python-no-log-warn
       - id: python-check-mock-methods
 
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.9.0
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.1
     hooks:
       - id: shellcheck
         args: ['--exclude=1090,1091,2207']
