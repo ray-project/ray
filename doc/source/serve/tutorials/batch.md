@@ -157,7 +157,6 @@ to the Python script `tutorial_batch.py`:
 from ray.serve.handle import DeploymentHandle
 
 handle: DeploymentHandle = serve.run(generator)
-)
 ```
 
 Generally, to enqueue a query, you can call `handle.method.remote(data)`. This call 
