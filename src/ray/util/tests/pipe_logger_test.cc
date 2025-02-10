@@ -36,10 +36,10 @@ constexpr std::string_view kLogLine2 = "world\n";
 
 class PipeReadBufferSizeSetter {
  public:
-  PipeReadBufferSizeSetter(size_t pipe_buffer_size) {
-    setEnv(kPipeLogReadBufSizeEnv.data(), absl::StrFormat("%d", pipe_buffer_size).data());
+  explicit PipeReadBufferSizeSetter(size_t pipe_buffer_size) {
+    setEnv("RAY_pipe_logger_read_buf_size", absl::StrFormat("%d", pipe_buffer_size));
   }
-  ~PipeReadBufferSizeSetter() { unsetEnv(kPipeLogReadBufSizeEnv.data()); }
+  ~PipeReadBufferSizeSetter() { unsetEnv("RAY_pipe_logger_read_buf_size"); }
 };
 
 class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};

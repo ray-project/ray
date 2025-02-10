@@ -25,6 +25,7 @@
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_split.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/spdlog_fd_sink.h"
 #include "ray/util/spdlog_newliner_sink.h"
 #include "ray/util/thread_utils.h"
@@ -35,21 +36,6 @@
 namespace ray {
 
 namespace {
-
-// Default pipe log read buffer size.
-constexpr size_t kDefaultPipeLogReadBufSize = 1024;
-
-size_t GetPipeLogReadSizeOrDefault() {
-  // TODO(hjiang): Write a util function `GetEnvOrDefault`.
-  const char *var_value = std::getenv(kPipeLogReadBufSizeEnv.data());
-  if (var_value != nullptr) {
-    size_t read_buf_size = 0;
-    if (absl::SimpleAtoi(var_value, &read_buf_size) && read_buf_size > 0) {
-      return read_buf_size;
-    }
-  }
-  return kDefaultPipeLogReadBufSize;
-}
 
 struct StreamDumper {
   absl::Mutex mu;
@@ -73,13 +59,13 @@ void StartStreamDump(
                stream_dumper = stream_dumper]() {
     SetThreadName("PipeReaderThd");
 
-    const size_t buf_size = GetPipeLogReadSizeOrDefault();
+    const size_t buf_size = RayConfig::instance().pipe_logger_read_buf_size();
     // Pre-allocate stream buffer to avoid excessive syscall.
     // TODO(hjiang): Should resize without initialization.
     std::string readsome_buffer(buf_size, '\0');
 
-    std::string cur_new_line{"a"};
-    while (pipe_instream->read(cur_new_line.data(), /*count=*/1)) {
+    std::string cur_segment{"a"};
+    while (pipe_instream->read(cur_segment.data(), /*count=*/1)) {
       // Read available bytes in non-blocking style.
       while (true) {
         auto bytes_read =
@@ -89,18 +75,18 @@ void StartStreamDump(
         }
         std::string_view cur_readsome_buffer{readsome_buffer.data(),
                                              static_cast<uint64_t>(bytes_read)};
-        cur_new_line += cur_readsome_buffer;
+        cur_segment += cur_readsome_buffer;
       }
 
       // Already read all we have at the moment, stream into logger.
       {
         absl::MutexLock lock(&stream_dumper->mu);
-        stream_dumper->content.emplace_back(std::move(cur_new_line));
-        cur_new_line.clear();
+        stream_dumper->content.emplace_back(std::move(cur_segment));
+        cur_segment.clear();
       }
 
       // Read later bytes in blocking style.
-      cur_new_line = "a";
+      cur_segment = "a";
     }
 
     // Reached EOF.
