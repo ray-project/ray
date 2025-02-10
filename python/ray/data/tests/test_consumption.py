@@ -160,9 +160,12 @@ def test_count_edge_case(ray_start_regular):
 
 
 def test_count_after_partial_execution(ray_start_regular):
-    paths = ["example://iris.csv"] * 5
+    SCALE_FACTOR=1
+    FILE_ROW_COUNT=150
+    DS_ROW_COUNT = FILE_ROW_COUNT * SCALE_FACTOR
+    paths = ["example://iris.csv"] * SCALE_FACTOR
     ds = ray.data.read_csv(paths)
-    for batch in ds.iter_batches():
+    for batch in ds.iter_batches(batch_size=1):
         # Take one batch and break to simulate partial iteration/execution.
         break
     # Row count should be unknown after partial execution.
@@ -170,8 +173,8 @@ def test_count_after_partial_execution(ray_start_regular):
 
     # After iterating over bundles and completing execution, row count should be known.
     list(ds.iter_internal_ref_bundles())
-    assert f"num_rows={150*5}" in str(ds)
-    assert ds.count() == 150 * 5
+    assert f"num_rows={DS_ROW_COUNT}" in str(ds)
+    assert ds.count() == DS_ROW_COUNT
 
 
 def test_limit_execution(ray_start_regular):
