@@ -153,6 +153,44 @@ def test_repartition_target_num_rows_per_block(
     assert sorted(all_values) == list(range(total_rows))
 
 
+@pytest.mark.parametrize(
+    "num_blocks, target_num_rows_per_block, shuffle, expected_exception_msg",
+    [
+        (
+            4,
+            10,
+            False,
+            "Either `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
+        ),
+        (
+            None,
+            None,
+            False,
+            "Either `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
+        ),
+        (
+            None,
+            10,
+            True,
+            "`shuffle` must be False when `target_num_rows_per_block` is set.",
+        ),
+    ],
+)
+def test_repartition_invalid_inputs(
+    ray_start_regular_shared_2_cpus,
+    num_blocks,
+    target_num_rows_per_block,
+    shuffle,
+    expected_exception_msg,
+):
+    with pytest.raises(ValueError, match=expected_exception_msg):
+        ray.data.range(10).repartition(
+            num_blocks=num_blocks,
+            target_num_rows_per_block=target_num_rows_per_block,
+            shuffle=shuffle,
+        )
+
+
 def test_unique(ray_start_regular_shared_2_cpus):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3])
     assert set(ds.unique("item")) == {1, 2, 3}
