@@ -225,3 +225,14 @@ class CompiledDAGFuture:
             self._execution_index, self._channel_index
         )
         return _process_return_vals(return_vals, True)
+
+    def __del__(self):
+        if self._dag.is_teardown:
+            return
+        print(
+            "CompiledDAGFuture __del__ for execution_index {} and channel_index {}".format(
+                self._execution_index, self._channel_index
+            )
+        )
+        self._dag._destructed_ref_idxs[self._execution_index].add(self._channel_index)
+        self._dag._try_release_buffers()
