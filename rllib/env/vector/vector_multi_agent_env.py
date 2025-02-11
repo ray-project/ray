@@ -3,6 +3,7 @@ import numpy as np
 
 from gymnasium.core import RenderFrame
 from gymnasium.envs.registration import EnvSpec
+from gymnasium.utils import seeding
 from typing import Any, Dict, Optional, Tuple, TypeVar
 
 
@@ -32,7 +33,8 @@ class VectorMultiAgentEnv:
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[ArrayType, ArrayType]:
-        pass
+        if seed is not None:
+            self._np_random, self._np_random_seed = seeding.np_random(seed)
 
     def step(
         self, actions: ArrayType

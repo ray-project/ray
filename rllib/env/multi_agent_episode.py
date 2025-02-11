@@ -467,6 +467,7 @@ class MultiAgentEpisode:
                 v is not None
                 for v in [_observation, _action, _reward, _infos, _extra_model_outputs]
             ):
+
                 raise MultiAgentEnvError(
                     f"Agent {agent_id} already had its `SingleAgentEpisode.is_done` "
                     f"set to True, but still received data in a following step! "

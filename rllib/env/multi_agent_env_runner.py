@@ -444,20 +444,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Episode has no data in it yet -> Was just reset and needs to be called
                 # with its `add_env_reset()` method.
                 if not self._episodes[env_index].is_reset:
-                    try:
-                        episodes[env_index].add_env_reset(
-                            observations=observations[env_index],
-                            infos=infos[env_index],
-                        )
-                    except:
-                        print(
-                            f"Something went wrong. Observations are: {observations[env_index]}"
-                        )
-                        agent_spaces = {
-                            eps.observation_space
-                            for eps in episodes[env_index].agent_episodes.values
-                        }
-                        print(f"Agent observations spaces: {agent_spaces}")
+                    episodes[env_index].add_env_reset(
+                        observations=observations[env_index],
+                        infos=infos[env_index],
+                    )
                     call_on_episode_start.add(env_index)
 
                 # Call `add_env_step()` method on episode.
@@ -513,6 +503,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
+
+                    self._prune_zero_len_sa_episodes(episodes[env_index])
 
                     # Numpy'ize the episode.
                     if self.config.episodes_to_numpy:
@@ -843,6 +835,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Perform actual gym.make call.
         self.env = make_vec(
             "rllib-multi-agent-env-v0",
+            num_envs=self.config.num_envs_per_env_runner,
         )
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
