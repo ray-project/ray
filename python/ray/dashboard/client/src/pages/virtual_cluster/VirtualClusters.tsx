@@ -233,12 +233,49 @@ const ResourceOverview = ({ cluster }: { cluster: VirtualClusterTreeNode }) => {
         >
           <ResourceUsage
             resourceName={resourceName}
-            usageStr={usageStr || "0/0"}
+            usageStr={typeof usageStr === "string" ? usageStr : "0/0"}
           />
         </Box>
       ))}
     </Box>
   );
+};
+
+const NodeResourceOverview = ({ node }: { node: any }) => {
+  const resourceOrder = ["CPU", "memory", "object_store_memory"];
+  const usageEntries = Object.entries(node.resources_usage || {}).sort(
+    ([a], [b]) => {
+      const indexA = resourceOrder.indexOf(a);
+      const indexB = resourceOrder.indexOf(b);
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      if (indexA !== -1) {
+        return -1;
+      }
+      if (indexB !== -1) {
+        return 1;
+      }
+      return a.localeCompare(b);
+    },
+  );
+  return usageEntries.length ? (
+    <Box
+      sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}
+    >
+      {usageEntries.map(([resourceName, usageStr]) => (
+        <Box
+          key={resourceName}
+          sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+        >
+          <ResourceUsage
+            resourceName={resourceName}
+            usageStr={typeof usageStr === "string" ? usageStr : "0/0"}
+          />
+        </Box>
+      ))}
+    </Box>
+  ) : null;
 };
 
 const ClusterTreeNode = ({
@@ -309,14 +346,16 @@ const ClusterTreeNode = ({
                 size="small"
                 color={cluster.divisible ? "info" : "default"}
               />
-              {Object.entries(cluster.replicaSets || {}).map(([key, value]) => (
-                <Chip
-                  key={key}
-                  label={`${key}: ${value}`}
-                  variant="outlined"
-                  size="small"
-                />
-              ))}
+              {Object.entries(cluster.replicaSets || {})
+                .sort(([aKey], [bKey]) => aKey.localeCompare(bKey))
+                .map(([key, value]) => (
+                  <Chip
+                    key={key}
+                    label={`${key}: ${value}`}
+                    variant="outlined"
+                    size="small"
+                  />
+                ))}
               <ResourceOverview cluster={cluster} />
             </Box>
           </Box>
@@ -388,6 +427,9 @@ const ClusterTreeNode = ({
                               },
                             }}
                           />
+                        </Box>
+                        <Box sx={{ mt: 1 }}>
+                          <NodeResourceOverview node={node} />
                         </Box>
                       </Paper>
                     </Grid>
