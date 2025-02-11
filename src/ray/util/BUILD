@@ -133,6 +133,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "scoped_env_setter",
+    hdrs = ["scoped_env_setter.h"],
+    srcs = ["scoped_env_setter.cc"],
+    deps = [
+        ":util",
+    ],
+)
+
+ray_cc_library(
     name = "timestamp_utils",
     hdrs = ["timestamp_utils.h"],
 )
