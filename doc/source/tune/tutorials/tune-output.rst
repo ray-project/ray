@@ -228,7 +228,7 @@ You can save trial artifacts directly in the trainable, as shown below:
                     with open(f"./artifact_{step}.txt", "w") as f:
                         f.write("Artifact Data")
 
-                    train.report(results)
+                    tune.report(results)
 
 
     .. tab-item:: Class API

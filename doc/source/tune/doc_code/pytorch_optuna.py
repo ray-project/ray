@@ -93,7 +93,7 @@ def objective(config):  # <1>
     while True:
         train_epoch(model, optimizer, train_loader)  # Train the model
         acc = test(model, test_loader)  # Compute test accuracy
-        train.report({"mean_accuracy": acc})  # Report to Tune
+        tune.report({"mean_accuracy": acc})  # Report to Tune
 
 
 search_space = {"lr": tune.loguniform(1e-4, 1e-2), "momentum": tune.uniform(0.1, 0.9)}

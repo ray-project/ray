@@ -12,7 +12,7 @@ def my_trainable(config):
         time.sleep(1)
 
         # Report some metrics for demonstration...
-        train.report({"mean_accuracy": min(i / 10, 1.0)})
+        tune.report({"mean_accuracy": min(i / 10, 1.0)})
         i += 1
 # __stopping_example_trainable_end__
 # fmt: on
@@ -24,7 +24,7 @@ def my_trainable(config):
     # Training won't finish unless one of the stopping criteria is met!
     while True:
         # Do some training, and report some metrics for demonstration...
-        train.report({"mean_accuracy": min(i / 10, 1.0)})
+        tune.report({"mean_accuracy": min(i / 10, 1.0)})
         i += 1
 
 
@@ -98,7 +98,7 @@ def my_failing_trainable(config):
         raise RuntimeError("Failing (on purpose)!")
     # Do some training...
     time.sleep(10)
-    train.report({"mean_accuracy": 0.9})
+    tune.report({"mean_accuracy": 0.9})
 
 
 tuner = tune.Tuner(
@@ -138,7 +138,7 @@ def my_trainable(config):
     while True:
         time.sleep(1)
         # Do some training, and report some metrics for demonstration...
-        train.report({"mean_accuracy": min(i / 10, 1.0)})
+        tune.report({"mean_accuracy": min(i / 10, 1.0)})
         i += 1
 
 

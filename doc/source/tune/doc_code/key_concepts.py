@@ -13,7 +13,7 @@ def trainable(config):  # Pass a "config" dictionary into your trainable.
     for x in range(20):  # "Train" for 20 iterations and compute intermediate scores.
         score = objective(x, config["a"], config["b"])
 
-        train.report({"score": score})  # Send the score to Tune.
+        tune.report({"score": score})  # Send the score to Tune.
 
 
 # __function_api_end__

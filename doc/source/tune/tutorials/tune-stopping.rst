@@ -123,7 +123,7 @@ You can use a dictionary stopping criteria as described above, using the ``time_
 
 .. note::
 
-    You need to include some intermediate reporting via :meth:`train.report <ray.train.report>`
+    You need to include some intermediate reporting via :meth:`tune.report <ray.tune.report>`
     if using the :ref:`Function Trainable API <tune-function-api>`.
     Each report will automatically record the trial's ``time_total_s``, which allows Tune to stop based on time as a metric.
 
@@ -143,7 +143,7 @@ Use the ``TuneConfig(time_budget_s)`` configuration to tell Tune to stop the exp
 
 .. note::
 
-    You need to include some intermediate reporting via :meth:`train.report <ray.train.report>`
+    You need to include some intermediate reporting via :meth:`tune.report <ray.tune.report>`
     if using the :ref:`Function Trainable API <tune-function-api>`, for the same reason as above.
 
 

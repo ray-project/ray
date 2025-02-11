@@ -125,7 +125,7 @@ def train_func(config):
                 {"epoch": epoch, "model_state": my_model.state_dict()},
                 os.path.join(tempdir, "checkpoint.pt"),
             )
-            train.report(metrics=metrics, checkpoint=Checkpoint.from_directory(tempdir))
+            tune.report(metrics=metrics, checkpoint=Checkpoint.from_directory(tempdir))
 
 
 tuner = tune.Tuner(train_func, param_space={"epochs": 5})
@@ -150,9 +150,9 @@ def train_func(config):
         if epoch % CHECKPOINT_FREQ == 0:
             with tempfile.TemporaryDirectory() as tempdir:
                 # Save a checkpoint in tempdir.
-                train.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
+                tune.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
         else:
-            train.report(metrics)
+            tune.report(metrics)
 
 
 tuner = tune.Tuner(train_func, param_space={"epochs": NUM_EPOCHS})

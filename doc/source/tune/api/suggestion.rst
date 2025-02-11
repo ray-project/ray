@@ -17,7 +17,7 @@ You can utilize these search algorithms as follows:
 
     def train_fn(config):
         # This objective function is just for demonstration purposes
-        train.report({"loss": config["param"]})
+        tune.report({"loss": config["param"]})
 
     tuner = tune.Tuner(
         train_fn,

@@ -12,7 +12,7 @@ def train_func(config):
     # is the same.
     np.random.seed(config["seed"])
     random_result = np.random.uniform(0, 100, size=1).item()
-    train.report({"result": random_result})
+    tune.report({"result": random_result})
 
 
 # Set seed for Ray Tune's random search.
@@ -57,7 +57,7 @@ config = {
 
 def train_func(config):
     random_result = np.random.uniform(0, 100, size=1).item()
-    train.report({"result": random_result})
+    tune.report({"result": random_result})
 
 
 train_fn = train_func
@@ -111,7 +111,7 @@ if not MOCK:
     def train_fn(config):
         # some Modin operations here
         # import modin.pandas as pd
-        train.report({"metric": metric})
+        tune.report({"metric": metric})
 
     tuner = tune.Tuner(
         tune.with_resources(
@@ -275,7 +275,7 @@ if not MOCK:
         assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
 
         # Write to the Tune trial directory, not the shared working dir
-        tune_trial_dir = Path(train.get_context().get_trial_dir())
+        tune_trial_dir = Path(ray.tune.get_context().get_trial_dir())
         with open(tune_trial_dir / "write.txt", "w") as f:
             f.write("trial saved artifact")
 
@@ -291,8 +291,8 @@ import tempfile
 
 import torch
 
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 import random
 
 
@@ -304,7 +304,7 @@ def trainable(config):
             torch.save(
                 {"model_state_dict": {"x": 1}}, os.path.join(tempdir, "model.pt")
             )
-            train.report(
+            tune.report(
                 {"score": random.random()},
                 checkpoint=Checkpoint.from_directory(tempdir),
             )
@@ -340,7 +340,7 @@ def trainable(config):
         # Do some more training...
         ...
 
-        train.report({"score": random.random()})
+        tune.report({"score": random.random()})
 
 
 new_tuner = tune.Tuner(

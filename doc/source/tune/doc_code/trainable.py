@@ -15,7 +15,7 @@ def trainable(config: dict):
     intermediate_score = 0
     for x in range(20):
         intermediate_score = objective(x, config["a"], config["b"])
-        train.report({"score": intermediate_score})  # This sends the score to Tune.
+        tune.report({"score": intermediate_score})  # This sends the score to Tune.
 
 
 tuner = tune.Tuner(trainable, param_space={"a": 2, "b": 4})
@@ -31,7 +31,7 @@ def trainable(config: dict):
     for x in range(20):
         final_score = objective(x, config["a"], config["b"])
 
-    train.report({"score": final_score})  # This sends the score to Tune.
+    tune.report({"score": final_score})  # This sends the score to Tune.
 
 
 tuner = tune.Tuner(trainable, param_space={"a": 2, "b": 4})
