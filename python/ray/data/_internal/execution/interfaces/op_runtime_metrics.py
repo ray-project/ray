@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 import ray
 from ray.data._internal.execution.bundle_queue import BundleQueue, create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.execution.resource_manager import ExecutionResources
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
         PhysicalOperator,
     )
     from ray.data._internal.execution.streaming_executor_state import OpState
+    from ray.data._internal.execution.resource_manager import ExecutionResources
 
 
 # A metadata key used to mark a dataclass field as a metric.
@@ -192,7 +192,7 @@ def iter_meta_and_node_metrics(
 
 
 def update_object_store_usage(
-    op: "PhysicalOperator", op_usage: ExecutionResources, state: "OpState"
+    op: "PhysicalOperator", op_usage: "ExecutionResources", state: "OpState"
 ) -> None:
     # Update operator's object store usage, which is used by
     # DatasetStats and updated on the Ray Data dashboard.
