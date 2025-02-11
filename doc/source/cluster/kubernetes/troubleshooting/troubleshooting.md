@@ -58,7 +58,7 @@ Some common causes for the worker init container to stuck in `Init:0/1` status a
 * The `CLUSTER_DOMAIN` environment variable is not set correctly. See the section [cluster domain](#cluster-domain) for more details.
 * The worker init container shares the same ***ImagePullPolicy***, ***SecurityContext***, ***Env***, ***VolumeMounts***, and ***Resources*** as the worker Pod template. Sharing these settings is possible to cause a deadlock. See [#1130](https://github.com/ray-project/kuberay/issues/1130) for more details.
 
-If the init container remains stuck in `Init:0/1` status for 2 minutes, we will stop redirecting the output messages to `/dev/null` and instead print them to the worker Pod logs.
+If the init container remains stuck in `Init:0/1` status for 2 minutes, Ray stops redirecting the output messages to `/dev/null` and instead prints them to the worker Pod logs.
 To troubleshoot further, you can inspect the logs using `kubectl logs`.
 
 ### 2. Disable the init container injection
