@@ -2075,7 +2075,7 @@ def validate_actor_state_name(actor_state_name):
     if actor_state_name not in ACTOR_STATUS:
         raise ValueError(
             f'"{actor_state_name}" is not a valid actor state name, '
-            f'it must be one of the following: {", ".join(ACTOR_STATUS)}'
+            f"it must be one of the following: {str(ACTOR_STATUS)}"
         )
 
 
