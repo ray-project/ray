@@ -409,6 +409,11 @@ def start_telemetry_app():
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
 
+def check_if_serve_library_used_in_telemetry(
+    storage_actor_name: str = STORAGE_ACTOR_NAME
+) -> bool:
+    storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
+    return "serve" in ray.get(storage_handle.get_report.remote()).get("library_usages", [])
 
 def check_telemetry(
     tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
