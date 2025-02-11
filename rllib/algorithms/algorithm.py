@@ -34,10 +34,10 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
-from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
@@ -518,6 +518,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
             logdir_prefix = f"{type(self).__name__}_{env_descr_for_dir}_{timestr}"
+
             if not os.path.exists(DEFAULT_STORAGE_PATH):
                 # Possible race condition if dir is created several times on
                 # rollout workers
@@ -807,7 +808,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state,
+                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
                 )
             elif self.eval_env_runner_group:
                 self.eval_env_runner.set_state(rl_module_state)
@@ -816,7 +817,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state,
+                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
                 )
             # TODO (simon): Update modules in DataWorkers.
 
@@ -2751,7 +2752,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 driver = {
                     # Sampling and training is not done concurrently when local is
                     # used, so pick the max.
-                    "CPU": max(num_cpus_per_learner, cf.num_cpus_for_main_process),
+                    "CPU": (max(num_cpus_per_learner, cf.num_cpus_for_main_process)),
                     "GPU": cf.num_gpus_per_learner,
                 }
             # Training is done on n remote Learners.
@@ -2810,8 +2811,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
-            learner_bundles = cls._get_learner_bundles(cf)
+        if cf.enable_rl_module_and_learner:
+            if cf.num_learners > 0:
+                learner_bundles = cls._get_learner_bundles(cf)
+            # Aggregation actors (for the local learner).
+            else:
+                learner_bundles = [
+                    {"CPU": 1} for _ in range(cf.num_aggregator_actors_per_learner)
+                ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
@@ -3683,11 +3690,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             return
 
         # Add parameters, if necessary.
-        if config["replay_buffer_config"]["type"] in [
-            "EpisodeReplayBuffer",
-            "PrioritizedEpisodeReplayBuffer",
-        ]:
-            # TODO (simon): If all episode buffers have metrics, check for sublassing.
+        if "EpisodeReplayBuffer" in config["replay_buffer_config"]["type"]:
+            # TODO (simon): Subclassing needs a proper class and therefore
+            # we need at this moment the string checking. Because we add
+            # this keyword argument the old stack ReplayBuffer constructors
+            # will exit with an error b/c tje keyword argument is unknown to them.
             config["replay_buffer_config"][
                 "metrics_num_episodes_for_smoothing"
             ] = self.config.metrics_num_episodes_for_smoothing

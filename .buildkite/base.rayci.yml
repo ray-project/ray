@@ -12,7 +12,7 @@ steps:
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
-  
+
   - name: oss-ci-base_build
     wanda: ci/docker/base.build.py39.wanda.yaml
     depends_on: oss-ci-base_test
@@ -31,7 +31,7 @@ steps:
   - name: oss-ci-base_test-aarch64
     wanda: ci/docker/base.test.aarch64.wanda.yaml
     instance_type: builder-arm64
-  
+
   - name: oss-ci-base_build-aarch64
     wanda: ci/docker/base.build.aarch64.wanda.yaml
     depends_on: oss-ci-base_test-aarch64
@@ -45,6 +45,7 @@ steps:
     label: "wanda: oss-ci-base_ml-py{{matrix}}"
     wanda: ci/docker/base.ml.wanda.yaml
     matrix:
+      - "3.11"
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
@@ -57,6 +58,7 @@ steps:
     label: "wanda: oss-ci-base_gpu-py{{matrix}}"
     wanda: ci/docker/base.gpu.wanda.yaml
     matrix:
+      - "3.11"
       - "3.12"
     env:
       PYTHON: "{{matrix}}"
