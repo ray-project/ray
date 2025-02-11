@@ -313,3 +313,27 @@ class FlatMap(AbstractUDFMap):
     @property
     def can_modify_num_rows(self) -> bool:
         return True
+
+
+class StreamingRepartition(AbstractMap):
+    """Logical operator for streaming repartition operation.
+    Args:
+        target_num_rows_per_block: The targetr number of rows per block granularity for
+        streaming repartition.
+    """
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        target_num_rows_per_block: int,
+    ):
+        super().__init__("StreamingRepartition", input_op)
+        self._target_num_rows_per_block = target_num_rows_per_block
+
+    @property
+    def target_num_rows_per_block(self) -> int:
+        return self._target_num_rows_per_block
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False
