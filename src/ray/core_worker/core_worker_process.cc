@@ -100,7 +100,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     }
 
     // Setup logging for worker application logging.
-    {
+    if (options.worker_type == WorkerType::WORKER) {
       std::stringstream app_name_ss;
       app_name_ss << WorkerTypeString(options_.worker_type);
       if (!worker_id_.IsNil()) {
