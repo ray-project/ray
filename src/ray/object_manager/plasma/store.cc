@@ -498,7 +498,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
         client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
   } break;
   default:
-    RAY_LOG(INFO) << "[myan] Received request falls into default...";
+    RAY_LOG(INFO) << "[myan] Received request falls into default... MessageType="
+                  << EnumNameMessageType(type);
     // This code should be unreachable.
     RAY_CHECK(0);
   }
