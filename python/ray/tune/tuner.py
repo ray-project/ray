@@ -7,10 +7,9 @@ import pyarrow.fs
 
 import ray
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.config import RunConfig
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
-from ray.tune import ResumeConfig
+from ray.tune import ResumeConfig, RunConfig
 from ray.tune.experimental.output import get_air_verbosity
 from ray.tune.impl.tuner_internal import _TUNER_PKL, TunerInternal
 from ray.tune.progress_reporter import (
@@ -66,7 +65,7 @@ class Tuner:
         tuner = Tuner(
             trainable=trainable,
             param_space={"lr": ray.tune.grid_search([0.001, 0.01])},
-            run_config=RunConfig(name="my_tune_run"),
+            run_config=ray.tune.RunConfig(name="my_tune_run"),
         )
         results = tuner.fit()
 
