@@ -188,6 +188,25 @@ def _convert_to_pyarrow_native_array(
         #       by int32 offsets used by Arrow internally)
         dtype = _infer_pyarrow_type(column_values)
 
+        if pa.types.is_timestamp(dtype):
+            assert np.issubdtype(column_values.dtype, np.datetime64)
+            numpy_precision, _ = np.datetime_data(column_values.dtype)
+            arrow_precision = dtype.unit
+            if arrow_precision != numpy_precision:
+                # Arrow supports fewer timestamp resolutions than NumPy. So, if Arrow
+                # doesn't support the resolution, we need to cast the NumPy array to a
+                # different time. This can be a lossy conversion.
+                column_values = column_values.astype(f"datetime64[{arrow_precision}]")
+
+                if log_once(f"column_{column_name}_timestamp_warning"):
+                    logger.warning(
+                        f"Converting a {numpy_precision!r} precision datetime NumPy "
+                        "array to '{arrow_precision}' precision Arrow timestamp. This "
+                        "conversion occurs because Arrow supports fewer precisions "
+                        "than Arrow and might result in a loss of precision or "
+                        "unrepresentable values."
+                    )
+
         logger.log(
             logging.getLevelName("TRACE"),
             f"Inferred dtype of '{dtype}' for column '{column_name}'",
@@ -224,6 +243,9 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
     if len(column_values) == 0:
         return None
 
+    if np.issubdtype(column_values.dtype, np.datetime64):
+        return _infer_pyarrow_type_from_datetime_dtype(column_values.dtype)
+
     inferred_pa_dtype = pa.infer_type(column_values)
 
     def _len_gt_overflow_threshold(obj: Any) -> bool:
@@ -249,6 +271,24 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
         return pa.large_string()
 
     return inferred_pa_dtype
+
+
+def _infer_pyarrow_type_from_datetime_dtype(dtype: np.dtype) -> pa.TimestampType:
+    assert np.issubdtype(dtype, np.datetime64)
+    numpy_precision, _ = np.datetime_data(dtype)
+
+    # The lowest resolution Arrow supports is seconds.
+    if numpy_precision in {"Y", "M", "W", "D", "h", "m"}:
+        arrow_timestamp_unit = "s"
+    # The highest resolution Arrow supports is nanoseconds.
+    elif numpy_precision in {"ps", "fs", "as"}:
+        arrow_timestamp_unit = "ns"
+    # Otherwise, use the same resolution as NumPy.
+    else:
+        arrow_timestamp_unit = numpy_precision
+
+    # NumPy datetime64 always uses UTC timezone.
+    return pa.timestamp(arrow_timestamp_unit, tz="UTC")
 
 
 @DeveloperAPI
