@@ -5,14 +5,16 @@ import pickle
 import time
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, AsyncGenerator, Generator, Tuple
+from typing import Any, AsyncGenerator, Callable, Generator, Optional, Tuple
 
 import grpc
+from starlette.types import Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
 from ray.anyscale.serve._private.constants import (
     ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    ANYSCALE_RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
 from ray.anyscale.serve._private.tracing_utils import (
     TraceContextManager,
@@ -20,16 +22,32 @@ from ray.anyscale.serve._private.tracing_utils import (
     set_span_attributes,
     setup_tracing,
 )
+from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
+from ray.serve._private.grpc_util import start_grpc_server
+from ray.serve._private.http_util import (
+    convert_object_to_asgi_messages,
+    start_asgi_http_server,
+    MessageQueue,
+)
 from ray.anyscale.serve.context import _get_in_flight_requests
 from ray.anyscale.serve.utils import asyncio_grpc_exception_handler
 from ray.serve._private.common import (
+    RequestProtocol,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     ServeComponentType,
+    gRPCRequest,
+    StreamingHTTPRequest,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.replica import ReplicaBase, StatusCodeCallback
+from ray.serve._private.utils import generate_request_id
 from ray.serve.generated import serve_proprietary_pb2, serve_proprietary_pb2_grpc
+from ray.serve.grpc_util import RayServegRPCContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -112,6 +130,9 @@ class AnyscaleReplica(ReplicaBase):
             ]
         )
 
+        self._http_direct_ingress_server_task: Optional[asyncio.Task] = None
+        self._grpc_direct_ingress_server_task: Optional[asyncio.Task] = None
+
         super().__init__(**kwargs)
 
         # Silence spammy false positive errors from gRPC Python
@@ -132,10 +153,51 @@ class AnyscaleReplica(ReplicaBase):
                 "The replica will continue running, but traces will not be exported."
             )
 
+    async def _maybe_start_direct_ingress_servers(self):
+        if not ANYSCALE_RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            return
+
+        controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+        http_options, grpc_options = ray.get(
+            [
+                controller_handle.get_http_config.remote(),
+                controller_handle.get_grpc_config.remote(),
+            ]
+        )
+        grpc_enabled = (
+            grpc_options.port > 0 and len(grpc_options.grpc_servicer_functions) > 0
+        )
+        logger.info(
+            f"Starting HTTP server on port {http_options.port}"
+            + (
+                f" and gRPC server on port {grpc_options.port}."
+                if grpc_enabled
+                else "."
+            )
+        )
+
+        self._direct_ingress_http_server_task = await start_asgi_http_server(
+            self._direct_ingress_asgi,
+            http_options,
+            event_loop=self._event_loop,
+            enable_so_reuseport=True,
+        )
+        if grpc_enabled:
+            self._direct_ingress_grpc_server_task = await start_grpc_server(
+                self._direct_ingress_service_handler_factory,
+                grpc_options,
+                event_loop=self._event_loop,
+                enable_so_reuseport=True,
+            )
+
     async def _on_initialized(self):
         serve_proprietary_pb2_grpc.add_ASGIServiceServicer_to_server(self, self._server)
         self._port = self._server.add_insecure_port("[::]:0")
         await self._server.start()
+
+        await self._maybe_start_direct_ingress_servers()
 
         self._set_internal_replica_context(
             servable_object=self._user_callable_wrapper.user_callable
@@ -291,3 +353,208 @@ class AnyscaleReplica(ReplicaBase):
                 result = (request_metadata.grpc_context, result.SerializeToString())
 
             yield result
+
+    async def _dataplane_health_check(self) -> Tuple[bool, str]:
+        healthy, message = True, "OK"
+        if self._shutting_down:
+            healthy = False
+            message = "DRAINING"
+        elif not self._healthy:
+            healthy = False
+            message = "UNHEALTHY"
+
+        return healthy, message
+
+    async def _direct_ingress_unary_unary(
+        self,
+        service_method: str,
+        request_proto: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ) -> bytes:
+        if service_method == "/ray.serve.RayServeAPIService/Healthz":
+            healthy, message = await self._dataplane_health_check()
+            context.set_code(
+                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+            )
+            context.set_details(message)
+            return HealthzResponse(message=message).SerializeToString()
+
+        if service_method == "/ray.serve.RayServeAPIService/ListApplications":
+            # NOTE(edoakes): ListApplications may currently be used by Anyscale for
+            # health checking. We should clean this up in the future.
+            healthy, message = await self._dataplane_health_check()
+            context.set_code(
+                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+            )
+            context.set_details(message)
+            return ListApplicationsResponse(application_names=[]).SerializeToString()
+
+        c = RayServegRPCContext(context)
+        request_metadata = RequestMetadata(
+            # TODO: pick up the request ID from gRPC initial metadata.
+            request_id=generate_request_id(),
+            internal_request_id=generate_request_id(),
+            call_method=service_method.split("/")[-1],
+            _request_protocol=RequestProtocol.GRPC,
+            grpc_context=c,
+            app_name=self._deployment_id.app_name,
+            # TODO(edoakes): populate this.
+            multiplexed_model_id="",
+        )
+        result_gen = self.handle_request_with_rejection(
+            request_metadata, gRPCRequest(request_proto)
+        )
+        queue_len_info: ReplicaQueueLengthInfo = await result_gen.__anext__()
+        # TODO(edoakes): update the behavior to more closely mimic the existing path:
+        # add an internal queue and drop requests based on max_queued_requests.
+        if not queue_len_info.accepted:
+            context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
+            context.set_details("Replica exceeded capacity of max_ongoing_requests.")
+            return
+
+        result = await result_gen.__anext__()
+        c._set_on_grpc_context(context)
+
+        # NOTE(edoakes): we need to fully consume the generator otherwise the
+        # finalizers that run after the `yield` statement won't run. There might
+        # be a cleaner way to structure this.
+        try:
+            await result_gen.__anext__()
+        except StopAsyncIteration:
+            pass
+
+        return result.SerializeToString()
+
+    async def _direct_ingress_unary_stream(
+        self,
+        service_method: str,
+        request: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ):
+        raise NotImplementedError("unary_stream not implemented.")
+
+    def _direct_ingress_service_handler_factory(
+        self, service_method: str, stream: bool
+    ) -> Callable:
+        if stream:
+
+            async def handler(*args, **kwargs):
+                return await self._direct_ingress_unary_stream(
+                    service_method, *args, **kwargs
+                )
+
+        else:
+
+            async def handler(*args, **kwargs):
+                return await self._direct_ingress_unary_unary(
+                    service_method, *args, **kwargs
+                )
+
+        return handler
+
+    async def _proxy_asgi_receive(
+        self, receive: Receive, queue: MessageQueue
+    ) -> Optional[int]:
+        """Proxies the `receive` interface, placing its messages into the queue.
+
+        Once a disconnect message is received, the call exits and `receive` is no longer
+        called.
+        For HTTP messages, `None` is always returned.
+        For websocket messages, the disconnect code is returned if a disconnect code is
+        received.
+        """
+        try:
+            while True:
+                msg = await receive()
+                await queue(msg)
+
+                if msg["type"] == "http.disconnect":
+                    return None
+
+                if msg["type"] == "websocket.disconnect":
+                    return msg["code"]
+        finally:
+            # Close the queue so any subsequent calls to fetch messages return
+            # immediately: https://github.com/ray-project/ray/issues/38368.
+            queue.close()
+
+    async def _direct_ingress_asgi(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ):
+        # NOTE(edoakes): it's important to only start the replica server after the
+        # constructor runs because we are using SO_REUSEPORT. We don't want a new
+        # replica to start handling connections until it's ready to serve traffic.
+        #
+        # This can be loosened to listen on the port but fail health checks once we no
+        # longer rely on SO_REUSEPORT.
+        assert (
+            self._user_callable_initialized
+        ), "Replica server should only be started *after* the replica is initialized."
+
+        if scope.get("path", "") in ["/-/healthz", "/-/routes"]:
+            healthy, message = await self._dataplane_health_check()
+            for msg in convert_object_to_asgi_messages(
+                message,
+                status_code=200 if healthy else 503,
+            ):
+                await send(msg)
+            return
+
+        receive_queue = MessageQueue()
+        proxy_asgi_receive_task = self._event_loop.create_task(
+            self._proxy_asgi_receive(receive, receive_queue)
+        )
+
+        async def receive_thread_safe(*args):
+            return await asyncio.wrap_future(
+                asyncio.run_coroutine_threadsafe(
+                    receive_queue.get_one_message(),
+                    self._event_loop,
+                )
+            )
+
+        request_metadata = RequestMetadata(
+            # TODO: pick up from header.
+            request_id=generate_request_id(),
+            internal_request_id=generate_request_id(),
+            call_method="__call__",
+            # TODO(edoakes): populate this.
+            route=scope.get("path", ""),
+            app_name=self._deployment_id.app_name,
+            # TODO(edoakes): populate the multiplexed model ID.
+            multiplexed_model_id="",
+            is_streaming=True,
+            _request_protocol=RequestProtocol.HTTP,
+        )
+        http_request = StreamingHTTPRequest(
+            asgi_scope=scope,
+            receive_asgi_messages=receive_thread_safe,
+        )
+
+        try:
+            result_gen = self.handle_request_with_rejection(
+                request_metadata, http_request
+            )
+            queue_len_info: ReplicaQueueLengthInfo = await result_gen.__anext__()
+            # TODO(edoakes): update the behavior to more closely mimic the existing path:
+            # add an internal queue and drop requests based on max_queued_requests.
+            if not queue_len_info.accepted:
+                for msg in convert_object_to_asgi_messages(
+                    "Replica exceeded capacity of max_ongoing_requests.",
+                    status_code=503,
+                ):
+                    await send(msg)
+
+                return
+
+            async for result in result_gen:
+                # TODO(edoakes): we should avoid serializing and deserializing the ASGI
+                # messages here. This requires some upstream refactoring.
+                for msg in pickle.loads(result):
+                    await send(msg)
+        finally:
+            if not proxy_asgi_receive_task.done():
+                proxy_asgi_receive_task.cancel()

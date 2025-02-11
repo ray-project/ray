@@ -69,3 +69,9 @@ RAY_SERVE_PRESTART_PG_WORKERS = (
 RAY_SERVE_PRESTART_PG_WORKERS_KEEP_ALIVE_S = int(
     os.environ.get("RAY_SERVE_PRESTART_PG_WORKERS_KEEP_ALIVE_S", "60")
 )
+
+# Feature flag to enable a limited form of direct ingress where ingress applications
+# listen on port 8000 (HTTP) and 9000 (gRPC). No proxies will be started.
+ANYSCALE_RAY_SERVE_ENABLE_DIRECT_INGRESS = (
+    os.environ.get("ANYSCALE_RAY_SERVE_ENABLE_DIRECT_INGRESS", "0") == "1"
+)

@@ -30,3 +30,15 @@ py_test_module_list(
     deps = ["//:ray_lib", ":conftest"],
     data = glob(["tests/fixtures/*.*"]),
 )
+
+py_test_module_list(
+    name_suffix="_with_direct_ingress_enabled",
+    env={"ANYSCALE_RAY_SERVE_ENABLE_DIRECT_INGRESS": "1"},
+    files = [
+        "tests/test_direct_ingress.py",
+    ],
+    size = "medium",
+    tags = ["team:serve", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+    data = glob(["tests/fixtures/*.*"]),
+)

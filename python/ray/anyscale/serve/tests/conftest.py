@@ -7,6 +7,8 @@ from ray._private.usage import usage_lib
 from ray.cluster_utils import AutoscalingCluster
 from ray.serve._private.test_utils import TELEMETRY_ROUTE_PREFIX, start_telemetry_app
 
+from ray.serve.tests.conftest import _shared_serve_instance, serve_instance  # noqa
+
 
 @pytest.fixture
 def autoscaling_cluster(request, monkeypatch):
