@@ -21,15 +21,6 @@ logger = logging.getLogger(__name__)
 METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 
 
-def validate_metric_name(name: str):
-    if len(name) == 0:
-        raise ValueError("Empty name is not allowed. Please provide a metric name.")
-    if not METRIC_NAME_RE.match(name):
-        raise ValueError(
-            f"Invalid metric name: {name}. Does not match regex: {METRIC_NAME_RE.pattern}"
-        )
-
-
 @DeveloperAPI
 class Metric:
     """The parent class of custom metrics.
@@ -44,7 +35,7 @@ class Metric:
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
-        validate_metric_name(name)
+        self._validate_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -62,6 +53,14 @@ class Metric:
         for key in self._tag_keys:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
+
+    def _validate_metric_name(self, name: str):
+        if len(name) == 0:
+            raise ValueError("Empty name is not allowed. Please provide a metric name.")
+        if not METRIC_NAME_RE.match(name):
+            raise ValueError(
+                f"Invalid metric name: {name}. Does not match regex: {METRIC_NAME_RE.pattern}"
+            )
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
