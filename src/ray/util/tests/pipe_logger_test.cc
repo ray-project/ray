@@ -24,6 +24,7 @@
 
 #include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/scoped_env_setter.h"
 #include "ray/util/temporary_directory.h"
 #include "ray/util/util.h"
 
@@ -45,7 +46,9 @@ class PipeReadBufferSizeSetter {
 class PipeLoggerTest : public ::testing::TestWithParam<size_t> {};
 
 TEST_P(PipeLoggerTest, RedirectionTest) {
-  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
+  const std::string pipe_buffer_size = absl::StrFormat("%d", GetParam());
+  ScopedEnvSetter scoped_env_setter{"RAY_pipe_logger_read_buf_size",
+                                    pipe_buffer_size.data()};
   ScopedTemporaryDirectory scoped_directory;
   const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
@@ -65,7 +68,9 @@ TEST_P(PipeLoggerTest, RedirectionTest) {
 }
 
 TEST_P(PipeLoggerTest, RedirectionWithTee) {
-  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
+  const std::string pipe_buffer_size = absl::StrFormat("%d", GetParam());
+  ScopedEnvSetter scoped_env_setter{"RAY_pipe_logger_read_buf_size",
+                                    pipe_buffer_size.data()};
   ScopedTemporaryDirectory scoped_directory;
   const auto test_file_path = scoped_directory.GetDirectory() / GenerateUUIDV4();
 
@@ -92,7 +97,9 @@ TEST_P(PipeLoggerTest, RedirectionWithTee) {
 }
 
 TEST_P(PipeLoggerTest, RotatedRedirectionWithTee) {
-  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
+  const std::string pipe_buffer_size = absl::StrFormat("%d", GetParam());
+  ScopedEnvSetter scoped_env_setter{"RAY_pipe_logger_read_buf_size",
+                                    pipe_buffer_size.data()};
   ScopedTemporaryDirectory scoped_directory;
   const auto uuid = GenerateUUIDV4();
   const auto test_file_path = scoped_directory.GetDirectory() / uuid;
@@ -131,7 +138,9 @@ TEST_P(PipeLoggerTest, RotatedRedirectionWithTee) {
 // Testing senario: log to stdout and file; check whether these two sinks generate
 // expected output.
 TEST_P(PipeLoggerTest, CompatibilityTest) {
-  PipeReadBufferSizeSetter pipe_read_buffer_size_setter{GetParam()};
+  const std::string pipe_buffer_size = absl::StrFormat("%d", GetParam());
+  ScopedEnvSetter scoped_env_setter{"RAY_pipe_logger_read_buf_size",
+                                    pipe_buffer_size.data()};
 
   // Testing-1: No newliner in the middle nor at the end.
   {
