@@ -205,7 +205,6 @@ class TrainLoopRunner:
         with open(os.path.join(local_dir, "metrics.json"), "r") as f:
             metrics_json = json.load(f)
 
-        self._metrics = {k: Timer() for k in metrics_json}
         for k, v in metrics_json.items():
             self._metrics[k].__dict__.update(v)
 
