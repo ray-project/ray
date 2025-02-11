@@ -81,28 +81,43 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
-    std::stringstream app_name_ss;
-    app_name_ss << LanguageString(options_.language) << "-core-"
-                << WorkerTypeString(options_.worker_type);
-    if (!worker_id_.IsNil()) {
-      app_name_ss << "-" << worker_id_;
+    // Setup logging for worker system logging.
+    {
+      std::stringstream app_name_ss;
+      app_name_ss << LanguageString(options_.language) << "-core-"
+                  << WorkerTypeString(options_.worker_type);
+      if (!worker_id_.IsNil()) {
+        app_name_ss << "-" << worker_id_;
+      }
+      const std::string app_name = app_name_ss.str();
+      const std::string log_filepath =
+          RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+      RayLog::StartRayLog(app_name,
+                          RayLogLevel::INFO,
+                          log_filepath,
+                          ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+                          ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     }
-    const std::string app_name = app_name_ss.str();
-    const std::string log_filepath =
-        RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
-    RayLog::StartRayLog(app_name,
-                        RayLogLevel::INFO,
-                        log_filepath,
-                        ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-                        ray::RayLog::GetRayLogRotationBackupCountOrDefault());
 
-    ray::StreamRedirectionOption stdout_redirection_options;
-    stdout_redirection_options.file_path = log_filepath;
-    stdout_redirection_options.rotation_max_size =
-        ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
-    stdout_redirection_options.rotation_max_file_count =
-        ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-    ray::RedirectStdout(stdout_redirection_options);
+    // Setup logging for worker application logging.
+    {
+      std::stringstream app_name_ss;
+      app_name_ss << WorkerTypeString(options_.worker_type);
+      if (!worker_id_.IsNil()) {
+        app_name_ss << "-" << worker_id_;
+      }
+      const std::string app_name = app_name_ss.str();
+      const std::string log_filepath =
+          RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+
+      ray::StreamRedirectionOption stdout_redirection_options;
+      stdout_redirection_options.file_path = log_filepath;
+      stdout_redirection_options.rotation_max_size =
+          ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+      stdout_redirection_options.rotation_max_file_count =
+          ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+      ray::RedirectStdout(stdout_redirection_options);
+    }
 
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
