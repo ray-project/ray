@@ -247,8 +247,7 @@ Callbacks are passed in the `callback` argument of the `Tuner`'s `RunConfig`.
 In our example, we'll use the MLFlow callback to track the progress of our tuning run and the changing value of the `metric` (requires `mlflow` to be installed).
 
 ```python
-from ray import train
-from ray.train import RunConfig
+import ray.tune
 from ray.tune.logger.mlflow import MLflowLoggerCallback
 
 
@@ -270,15 +269,15 @@ def training_function(config, data):
         tune.report(metrics={"metric": metric})
 
 
-tuner = Tuner(
+tuner = ray.tune.Tuner(
     tune.with_parameters(training_function, data=data),
     param_space={
         "hyperparameter_a": tune.uniform(0, 20),
         "hyperparameter_b": tune.uniform(-100, 100),
         "epochs": 10,
     },
-    tune_config=tune.TuneConfig(num_samples=4, metric="metric", mode="max"),
-    run_config=RunConfig(
+    tune_config=ray.tune.TuneConfig(num_samples=4, metric="metric", mode="max"),
+    run_config=ray.tune.RunConfig(
         callbacks=[MLflowLoggerCallback(experiment_name="example")]
     ),
 )

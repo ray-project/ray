@@ -73,7 +73,7 @@ The actual training loop is just for demonstration purposes: the important detai
     :end-before: __ft_initial_run_end__
 
 The results and checkpoints of the experiment are saved to ``~/ray_results/tune_fault_tolerance_guide``,
-as configured by :class:`~ray.train.RunConfig`.
+as configured by :class:`~ray.tune.RunConfig`.
 If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py

@@ -102,7 +102,7 @@ Storage Options in a Distributed Tune Run
 
 In a distributed experiment, you should try to use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to
 reduce synchronization overhead. For this, you just have to specify a remote ``storage_path`` in the
-:class:`RunConfig <ray.train.RunConfig>`.
+:class:`RunConfig <ray.tune.RunConfig>`.
 
 `my_trainable` is a user-defined :ref:`Tune Trainable <tune_60_seconds_trainables>` in the following example:
 

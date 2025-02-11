@@ -188,9 +188,9 @@ We refer to these saved files as **trial artifacts**.
 
 .. note::
 
-    If :class:`SyncConfig(sync_artifacts=True) <ray.train.SyncConfig>`, trial artifacts
+    If :class:`SyncConfig(sync_artifacts=True) <ray.tune.SyncConfig>`, trial artifacts
     are uploaded periodically from each trial (or from each remote training worker for Ray Train)
-    to the :class:`RunConfig(storage_path) <ray.train.RunConfig>`.
+    to the :class:`RunConfig(storage_path) <ray.tune.RunConfig>`.
 
     See the :class:`~ray.train.SyncConfig` API reference for artifact syncing configuration options.
 

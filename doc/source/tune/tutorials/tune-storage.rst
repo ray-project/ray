@@ -113,7 +113,7 @@ On a single-node cluster
 If you're just running an experiment on a single node (e.g., on a laptop), Tune will use the
 local filesystem as the default storage location for checkpoints and other artifacts.
 Results are saved to ``~/ray_results`` in a sub-directory with a unique auto-generated name by default,
-unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.train.RunConfig`.
+unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.tune.RunConfig`.
 
 .. code-block:: python
 
