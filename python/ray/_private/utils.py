@@ -44,6 +44,8 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.custom_types import ACTOR_STATUS
+
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -2070,18 +2072,10 @@ def load_class(path):
 def validate_actor_state_name(actor_state_name):
     if actor_state_name is None:
         return
-    actor_state_names = [
-        "DEPENDENCIES_UNREADY",
-        "PENDING_CREATION",
-        "ALIVE",
-        "RESTARTING",
-        "DEAD",
-    ]
-    if actor_state_name not in actor_state_names:
+    if actor_state_name not in ACTOR_STATUS:
         raise ValueError(
             f'"{actor_state_name}" is not a valid actor state name, '
-            'it must be one of the following: "DEPENDENCIES_UNREADY", '
-            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+            f'it must be one of the following: {", ".join(ACTOR_STATUS)}'
         )
 
 
