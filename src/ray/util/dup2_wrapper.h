@@ -1,0 +1,43 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma once
+
+#include <memory>
+
+#include "ray/util/compat.h"
+
+namespace ray {
+
+class Dup2Wrapper {
+ public:
+  // Duplicate [oldfd] to [newfd], same semantics with syscall `dup2`.
+  static std::unique_ptr<Dup2Wrapper> New(MEMFD_TYPE_NON_UNIQUE oldfd,
+                                          MEMFD_TYPE_NON_UNIQUE newfd);
+
+  Dup2Wrapper(const Dup2Wrapper &) = delete;
+  Dup2Wrapper &operator=(const Dup2Wrapper &) = delete;
+
+  // Restore oldfd.
+  ~Dup2Wrapper();
+
+ private:
+  Dup2Wrapper(MEMFD_TYPE_NON_UNIQUE oldfd, MEMFD_TYPE_NON_UNIQUE restorefd)
+      : oldfd_(oldfd), restorefd_(restorefd) {}
+
+  MEMFD_TYPE_NON_UNIQUE oldfd_;
+  MEMFD_TYPE_NON_UNIQUE restorefd_;
+};
+
+}  // namespace ray
