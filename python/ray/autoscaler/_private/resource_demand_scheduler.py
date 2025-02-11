@@ -19,6 +19,7 @@ import ray
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_CONSERVE_GPU_NODES,
+    AUTOSCALER_UPSCALING_INITIAL_NUM_NODES,
     AUTOSCALER_UTILIZATION_SCORER_KEY,
 )
 from ray.autoscaler._private.loader import load_function_or_class
