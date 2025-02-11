@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 import numpy as np
 
-from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -90,9 +90,8 @@ def _create_read_fn(
     def read_fn() -> Iterable[Block]:
         ctx = DataContext.get_current()
         output_buffer = BlockOutputBuffer(
-            target_max_block_size=ctx.target_max_block_size
+            OutputBlockSizeOption(target_max_block_size=ctx.target_max_block_size)
         )
-
         for result_batch in result_batches_split:
             block = result_batch.to_arrow()
             output_buffer.add_block(block)

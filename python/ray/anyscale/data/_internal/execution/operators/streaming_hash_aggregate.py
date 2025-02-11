@@ -17,7 +17,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     PhysicalOperator,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
@@ -49,7 +49,9 @@ class Aggregator:
         self._agg_fn = agg_fn
         # Intermediate state for each key.
         self._states: Dict[str, Any] = {}
-        self._output_buffer = BlockOutputBuffer(output_block_size)
+        self._output_buffer = BlockOutputBuffer(
+            OutputBlockSizeOption(target_max_block_size=output_block_size)
+        )
         self._finalized = False
 
     def aggregate(self, should_finalize, should_checkpoint, *input_blocks: Block):
