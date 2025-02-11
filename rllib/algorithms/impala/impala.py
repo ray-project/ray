@@ -1017,6 +1017,11 @@ class IMPALA(Algorithm):
             if self.local_mixin_buffer:
                 self.local_mixin_buffer.add(batch)
                 batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            else:
+                # TODO(jjyao) somehow deep copy the batch
+                # fix a memory leak issue. Need to investigate more
+                # to know why.
+                batch = batch.copy()
             if batch:
                 processed_batches.append(batch)
 
