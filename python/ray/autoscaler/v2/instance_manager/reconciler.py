@@ -823,7 +823,7 @@ class Reconciler:
             instance_type,
             queued_instances_for_type,
         ) in queued_instances_by_type.items():
-            running_instances_for_type = running_instances_for_type.get(
+            running_instances_for_type = running_instances_by_type.get(
                 instance_type, []
             )
 
