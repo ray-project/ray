@@ -321,6 +321,9 @@ std::shared_ptr<rpc::VirtualClusterView> VirtualCluster::ToView() const {
   for (auto &[template_id, job_node_instances] : visible_node_instances_) {
     for (auto &[job_cluster_id, node_instances] : job_node_instances) {
       for (auto &[id, node_instance] : node_instances) {
+        if (node_instance->is_dead()) {
+          continue;
+        }
         auto node_id = scheduling::NodeID(
             NodeID::FromHex(node_instance->node_instance_id()).Binary());
         const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
