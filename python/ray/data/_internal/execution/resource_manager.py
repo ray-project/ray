@@ -18,7 +18,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
+    from ray.data._internal.execution.streaming_executor_state import Topology
 
 
 logger = logging.getLogger(__name__)

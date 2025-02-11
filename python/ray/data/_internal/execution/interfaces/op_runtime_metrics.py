@@ -9,7 +9,6 @@ from ray.data._internal.execution.bundle_queue import BundleQueue, create_bundle
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (

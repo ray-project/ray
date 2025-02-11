@@ -1714,7 +1714,7 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
-        ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
+        _ = ray.data.range(20).map_batches(lambda batch: batch).materialize()
 
         calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
         assert len(calls) > 0
@@ -1758,7 +1758,7 @@ def test_per_node_metrics_spilled(ray_start_regular_shared, restore_data_context
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
         # The size of dataset is 1000*80*80*4*8B, about 200MB.
-        ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+        _ = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
         calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
         assert len(calls) > 0
@@ -1770,15 +1770,6 @@ def test_per_node_metrics_spilled(ray_start_regular_shared, restore_data_context
 
         # Clean up Ray at the end so we don't pollute other tests.
         ray.shutdown()
-
-
-import pytest
-import time
-from unittest.mock import patch
-
-from ray._private.test_utils import wait_for_condition
-from ray.data.context import DataContext
-import ray
 
 
 @pytest.mark.parametrize("enable_metrics", [True, False])
