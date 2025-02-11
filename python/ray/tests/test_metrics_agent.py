@@ -26,7 +26,7 @@ from ray._private.test_utils import (
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.util.metrics import Counter, Gauge, Histogram
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -1037,6 +1037,13 @@ def test_metrics_disablement(_setup_cluster_for_test):
         import time
 
         time.sleep(1)
+
+
+def test_invalid_metric_names():
+    with pytest.raises(ValueError):
+        Metric("faulty-metric")
+    with pytest.raises(ValueError):
+        Metric("1cannotstartwithnumber")
 
 
 if __name__ == "__main__":

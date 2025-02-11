@@ -1,4 +1,5 @@
 import logging
+import re
 
 from typing import Dict, Any, List, Optional, Tuple, Union
 
@@ -13,6 +14,20 @@ from ray._raylet import (
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# Copied from Prometheus Python Client. While the regex is not part of the public API
+# for Prometheus, it's not expected to change
+# https://github.com/prometheus/client_python/blob/46eae7bae88f76951f7246d9f359f2dd5eeff110/prometheus_client/validation.py#L4
+METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+
+
+def validate_metric_name(name: str):
+    if len(name) == 0:
+        raise ValueError("Empty name is not allowed. Please provide a metric name.")
+    if not METRIC_NAME_RE.match(name):
+        raise ValueError(
+            f"Invalid metric name: {name}. Does not match regex: {METRIC_NAME_RE.pattern}"
+        )
 
 
 @DeveloperAPI
@@ -29,8 +44,7 @@ class Metric:
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
-        if len(name) == 0:
-            raise ValueError("Empty name is not allowed. Please provide a metric name.")
+        validate_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
