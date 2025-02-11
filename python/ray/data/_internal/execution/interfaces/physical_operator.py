@@ -198,7 +198,6 @@ class PhysicalOperator(Operator):
         self._started = False
         self._in_task_submission_backpressure = False
         self._in_task_output_backpressure = False
-        self._metrics = OpRuntimeMetrics(self)
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._execution_completed = False
@@ -206,6 +205,7 @@ class PhysicalOperator(Operator):
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
         self._data_context = data_context
+        self._metrics = OpRuntimeMetrics(self)
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")

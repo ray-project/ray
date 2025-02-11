@@ -141,7 +141,7 @@ class OpRuntimesMetricsMeta(type):
 
 
 def estimate_object_store_memory_per_node(
-    op: PhysicalOperator, state: "OpState"
+    op: "PhysicalOperator", state: "OpState"
 ) -> Dict[str, int]:
     usage_per_node = defaultdict(int)
 
@@ -199,7 +199,7 @@ def update_object_store_usage(
     op._metrics.obj_store_mem_used = op_usage.object_store_memory
 
     # Update the per node metrics
-    if op.data_context().enable_per_node_metrics:
+    if op.data_context.enable_per_node_metrics:
         memory_usage_per_node = estimate_object_store_memory_per_node(op, state)
         for node_id, usage in memory_usage_per_node.items():
             op._metrics._per_node_metrics[node_id].obj_store_mem_used = usage
@@ -391,7 +391,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._pending_task_inputs = create_bundle_queue()
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
-        self._per_node_metrics_enabled: bool = op.data_context().enable_per_node_metrics
+        self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
