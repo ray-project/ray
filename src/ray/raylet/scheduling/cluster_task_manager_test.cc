@@ -65,6 +65,16 @@ class MockWorkerPool : public WorkerPoolInterface {
     return {};
   }
 
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  };
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  }
+
   void TriggerCallbacksWithNotOKStatus(
       PopWorkerStatus status, const std::string &runtime_env_setup_error_msg = "") {
     RAY_CHECK(status != PopWorkerStatus::OK);

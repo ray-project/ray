@@ -56,6 +56,12 @@ class ILocalTaskManager {
                                     absl::flat_hash_map<WorkerID, int64_t>>
       &GetBackLogTracker() const = 0;
 
+  virtual void SetWorkerBacklog(SchedulingClass scheduling_class,
+                                const WorkerID &worker_id,
+                                int64_t backlog_size) = 0;
+
+  virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
+
   virtual bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                                      bool *any_pending,
                                                      int *num_pending_actor_creation,
@@ -107,6 +113,12 @@ class NoopLocalTaskManager : public ILocalTaskManager {
         backlog_tracker;
     return backlog_tracker;
   }
+
+  void SetWorkerBacklog(SchedulingClass scheduling_class,
+                        const WorkerID &worker_id,
+                        int64_t backlog_size) override {}
+
+  void ClearWorkerBacklog(const WorkerID &worker_id) override {}
 
   bool AnyPendingTasksForResourceAcquisition(RayTask *example,
                                              bool *any_pending,

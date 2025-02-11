@@ -1715,6 +1715,18 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "node_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/test/node_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "wait_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/wait_manager_test.cc"],
