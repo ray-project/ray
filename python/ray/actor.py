@@ -1716,6 +1716,9 @@ def _modify_class(cls):
         def __ray_call__(self, fn, *args, **kwargs):
             return fn(self, *args, **kwargs)
 
+        async def __async_ray_call__(self, fn, *args, **kwargs):
+            return await fn(self, *args, **kwargs)
+
         def __ray_terminate__(self):
             worker = ray._private.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
