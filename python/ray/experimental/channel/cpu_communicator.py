@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import ray
 from ray.experimental.channel.communicator import (
     AllReduceOp,
-    ReduceScatterOp,
     Communicator,
+    ReduceScatterOp,
     TorchTensorAllocator,
 )
 from ray.experimental.util.types import ReduceOp
@@ -123,6 +123,13 @@ class CPUCommunicator(Communicator):
         # See the comment on `send`
         pass
 
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        raise NotImplementedError
+
     def allreduce(
         self,
         send_buf: "torch.Tensor",
@@ -150,13 +157,6 @@ class CPUCommunicator(Communicator):
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
         op: ReduceScatterOp = ReduceScatterOp.SUM,
-    ):
-        raise NotImplementedError
-
-    def allgather(
-        self,
-        send_buf: "torch.Tensor",
-        recv_buf: "torch.Tensor",
     ):
         raise NotImplementedError
 

@@ -273,6 +273,10 @@ class _NcclGroup(Communicator):
             self._cuda_stream.ptr,
         )
 
+        # Buffer values are undefined if NCCL ops are aborted. Therefore, we
+        # need to synchronize here and check that the channel is still open to
+        # ensure that the receive buffer is valid.
+        # TODO(swang): Avoid CUDA synchronization.
         # This synchronize will be optional after merging the unify PR.
         self._cuda_stream.synchronize()
         if self._closed:

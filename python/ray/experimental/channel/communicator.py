@@ -123,6 +123,23 @@ class Communicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ) -> None:
+        """
+        Collectively allgather the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to allgather. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allgather result.
+            op: The reduce operation.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def allreduce(
         self,
         send_buf: "torch.Tensor",
@@ -154,23 +171,6 @@ class Communicator(ABC):
             send_buf: The input torch.tensor to reducescatter. It should already be
                 on this actor's default device.
             recv_buf: The output torch.tensor to store the reducescatter result.
-            op: The reduce operation.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def allgather(
-        self,
-        send_buf: "torch.Tensor",
-        recv_buf: "torch.Tensor",
-    ) -> None:
-        """
-        Collectively allgather the tensor across the group.
-
-        Args:
-            send_buf: The input torch.tensor to allgather. It should already be
-                on this actor's default device.
-            recv_buf: The output torch.tensor to store the allgather result.
             op: The reduce operation.
         """
         raise NotImplementedError

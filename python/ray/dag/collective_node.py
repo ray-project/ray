@@ -147,7 +147,7 @@ class _CollectiveOperation:
             )
             communicator.reducescatter(send_buf, recv_buf, self._op)
         else:
-            # If no op is specified, the user is doing allgather
+            # Executing allgather if no operation is specified.
             world_size = len(self._actor_handles)
             recv_buf = torch.empty(
                 (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
