@@ -1023,6 +1023,7 @@ class CompiledDAG:
         # ray.get has not been called on it, we will add it to this dict, so that
         # we can lazily release the native buffers
         self._destructed_ref_idxs: Dict[int, Set[Optional[int]]] = defaultdict(set)
+        self._got_ref_idxs: Dict[int, Set[Optional[int]]] = defaultdict(set)
 
     @property
     def is_teardown(self) -> bool:
@@ -2204,12 +2205,7 @@ class CompiledDAG:
         """
         if not self._has_execution_results(execution_index):
             for chan_idx, res in enumerate(result):
-                # avoid caching for any CompiledDAGRef that has already been destructed.
-                if not (
-                    execution_index in self._destructed_ref_idxs
-                    and chan_idx in self._destructed_ref_idxs[execution_index]
-                ):
-                    self._result_buffer[execution_index][chan_idx] = res
+                self._result_buffer[execution_index][chan_idx] = res
 
     def _get_execution_results(
         self, execution_index: int, channel_index: Optional[int]
@@ -2236,6 +2232,9 @@ class CompiledDAG:
         assert execution_index in self._result_buffer
 
         if channel_index is None:
+            self._got_ref_idxs[execution_index].update(
+                self._result_buffer[execution_index].keys()
+            )
             # Convert results stored in self._result_buffer back to original
             # list representation
             result = [
@@ -2246,9 +2245,8 @@ class CompiledDAG:
                 )
             ]
         else:
+            self._got_ref_idxs[execution_index].add(channel_index)
             result = [self._result_buffer[execution_index].pop(channel_index)]
-            if len(self._result_buffer[execution_index]) == 0:
-                del self._result_buffer[execution_index]
         return result
 
     def _next_execution_can_be_released(self) -> bool:
@@ -2264,16 +2262,11 @@ class CompiledDAG:
             == len(self.dag_output_channels)
         )
 
-    def _try_release_buffers(self):
-        """
-        This will try to repeatedly release channel buffers as long as
-        max_finished_execution_index + 1 is in the set of destructed indices.
-        We should be checking to release buffers any time we are incrementing
-        or checking the max_finished_execution_index or the _destructed_ref_idxs.
-        """
-        timeout = self._get_timeout
-        while self._next_execution_can_be_released():
-            start_time = time.monotonic()
+    def _try_release_once(self, timeout: Optional[float] = None) -> bool:
+        idx_to_release = self._max_finished_execution_index + 1
+        if self._destructed_ref_idxs[idx_to_release] == set(
+            range(len(self.dag_output_channels))
+        ):
             try:
                 self._dag_output_fetcher.release_channel_buffers(timeout)
             except RayChannelTimeoutError as e:
@@ -2284,8 +2277,28 @@ class CompiledDAG:
                     "seconds. Otherwise, this may indicate that the execution "
                     "is hanging."
                 ) from e
-
             self._max_finished_execution_index += 1
+            return True
+        elif self._got_ref_idxs[idx_to_release] + self._destructed_ref_idxs[
+            idx_to_release
+        ] == set(range(len(self.dag_output_channels))):
+            self._result_buffer.pop(idx_to_release)
+            self._max_finished_execution_index += 1
+            return True
+        return False
+
+    def _try_release_buffers(self):
+        """
+        This will try to repeatedly release channel buffers as long as
+        max_finished_execution_index + 1 is in the set of destructed indices.
+        We should be checking to release buffers any time we are incrementing
+        or checking the max_finished_execution_index or the _destructed_ref_idxs.
+        """
+        timeout = self._get_timeout
+        while True:
+            start_time = time.monotonic()
+            if not self._try_release_once(timeout):
+                break
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2338,14 +2351,13 @@ class CompiledDAG:
             # If a CompiledDagRef for a specific execution index has been destructed,
             # release the channel buffers for that execution index instead of caching
             try:
-                if self._next_execution_can_be_released():
-                    self._dag_output_fetcher.release_channel_buffers(timeout)
-                else:
+                if not self._try_release_once(timeout):
                     result = self._dag_output_fetcher.read(timeout)
                     self._cache_execution_results(
                         self._max_finished_execution_index + 1,
                         result,
                     )
+                    self._max_finished_execution_index += 1
             except RayChannelTimeoutError as e:
                 raise RayChannelTimeoutError(
                     "If the execution is expected to take a long time, increase "
@@ -2353,8 +2365,6 @@ class CompiledDAG:
                     "seconds. Otherwise, this may indicate that the execution is "
                     "hanging."
                 ) from e
-
-            self._max_finished_execution_index += 1
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
