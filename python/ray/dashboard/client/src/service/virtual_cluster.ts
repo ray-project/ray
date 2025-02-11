@@ -32,8 +32,9 @@ export const getVirtualClusters = async (
               id,
               {
                 hostname: instance.hostname,
-                template_id: instance.template_id,
+                template_id: instance.template_id || "Unknown",
                 is_dead: instance.is_dead,
+                resources_usage: instance.resources_usage || {},
               },
             ],
           ),
@@ -46,8 +47,9 @@ export const getVirtualClusters = async (
               id,
               {
                 hostname: instance.hostname,
-                template_id: instance.template_id,
+                template_id: instance.template_id || "Unknown",
                 is_dead: instance.is_dead,
+                resources_usage: instance.resources_usage || {},
               },
             ],
           ),

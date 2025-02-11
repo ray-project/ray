@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from itertools import islice
+from itertools import islice, chain
 from typing import List, Optional
 
 import ray.dashboard.memory_utils as memory_utils
@@ -576,34 +576,59 @@ class StateAPIManager:
                 return str(format(x, ".3f")) + " B"
 
             for entry in entries.values():
-                for node_id, node in entry["visible_node_instances"].items():
-                    if "resources_total" in node:
-                        del node["resources_total"]
-                    if "resources_available" in node:
-                        del node["resources_available"]
-                for node_id, node in entry["undivided_nodes"].items():
-                    if "resources_total" in node:
-                        del node["resources_total"]
-                    if "resources_available" in node:
-                        del node["resources_available"]
-                for resource, value in entry["resources_available"].items():
-                    entry["resources_available"][resource] = (
-                        entry["resources_total"][resource] - value
+                processed_nodes = set()
+                for node_id, node in chain(
+                    entry["visible_node_instances"].items(),
+                    entry["undivided_nodes"].items(),
+                ):
+                    if node_id in processed_nodes:
+                        continue
+                    processed_nodes.add(node_id)
+
+                    node["resources_usage"] = {}
+                    if "resources_total" in node and "resources_available" in node:
+                        # Calculate actual available resources (total - available)
+                        resources_available = {
+                            k: node["resources_total"][k] - v
+                            for k, v in node["resources_available"].items()
+                        }
+
+                        # Convert memory values to human-readable format
+                        for resource in list(resources_available.keys()):
+                            if "memory" in resource:
+                                resources_available[resource] = readable_memory(
+                                    resources_available[resource]
+                                )
+                                node["resources_total"][resource] = readable_memory(
+                                    node["resources_total"][resource]
+                                )
+
+                        # Build resources_usage display
+                        node["resources_usage"] = {
+                            k: f"{resources_available[k]} / {node['resources_total'][k]}"
+                            for k in node["resources_total"]
+                            if "_group_" not in k and not k.startswith("node:")
+                        }
+
+                        node["resources_available"] = resources_available
+
+            for resource, value in entry["resources_available"].items():
+                entry["resources_available"][resource] = (
+                    entry["resources_total"][resource] - value
+                )
+                if "memory" in resource:
+                    entry["resources_available"][resource] = readable_memory(
+                        entry["resources_available"][resource]
                     )
-                    if "memory" in resource:
-                        entry["resources_available"][resource] = readable_memory(
-                            entry["resources_available"][resource]
-                        )
-                for resource, value in entry["resources_total"].items():
-                    if "memory" in resource:
-                        entry["resources_total"][resource] = readable_memory(value)
-                for resource, value in entry["resources_total"].items():
-                    if "_group_" not in resource and not resource.startswith("node:"):
-                        entry["resources_usage"][
-                            resource
-                        ] = f"""{entry["resources_available"][resource]} / {value}"""
-                del entry["resources_available"]
-                del entry["resources_total"]
+            for resource, value in entry["resources_total"].items():
+                if "memory" in resource:
+                    value = readable_memory(value)
+                if "_group_" not in resource and not resource.startswith("node:"):
+                    entry["resources_usage"][
+                        resource
+                    ] = f"""{entry["resources_available"][resource]} / {value}"""
+            del entry["resources_available"]
+            del entry["resources_total"]
 
             result = list(entries.values())
 

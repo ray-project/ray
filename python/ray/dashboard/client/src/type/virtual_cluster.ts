@@ -18,4 +18,5 @@ export type NodeInstance = {
   hostname: string;
   template_id: string;
   is_dead: boolean;
+  resources_usage?: Record<string, string>;
 };
