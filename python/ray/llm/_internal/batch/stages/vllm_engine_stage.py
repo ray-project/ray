@@ -328,7 +328,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         # Set up the max pending requests.
         pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
         self.max_pending_requests = max_pending_requests or math.ceil(
-            self.engine_kwargs["max_num_seqs"] * pp_size * 1.1
+            self.engine_kwargs.get("max_num_seqs", 128) * pp_size * 1.1
         )
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
