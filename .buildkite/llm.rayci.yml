@@ -18,8 +18,8 @@ steps:
       IMAGE_TO: "llmgpubuild"
       IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_gpu-py3.11"
 
-  - label: "llm batch tests cpu"
-    key: "llm-batch-tests-cpu"
+  - label: "llm cpu tests"
+    key: "llm-cpu-tests"
     tags:
       - python
       - llm
