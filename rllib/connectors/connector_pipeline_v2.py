@@ -271,11 +271,14 @@ class ConnectorPipelineV2(ConnectorV2):
         for conn in self.connectors:
             conn_name = type(conn).__name__
             if self._check_component(conn_name, components, not_components):
-                state[conn_name] = conn.get_state(
+                sts = conn.get_state(
                     components=self._get_subcomponents(conn_name, components),
                     not_components=self._get_subcomponents(conn_name, not_components),
                     **kwargs,
                 )
+                # Ignore empty dicts.
+                if sts:
+                    state[conn_name] = sts
         return state
 
     @override(ConnectorV2)

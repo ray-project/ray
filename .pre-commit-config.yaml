@@ -9,6 +9,7 @@ exclude: |
     python/ray/data/examples/data/|
     release/release_logs/|
     rllib/tests/data|
+    thirdparty/patches/|
     doc/external/|
     doc/source/
   )
