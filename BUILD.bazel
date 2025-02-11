@@ -135,8 +135,11 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
+        "//src/ray/common:network",
         "//src/ray/common:ray_config",
+        "//src/ray/common:ray_object",
         "//src/ray/common:status",
+        "//src/ray/common:task_common",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
         "@com_github_grpc_grpc//:grpcpp_admin",
@@ -164,8 +167,9 @@ ray_cc_library(
     deps = [
         ":grpc_common_lib",
         ":node_manager_cc_grpc",
-        ":ray_common",
-        "@boost//:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:asio",
+        "//src/ray/common:status",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -198,7 +202,8 @@ ray_cc_library(
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
         ":pubsub_lib",
-        ":ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:btree",
@@ -223,7 +228,8 @@ ray_cc_library(
     deps = [
         ":grpc_common_lib",
         ":object_manager_cc_grpc",
-        ":ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:status",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
@@ -249,10 +255,9 @@ ray_cc_library(
     deps = [
         ":grpc_common_lib",
         ":pubsub_lib",
-        ":ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
         ":worker_cc_grpc",
-        "@boost//:asio",
-        "@boost//:thread",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -495,18 +500,159 @@ ray_cc_binary(
 
 ray_cc_library(
     name = "gcs_pub_sub_lib",
-    srcs = [
-        "src/ray/gcs/pubsub/gcs_pub_sub.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/pubsub/gcs_pub_sub.h",
-    ],
+    srcs = ["src/ray/gcs/pubsub/gcs_pub_sub.cc"],
+    hdrs = ["src/ray/gcs/pubsub/gcs_pub_sub.h"],
     deps = [
         ":gcs",
         ":gcs_service_rpc",
         ":pubsub_lib",
-        ":ray_common",
         ":redis_client",
+        "//src/ray/common:ray_config",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_state_util",
+    hdrs = ["src/ray/gcs/gcs_server/state_util.h"],
+    srcs = ["src/ray/gcs/gcs_server/state_util.cc"],
+    deps = [
+        "//src/ray/protobuf:gcs_cc_proto",
+         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_table_storage",
+    hdrs = ["src/ray/gcs/gcs_server/gcs_table_storage.h"],
+    srcs = ["src/ray/gcs/gcs_server/gcs_table_storage.cc"],
+    deps = [
+        ":gcs_callback",
+        ":gcs_in_memory_store_client",
+        ":observable_store_client",
+        ":redis_store_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_init_data",
+    hdrs = ["src/ray/gcs/gcs_server/gcs_init_data.h"],
+    srcs = ["src/ray/gcs/gcs_server/gcs_init_data.cc"],
+    deps = [
+        ":gcs_callback",
+        ":gcs_table_storage",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_kv_manager",
+    hdrs = ["src/ray/gcs/gcs_server/gcs_kv_manager.h"],
+    srcs = ["src/ray/gcs/gcs_server/gcs_kv_manager.cc"],
+    deps = [
+        ":gcs_service_rpc",
+        "//src/ray/common:asio",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_function_manager",
+    hdrs = ["src/ray/gcs/gcs_server/gcs_function_manager.h"],
+    deps = [
+        ":gcs_kv_manager",
+        "//src/ray/common:asio",
+        "//src/ray/common:constants",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_usage_stats_client",
+    hdrs = ["src/ray/gcs/gcs_server/usage_stats_client.h"],
+    srcs = ["src/ray/gcs/gcs_server/usage_stats_client.cc"],
+    deps = [
+        ":gcs_kv_manager",
+        "//src/ray/common:asio",
+        "//src/ray/protobuf:usage_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_store_client_kv",
+    hdrs = ["src/ray/gcs/gcs_server/store_client_kv.h"],
+    srcs = ["src/ray/gcs/gcs_server/store_client_kv.cc"],
+    deps = [
+        ":gcs_kv_manager",
+        ":gcs_store_client",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_pubsub_handler",
+    hdrs = ["src/ray/gcs/gcs_server/pubsub_handler.h"],
+    srcs = ["src/ray/gcs/gcs_server/pubsub_handler.cc"],
+    deps = [
+        ":gcs_pub_sub_lib",
+        "//src/ray/protobuf:gcs_service_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_runtime_env_handler",
+    hdrs = ["src/ray/gcs/gcs_server/runtime_env_handler.h"],
+    srcs = ["src/ray/gcs/gcs_server/runtime_env_handler.cc"],
+    deps = [
+        ":gcs_service_rpc",
+        ":node_manager_rpc",
+        "//src/ray/common:runtime_env",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:thread_checker",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_redis_failure_detector",
+    hdrs = ["src/ray/gcs/gcs_server/gcs_redis_failure_detector.h"],
+    srcs = ["src/ray/gcs/gcs_server/gcs_redis_failure_detector.cc"],
+    deps = [
+        ":redis_client",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_autoscaler_state_manager",
+    hdrs = ["src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"],
+    srcs = ["src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc"],
+    deps = [
+        ":gcs_init_data",
+        ":gcs_kv_manager",
+        ":gcs_service_rpc",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_worker_manager",
+    hdrs = ["src/ray/gcs/gcs_server/gcs_worker_manager.h"],
+    srcs = ["src/ray/gcs/gcs_server/gcs_worker_manager.cc"],
+    deps = [
+        ":stats_metric",
+        ":gcs_kv_manager",
+        ":gcs_table_storage",
+        ":gcs_usage_stats_client",
+        ":gcs_pub_sub_lib",
+        ":gcs_service_rpc",
     ],
 )
 
@@ -517,50 +663,40 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_actor_scheduler.cc",
         "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.cc",
         "src/ray/gcs/gcs_server/gcs_health_check_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_init_data.cc",
         "src/ray/gcs/gcs_server/gcs_job_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_kv_manager.cc",
         "src/ray/gcs/gcs_server/gcs_node_manager.cc",
         "src/ray/gcs/gcs_server/gcs_placement_group_manager.cc",
         "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.cc",
-        "src/ray/gcs/gcs_server/gcs_redis_failure_detector.cc",
         "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
         "src/ray/gcs/gcs_server/gcs_server.cc",
-        "src/ray/gcs/gcs_server/gcs_table_storage.cc",
         "src/ray/gcs/gcs_server/gcs_task_manager.cc",
-        "src/ray/gcs/gcs_server/gcs_worker_manager.cc",
-        "src/ray/gcs/gcs_server/pubsub_handler.cc",
-        "src/ray/gcs/gcs_server/runtime_env_handler.cc",
-        "src/ray/gcs/gcs_server/state_util.cc",
-        "src/ray/gcs/gcs_server/store_client_kv.cc",
-        "src/ray/gcs/gcs_server/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_server/gcs_actor_manager.h",
         "src/ray/gcs/gcs_server/gcs_actor_scheduler.h",
         "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h",
-        "src/ray/gcs/gcs_server/gcs_function_manager.h",
         "src/ray/gcs/gcs_server/gcs_health_check_manager.h",
-        "src/ray/gcs/gcs_server/gcs_init_data.h",
         "src/ray/gcs/gcs_server/gcs_job_manager.h",
-        "src/ray/gcs/gcs_server/gcs_kv_manager.h",
         "src/ray/gcs/gcs_server/gcs_node_manager.h",
         "src/ray/gcs/gcs_server/gcs_placement_group_manager.h",
         "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.h",
-        "src/ray/gcs/gcs_server/gcs_redis_failure_detector.h",
         "src/ray/gcs/gcs_server/gcs_resource_manager.h",
         "src/ray/gcs/gcs_server/gcs_server.h",
         "src/ray/gcs/gcs_server/gcs_server_io_context_policy.h",
-        "src/ray/gcs/gcs_server/gcs_table_storage.h",
         "src/ray/gcs/gcs_server/gcs_task_manager.h",
-        "src/ray/gcs/gcs_server/gcs_worker_manager.h",
-        "src/ray/gcs/gcs_server/pubsub_handler.h",
-        "src/ray/gcs/gcs_server/runtime_env_handler.h",
-        "src/ray/gcs/gcs_server/state_util.h",
-        "src/ray/gcs/gcs_server/store_client_kv.h",
-        "src/ray/gcs/gcs_server/usage_stats_client.h",
     ],
     deps = [
+        ":gcs_runtime_env_handler",
+        ":gcs_redis_failure_detector",
+        ":gcs_state_util",
+        ":gcs_pubsub_handler",
+        ":gcs_store_client_kv",
+        ":gcs_usage_stats_client",
+        ":gcs_worker_manager",
+        ":gcs_function_manager",
+        ":gcs_kv_manager",
+        ":gcs_init_data",
+        ":gcs_table_storage",
         ":autoscaler_rpc",
         ":gcs",
         ":gcs_pub_sub_lib",
@@ -631,6 +767,7 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:logging",
         "//src/ray/util:size_literals",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -795,14 +932,12 @@ ray_cc_library(
         ":object_manager",
         ":plasma_client",
         ":pubsub_lib",
-        ":ray_common",
         ":scheduler",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
-        "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:throttler",
@@ -842,6 +977,7 @@ ray_cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
+        "//src/ray/common:network",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
         "@boost//:asio",
@@ -2366,16 +2502,31 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "redis_store_client",
-    srcs = [
-        "src/ray/gcs/store_client/redis_store_client.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/callback.h",
-        "src/ray/gcs/store_client/redis_store_client.h",
-        "src/ray/gcs/store_client/store_client.h",
-    ],
+    name = "gcs_callback",
+    hdrs = ["src/ray/gcs/callback.h"],
     deps = [
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs_store_client",
+    hdrs = ["src/ray/gcs/store_client/store_client.h"],
+    deps = [
+        ":gcs_callback",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "redis_store_client",
+    srcs = ["src/ray/gcs/store_client/redis_store_client.cc"],
+    hdrs = ["src/ray/gcs/store_client/redis_store_client.h"],
+    deps = [
+        ":gcs_callback",
+        ":gcs_store_client",
         ":redis_client",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/strings:str_format",
@@ -2385,16 +2536,12 @@ ray_cc_library(
 
 ray_cc_library(
     name = "gcs_in_memory_store_client",
-    srcs = [
-        "src/ray/gcs/store_client/in_memory_store_client.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/callback.h",
-        "src/ray/gcs/store_client/in_memory_store_client.h",
-        "src/ray/gcs/store_client/store_client.h",
-    ],
+    srcs = ["src/ray/gcs/store_client/in_memory_store_client.cc"],
+    hdrs = ["src/ray/gcs/store_client/in_memory_store_client.h"],
     deps = [
-        ":ray_common",
+        ":gcs_callback",
+        ":gcs_store_client",
+        "//src/ray/common:asio",
         "//src/ray/util",
         "@com_google_absl//absl/container:node_hash_map",
     ],
@@ -2402,25 +2549,18 @@ ray_cc_library(
 
 ray_cc_library(
     name = "observable_store_client",
-    srcs = [
-        "src/ray/gcs/store_client/observable_store_client.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/callback.h",
-        "src/ray/gcs/store_client/observable_store_client.h",
-        "src/ray/gcs/store_client/store_client.h",
-    ],
+    srcs = ["src/ray/gcs/store_client/observable_store_client.cc"],
+    hdrs = ["src/ray/gcs/store_client/observable_store_client.h"],
     deps = [
-        ":ray_common",
+        ":gcs_callback",
+        ":gcs_store_client",
         "//src/ray/util",
     ],
 )
 
 ray_cc_library(
     name = "store_client_test_lib",
-    hdrs = [
-        "src/ray/gcs/store_client/test/store_client_test_base.h",
-    ],
+    hdrs = ["src/ray/gcs/store_client/test/store_client_test_base.h"],
     deps = [
         "redis_store_client",
     ],
@@ -2509,13 +2649,13 @@ ray_cc_library(
         "//:src/ray/gcs/redis_context.cc",
     ],
     hdrs = [
-        "//:src/ray/gcs/callback.h",
         "//:src/ray/gcs/pb_util.h",
         "//:src/ray/gcs/redis_async_context.h",
         "//:src/ray/gcs/redis_client.h",
         "//:src/ray/gcs/redis_context.h",
     ],
     deps = [
+        ":gcs_callback",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
