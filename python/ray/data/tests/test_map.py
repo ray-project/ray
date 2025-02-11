@@ -15,6 +15,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.data import Dataset
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -328,6 +329,144 @@ def test_flat_map_generator(ray_start_regular_shared):
         3,
         3,
     ]
+
+
+# Helper function to process timestamp data in nanoseconds
+def process_timestamp_data(row):
+    # Convert numpy.datetime64 to pd.Timestamp if needed
+    if isinstance(row["timestamp"], np.datetime64):
+        row["timestamp"] = pd.Timestamp(row["timestamp"])
+
+    # Add 1ns to timestamp
+    row["timestamp"] = row["timestamp"] + pd.Timedelta(1, "ns")
+
+    # Ensure the timestamp column is in the expected dtype (datetime64[ns])
+    row["timestamp"] = pd.to_datetime(row["timestamp"], errors="raise")
+
+    return row
+
+
+def process_timestamp_data_batch_arrow(batch: pa.Table) -> pa.Table:
+    # Convert pyarrow Table to pandas DataFrame to process the timestamp column
+    df = batch.to_pandas()
+
+    df["timestamp"] = df["timestamp"].apply(
+        lambda x: pd.Timestamp(x) if isinstance(x, np.datetime64) else x
+    )
+
+    # Add 1ns to timestamp
+    df["timestamp"] = df["timestamp"] + pd.Timedelta(1, "ns")
+
+    # Convert back to pyarrow Table
+    return pa.table(df)
+
+
+def process_timestamp_data_batch_pandas(batch: pd.DataFrame) -> pd.DataFrame:
+    # Add 1ns to timestamp column
+    batch["timestamp"] = batch["timestamp"] + pd.Timedelta(1, "ns")
+    return batch
+
+
+@pytest.mark.parametrize(
+    "df, expected_df",
+    [
+        pytest.param(
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456789",
+                            "2024-01-02 00:00:00.987654321",
+                            "2024-01-03 00:00:00.111222333",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456790",
+                            "2024-01-02 00:00:00.987654322",
+                            "2024-01-03 00:00:00.111222334",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            id="nanoseconds_increment",
+        )
+    ],
+)
+def test_map_batches_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+    """Verify handling timestamp with nanosecs in map_batches"""
+    ray_data = ray.data.from_pandas(df)
+
+    # Using pyarrow format
+    result_arrow = ray_data.map_batches(
+        process_timestamp_data_batch_arrow, batch_format="pyarrow"
+    )
+    processed_df_arrow = result_arrow.to_pandas()
+    processed_df_arrow["timestamp"] = processed_df_arrow["timestamp"].astype(
+        "datetime64[ns]"
+    )
+    pd.testing.assert_frame_equal(processed_df_arrow, expected_df)
+
+    # Using pandas format
+    result_pandas = ray_data.map_batches(
+        process_timestamp_data_batch_pandas, batch_format="pandas"
+    )
+    processed_df_pandas = result_pandas.to_pandas()
+    processed_df_pandas["timestamp"] = processed_df_pandas["timestamp"].astype(
+        "datetime64[ns]"
+    )
+    pd.testing.assert_frame_equal(processed_df_pandas, expected_df)
+
+
+@pytest.mark.parametrize(
+    "df, expected_df",
+    [
+        pytest.param(
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456789",
+                            "2024-01-02 00:00:00.987654321",
+                            "2024-01-03 00:00:00.111222333",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456790",
+                            "2024-01-02 00:00:00.987654322",
+                            "2024-01-03 00:00:00.111222334",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+            id="nanoseconds_increment_map",
+        )
+    ],
+)
+def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+    """Verify handling timestamp with nanosecs in map"""
+    ray_data = ray.data.from_pandas(df)
+    result = ray_data.map(process_timestamp_data)
+    processed_df = result.to_pandas()
+    processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
+    pd.testing.assert_frame_equal(processed_df, expected_df)
 
 
 def test_add_column(ray_start_regular_shared):
@@ -999,7 +1138,8 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     assert values == [11, 15, 19]
 
 
-def test_map_with_memory_resources(shutdown_only):
+@pytest.mark.parametrize("method", [Dataset.map, Dataset.map_batches, Dataset.flat_map])
+def test_map_with_memory_resources(method, shutdown_only):
     """Test that we can use memory resource to limit the concurrency."""
     num_blocks = 50
     memory_per_task = 100 * 1024**2
@@ -1008,19 +1148,35 @@ def test_map_with_memory_resources(shutdown_only):
 
     concurrency_counter = ConcurrencyCounter.remote()
 
-    def map_batches(batch):
+    def map_fn(row_or_batch):
         ray.get(concurrency_counter.inc.remote())
         time.sleep(0.5)
         ray.get(concurrency_counter.decr.remote())
-        return batch
+        if method is Dataset.flat_map:
+            return [row_or_batch]
+        else:
+            return row_or_batch
 
     ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
-    ds = ds.map_batches(
-        map_batches,
-        batch_size=None,
-        num_cpus=1,
-        memory=memory_per_task,
-    )
+    if method is Dataset.map:
+        ds = ds.map(
+            map_fn,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
+    elif method is Dataset.map_batches:
+        ds = ds.map_batches(
+            map_fn,
+            batch_size=None,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
+    elif method is Dataset.flat_map:
+        ds = ds.flat_map(
+            map_fn,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
     assert len(ds.take(num_blocks)) == num_blocks
 
     actual_max_concurrency = ray.get(concurrency_counter.get_max_concurrency.remote())
@@ -1304,7 +1460,7 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
 
     assert len(block_refs) == 1
-    assert type(ray.get(block_refs[0])) == pd.DataFrame
+    assert type(ray.get(block_refs[0])) is pd.DataFrame
 
 
 def test_map_with_objects_and_tensors(ray_start_regular_shared):
@@ -1360,6 +1516,31 @@ def test_random_sample_checks(ray_start_regular_shared):
     with pytest.raises(ValueError):
         # Cannot sample fraction > 1
         ray.data.range(1).random_sample(10)
+
+
+def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path):
+    """Test that for the actor map operator, the UDF object is deleted properly."""
+    test_file = tmp_path / "test.txt"
+
+    # Simulate the case that the UDF depends on some external resources that
+    # need to be cleaned up.
+    class StatefulUDF:
+        def __init__(self):
+            with open(test_file, "w") as f:
+                f.write("test")
+
+        def __call__(self, row):
+            return row
+
+        def __del__(self):
+            # Delete the file when the UDF is deleted.
+            os.remove(test_file)
+
+    ds = ray.data.range(10)
+    ds = ds.map(StatefulUDF, concurrency=1)
+    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
+
+    wait_for_condition(lambda: not os.path.exists(test_file))
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

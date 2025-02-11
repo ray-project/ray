@@ -334,11 +334,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                         const rpc::JobConfig &job_config,
                         std::function<void(Status, int)> send_reply_callback);
 
-  // Similar to the above function overload, but the port has been assigned, but directly
-  // returns registration status without taking a callback.
-  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
-                        const rpc::JobConfig &job_config);
-
   /// Get the client connection's registered worker.
   ///
   /// \param The client connection owned by a registered worker.
@@ -431,9 +426,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// We aim to prestart 1 worker per CPU, up to the the backlog size.
   void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
-  /// Try to prestart a number of CPU workers with the given language.
-  ///
-  void PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed);
+  void PrestartWorkersInternal(const TaskSpecification &task_spec, int64_t num_needed);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.

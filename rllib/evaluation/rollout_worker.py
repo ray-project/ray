@@ -525,7 +525,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 pol._update_model_view_requirements_from_init_state()
 
         if (
-            self.config.is_multi_agent()
+            self.config.is_multi_agent
             and self.env is not None
             and not isinstance(
                 self.env,

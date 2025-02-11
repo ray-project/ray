@@ -100,7 +100,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   for (size_t i = 0; i < invocation.args.size(); i++) {
     builder.AddArg(*invocation.args[i]);
   }
-  auto task_specification = builder.Build();
+  auto task_specification = std::move(builder).ConsumeAndBuild();
 
   ObjectID return_object_id = task_specification.ReturnId(0);
 

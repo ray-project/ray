@@ -444,7 +444,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
         CRayStatus AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
-            int64_t timeout_ms)
+            int64_t timeout_ms,
+            optional[CNodeID] node_id)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -515,7 +516,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &value,
             c_bool overwrite,
             int64_t timeout_ms,
-            const OptionalItemPyCallback[int] &callback)
+            const OptionalItemPyCallback[c_bool] &callback)
 
         CRayStatus AsyncInternalKVExists(
             const c_string &ns,
@@ -554,9 +555,18 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &serialized_reply
         )
 
+        CRayStatus AsyncGetClusterStatus(
+            int64_t timeout_ms,
+            const OptionalItemPyCallback[CGetClusterStatusReply] &callback)
+
         CRayStatus ReportAutoscalingState(
             int64_t timeout_ms,
             const c_string &serialized_state
+        )
+
+        CRayStatus ReportClusterConfig(
+            int64_t timeout_ms,
+            const c_string &serialized_cluster_config
         )
 
         CRayStatus DrainNode(
@@ -722,6 +732,12 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 
+cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
+    cdef cppclass CGetClusterStatusReply "ray::rpc::autoscaler::GetClusterStatusReply":
+        c_string serialized_cluster_status() const
+        void ParseFromString(const c_string &serialized)
+        const c_string &SerializeAsString() const
+
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
@@ -738,3 +754,6 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
+    cdef const char[] kGcsAutoscalerStateNamespace
+    cdef const char[] kGcsAutoscalerV2EnabledKey
+    cdef const char[] kGcsAutoscalerClusterConfigKey

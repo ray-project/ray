@@ -13,15 +13,6 @@ py_test(
 )
 
 py_test(
-    name = "test_checkpoint_handler",
-    size = "small",
-    srcs = ["tests/test_checkpoint_handler.py"],
-    tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib", ":conftest"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-)
-
-py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
@@ -111,6 +102,15 @@ py_test(
 )
 
 py_test(
+    name = "test_report_handler",
+    size = "small",
+    srcs = ["tests/test_report_handler.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_result",
     size = "small",
     srcs = ["tests/test_result.py"],
@@ -121,7 +121,7 @@ py_test(
 
 py_test(
     name = "test_scheduling",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_scheduling.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],

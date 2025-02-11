@@ -41,8 +41,8 @@
 #include "absl/strings/str_format.h"
 #include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
-#include "ray/util/filesystem.h"
-#include "ray/util/util.h"
+#include "ray/util/string_utils.h"
+#include "ray/util/thread_utils.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
@@ -314,12 +314,10 @@ void RayLog::InitLogFormat() {
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
     if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
-      // 0 means no log rotation in python, but not in spdlog. We just use the default
-      // value here.
       return max_size;
     }
   }
-  return kDefaultLogRotationMaxSize;
+  return std::numeric_limits<size_t>::max();
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
@@ -330,7 +328,7 @@ void RayLog::InitLogFormat() {
       return file_num;
     }
   }
-  return kDefaultLogRotationFileNum;
+  return 1;
 }
 
 /*static*/ std::string RayLog::GetLogFilepathFromDirectory(const std::string &log_dir,
@@ -369,7 +367,7 @@ void RayLog::InitLogFormat() {
     app_name_without_path = "DefaultApp";
   } else {
     // Find the app name without the path.
-    std::string app_file_name = ray::GetFileName(app_name);
+    std::string app_file_name = std::filesystem::path(app_name).filename().string();
     if (!app_file_name.empty()) {
       app_name_without_path = app_file_name;
     }

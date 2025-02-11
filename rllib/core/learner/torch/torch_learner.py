@@ -1,4 +1,5 @@
 from collections import defaultdict
+import contextlib
 import logging
 from typing import (
     Any,
@@ -150,10 +151,14 @@ class TorchLearner(Learner):
 
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
-
         gradients = self.compute_gradients(loss_per_module)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
+
+        with contextlib.ExitStack() as stack:
+            if self.config.num_learners > 1:
+                for mod in self.module.values():
+                    stack.enter_context(mod.no_sync())
+            postprocessed_gradients = self.postprocess_gradients(gradients)
+            self.apply_gradients(postprocessed_gradients)
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
@@ -410,6 +415,8 @@ class TorchLearner(Learner):
                     override=True,
                 )
 
+        self._log_trainable_parameters()
+
         return marl_spec
 
     @override(Learner)
@@ -427,6 +434,8 @@ class TorchLearner(Learner):
                 mode=self._torch_compile_cfg.torch_dynamo_mode,
                 **self._torch_compile_cfg.kwargs,
             )
+
+        self._log_trainable_parameters()
 
         return marl_spec
 
@@ -472,37 +481,6 @@ class TorchLearner(Learner):
                     )
 
             self._possibly_compiled_update = self._uncompiled_update
-
-        # Log number of non-trainable and trainable parameters of our RLModule.
-        num_trainable_params = {
-            (mid, NUM_TRAINABLE_PARAMETERS): sum(
-                p.numel() for p in rlm.parameters() if p.requires_grad
-            )
-            for mid, rlm in self.module._rl_modules.items()
-            if isinstance(rlm, TorchRLModule)
-        }
-        num_non_trainable_params = {
-            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(
-                p.numel() for p in rlm.parameters() if not p.requires_grad
-            )
-            for mid, rlm in self.module._rl_modules.items()
-            if isinstance(rlm, TorchRLModule)
-        }
-
-        self.metrics.log_dict(
-            {
-                **{
-                    (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
-                        num_trainable_params.values()
-                    ),
-                    (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
-                        num_non_trainable_params.values()
-                    ),
-                },
-                **num_trainable_params,
-                **num_non_trainable_params,
-            }
-        )
 
         self._make_modules_ddp_if_necessary()
 
@@ -590,6 +568,39 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    @override(Learner)
+    def _log_trainable_parameters(self) -> None:
+        # Log number of non-trainable and trainable parameters of our RLModule.
+        num_trainable_params = {
+            (mid, NUM_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+        num_non_trainable_params = {
+            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if not p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+
+        self.metrics.log_dict(
+            {
+                **{
+                    (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
+                        num_trainable_params.values()
+                    ),
+                    (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                        num_non_trainable_params.values()
+                    ),
+                },
+                **num_trainable_params,
+                **num_non_trainable_params,
+            }
+        )
 
     def _compute_off_policyness(self, batch):
         # Log off-policy'ness of this batch wrt the current weights.

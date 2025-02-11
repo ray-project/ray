@@ -62,7 +62,7 @@ class InMemoryStoreClient : public StoreClient {
                           const std::vector<std::string> &keys,
                           Postable<void(int64_t)> callback) override;
 
-  int GetNextJobID() override;
+  Status AsyncGetNextJobID(Postable<void(int)> callback) override;
 
   Status AsyncGetKeys(const std::string &table_name,
                       const std::string &prefix,

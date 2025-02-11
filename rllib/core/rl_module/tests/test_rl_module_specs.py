@@ -14,7 +14,7 @@ from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
     VPGPolicyAfterSharedEncoder,
     VPGMultiRLModuleWithSharedEncoder,
 )
-from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
+from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 
 
 class TestRLModuleSpecs(unittest.TestCase):

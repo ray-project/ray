@@ -23,7 +23,8 @@ namespace ray {
 namespace gcs {
 class UsageStatsClient {
  public:
-  explicit UsageStatsClient(ray::gcs::InternalKVInterface &internal_kv);
+  explicit UsageStatsClient(ray::gcs::InternalKVInterface &internal_kv,
+                            instrumented_io_context &io_context);
 
   /// C++ version of record_extra_usage_tag in usage_lib.py
   ///
@@ -40,6 +41,7 @@ class UsageStatsClient {
   static constexpr char kUsageStatsNamespace[] = "usage_stats";
 
   ray::gcs::InternalKVInterface &internal_kv_;
+  instrumented_io_context &io_context_;
 };
 }  // namespace gcs
 }  // namespace ray

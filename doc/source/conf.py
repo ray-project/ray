@@ -310,16 +310,13 @@ html_theme_options = {
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "theme-switcher",
         "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
-    "navbar_persistent": [
-        "search-button-field",
-        "theme-switcher",
-    ],
     "secondary_sidebar_items": [
         "page-toc",
         "edit-on-github",
@@ -345,9 +342,11 @@ html_context = {
 
 html_sidebars = {
     "**": [
-        "main-sidebar-readthedocs"
-        if os.getenv("READTHEDOCS") == "True"
-        else "main-sidebar"
+        (
+            "main-sidebar-readthedocs"
+            if os.getenv("READTHEDOCS") == "True"
+            else "main-sidebar"
+        )
     ],
     "ray-overview/examples": [],
 }

@@ -10,7 +10,7 @@ from packaging import version
 import tree  # pip install dm_tree
 
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI, OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
@@ -42,9 +42,7 @@ else:
     )
 
 
-# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
-#  Replaced with `clip_gradients()`.
-@PublicAPI
+@OldAPIStack
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
 ) -> Dict[str, TensorType]:
@@ -144,6 +142,8 @@ def clip_gradients(
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
         gradients_list = list(gradients_dict.values())
         total_norm = compute_global_norm(gradients_list)
+        if len(gradients_list) == 0:
+            return total_norm
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.
@@ -202,7 +202,7 @@ def compute_global_norm(gradients_list: "ParamList") -> TensorType:
     return total_norm
 
 
-@PublicAPI
+@OldAPIStack
 def concat_multi_gpu_td_errors(
     policy: Union["TorchPolicy", "TorchPolicyV2"]
 ) -> Dict[str, TensorType]:
@@ -233,66 +233,97 @@ def concat_multi_gpu_td_errors(
 
 @PublicAPI
 def convert_to_torch_tensor(
-    x: TensorStructType,
+    x,
     device: Optional[str] = None,
     pin_memory: bool = False,
+    use_stream: bool = False,
+    stream: Optional[Union["torch.cuda.Stream", "torch.cuda.classes.Stream"]] = None,
 ):
-    """Converts any struct to torch.Tensors.
+    """
+    Converts any (possibly nested) structure to torch.Tensors.
 
     Args:
-        x: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all leaves converted
-            to torch tensors.
-        device: The device to create the tensor on.
-        pin_memory: If True, will call the `pin_memory()` method on the created tensors.
+        x: The input structure whose leaves will be converted.
+        device: The device to create the tensor on (e.g. "cuda:0" or "cpu").
+        pin_memory: If True, calls `pin_memory()` on the created tensors.
+        use_stream: If True, uses a separate CUDA stream for `Tensor.to()`.
+        stream: An optional CUDA stream for the host-to-device copy in `Tensor.to()`.
 
     Returns:
-        Any: A new struct with the same structure as `x`, but with all
-        values converted to torch Tensor types. This does not convert possibly
-        nested elements that are None because torch has no representation for that.
+        A new structure with the same layout as `x` but with all leaves converted
+        to torch.Tensors. Leaves that are None are left unchanged.
     """
 
+    # Convert the provided device (if any) to a torch.device; default to CPU.
+    device = torch.device(device) if device is not None else torch.device("cpu")
+    is_cuda = (device.type == "cuda") and torch.cuda.is_available()
+
+    # Determine the appropriate stream.
+    if is_cuda:
+        if use_stream:
+            if stream is not None:
+                # Ensure the provided stream is of an acceptable type.
+                assert isinstance(
+                    stream, (torch.cuda.Stream, torch.cuda.classes.Stream)
+                ), f"`stream` must be a torch.cuda.Stream but got {type(stream)}."
+            else:
+                stream = torch.cuda.Stream()
+        else:
+            stream = torch.cuda.default_stream(device=device)
+    else:
+        stream = None
+
     def mapping(item):
+        # Pass through None values.
         if item is None:
-            # Torch has no representation for `None`, so we return None
             return item
 
-        # Special handling of "Repeated" values.
+        # Special handling for "RepeatedValues" types.
         if isinstance(item, RepeatedValues):
             return RepeatedValues(
-                tree.map_structure(mapping, item.values), item.lengths, item.max_len
+                tree.map_structure(mapping, item.values),
+                item.lengths,
+                item.max_len,
             )
 
-        # Already torch tensor -> make sure it's on right device.
+        # Convert to a tensor if not already one.
         if torch.is_tensor(item):
             tensor = item
-        # Numpy arrays.
         elif isinstance(item, np.ndarray):
-            # Object type (e.g. info dicts in train batch): leave as-is.
-            # str type (e.g. agent_id in train batch): leave as-is.
+            # Leave object or string arrays as is.
             if item.dtype == object or item.dtype.type is np.str_:
                 return item
-            # Non-writable numpy-arrays will cause PyTorch warning.
-            elif item.flags.writeable is False:
+            # If the numpy array is not writable, suppress warnings.
+            if not item.flags.writeable:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
                     tensor = torch.from_numpy(item)
-            # Already numpy: Wrap as torch tensor.
             else:
                 tensor = torch.from_numpy(item)
-        # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))
 
-        # Floatify all float64 tensors (but leave float16 as-is).
-        if tensor.is_floating_point() and str(tensor.dtype) != "torch.float16":
+        # Convert floating-point tensors from float64 to float32 (unless they are float16).
+        if tensor.is_floating_point() and tensor.dtype != torch.float16:
             tensor = tensor.float()
 
-        # Pin the tensor's memory (for faster transfer to GPU later).
-        if pin_memory and torch.cuda.is_available():
-            tensor.pin_memory()
+        # Optionally pin memory for faster host-to-GPU copies.
+        if pin_memory and is_cuda:
+            tensor = tensor.pin_memory()
 
-        return tensor if device is None else tensor.to(device)
+        # Move the tensor to the desired device.
+        # For CUDA devices, use the provided stream context if available.
+        if is_cuda:
+            if stream is not None:
+                with torch.cuda.stream(stream):
+                    tensor = tensor.to(device, non_blocking=True)
+            else:
+                tensor = tensor.to(device, non_blocking=True)
+        else:
+            # For CPU (or non-CUDA), this is a no-op if already on the target device.
+            tensor = tensor.to(device)
+
+        return tensor
 
     return tree.map_structure(mapping, x)
 
@@ -482,7 +513,7 @@ def global_norm(tensors: List[TensorType]) -> TensorType:
     return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
 
 
-@PublicAPI
+@OldAPIStack
 def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     """Computes the huber loss for a given term and delta parameter.
 
@@ -507,7 +538,7 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
-@PublicAPI
+@OldAPIStack
 def l2_loss(x: TensorType) -> TensorType:
     """Computes half the L2 norm over a tensor's values without the sqrt.
 
@@ -520,27 +551,6 @@ def l2_loss(x: TensorType) -> TensorType:
         0.5 times the L2 norm over the given tensor's values (w/o sqrt).
     """
     return 0.5 * torch.sum(torch.pow(x, 2.0))
-
-
-@PublicAPI
-def minimize_and_clip(
-    optimizer: "torch.optim.Optimizer", clip_val: float = 10.0
-) -> None:
-    """Clips grads found in `optimizer.param_groups` to given value in place.
-
-    Ensures the norm of the gradients for each variable is clipped to
-    `clip_val`.
-
-    Args:
-        optimizer: The torch.optim.Optimizer to get the variables from.
-        clip_val: The global norm clip value. Will clip around -clip_val and
-            +clip_val.
-    """
-    # Loop through optimizer's variables and norm per variable.
-    for param_group in optimizer.param_groups:
-        for p in param_group["params"]:
-            if p.grad is not None:
-                torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
 
 
 @PublicAPI
@@ -661,9 +671,11 @@ def update_target_network(
 ) -> None:
     """Updates a torch.nn.Module target network using Polyak averaging.
 
-    new_target_net_weight = (
-        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
-    )
+    .. code-block:: text
+
+        new_target_net_weight = (
+            tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+        )
 
     Args:
         main_net: The nn.Module to update from.
