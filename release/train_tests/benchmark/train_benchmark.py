@@ -210,9 +210,11 @@ class TrainLoopRunner:
         )
 
     def load_checkpoint(self, local_dir: str):
-        self.model.load_state_dict(torch.load(os.path.join(local_dir, "model.pt")))
+        self.model.load_state_dict(
+            torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
+        )
         self.optimizer.load_state_dict(
-            torch.load(os.path.join(local_dir, "optimizer.pt"))
+            torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
         )
 
         train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
