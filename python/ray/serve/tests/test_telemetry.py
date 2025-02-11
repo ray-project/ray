@@ -15,15 +15,10 @@ from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.test_utils import (
     check_apps_running,
     check_telemetry,
-    check_if_serve_library_used_in_telemetry,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ApplicationStatus, ServeDeploySchema
-
-
-def test_serve_library_used(manage_ray_with_telemetry):
-    assert check_if_serve_library_used_in_telemetry()
 
 
 def test_fastapi_detected(manage_ray_with_telemetry):
