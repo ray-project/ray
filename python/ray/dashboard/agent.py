@@ -88,11 +88,7 @@ class DashboardAgent:
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
-
-        try:
-            from grpc import aio as aiogrpc
-        except ImportError:
-            from grpc.experimental import aio as aiogrpc
+        from grpc import aio as aiogrpc
 
         # We would want to suppress deprecating warnings from aiogrpc library
         # with the usage of asyncio.get_event_loop() in python version >=3.10
