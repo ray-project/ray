@@ -41,7 +41,7 @@ std::shared_ptr<spdlog::logger> CreateLogger() {
   return logger;
 }
 
-// Testing senario: Keep writing to spdlog after flush, and check whether all written
+// Testing scenario: Keep writing to spdlog after flush, and check whether all written
 // content is correctly reflected.
 TEST(NewlinerSinkTest, WriteAfterFlush) {
   auto logger = CreateLogger();
