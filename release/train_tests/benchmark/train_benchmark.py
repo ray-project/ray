@@ -202,7 +202,12 @@ class TrainLoopRunner:
         self._train_epoch_idx = train_state["epoch"]
         self._train_batch_idx = train_state["batch_idx"]
 
-        self._metrics = torch.load(os.path.join(local_dir, "metrics.pt"))
+        with open(os.path.join(local_dir, "metrics.json"), "r") as f:
+            metrics_json = json.load(f)
+
+        self._metrics = {k: Timer() for k in metrics_json}
+        for k, v in metrics_json.items():
+            self._metrics[k].__dict__.update(v)
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
@@ -219,7 +224,10 @@ class TrainLoopRunner:
         torch.save(self.model.state_dict(), os.path.join(local_dir, "model.pt"))
         torch.save(self.optimizer.state_dict(), os.path.join(local_dir, "optimizer.pt"))
         torch.save(train_state, os.path.join(local_dir, "train_state.pt"))
-        torch.save(self._metrics.copy(), os.path.join(local_dir, "metrics.pt"))
+
+        metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
+        with open(os.path.join(local_dir, "metrics.json"), "w") as f:
+            json.dump(metrics_json, f)
 
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(
@@ -314,10 +322,11 @@ def main():
         train_loop_config={"factory": factory},
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,
-            use_gpu=True,
+            use_gpu=False,
         ),
         run_config=ray.train.RunConfig(
-            storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
+            # storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
+            storage_path="/Users/justin/ray_results",
             name=date_str(include_ms=True),
             failure_config=ray.train.FailureConfig(
                 max_failures=benchmark_config.max_failures
