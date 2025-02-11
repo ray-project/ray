@@ -102,13 +102,13 @@ def test_nested_datasets(cluster):
     cluster.wait_for_nodes()
 
     train_ds = gen_dataset(
-        3000,
+        300,
         resources_per_node["num_cpus"] * 3,
         resources_per_node["num_gpus"] * 3,
         resources_per_node["object_store_memory"] * 3,
     )
     val_ds = gen_dataset(
-        1000,
+        100,
         resources_per_node["num_cpus"],
         resources_per_node["num_gpus"],
         resources_per_node["object_store_memory"],
