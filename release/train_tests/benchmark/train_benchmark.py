@@ -1,9 +1,10 @@
 import collections
-import os
-import logging
-import pprint
-import tempfile
 import json
+import logging
+import os
+import pprint
+import time
+import tempfile
 from typing import Dict
 
 from ray._private.test_utils import safe_write_to_results_json
@@ -37,20 +38,27 @@ class TrainLoopRunner:
         self._train_batch_idx: int = 0
         self._train_epoch_idx: int = 0
 
-        # Load checkpoint if available.
-        checkpoint = ray.train.get_checkpoint()
-        if checkpoint:
-            with tempfile.TemporaryDirectory(
-                dir="/mnt/local_storage"
-            ) as temp_checkpoint_dir:
-                with self._metrics["checkpoint/download"].timer():
-                    checkpoint.to_directory(temp_checkpoint_dir)
-
-                with self._metrics["checkpoint/load"].timer():
-                    self.load_checkpoint(temp_checkpoint_dir)
-
         # Performance metrics
         self._metrics = collections.defaultdict(lambda: Timer())
+
+        checkpoint = ray.train.get_checkpoint()
+        if checkpoint:
+            self.restore_from_checkpoint(checkpoint)
+
+    def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
+        with tempfile.TemporaryDirectory(
+            dir="/mnt/local_storage"
+        ) as temp_checkpoint_dir:
+            download_start = time.perf_counter()
+            checkpoint.to_directory(temp_checkpoint_dir)
+            download_time = time.perf_counter() - download_start
+
+            load_start = time.perf_counter()
+            self.load_checkpoint(temp_checkpoint_dir)
+            load_time = time.perf_counter() - load_start
+
+            self._metrics["checkpoint/download"].add(download_time)
+            self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
         starting_epoch = self._train_epoch_idx
