@@ -176,6 +176,9 @@ class FakeProxyRequest(ProxyRequest):
     def is_health_request(self) -> bool:
         return self._is_health_request
 
+    def populate_tracing_context(self):
+        pass
+
 
 class FakeHTTPHandle:
     def __init__(self, messages):

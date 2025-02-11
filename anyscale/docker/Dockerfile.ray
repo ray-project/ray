@@ -1,0 +1,73 @@
+# syntax=docker/dockerfile:1.3-labs
+
+# Builds the distributable Anyscale-use Ray image. It contains runtime
+# dependencies, but the Ray OSS source code.
+#
+# When running on Anyscale, the runtime source code will be dynamically restored
+# via pre-ray-start injections.
+#
+# It *should* be able to run locally as is too, but with out runtime features.
+
+ARG FULL_BASE_IMAGE
+
+FROM $FULL_BASE_IMAGE
+
+ARG WHEEL_PATH
+ARG RAY_VERSION="3.0.0.dev0"
+ARG PRESTART_DATA_PATH
+
+LABEL com.anyscale.ray.prestart-data-path=$PRESTART_DATA_PATH
+
+COPY requirements_compiled.txt ./
+COPY \
+    version-envs.sh \
+    download_anyscale_data \
+    ray-prestart \
+    runtime-requirements.txt \
+    ray-oss.tgz \
+    ray-opt*.tgz \
+    /opt/anyscale/
+
+RUN \
+    --mount=type=bind,source=$WHEEL_PATH,target=$WHEEL_PATH \
+    --mount=type=bind,source=runtime-requirements.txt,target=runtime-requirements.txt \
+<<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
+PIP="/home/ray/anaconda3/bin/pip"
+
+if [[ -d "${SITE_PKG_DIR}/ray" ]]; then
+    # Needs to uninstall ray first, otherwise pip will not overwrite the
+    # existing files if OSS already published a wheel with the same version.
+    # This step is required only for ray-ml images.
+    "${PIP}" uninstall -y ray
+fi
+
+# Installs extra runtime requirements.
+"${PIP}" --no-cache-dir \
+    install -c requirements_compiled.txt -r runtime-requirements.txt
+
+# Installs the runtime wheel.
+"${PIP}" --no-cache-dir \
+    install -c requirements_compiled.txt "$WHEEL_PATH"[all]
+
+"${PIP}" freeze > /home/ray/pip-freeze.txt
+
+# Now swap the ray package and dist info with tarball
+
+rm -r "${SITE_PKG_DIR}"/ray "${SITE_PKG_DIR}/ray-${RAY_VERSION}.dist-info"
+tar -xzf /opt/anyscale/ray-oss.tgz -C "${SITE_PKG_DIR}"
+
+# Makes sure the ray still works, and also will generate the pyc files.
+python -c "import ray; print(ray.__version__)"
+
+echo ": \${ANYSCALE_RAY_SITE_PKG_DIR:=$SITE_PKG_DIR}" | sudo tee -a /opt/anyscale/version-envs.sh
+echo "export ANYSCALE_RAY_SITE_PKG_DIR" | sudo tee -a /opt/anyscale/version-envs.sh
+
+EOF
+
+COPY LICENSE /LICENSE
+COPY NOTICE /NOTICE
