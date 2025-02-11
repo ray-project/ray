@@ -72,11 +72,14 @@ class UnionOperator(NAryOperator):
 
         if not self._preserve_order:
             self._output_buffer.append(refs)
+            self._metrics.on_output_queued(refs)
         else:
             if input_index == self._input_idx_to_output:
                 self._output_buffer.append(refs)
+                self._metrics.on_output_queued(refs)
             else:
                 self._input_buffers[input_index].append(refs)
+                self._metrics.on_input_queued(refs)
 
     def input_done(self, input_index: int) -> None:
         """When `self._preserve_order` is True, change the
@@ -88,8 +91,11 @@ class UnionOperator(NAryOperator):
             return
         next_input_idx = self._input_idx_to_output + 1
         if next_input_idx < len(self._input_buffers):
-            self._output_buffer.extend(self._input_buffers[next_input_idx])
-            self._input_buffers[next_input_idx].clear()
+            while self._input_buffers[next_input_idx]:
+                refs = self._input_buffers[next_input_idx].pop()
+                self._metrics.on_input_dequeued(refs)
+                self._output_buffer.append(refs)
+                self._metrics.on_output_queued(refs)
             self._input_idx_to_output = next_input_idx
         super().input_done(input_index)
 
@@ -110,7 +116,12 @@ class UnionOperator(NAryOperator):
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        return self._output_buffer.pop(0)
+        refs = self._output_buffer.pop(0)
+        self._metrics.on_output_dequeued(refs)
+        return refs
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def implements_accurate_memory_accounting(self):
+        return True
