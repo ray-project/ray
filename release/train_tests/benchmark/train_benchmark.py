@@ -321,11 +321,10 @@ def main():
         train_loop_config={"factory": factory},
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,
-            use_gpu=False,
+            use_gpu=True,
         ),
         run_config=ray.train.RunConfig(
-            # storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
-            storage_path="/Users/justin/ray_results",
+            storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",
             name=date_str(include_ms=True),
             failure_config=ray.train.FailureConfig(
                 max_failures=benchmark_config.max_failures
