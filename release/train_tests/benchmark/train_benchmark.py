@@ -78,7 +78,7 @@ class TrainLoopRunner:
 
     def _train_epoch(self):
         if ray.train.get_context().get_world_rank() == 0:
-            logger.info(f"[Training] Starting @ epoch={self._train_epoch_idx}")
+            logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
 
@@ -149,7 +149,9 @@ class TrainLoopRunner:
         with self._metrics["validation/epoch"].timer():
             validation_metrics = self.validate()
 
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+        with tempfile.TemporaryDirectory(
+            dir="/mnt/local_storage"
+        ) as temp_checkpoint_dir:
             with self._metrics["checkpoint/save"].timer():
                 self.save_checkpoint(temp_checkpoint_dir)
 
