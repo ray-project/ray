@@ -17,7 +17,6 @@ from ray.tune import (
     CheckpointConfig,
     FailureConfig,
     RunConfig,
-    ScalingConfig,
 )
 from ray.train._internal.storage import _download_from_fs_path, get_fs_and_path
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -930,7 +929,8 @@ def test_checkpoints_saved_after_resume(ray_start_2_cpus, tmp_path, trainable_ty
         param_space["fail_epochs"] = 2
     elif trainable_type == "data_parallel":
         trainable = DataParallelTrainer(
-            _train_fn_sometimes_failing, scaling_config=ScalingConfig(num_workers=1)
+            _train_fn_sometimes_failing,
+            scaling_config=ray.train.ScalingConfig(num_workers=1),
         )
         param_space = {"train_loop_config": param_space}
     else:
