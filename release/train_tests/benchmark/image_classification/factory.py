@@ -66,6 +66,9 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
                     ray.data.ExecutionResources(cpu=cpus_to_exclude)
                 )
             )
+            val_ds.context.execution_options.resource_limits = (
+                ray.data.ExecutionResources(cpu=cpus_to_exclude)
+            )
             logger.info(
                 f"[Dataloader] Reserving {cpus_to_exclude} CPUs for validation "
                 "that happens concurrently with training every "
