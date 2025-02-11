@@ -94,7 +94,6 @@ class AllToAllOperator(PhysicalOperator):
         assert not self.completed()
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
-        self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
@@ -102,18 +101,9 @@ class AllToAllOperator(PhysicalOperator):
             sub_progress_bar_dict=self._sub_progress_bar_dict,
             target_max_block_size=self.actual_target_max_block_size,
         )
-
-        outputs, self._stats = self._bulk_fn(self._input_buffer, ctx)
-        for output in outputs:
-            self._output_buffer.append(output)
-            self._metrics.on_output_queued(output)
-
+        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
         self._next_task_index += 1
-
-        while self._input_buffer:
-            input = self._input_buffer.pop()
-            self._metrics.on_input_dequeued(input)
-
+        self._input_buffer.clear()
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -121,7 +111,6 @@ class AllToAllOperator(PhysicalOperator):
 
     def _get_next_inner(self) -> RefBundle:
         bundle = self._output_buffer.pop(0)
-        self._metrics.on_output_dequeued(bundle)
         self._output_rows += bundle.num_rows()
         return bundle
 
@@ -161,9 +150,6 @@ class AllToAllOperator(PhysicalOperator):
                 sub_bar.close()
 
     def supports_fusion(self):
-        return True
-
-    def implements_accurate_memory_accounting(self):
         return True
 
 

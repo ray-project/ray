@@ -11,6 +11,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
@@ -76,7 +79,12 @@ class ResourceManager:
             # We'll enable memory reservation if all operators have
             # implemented accurate memory accounting.
             should_enable = all(
-                op.implements_accurate_memory_accounting() for op in topology
+                op.implements_accurate_memory_accounting()
+                # AllToAllOperators don't implement accurate memory accounting, but they
+                # don't launch any tasks until they've materialized all of the inputs,
+                # so resource allocation doesn't really apply.
+                or isinstance(op, AllToAllOperator)
+                for op in topology
             )
             if should_enable:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
@@ -241,14 +249,6 @@ class ResourceManager:
                 usage_str += f",gpu={budget.gpu:.1f}"
                 usage_str += f",object store={budget.object_store_memory_str()})"
         return usage_str
-
-    def get_downstream_fraction(self, op: PhysicalOperator) -> float:
-        """Return the downstream fraction of the given operator."""
-        return self._downstream_fraction[op]
-
-    def get_downstream_object_store_memory(self, op: PhysicalOperator) -> float:
-        """Return the downstream object store memory usage of the given operator."""
-        return self._downstream_object_store_memory[op]
 
     def op_resource_allocator_enabled(self) -> bool:
         """Return whether OpResourceAllocator is enabled."""
@@ -653,10 +653,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # We don't limit GPU resources, as not all operators
             # use GPU resources.
             self._op_budgets[op].gpu = float("inf")
-
-        from ray.data._internal.execution.operators.base_physical_operator import (
-            AllToAllOperator,
-        )
 
         # An all-to-all operator waits for all its input operator’s outputs before
         # processing data. This often forces the input operator to exceed its object

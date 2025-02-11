@@ -32,7 +32,6 @@ from ray.data._internal.execution.streaming_executor import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
-    _execution_allowed,
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
@@ -56,10 +55,6 @@ def mock_resource_manager(
     return MagicMock(
         get_global_limits=MagicMock(return_value=global_limits),
         get_global_usage=MagicMock(return_value=global_usage),
-        get_downstream_fraction=MagicMock(return_value=downstream_fraction),
-        get_downstream_object_store_memory=MagicMock(
-            return_value=downstream_object_store_memory
-        ),
         op_resource_allocator_enabled=MagicMock(return_value=False),
     )
 
@@ -335,105 +330,6 @@ def test_validate_dag():
         _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
 
 
-def test_execution_allowed():
-    op = InputDataBuffer(DataContext.get_current(), [])
-
-    # CPU.
-    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(cpu=1),
-            global_limits=ExecutionResources.for_limits(cpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(cpu=2),
-            global_limits=ExecutionResources.for_limits(cpu=2),
-        ),
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(cpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-    # GPU.
-    op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=1)
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-    # Test conversion to indicator (0/1).
-    op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=100)
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1.5),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-    # Test conversion to indicator (0/1).
-    op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=0.1)
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=1.5),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(gpu=2),
-            global_limits=ExecutionResources.for_limits(gpu=2),
-        ),
-    )
-
-
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
@@ -513,78 +409,6 @@ def test_configure_output_locality():
     assert s2a.node_id == "node1"
     assert s2b.node_id == "node2"
     assert s2c.node_id == "node1"
-
-
-def test_execution_allowed_downstream_aware_memory_throttling():
-    op = InputDataBuffer(DataContext.get_current(), [])
-    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
-    # Below global.
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=1100),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
-    # Above global.
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
-    # Above global, but below downstream quota of 50%.
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=0.5,
-            downstream_object_store_memory=400,
-        ),
-    )
-    # Above global, and above downstream quota of 50%.
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=0.5,
-            downstream_object_store_memory=600,
-        ),
-    )
-
-
-def test_execution_allowed_nothrottle():
-    op = InputDataBuffer(DataContext.get_current(), [])
-    op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
-    # Above global.
-    assert not _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
-
-    # Throttling disabled.
-    op.throttling_disabled = MagicMock(return_value=True)
-    assert _execution_allowed(
-        op,
-        mock_resource_manager(
-            global_usage=ExecutionResources(object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(object_store_memory=900),
-            downstream_fraction=1,
-            downstream_object_store_memory=1000,
-        ),
-    )
 
 
 class OpBufferQueueTest(unittest.TestCase):
