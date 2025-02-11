@@ -25,7 +25,6 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 from ray.dag import DAGContext
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
@@ -226,6 +225,7 @@ class TestDAGRefDestruction:
         ref = compiled_dag.execute(2)
         ref2 = compiled_dag.execute(2)
         ref3 = compiled_dag.execute(2)
+        del ref
         del ref2
         # Test that ray.get() works correctly if preceding ref was destructed
         assert ray.get(ref3) == 6
@@ -242,6 +242,7 @@ class TestDAGRefDestruction:
         del ref3
         ray.get(ref)
         ref4 = compiled_dag.execute(3)
+        del ref4
         # Test that max_inflight error is not raised as ref2 and ref3
         # should be destructed and not counted in the inflight executions
         ref5 = compiled_dag.execute(3)
@@ -891,13 +892,13 @@ class TestMultiArgs:
         a2 = Actor.remote(0)
         c = Collector.remote()
         with InputNode() as i:
-            i.with_type_hint(TorchTensorType())
+            i.with_tensor_transport()
             branch1 = a1.echo.bind(i[0])
-            branch1.with_type_hint(TorchTensorType())
+            branch1.with_tensor_transport()
             branch2 = a2.echo.bind(i[1])
-            branch2.with_type_hint(TorchTensorType())
+            branch2.with_tensor_transport()
             dag = c.collect_two.bind(branch2, branch1)
-            dag.with_type_hint(TorchTensorType())
+            dag.with_tensor_transport()
 
         compiled_dag = dag.experimental_compile()
 
@@ -1312,8 +1313,8 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            "ray.get\(\) can only be called once "
-            "on a CompiledDAGRef, and it was already called."
+            r"ray.get\(\) can only be called once "
+            r"on a CompiledDAGRef, and it was already called."
         ),
     ):
         ray.get(ref)
@@ -2408,7 +2409,6 @@ def test_driver_and_intraprocess_read(ray_start_cluster):
     assert ray.get(dag.execute(1)) == [1, 2]
 
 
-@pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
 @pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
 def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     ray.init()
@@ -2432,7 +2432,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     actor1 = Actor1.remote()
 
     # Since the timeout is 1 second, if buffering is not working,
-    # it will timeout (0.12s for each dag * MAX_INFLIGHT_EXECUTIONS).
+    # it will timeout (0.2s for each dag * MAX_INFLIGHT_EXECUTIONS).
     with InputNode() as input_node:
         dag = actor1.fwd.bind(input_node)
 
@@ -2446,7 +2446,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     for i, ref in enumerate(output_refs):
         assert ray.get(ref) == i
 
-    # Test there are more items than max bufcfered inputs.
+    # Test there are more items than max buffered inputs.
     output_refs = []
     for i in range(MAX_INFLIGHT_EXECUTIONS):
         output_refs.append(dag.execute(i))
@@ -2538,14 +2538,14 @@ def test_inflight_requests_exceed_capacity(ray_start_regular):
             match=(expected_error_message),
         ):
             _ = await async_compiled_dag.execute_async(1)
-        (ref1, ref2)
+        _ = (ref1, ref2)
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
     # to show variables are being used and avoid destruction since
     # CompiledDagRef __del__ will release buffers and
     # increment _max_finished_execution_index
-    (ref1, ref2)
+    _ = (ref1, ref2)
 
 
 def test_result_buffer_exceeds_capacity(ray_start_regular):
@@ -2586,12 +2586,12 @@ def test_result_buffer_exceeds_capacity(ray_start_regular):
             match=(expected_error_message),
         ):
             _ = await async_compiled_dag.execute_async(4)
-        (ref1, ref3)
+        _ = (ref1, ref3)
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
     # same reason as comment for test_inflight_requests_exceed_capacity
-    (ref1, ref3)
+    _ = (ref1, ref3)
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
@@ -2850,7 +2850,7 @@ def test_torch_tensor_type(shutdown_only):
                     inp,
                     self._base.generate_torch_tensor.bind(
                         inp,
-                    ).with_type_hint(TorchTensorType()),
+                    ).with_tensor_transport(),
                 )
             self._cdag = dag.experimental_compile()
 

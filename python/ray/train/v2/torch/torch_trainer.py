@@ -186,6 +186,7 @@ class TorchTrainer(DataParallelTrainer):
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         dataset_config: Optional[DataConfig] = None,
+        # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
@@ -201,7 +202,6 @@ class TorchTrainer(DataParallelTrainer):
             run_config=run_config,
             dataset_config=dataset_config,
             datasets=datasets,
-            # TODO: Re-enable below.
-            # resume_from_checkpoint=resume_from_checkpoint,
-            # metadata=metadata,
+            resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )

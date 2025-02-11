@@ -1,12 +1,18 @@
+from dataclasses import dataclass
+import logging
+
 from ray.train._internal.syncer import SyncConfig as TrainSyncConfig
 from ray.util.annotations import PublicAPI
 
+logger = logging.getLogger(__name__)
+
 
 @PublicAPI(stability="beta")
+@dataclass
 class SyncConfig(TrainSyncConfig):
-    """Configuration object for Train/Tune file syncing to `RunConfig(storage_path)`.
+    """Configuration object for Tune file syncing to `RunConfig(storage_path)`.
 
-    In Ray Tune, here is where syncing happens:
+    In Ray Tune, here is where syncing (mainly uploading) happens:
 
     The experiment driver (on the head node) syncs the experiment directory to storage
     (which includes experiment state such as searcher state, the list of trials
