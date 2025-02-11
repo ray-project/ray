@@ -761,7 +761,6 @@ class Reconciler:
         to_launch = Reconciler._compute_to_launch(
             queued_instances,
             requested_instances,
-            allocated_instances,
             running_instances,
             autoscaling_config.get_upscaling_speed(),
             autoscaling_config.get_max_concurrent_launches(),
