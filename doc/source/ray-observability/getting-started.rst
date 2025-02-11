@@ -370,6 +370,50 @@ You can easily identify failed Tasks or Actors by looking at the Job progress ba
 
 The Task and Actor tables display the name of the failed Tasks or Actors, respectively. They also provide access to their corresponding log or error messages.
 
+.. _virtual-clusters-view:
+
+Virtual Clusters View
+=====================
+
+.. image:: ./images/virtual-cluster-view.jpg
+    :align: center
+    :alt: Virtual Clusters View screenshot
+
+
+The Virtual Clusters view in the Ray Dashboard offers a real‐time, hierarchical
+representation of the virtual clusters running on your Ray cluster. This view
+is designed to provide an at-a-glance overview of resource allocations, node
+status, and replica set configurations across both divisible and indivisible
+clusters.
+
+Key Features
+------------
+
+- **Hierarchical Organization:**  
+  Virtual clusters are displayed as a tree structure. Divisible clusters can be
+  subdivided into logical (or job) clusters while also listing “undivided” nodes.
+  This structure makes it easy to visualize parent–child relationships and resource
+  distribution among clusters.
+
+- **Resource Overview:**  
+  For each virtual cluster, key resources – such as CPU, memory, and object store
+  memory – are presented in a clear, formatted overview. Values are aggregated and
+  displayed in real time, so you can quickly see resource utilization and identify
+  potential bottlenecks.
+
+- **Search and Filtering:**  
+  A search bar at the top of the Virtual Clusters panel lets you filter clusters
+  by name or other properties. This is especially useful in large deployments where
+  numerous virtual clusters are active simultaneously.
+
+- **Detailed Node Information:**  
+  Expanding a virtual cluster node reveals detailed data about the underlying
+  nodes. For each node, you can view its hostname, status (e.g., ALIVE or DEAD),
+  and configured node type.
+
+For more in-depth information, please refer to the complete
+:ref:`virtual-cluster <virtual-cluster>` documentation.
+
 .. _dash-overview:
 
 Overview view
