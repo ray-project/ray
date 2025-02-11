@@ -111,8 +111,6 @@ class RunningTaskInfo:
 
 @dataclass
 class NodeMetrics:
-    num_tasks_submitted: int = 0
-    num_tasks_running: int = 0
     num_tasks_finished: int = 0
     obj_store_mem_used: int = 0
     obj_store_mem_freed: int = 0
@@ -599,18 +597,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         """Callback when the operator submits a task."""
         self.num_tasks_submitted += 1
         self.num_tasks_running += 1
-
-        if self._per_node_metrics_enabled:
-            node_ids = set()
-            for _, node_metrics, node_id in iter_meta_and_node_metrics(
-                inputs, self._per_node_metrics
-            ):
-                if node_id not in node_ids:
-                    node_metrics.num_tasks_submitted += 1
-                    node_metrics.num_tasks_running += 1
-                # Keep track of node ids to ensure we don't double count
-                node_ids.add(node_id)
-
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self._pending_task_inputs.add(inputs)
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
@@ -692,7 +678,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 # Stats to update once per node id or if node id is unknown
                 if node_id not in node_ids or node_id == NODE_UNKNOWN:
                     node_metrics.num_tasks_finished += 1
-                    node_metrics.num_tasks_running -= 1
 
                 # Stats to update once per block
                 node_metrics.obj_store_mem_freed += meta.size_bytes

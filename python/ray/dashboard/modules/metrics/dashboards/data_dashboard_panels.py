@@ -376,20 +376,6 @@ DATA_GRAFANA_PANELS = [
         stack=False,
     ),
     Panel(
-        id=44,
-        title="Submitted Tasks (by Node)",
-        description="Number of submitted tasks, grouped by node.",
-        unit="tasks",
-        targets=[
-            Target(
-                expr="sum(ray_data_num_tasks_submitted_per_node{{{global_filters}}}) by (dataset, node)",
-                legend="Submitted Tasks: {{dataset}}, {{node}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
         id=30,
         title="Running Tasks",
         description="Number of running tasks.",
@@ -398,20 +384,6 @@ DATA_GRAFANA_PANELS = [
             Target(
                 expr="sum(ray_data_num_tasks_running{{{global_filters}}}) by (dataset, operator)",
                 legend="Running Tasks: {{dataset}}, {{operator}}",
-            )
-        ],
-        fill=0,
-        stack=False,
-    ),
-    Panel(
-        id=45,
-        title="Running Tasks (by Node)",
-        description="Number of running tasks, grouped by node.",
-        unit="tasks",
-        targets=[
-            Target(
-                expr="sum(ray_data_num_tasks_running_per_node{{{global_filters}}}) by (dataset, node)",
-                legend="Running Tasks: {{dataset}}, {{node}}",
             )
         ],
         fill=0,
