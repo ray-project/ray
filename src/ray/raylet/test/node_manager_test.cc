@@ -20,7 +20,6 @@
 #include "ray/raylet/test/util.h"
 
 namespace ray::raylet {
-namespace {
 using ::testing::_;
 using ::testing::Return;
 
@@ -171,5 +170,4 @@ TEST(NodeManagerTest, TestHandleReportWorkerBacklog) {
   }
 }
 
-}  // namespace
 }  // namespace ray::raylet
