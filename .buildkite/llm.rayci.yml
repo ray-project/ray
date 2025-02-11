@@ -18,11 +18,12 @@ steps:
       IMAGE_TO: "llmgpubuild"
       IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_gpu-py3.11"
 
-  - label: "llm tests"
-    key: "llm-tests"
+  - label: "llm cpu tests"
+    key: "llm-cpu-tests"
     tags:
       - python
       - llm
+      - cpu
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... llm
