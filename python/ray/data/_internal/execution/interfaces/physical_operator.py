@@ -15,6 +15,8 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+from ray.data._internal.output_buffer import OutputBlockSizeOption
+
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -191,7 +193,8 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
-        self._target_max_block_size = target_max_block_size
+        self._output_block_size_option = None
+        self.set_target_max_block_size(target_max_block_size)
         self._started = False
         self._in_task_submission_backpressure = False
         self._in_task_output_backpressure = False
@@ -236,20 +239,28 @@ class PhysicalOperator(Operator):
         Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
-        return self._target_max_block_size
+        if self._output_block_size_option is None:
+            return None
+        else:
+            return self._output_block_size_option.target_max_block_size
 
     @property
     def actual_target_max_block_size(self) -> int:
         """
         The actual target max block size output by this operator.
         """
-        target_max_block_size = self._target_max_block_size
+        target_max_block_size = self.target_max_block_size
         if target_max_block_size is None:
             target_max_block_size = self.data_context.target_max_block_size
         return target_max_block_size
 
     def set_target_max_block_size(self, target_max_block_size: Optional[int]):
-        self._target_max_block_size = target_max_block_size
+        if target_max_block_size is not None:
+            self._output_block_size_option = OutputBlockSizeOption(
+                target_max_block_size=target_max_block_size
+            )
+        elif self._output_block_size_option is not None:
+            self._output_block_size_option = None
 
     def mark_execution_completed(self):
         """Manually mark this operator has completed execution."""
