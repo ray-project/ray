@@ -25,10 +25,10 @@ class ChatTemplateUDF(StatefulStageUDF):
 
         super().__init__(data_column)
 
-        # NOTE: We always use processor instead of tokenizer, because tokenizers
-        # of VLM models may not have chat template attribute. However, this may
-        # not be a reliable solution, because processors and tokenizers are not
-        # standardized across different models.
+        # NOTE: We always use processor instead of tokenizer in this stage,
+        # because tokenizers of VLM models may not have chat template attribute.
+        # However, this may not be a reliable solution, because processors and
+        # tokenizers are not standardized across different models.
         self.processor = AutoProcessor.from_pretrained(model)
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
@@ -41,13 +41,15 @@ class ChatTemplateUDF(StatefulStageUDF):
         Yields:
             A generator of rows with the chat template applied.
         """
+        messages = [
+            row["messages"].tolist()
+            if hasattr(row["messages"], "tolist")
+            else row["messages"]
+            for row in batch
+        ]
+
         prompts = self.processor.apply_chat_template(
-            [
-                row["messages"].tolist()
-                if not isinstance(row["messages"], list)
-                else row["messages"]
-                for row in batch
-            ],
+            messages,
             tokenize=False,
             add_generation_prompt=True,
         )
