@@ -109,7 +109,7 @@ class OrdinalEncoder(Preprocessor):
         # TODO: allow user to specify order of values within each column.
         self.columns = columns
         self.encode_lists = encode_lists
-        self.output_columns = self._derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -253,7 +253,7 @@ class OneHotEncoder(Preprocessor):
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories
-        self.output_columns = self._derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -389,7 +389,7 @@ class MultiHotEncoder(Preprocessor):
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories
-        self.output_columns = self._derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
@@ -629,7 +629,7 @@ class Categorizer(Preprocessor):
 
         self.columns = columns
         self.dtypes = dtypes
-        self.output_columns = self._derive_and_validate_output_columns(
+        self.output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 

@@ -139,7 +139,7 @@ def test_ordinal_encoder():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
     # Test null behavior.
     null_col = [1, None]
@@ -287,7 +287,7 @@ def test_one_hot_encoder():
         }
     )
 
-    pd.testing.assert_frame_equal(out_df, expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
@@ -313,7 +313,7 @@ def test_one_hot_encoder():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
     # append mode
     with pytest.raises(ValueError):
@@ -387,7 +387,7 @@ def test_one_hot_encoder_with_max_categories():
             "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]],
         }
     )
-    pd.testing.assert_frame_equal(df_out, expected_df)
+    pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
 
 
 def test_multi_hot_encoder():
@@ -569,7 +569,7 @@ def test_label_encoder():
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
-    pd.testing.assert_frame_equal(out_df, expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # append mode
     append_encoder = LabelEncoder("A", output_column="A_encoded")
@@ -580,20 +580,20 @@ def test_label_encoder():
     expected_df = pd.DataFrame.from_dict(
         {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
     )
-    pd.testing.assert_frame_equal(out_df, expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Inverse transform data.
     inverse_transformed = encoder.inverse_transform(transformed)
     inverse_df = inverse_transformed.to_pandas()
 
-    pd.testing.assert_frame_equal(inverse_df, in_df)
+    pd.testing.assert_frame_equal(inverse_df, in_df, check_like=True)
 
     inverse_append_transformed = append_encoder.inverse_transform(append_transformed)
     inverse_append_df = inverse_append_transformed.to_pandas()
     expected_df = pd.DataFrame.from_dict(
         {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
     )
-    pd.testing.assert_frame_equal(inverse_append_df, expected_df)
+    pd.testing.assert_frame_equal(inverse_append_df, expected_df, check_like=True)
 
     # Inverse transform without fitting.
     new_encoder = LabelEncoder("A")

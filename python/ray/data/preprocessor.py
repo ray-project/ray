@@ -277,14 +277,15 @@ class Preprocessor(abc.ABC):
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
 
+    @classmethod
     def _derive_and_validate_output_columns(
-        self, columns: List[str], output_columns: Optional[List[str]]
+        cls, columns: List[str], output_columns: Optional[List[str]]
     ) -> List[str]:
-        """Returns the output columns after validation. 
-        
+        """Returns the output columns after validation.
+
         Checks if the columns are explicitly set, otherwise defaulting to
-        the input columns. 
-        
+        the input columns.
+
         Raises:
             ValueError if the length of the output columns does not match the
         length of the input columns.
