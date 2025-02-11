@@ -51,6 +51,8 @@ class IMPALALearner(Learner):
         #  We will have to fix this offline RL logic first, then can remove this hack
         #  here and return to always using the RLock.
         self.metrics._threading_lock = threading.RLock()
+        self._num_updates = 0
+        self._num_updates_lock = threading.Lock()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -94,6 +96,7 @@ class IMPALALearner(Learner):
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
             metrics_logger=self.metrics,
+            learner=self,
         )
         self._learner_thread.start()
 
@@ -131,7 +134,13 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
-        return self.metrics.reduce()
+        with self._num_updates_lock:
+            count = self._num_updates
+        if count >= 100:
+            with self._num_updates_lock:
+                self._num_updates = 0
+            return self.metrics.reduce()
+        return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -214,10 +223,12 @@ class _LearnerThread(threading.Thread):
         update_method,
         in_queue: deque,
         metrics_logger,
+        learner,
     ):
         super().__init__(name="_LearnerThread")
         self.daemon = True
         self.metrics: MetricsLogger = metrics_logger
+        self.learner = learner
         self.stopped = False
 
         self._update_method = update_method
@@ -255,6 +266,8 @@ class _LearnerThread(threading.Thread):
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
+            with self.learner._num_updates_lock:
+                self.learner._num_updates += 1
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):

@@ -3,9 +3,7 @@ from typing import Optional
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
-)
+from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import get_total_obj_store_mem_on_node
@@ -349,17 +347,12 @@ class ShufflingBatcher(BatcherInterface):
             ).random_shuffle(self._shuffle_seed)
             if self._shuffle_seed is not None:
                 self._shuffle_seed += 1
-            if (
-                isinstance(
-                    BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
-                )
-                and self._shuffle_buffer.num_columns > 0
-                and self._shuffle_buffer.column(0).num_chunks
-                >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
+
+            if isinstance(
+                BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
             ):
-                self._shuffle_buffer = transform_pyarrow.combine_chunks(
-                    self._shuffle_buffer
-                )
+                self._shuffle_buffer = try_combine_chunked_columns(self._shuffle_buffer)
+
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()
             self._batch_head = 0
