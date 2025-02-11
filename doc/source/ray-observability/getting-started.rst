@@ -373,11 +373,13 @@ The Task and Actor tables display the name of the failed Tasks or Actors, respec
 .. _virtual-clusters-view:
 
 Virtual Clusters View
-=====================
+---------------------
 
 .. image:: ./images/virtual-cluster-view.jpg
     :align: center
     :alt: Virtual Clusters View screenshot
+
+
 
 
 The Virtual Clusters view in the Ray Dashboard offers a real‐time, hierarchical
@@ -412,7 +414,8 @@ Key Features
   and configured node type.
 
 For more in-depth information, please refer to the complete
-:ref:`virtual-cluster <virtual-cluster>` documentation.
+:ref:`virtual-cluster-index` documentation.
+
 
 .. _dash-overview:
 
