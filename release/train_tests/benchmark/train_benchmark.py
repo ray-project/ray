@@ -89,9 +89,13 @@ class TrainLoopRunner:
 
         # Skip through batches if we restored to a middle of the epoch.
         # TODO: Compare this baseline to the data checkpointing approach once we have it.
-        for _ in range(self._train_batch_idx):
-            with self._metrics["train/iter_skip_batch"].timer():
-                self.get_next_batch(train_dataloader)
+        if self._train_batch_idx > 0:
+            if ray.train.get_context().get_world_rank() == 0:
+                logger.info(f"[Checkpoint] Skipping {self._train_batch_idx} batches...")
+
+            for _ in range(self._train_batch_idx):
+                with self._metrics["train/iter_skip_batch"].timer():
+                    self.get_next_batch(train_dataloader)
 
         while batch:
             input_batch, labels = batch
