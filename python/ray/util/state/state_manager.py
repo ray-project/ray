@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 from functools import wraps
 from typing import List, Optional, Tuple
+import json
 
 import aiohttp
 import grpc
@@ -11,6 +12,7 @@ from grpc.aio._call import UnaryStreamCall
 
 import ray
 import ray.dashboard.modules.log.log_consts as log_consts
+import ray.dashboard.consts as dashboard_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
@@ -154,7 +156,6 @@ class StateDataSourceClient:
         self.register_gcs_client(gcs_channel)
         self._raylet_stubs = {}
         self._runtime_env_agent_addresses = {}  # {node_id -> url}
-        self._log_agent_stub = {}
         self._job_client = JobInfoStorageClient(gcs_aio_client)
         self._id_ip_map = IdToIpMap()
         self._gcs_aio_client = gcs_aio_client
@@ -204,18 +205,6 @@ class StateDataSourceClient:
         self._runtime_env_agent_addresses.pop(node_id)
         self._id_ip_map.pop(node_id)
 
-    def register_agent_client(self, node_id, address: str, port: int):
-        options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            f"{address}:{port}", options=options, asynchronous=True
-        )
-        self._log_agent_stub[node_id] = LogServiceStub(channel)
-        self._id_ip_map.put(node_id, address)
-
-    def unregister_agent_client(self, node_id: str):
-        self._log_agent_stub.pop(node_id)
-        self._id_ip_map.pop(node_id)
-
     def get_all_registered_raylet_ids(self) -> List[str]:
         return self._raylet_stubs.keys()
 
@@ -223,9 +212,21 @@ class StateDataSourceClient:
     def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
         return self._runtime_env_agent_addresses.keys()
 
-    # Returns all nod_ids which registered their log_agent_stub.
-    def get_all_registered_log_agent_ids(self) -> List[str]:
-        return self._log_agent_stub.keys()
+    async def get_log_service_stub(self, node_id: NodeID) -> Optional[LogServiceStub]:
+        """Returns None if the agent on the node is not registered in Internal KV."""
+        agent_addr = await self._gcs_aio_client.internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if not agent_addr:
+            return None
+        ip, http_port, grpc_port = json.loads(agent_addr)
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        channel = ray._private.utils.init_grpc_channel(
+            f"{ip}:{grpc_port}", options=options, asynchronous=True
+        )
+        return LogServiceStub(channel)
 
     def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
         """Return the node id that corresponds to the given ip.
@@ -495,7 +496,7 @@ class StateDataSourceClient:
     async def list_logs(
         self, node_id: str, glob_filter: str, timeout: int = None
     ) -> ListLogsReply:
-        stub = self._log_agent_stub.get(node_id)
+        stub = await self.get_log_service_stub(NodeID.from_hex(node_id))
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
         return await stub.ListLogs(
@@ -514,7 +515,7 @@ class StateDataSourceClient:
         start_offset: Optional[int] = None,
         end_offset: Optional[int] = None,
     ) -> UnaryStreamCall:
-        stub = self._log_agent_stub.get(node_id)
+        stub = await self.get_log_service_stub(NodeID.from_hex(node_id))
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
 
