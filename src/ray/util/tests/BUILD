@@ -118,11 +118,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "//src/ray/common:status",
         "//src/ray/util",
+        "//src/ray/util:env",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
-        "//src/ray/common:status",
     ],
 )
 
