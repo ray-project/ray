@@ -195,13 +195,13 @@ def _convert_to_pyarrow_native_array(
             if arrow_precision != numpy_precision:
                 # Arrow supports fewer timestamp resolutions than NumPy. So, if Arrow
                 # doesn't support the resolution, we need to cast the NumPy array to a
-                # different time. This can be a lossy conversion.
+                # different type. This can be a lossy conversion.
                 column_values = column_values.astype(f"datetime64[{arrow_precision}]")
 
                 if log_once(f"column_{column_name}_timestamp_warning"):
                     logger.warning(
                         f"Converting a {numpy_precision!r} precision datetime NumPy "
-                        "array to '{arrow_precision}' precision Arrow timestamp. This "
+                        f"array to '{arrow_precision}' precision Arrow timestamp. This "
                         "conversion occurs because Arrow supports fewer precisions "
                         "than Arrow and might result in a loss of precision or "
                         "unrepresentable values."
