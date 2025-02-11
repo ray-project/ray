@@ -238,7 +238,7 @@
     cluster_compute: autoscaling_gpu_compute.yaml
 
   run:
-    timeout: 2400
+    timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
