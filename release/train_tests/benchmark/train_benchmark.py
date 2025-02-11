@@ -190,7 +190,14 @@ class TrainLoopRunner:
         return loss
 
     def report_checkpoint(self, metrics, checkpoint):
-        ray.train.report(metrics, checkpoint=checkpoint)
+        checkpoint_dir_name = (
+            f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
+        )
+        ray.train.report(
+            metrics,
+            checkpoint=checkpoint,
+            checkpoint_dir_name=checkpoint_dir_name,
+        )
 
     def load_checkpoint(self, local_dir: str):
         self.model.load_state_dict(torch.load(os.path.join(local_dir, "model.pt")))
