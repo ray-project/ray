@@ -2336,12 +2336,17 @@ class CompiledDAG:
     def execute(
         self,
         *args,
+        _submit_timeout: Optional[float] = None,
         **kwargs,
     ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
             args: Args to the InputNode.
+            _submit_timeout: The maximum time in seconds to wait for the execution.
+                None means using default timeout (DAGContext.submit_timeout),
+                0 means immediate timeout (immediate success or timeout without
+                blocking), -1 means infinite timeout (block indefinitely).
             kwargs: Kwargs to the InputNode
 
         Returns:
@@ -2349,7 +2354,7 @@ class CompiledDAG:
 
         Raises:
             RayChannelTimeoutError: If the execution does not complete within
-                self._submit_timeout seconds.
+                timeout (_submit_timeout or DAGContext.submit_timeout) seconds.
 
         NOTE: Not thread-safe due to _execution_index etc.
         """
@@ -2374,13 +2379,16 @@ class CompiledDAG:
         # is up to date.
         self._try_release_buffers()
         self._raise_if_too_many_inflight_executions()
+        if _submit_timeout is None:
+            _submit_timeout = self._submit_timeout
         try:
-            self._dag_submitter.write(inp, self._submit_timeout)
+            self._dag_submitter.write(inp, _submit_timeout)
         except RayChannelTimeoutError as e:
             raise RayChannelTimeoutError(
-                "If the execution is expected to take a long time, increase "
-                f"RAY_CGRAPH_submit_timeout which is currently {self._submit_timeout} "
-                "seconds. Otherwise, this may indicate that execution is hanging."
+                f"Timed out after {_submit_timeout} seconds. "
+                "If the execution is expected to take a long time, "
+                f"increase _submit_timeout or RAY_CGRAPH_submit_timeout. "
+                "Otherwise, this may indicate that execution is hanging."
             ) from e
 
         self._execution_index += 1

@@ -1127,6 +1127,16 @@ def test_get_with_zero_timeout(ray_start_regular):
     assert result == 1
 
 
+def test_submit_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(10, _submit_timeout=1)
+    ray.get(ref)
+
+
 def test_dag_exception_basic(ray_start_regular, capsys):
     # Test application throwing exceptions with a single task.
     a = Actor.remote(0)
