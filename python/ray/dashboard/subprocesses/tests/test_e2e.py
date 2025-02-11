@@ -27,6 +27,10 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     Creates a tmpdir to hold the logs.
     """
     yield SubprocessModuleConfig(
+        cluster_id_hex="test_cluster_id",
+        # until we really need one in tests...
+        gcs_address=None,
+        session_name="test_session",
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=tmp_path,
@@ -42,7 +46,7 @@ async def test_handle_can_health_check(default_module_config):
 
     subprocess_handle = SubprocessModuleHandle(loop, TestModule, default_module_config)
     subprocess_handle.start_module()
-    response = await subprocess_handle.health_check()
+    response = await subprocess_handle._health_check()
     assert response.status == 200
     assert response.body == b"ok!"
 
@@ -58,7 +62,14 @@ def test_module_side_handler(default_module_config):
     subprocess.start_module(start_dispatch_parent_bound_messages_thread=False)
     # No parent bound listening thread, manually check the queue.
     subprocess._send_message(
-        RequestMessage(request_id="request_for_test", method_name="test", body=b"")
+        RequestMessage(
+            request_id="request_for_test",
+            method_name="test",
+            query={},
+            headers={},
+            body=b"",
+            match_info={},
+        )
     )
     response = subprocess.parent_bound_queue.get()
     assert isinstance(response, UnaryResponseMessage)
@@ -68,7 +79,12 @@ def test_module_side_handler(default_module_config):
 
     subprocess._send_message(
         RequestMessage(
-            request_id="request_for_echo", method_name="echo", body=b"a new dashboard"
+            request_id="request_for_echo",
+            method_name="echo",
+            query={},
+            headers={},
+            body=b"a new dashboard",
+            match_info={},
         )
     )
     response = subprocess.parent_bound_queue.get()
@@ -79,7 +95,12 @@ def test_module_side_handler(default_module_config):
 
     subprocess._send_message(
         RequestMessage(
-            request_id="request_for_error", method_name="make_error", body=b""
+            request_id="request_for_error",
+            method_name="make_error",
+            query={},
+            headers={},
+            body=b"",
+            match_info={},
         )
     )
     response = subprocess.parent_bound_queue.get()
@@ -206,12 +227,14 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
 
-    response = await client.post("/logging_in_module", data=b"")
+    response = await client.post(
+        "/logging_in_module", data=b"Not all those who wander are lost"
+    )
     assert response.status == 200
     assert await response.text() == "done!"
 
     # Assert the log file name and read the log file
-    log_file_path = default_module_config.log_dir / "dashboard-TestModule.log"
+    log_file_path = default_module_config.log_dir / "dashboard-TestModule-0.log"
     with open(log_file_path, "r") as f:
         log_file_content = f.read()
 
@@ -230,6 +253,43 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     assert all(
         (file_name, content) in matches for (file_name, content) in expected_logs
     ), f"Expected to contain {expected_logs}, got {matches}"
+
+
+async def test_logging_in_module_with_multiple_incarnations(
+    aiohttp_client, default_module_config
+):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.post(
+        "/logging_in_module", data=b"this is from incarnation 0"
+    )
+    assert response.status == 200
+    assert await response.text() == "done!"
+
+    response = await client.post("/kill_self", data=b"")
+    assert response.status == 500
+    assert (
+        await response.text()
+        == "500 Internal Server Error\n\nServer got itself in trouble"
+    )
+
+    response = await client.post(
+        "/logging_in_module", data=b"and this is from incarnation 1"
+    )
+    assert response.status == 200
+    assert await response.text() == "done!"
+
+    # Expect logs from both incarnations.
+    log_file_path = default_module_config.log_dir / "dashboard-TestModule-0.log"
+    with open(log_file_path, "r") as f:
+        log_file_content = f.read()
+    assert "In /logging_in_module, this is from incarnation 0." in log_file_content
+
+    log_file_path = default_module_config.log_dir / "dashboard-TestModule-1.log"
+    with open(log_file_path, "r") as f:
+        log_file_content = f.read()
+    assert "In /logging_in_module, and this is from incarnation 1." in log_file_content
 
 
 if __name__ == "__main__":

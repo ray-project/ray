@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import logging
 import multiprocessing
+import os
 import threading
 from dataclasses import dataclass
 from typing import Awaitable, Optional
@@ -66,6 +67,10 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
+    # Class variable. Force using spawn because Ray C bindings have static variables
+    # that need to be re-initialized for a new process.
+    mp_context = multiprocessing.get_context("spawn")
+
     @dataclass
     class ActiveRequest:
         request: aiohttp.web.Request
@@ -117,30 +122,36 @@ class SubprocessModuleHandle:
             self.incarnation, self.process.pid if self.process else None
         )
 
+    def __del__(self):
+        self.destroy_module(RuntimeError("SubprocessModuleHandle is being deleted"))
+
     def start_module(self, start_dispatch_parent_bound_messages_thread: bool = True):
         """
         Params:
         - start_dispatch_parent_bound_messages_thread: used for testing.
         """
         self.next_request_id = 0
-        self.child_bound_queue = multiprocessing.Queue()
-        self.parent_bound_queue = multiprocessing.Queue()
+        self.child_bound_queue = self.mp_context.Queue()
+        self.parent_bound_queue = self.mp_context.Queue()
         self.active_requests.pop_all()
-        self.process = multiprocessing.Process(
+        self.process = self.mp_context.Process(
             target=run_module,
             args=(
                 self.child_bound_queue,
                 self.parent_bound_queue,
                 self.module_cls,
                 self.config,
+                self.incarnation,
+                os.getpid(),
             ),
             daemon=True,
+            name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
 
         if start_dispatch_parent_bound_messages_thread:
             self.dispatch_parent_bound_messages_thread = threading.Thread(
-                name=f"{self.module_cls.__name__}-dispatch_parent_bound_messages_thread",
+                name=f"{self.module_cls.__name__}-{self.incarnation}-dispatch_parent_bound_messages_thread",
                 target=self.dispatch_parent_bound_messages,
                 daemon=True,
             )
@@ -160,24 +171,31 @@ class SubprocessModuleHandle:
         """
         self.incarnation += 1
         self.next_request_id = 0
-        self.process.terminate()
-        self.process = None
+        if self.process:
+            self.process.kill()
+            self.process.join()
+            self.process = None
 
         for active_request in self.active_requests.pop_all().values():
             active_request.response_fut.set_exception(reason)
-        self.parent_bound_queue.close()
-        self.parent_bound_queue = None
 
-        self.child_bound_queue.close()
-        self.child_bound_queue = None
+        if self.parent_bound_queue:
+            self.parent_bound_queue.close()
+            self.parent_bound_queue = None
+
+        if self.child_bound_queue:
+            self.child_bound_queue.close()
+            self.child_bound_queue = None
 
         # dispatch_parent_bound_messages_thread is daemon so we don't need to join it.
-        self.dispatch_parent_bound_messages_thread = None
+        if self.dispatch_parent_bound_messages_thread:
+            self.dispatch_parent_bound_messages_thread = None
 
-        self.health_check_task.cancel()
-        self.health_check_task = None
+        if self.health_check_task:
+            self.health_check_task.cancel()
+            self.health_check_task = None
 
-    async def health_check(self) -> aiohttp.web.Response:
+    async def _health_check(self) -> aiohttp.web.Response:
         """
         Do internal health check. The module should respond immediately with a 200 OK.
         This can be used to measure module responsiveness in RTT, it also indicates
@@ -193,7 +211,7 @@ class SubprocessModuleHandle:
         Do a health check once. We check for:
         1. if the process exits, it's considered died.
 
-        # TODO(ryw): also do `await self.health_check()` and define a policy to
+        # TODO(ryw): also do `await self._health_check()` and define a policy to
         # determine if the process is dead.
         """
         if self.process.exitcode is not None:
@@ -207,17 +225,20 @@ class SubprocessModuleHandle:
         3. fail all active requests
         4. restart the module
         """
+        incarnation = self.incarnation
         while True:
             try:
                 await self._do_once_health_check()
             except Exception as e:
                 filename = module_logging_filename(
-                    self.module_cls.__name__, self.config.logging_filename
+                    self.module_cls.__name__, incarnation, self.config.logging_filename
                 )
+                if filename is None:
+                    filename = "stderr"
                 logger.exception(
-                    f"Module {self.module_cls.__name__} is unhealthy. Please refer to"
-                    f"{self.config.log_dir}/{filename} "
-                    "for more details. Failing all active requests."
+                    f"Module {self.module_cls.__name__} is unhealthy. Please refer to "
+                    f"{self.config.log_dir}/{filename} for more details. Failing all "
+                    "active requests."
                 )
                 await self.destroy_module(e)
                 self.start_module()
@@ -239,12 +260,24 @@ class SubprocessModuleHandle:
             request=request, response_fut=self.loop.create_future()
         )
         self.active_requests.put_new(request_id, new_active_request)
-        if request is None:
-            body = b""
-        else:
+        body = b""
+        query = {}
+        headers = {}
+        match_info = {}
+        if request is not None:
             body = await request.read()
+            query = dict(request.query)
+            headers = dict(request.headers)
+            match_info = dict(request.match_info)
         self._send_message(
-            RequestMessage(request_id=request_id, method_name=method_name, body=body)
+            RequestMessage(
+                request_id=request_id,
+                method_name=method_name,
+                query=query,
+                headers=headers,
+                body=body,
+                match_info=match_info,
+            )
         )
         return await new_active_request.response_fut
 
