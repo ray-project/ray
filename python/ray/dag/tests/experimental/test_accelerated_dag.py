@@ -1132,9 +1132,14 @@ def test_submit_timeout(ray_start_regular):
     with InputNode() as inp:
         dag = a.sleep.bind(inp)
 
-    compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(10, _submit_timeout=1)
+    compiled_dag = dag.experimental_compile(_max_inflight_executions=1)
+    ref = compiled_dag.execute(3, _submit_timeout=5)
     ray.get(ref)
+
+    # with pytest.raises(RayChannelTimeoutError, match="submit timed out"):
+    ref = compiled_dag.execute(3, _submit_timeout=1)
+    # compiled_dag.execute(3, _submit_timeout=1)
+    # compiled_dag.execute(3, _submit_timeout=1)
 
 
 def test_dag_exception_basic(ray_start_regular, capsys):

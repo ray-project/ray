@@ -2381,6 +2381,7 @@ class CompiledDAG:
         self._raise_if_too_many_inflight_executions()
         if _submit_timeout is None:
             _submit_timeout = self._submit_timeout
+        logger.info(f"Submitting DAG with timeout: {_submit_timeout}")
         try:
             self._dag_submitter.write(inp, _submit_timeout)
         except RayChannelTimeoutError as e:
