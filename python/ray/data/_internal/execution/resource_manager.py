@@ -15,6 +15,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
@@ -24,6 +25,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 DEBUG_RESOURCE_MANAGER = os.environ.get("RAY_DATA_DEBUG_RESOURCE_MANAGER", "0") == "1"
+
+# These are physical operators that must receive all inputs before producing an output.
+BULK_OPERATORS = (AllToAllOperator, ZipOperator)
 
 
 class ResourceManager:
@@ -80,10 +84,10 @@ class ResourceManager:
             # implemented accurate memory accounting.
             should_enable = all(
                 op.implements_accurate_memory_accounting()
-                # AllToAllOperators don't implement accurate memory accounting, but they
+                # Bulk operators don't implement accurate memory accounting, but they
                 # don't launch any tasks until they've materialized all of the inputs,
                 # so resource allocation doesn't really apply.
-                or isinstance(op, AllToAllOperator)
+                or isinstance(op, BULK_OPERATORS)
                 for op in topology
             )
             if should_enable:
@@ -654,13 +658,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # use GPU resources.
             self._op_budgets[op].gpu = float("inf")
 
-        # An all-to-all operator waits for all its input operator’s outputs before
-        # processing data. This often forces the input operator to exceed its object
-        # store memory budget. To prevent deadlock, we disable object store memory
-        # backpressure for the input operator.
+        # A bulk operators like `AllToAllOperator` waits for all its input operator’s
+        # outputs before processing data. This often forces the input operator to exceed
+        # its object store memory budget. To prevent deadlock, we disable object store
+        # memory backpressure for the input operator.
         for op in eligible_ops:
             if any(
-                isinstance(next_op, AllToAllOperator)
+                isinstance(next_op, BULK_OPERATORS)
                 for next_op in op.output_dependencies
             ):
                 self._op_budgets[op].object_store_memory = float("inf")
