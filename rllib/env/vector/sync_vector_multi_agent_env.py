@@ -117,9 +117,17 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
                 if self._autoreset_envs[i]:
                     self._observations[i], self._infos[i] = self.envs[i].reset()
 
-                    # self._rewards[i] = {aid: 0.0 for aid in action}
-                    # self._terminations[i] = {}
-                    # self._truncations[i] = False
+                    self._rewards[i] = {
+                        aid: 0.0 for aid in self.envs[i].unwrapped.possible_agents
+                    }
+                    self._terminations[i] = {
+                        aid: False for aid in self.envs[i].unwrapped.possible_agents
+                    }
+                    self._truncations[i] = {
+                        aid: False for aid in self.envs[i].unwrapped.possible_agents
+                    }
+                    self._terminations[i].update({"__all__": False})
+                    self._truncations[i].update({"__all__": False})
                 else:
                     (
                         self._observations[i],

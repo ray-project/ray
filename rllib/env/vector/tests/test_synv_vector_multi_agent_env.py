@@ -22,7 +22,7 @@ gym.register(
 
 env = make_vec(
     "rllib-multi-agent-env-v0",
-    num_envs=2,
+    num_envs=1,
     vectorization_mode="sync",
     vector_kwargs={"copy": True},
 )
@@ -48,5 +48,8 @@ for i in range(200):
     ) = env.step(actions)
 
     print(obs)
+
+    if any((t["__all__"] for t in terminateds) or (t["__all__"] for t in truncateds)):
+        print(f"Env.that terminated: {env.envs[0]}")
 
 env.close()
