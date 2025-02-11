@@ -17,7 +17,7 @@
 #include "gmock/gmock.h"
 #include "mock/ray/raylet/local_task_manager.h"
 #include "mock/ray/raylet/worker_pool.h"
-#include "src/ray/raylet/test/util.h"
+#include "ray/raylet/test/util.h"
 
 namespace ray::raylet {
 namespace {
