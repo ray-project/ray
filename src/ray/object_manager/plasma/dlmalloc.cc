@@ -151,7 +151,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   }
 
   file_template += "/plasmaXXXXXX";
-  RAY_LOG(INFO) << "create_and_mmap_buffer(" << size << ", " << file_template << ")";
+  RAY_LOG(DEBUG) << "create_and_mmap_buffer(" << size << ", " << file_template << ")";
   std::vector<char> file_name(file_template.begin(), file_template.end());
   file_name.push_back('\0');
   *fd = mkstemp(&file_name[0]);

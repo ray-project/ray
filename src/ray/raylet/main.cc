@@ -169,8 +169,6 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
-  RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
-  const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
@@ -201,8 +199,11 @@ int main(int argc, char *argv[]) {
 
   RAY_CHECK_NE(FLAGS_cluster_id, "") << "Expected cluster ID.";
   ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
-  RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
+  RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
+  ray::NodeID node_id = ray::NodeID::FromHex(FLAGS_node_id);
   gflags::ShutDownCommandLineFlags();
+
+  RAY_LOG(INFO).WithField(node_id).WithField(cluster_id) << "Raylet starting up.";
 
   // Setup cgroup preparation if specified.
   // TODO(hjiang): Depends on
@@ -259,7 +260,7 @@ int main(int argc, char *argv[]) {
 #endif
   };
 
-  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
+  auto shutdown_triggered = std::make_shared<std::atomic<bool>>(false);
 
   auto shutdown_raylet_after_unregistration =
       [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
@@ -274,19 +275,18 @@ int main(int argc, char *argv[]) {
   // Shut down raylet gracefully, in a synchronous fashion.
   // This is an internal method and should only be run on the main_service.
   auto shutdown_raylet_gracefully_internal =
-      [&raylet, shutted_down, shutdown_raylet_after_unregistration](
+      [&raylet, shutdown_triggered, shutdown_raylet_after_unregistration](
           const ray::rpc::NodeDeathInfo &node_death_info) {
         // Make the shutdown method idempotent since graceful shutdown can be triggered
         // by many places.
-        if (*shutted_down) {
+        if (*shutdown_triggered) {
           RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring this request.";
           return;
         }
         RAY_LOG(INFO) << "Raylet graceful shutdown triggered, reason = "
                       << NodeDeathInfo_Reason_Name(node_death_info.reason()) << ", "
                       << "reason message = " << node_death_info.reason_message();
-        RAY_LOG(INFO) << "Shutting down...";
-        *shutted_down = true;
+        *shutdown_triggered = true;
 
         raylet->UnregisterSelf(node_death_info, shutdown_raylet_after_unregistration);
       };
@@ -445,13 +445,10 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
-        RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
-
-        node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
+        node_manager_config.AddDefaultLabels(node_id.Hex());
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,
-                                                       raylet_node_id,
+                                                       node_id,
                                                        raylet_socket_name,
                                                        node_ip_address,
                                                        node_name,
@@ -467,7 +464,7 @@ int main(int argc, char *argv[]) {
           const std::vector<ray::SourceTypeVariant> source_types = {
               ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
           ray::RayEventInit(source_types,
-                            {{"node_id", raylet->GetNodeId().Hex()}},
+                            {{"node_id", node_id.Hex()}},
                             log_dir,
                             RayConfig::instance().event_level(),
                             RayConfig::instance().emit_event_to_log_file());
