@@ -133,6 +133,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "scoped_env_setter",
+    hdrs = ["scoped_env_setter.h"],
+    srcs = ["scoped_env_setter.cc"],
+    deps = [
+        ":util",
+    ],
+)
+
+ray_cc_library(
     name = "timestamp_utils",
     hdrs = ["timestamp_utils.h"],
 )
@@ -282,6 +291,16 @@ ray_cc_library(
 ray_cc_library(
     name = "spdlog_fd_sink",
     hdrs = ["spdlog_fd_sink.h"],
+    deps = [
+        ":compat",
+        ":util",
+        "@com_github_spdlog//:spdlog",
+    ],
+)
+
+ray_cc_library(
+    name = "spdlog_newliner_sink",
+    hdrs = ["spdlog_newliner_sink.h"],
     deps = [
         ":compat",
         ":util",
