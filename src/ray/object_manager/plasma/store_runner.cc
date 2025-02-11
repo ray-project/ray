@@ -7,6 +7,8 @@
 #include <unistd.h>
 #endif
 
+#include <iomanip>
+
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/util/thread_utils.h"
@@ -30,8 +32,6 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
   if (system_memory == -1) {
     RAY_LOG(FATAL) << "please specify the amount of system memory with -m switch";
   }
-  RAY_LOG(INFO) << "Allowing the Plasma store to use up to "
-                << static_cast<double>(system_memory) / 1000000000 << "GB of memory.";
   if (hugepages_enabled && plasma_directory.empty()) {
     RAY_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
                       "filesystem with -d";
@@ -46,9 +46,13 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
   if (fallback_directory.empty()) {
     fallback_directory = "/tmp";
   }
-  RAY_LOG(INFO) << "Starting object store with directory " << plasma_directory
-                << ", fallback " << fallback_directory << ", and huge page support "
-                << (hugepages_enabled ? "enabled" : "disabled");
+  double max_capacity = static_cast<double>(system_memory) / 1000000000;
+  RAY_LOG(INFO) << "Starting object store"
+                << " (dir=" << plasma_directory
+                << ", fallback_dir=" << fallback_directory
+                << ", max_capacity=" << std::setprecision(3) << max_capacity << "GB"
+                << ", hugepages=" << (hugepages_enabled ? "enabled" : "disabled")
+                << ")";
 #ifdef __linux__
   if (!hugepages_enabled) {
     // On Linux, check that the amount of memory available in /dev/shm is large

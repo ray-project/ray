@@ -293,7 +293,6 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
-  RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       io_service,
       scheduling::NodeID(self_node_id_.Binary()),
