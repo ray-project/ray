@@ -280,9 +280,13 @@ class Preprocessor(abc.ABC):
     def _derive_and_validate_output_columns(
         self, columns: List[str], output_columns: Optional[List[str]]
     ) -> List[str]:
-        """
-        Returns the output columns, checking if they are explicitely set, otherwise defaulting to
-        the input columns. Throws an error when the length of the output columns does not match the
+        """Returns the output columns after validation. 
+        
+        Checks if the columns are explicitly set, otherwise defaulting to
+        the input columns. 
+        
+        Raises:
+            ValueError if the length of the output columns does not match the
         length of the input columns.
         """
 
