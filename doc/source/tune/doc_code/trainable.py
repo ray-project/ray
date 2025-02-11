@@ -8,7 +8,7 @@ def objective(x, a, b):
 # fmt: on
 
 # __function_api_report_intermediate_metrics_start__
-from ray import train, tune
+from ray import tune
 
 
 def trainable(config: dict):
@@ -23,7 +23,7 @@ results = tuner.fit()
 # __function_api_report_intermediate_metrics_end__
 
 # __function_api_report_final_metrics_start__
-from ray import train, tune
+from ray import tune
 
 
 def trainable(config: dict):
@@ -50,7 +50,7 @@ def trainable(config: dict):
 # fmt: on
 
 # __class_api_example_start__
-from ray import train, tune
+from ray import tune
 
 
 class Trainable(tune.Trainable):
@@ -68,10 +68,10 @@ class Trainable(tune.Trainable):
 
 tuner = tune.Tuner(
     Trainable,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         # Train for 20 steps
         stop={"training_iteration": 20},
-        checkpoint_config=train.CheckpointConfig(
+        checkpoint_config=tune.CheckpointConfig(
             # We haven't implemented checkpointing yet. See below!
             checkpoint_at_end=False
         ),

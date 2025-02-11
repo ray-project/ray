@@ -13,8 +13,7 @@ This simple callback just prints a metric each time a result is received:
 
 .. code-block:: python
 
-    from ray import train, tune
-    from ray.train import RunConfig
+    from ray import tune
     from ray.tune import Callback
 
 
@@ -30,7 +29,7 @@ This simple callback just prints a metric each time a result is received:
 
     tuner = tune.Tuner(
         train_fn,
-        run_config=RunConfig(callbacks=[MyCallback()]))
+        run_config=tune.RunConfig(callbacks=[MyCallback()]))
     tuner.fit()
 
 For more details and available hooks, please :ref:`see the API docs for Ray Tune callbacks <tune-callbacks-docs>`.

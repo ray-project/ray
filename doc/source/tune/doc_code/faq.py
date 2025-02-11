@@ -2,7 +2,7 @@
 
 # __reproducible_start__
 import numpy as np
-from ray import train, tune
+from ray import tune
 
 
 def train_func(config):
@@ -208,7 +208,7 @@ if __name__ == "__main__":
 # __torch_seed_example_end__
 
 # __large_data_start__
-from ray import train, tune
+from ray import tune
 import numpy as np
 
 
@@ -244,9 +244,7 @@ tuner.fit()
 # num_samples=10 repeats the 3x3 grid search 10 times, for a total of 90 trials
 tuner = tune.Tuner(
     train_fn,
-    run_config=train.RunConfig(
-        name="my_trainable",
-    ),
+    run_config=tune.RunConfig(name="my_trainable"),
     param_space={
         "alpha": tune.uniform(100, 200),
         "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
@@ -255,9 +253,7 @@ tuner = tune.Tuner(
             tune.grid_search([16, 64, 256]),
         ],
     },
-    tune_config=tune.TuneConfig(
-        num_samples=10,
-    ),
+    tune_config=tune.TuneConfig(num_samples=10),
 )
 # __grid_search_2_end__
 

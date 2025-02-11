@@ -88,11 +88,11 @@ All we need to do is **set the shared network filesystem as the path to save res
 
 .. code-block:: python
 
-    from ray import train, tune
+    from ray import tune
 
     tuner = tune.Tuner(
         trainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="experiment_name",
             storage_path="/mnt/path/to/shared/storage/",
         )
@@ -118,11 +118,10 @@ unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.tra
 .. code-block:: python
 
     from ray import tune
-    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,
-        run_config=RunConfig(
+        run_config=tune.RunConfig(
             storage_path="/tmp/custom/storage/path",
             name="experiment_name",
         )
@@ -166,20 +165,20 @@ that implements saving and loading checkpoints.
 
     import os
     import ray
-    from ray import train, tune
+    from ray import tune
     from your_module import my_trainable
 
 
     tuner = tune.Tuner(
         my_trainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             # Name of your experiment
             name="my-tune-exp",
             # Configure how experiment data and checkpoints are persisted.
             # We recommend cloud storage checkpointing as it survives the cluster when
             # instances are terminated and has better performance.
             storage_path="s3://my-checkpoints-bucket/path/",
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 # We'll keep the best five checkpoints at all times
                 # (with the highest AUC scores, a metric reported by the trainable)
                 checkpoint_score_attribute="max-auc",

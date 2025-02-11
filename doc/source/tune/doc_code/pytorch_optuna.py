@@ -79,7 +79,7 @@ class ConvNet(nn.Module):
 
 # __pytorch_optuna_start__
 import torch
-from ray import train, tune
+from ray import tune
 from ray.tune.search.optuna import OptunaSearch
 
 
@@ -106,7 +106,7 @@ tuner = tune.Tuner(  # <3>
         mode="max",
         search_alg=algo,
     ),
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop={"training_iteration": 5},
     ),
     param_space=search_space,

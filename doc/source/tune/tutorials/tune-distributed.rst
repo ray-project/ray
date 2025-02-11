@@ -108,12 +108,12 @@ reduce synchronization overhead. For this, you just have to specify a remote ``s
 
 .. code-block:: python
 
-    from ray import train, tune
+    from ray import tune
     from my_module import my_trainable
 
     tuner = tune.Tuner(
         my_trainable,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="experiment_name",
             storage_path="s3://bucket-name/sub-path/",
         )

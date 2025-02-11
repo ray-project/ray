@@ -5,7 +5,7 @@ import os
 import torch
 from torch import nn
 
-from ray import train, tune
+from ray import tune
 
 
 class MyTrainableClass(tune.Trainable):
@@ -30,9 +30,9 @@ class MyTrainableClass(tune.Trainable):
 tuner = tune.Tuner(
     MyTrainableClass,
     param_space={"input_size": 64},
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop={"training_iteration": 2},
-        checkpoint_config=train.CheckpointConfig(checkpoint_frequency=2),
+        checkpoint_config=tune.CheckpointConfig(checkpoint_frequency=2),
     ),
 )
 tuner.fit()
@@ -63,9 +63,9 @@ def train_func(self):
 
 tuner = tune.Tuner(
     MyTrainableClass,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop={"training_iteration": 2},
-        checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10),
+        checkpoint_config=tune.CheckpointConfig(checkpoint_frequency=10),
     ),
 )
 tuner.fit()
@@ -76,9 +76,9 @@ tuner.fit()
 # __class_api_end_checkpointing_start__
 tuner = tune.Tuner(
     MyTrainableClass,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop={"training_iteration": 2},
-        checkpoint_config=train.CheckpointConfig(
+        checkpoint_config=tune.CheckpointConfig(
             checkpoint_frequency=10, checkpoint_at_end=True
         ),
     ),
@@ -100,15 +100,15 @@ class MyModel:
 import os
 import tempfile
 
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 
 
 def train_func(config):
     start = 1
     my_model = MyModel()
 
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             checkpoint_dict = torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
