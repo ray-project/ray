@@ -37,11 +37,19 @@ class ChatTemplateUDF(StatefulStageUDF):
         Yields:
             A generator of rows with the chat template applied.
         """
-        prompts = self.tokenizer.apply_chat_template(
-            [row["messages"].tolist() for row in batch],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        all_messages = [row["messages"].tolist() for row in batch]
+        prompts = []
+        for conversation in all_messages:
+            # Add generation prompt only if the last message is 'user'.
+            # This is useful in cases where the user provides an assistant prefill message.
+            add_generation_prompt = conversation[-1]["role"] == "user"
+            prompts.append(
+                self.tokenizer.apply_chat_template(
+                    conversation,
+                    tokenize=False,
+                    add_generation_prompt=add_generation_prompt,
+                )
+            )
         assert len(batch) == len(prompts)
 
         for row, prompt in zip(batch, prompts):
