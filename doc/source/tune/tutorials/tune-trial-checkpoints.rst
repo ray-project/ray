@@ -100,7 +100,7 @@ If you want a checkpoint to be created at the end of a trial, you can additional
 
 Configurations
 --------------
-Checkpointing can be configured through :class:`CheckpointConfig <ray.train.CheckpointConfig>`.
+Checkpointing can be configured through :class:`CheckpointConfig <ray.tune.CheckpointConfig>`.
 Some of the configurations do not apply to Function Trainable API, since checkpointing frequency
 is determined manually within the user-defined training loop. See the compatibility matrix below.
 

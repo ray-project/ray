@@ -291,7 +291,7 @@ Ray Train provides a {class}`Checkpoint <ray.train.Checkpoint>` API for that pur
 
 In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `tune.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](tune-analysis-guide).
 
-Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.train.CheckpointConfig`) and more.
+Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.tune.CheckpointConfig`) and more.
 
 ```{note}
 The experiment state itself is checkpointed separately. See {ref}`tune-persisted-experiment-data` for more details.
