@@ -61,13 +61,15 @@ std::string GetUserTempDir() {
 StatusOr<std::string> ReadEntireFile(const std::string &fname) {
   std::ifstream file(fname);
   if (!file.good()) {
-    return Status::IOError("") << "Fails to open file " << fname;
+    return Status::IOError("") << "Failed to open file " << fname << " because "
+                               << strerror(errno);
   }
 
   std::ostringstream buffer;
   buffer << file.rdbuf();
   if (!file.good()) {
-    return Status::IOError("") << "Fails to read from file " << fname;
+    return Status::IOError("") << "Failed to read from file " << fname << " because "
+                               << strerror(errno);
   }
 
   std::string content = buffer.str();
