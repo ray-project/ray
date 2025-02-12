@@ -9,7 +9,6 @@ import pytest
 
 import ray
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -24,7 +23,6 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -46,7 +44,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     Project,
 )
-from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
+from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import (
     PhysicalOptimizer,
@@ -566,84 +564,6 @@ def test_repartition_e2e(
     assert ds.sum() == sum(range(10))
     assert ds._block_num_rows() == [10], ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
-
-
-@pytest.mark.parametrize("preserve_order", (True, False))
-def test_union_operator(ray_start_regular_shared_2_cpus, preserve_order):
-    ctx = DataContext.get_current()
-
-    planner = Planner()
-    read_parquet_op1 = get_parquet_read_logical_op()
-    read_parquet_op2 = get_parquet_read_logical_op()
-    read_parquet_op3 = get_parquet_read_logical_op()
-    union_op = Union(
-        read_parquet_op1,
-        read_parquet_op2,
-        read_parquet_op3,
-    )
-    plan = LogicalPlan(union_op, ctx)
-    physical_op = planner.plan(plan).dag
-
-    assert union_op.name == "Union"
-    assert isinstance(physical_op, UnionOperator)
-    assert len(physical_op.input_dependencies) == 3
-    for input_op in physical_op.input_dependencies:
-        assert isinstance(input_op, MapOperator)
-
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
-
-    # Check that the linked logical operator is the same the input op.
-    assert physical_op._logical_operators == [union_op]
-
-
-@pytest.mark.parametrize("preserve_order", (True, False))
-def test_union_e2e(ray_start_regular_shared_2_cpus, preserve_order):
-    execution_options = ExecutionOptions(preserve_order=preserve_order)
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options = execution_options
-
-    ds = ray.data.range(20, override_num_blocks=10)
-
-    # Test lazy union.
-    ds = ds.union(ds, ds, ds, ds)
-    assert ds._plan.initial_num_blocks() == 50
-    assert ds.count() == 100
-    assert ds.sum() == 950
-    _check_usage_record(["ReadRange", "Union"])
-    ds_result = [{"id": i} for i in range(20)] * 5
-    if preserve_order:
-        assert ds.take_all() == ds_result
-
-    ds = ds.union(ds)
-    assert ds.count() == 200
-    assert ds.sum() == (950 * 2)
-    _check_usage_record(["ReadRange", "Union"])
-    if preserve_order:
-        assert ds.take_all() == ds_result * 2
-
-    # Test materialized union.
-    ds2 = ray.data.from_items([{"id": i} for i in range(1, 5 + 1)])
-    assert ds2.count() == 5
-    assert ds2.sum() == 15
-    _check_usage_record(["FromItems"])
-
-    ds2 = ds2.union(ds2)
-    assert ds2.count() == 10
-    assert ds2.sum() == 30
-    _check_usage_record(["FromItems", "Union"])
-    ds2_result = ([{"id": i} for i in range(1, 5 + 1)]) * 2
-    if preserve_order:
-        assert ds2.take_all() == ds2_result
-
-    ds2 = ds2.union(ds)
-    assert ds2.count() == 210
-    assert ds2.sum() == (950 * 2 + 30)
-    _check_usage_record(["FromItems", "Union"])
-    if preserve_order:
-        assert ds2.take_all() == (ds2_result + ds_result * 2)
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
