@@ -147,7 +147,9 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the autoscaler infeasible request resource shapes for each node.
-  /// \return A map of node id to the corresponding infeasible resource requests shapes.
+  /// \return An optional value of a map of node id to the corresponding infeasible
+  ///         resource requests shapes. The optional value is empty if there is no
+  ///         autoscaling state.
   ///
   /// The function takes the infeasible requests from `autoscaling_state_` and maps the
   /// corresponding resource shapes to the ResourceLoad of each node in

@@ -156,8 +156,8 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
 }
 
 template <class K, class V>
-inline bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
-                     const ::google::protobuf::Map<K, V> &rhs) {
+bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
+              const ::google::protobuf::Map<K, V> &rhs) {
   if (lhs.size() != rhs.size()) {
     return false;
   }
