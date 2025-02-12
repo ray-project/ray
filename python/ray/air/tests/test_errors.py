@@ -30,7 +30,6 @@ from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster
 from ray.core.generated import autoscaler_pb2
 from ray.tests.conftest import *  # noqa
-from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.trainer import BaseTrainer, TrainingFailedError
@@ -99,7 +98,7 @@ class FailingTrainer(BaseTrainer):
 def passing_fn(config):
     # Trigger all the driver events (on_checkpoint, on_trial_save, etc.)
     with TemporaryDirectory() as tmpdir:
-        train.report({"score": 1}, checkpoint=Checkpoint.from_directory(tmpdir))
+        train.report({"score": 1}, checkpoint=train.Checkpoint.from_directory(tmpdir))
 
 
 def failing_fn(config):
@@ -232,12 +231,12 @@ def test_preemption_handling(
     def launch_training():
         trainer = DataParallelTrainer(
             train_loop_per_worker=train_fn,
-            scaling_config=ScalingConfig(
+            scaling_config=train.ScalingConfig(
                 num_workers=num_workers,
                 trainer_resources={"coordinator": 1},
                 resources_per_worker={"cpu": 1},  # worker2 and worker3
             ),
-            run_config=RunConfig(
+            run_config=train.RunConfig(
                 storage_path=str(tmp_path),
                 name="test_preemption_error",
                 failure_config=train.FailureConfig(fail_fast=False, max_failures=0),
