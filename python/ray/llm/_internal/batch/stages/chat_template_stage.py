@@ -78,7 +78,3 @@ class ChatTemplateStage(StatefulStage):
     """
 
     fn: StatefulStageUDF = ChatTemplateUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )

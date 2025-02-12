@@ -1,3 +1,5 @@
+from typing import Optional
+from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.processor import (
     ProcessorConfig as _ProcessorConfig,
     Processor,
@@ -105,20 +107,31 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
 
 
 @PublicAPI(stability="alpha")
-def build_llm_processor(config: ProcessorConfig, **kwargs) -> Processor:
+def build_llm_processor(
+    config: ProcessorConfig,
+    preprocess: Optional[UserDefinedFunction] = None,
+    postprocess: Optional[UserDefinedFunction] = None,
+) -> Processor:
     """Build a LLM processor using the given config.
 
     Args:
         config: The processor config.
-        **kwargs: Additional keyword arguments to pass to the processor.
-            See `Processor` for argument details.
+        preprocess: An optional lambda function that takes a row (dict) as input
+            and returns a preprocessed row (dict). The output row must contain the
+            required fields for the following processing stages.
+        postprocess: An optional lambda function that takes a row (dict) as input
+            and returns a postprocessed row (dict).
 
     Returns:
         The built processor.
     """
     from ray.llm._internal.batch.processor import ProcessorBuilder
 
-    return ProcessorBuilder.build(config, **kwargs)
+    return ProcessorBuilder.build(
+        config,
+        preprocess=preprocess,
+        postprocess=postprocess,
+    )
 
 
 __all__ = [

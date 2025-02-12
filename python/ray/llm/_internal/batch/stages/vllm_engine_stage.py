@@ -5,6 +5,7 @@ import logging
 import math
 import time
 import uuid
+from enum import Enum
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple
@@ -21,6 +22,16 @@ vllm = try_import("vllm")
 
 
 logger = logging.getLogger(__name__)
+
+
+class vLLMTaskType(str, Enum):
+    """The type of task to run on the vLLM engine."""
+
+    """Generate text."""
+    GENERATE = "generate"
+
+    """Generate embeddings."""
+    EMBED = "embed"
 
 
 class vLLMEngineRequest(BaseModel):
@@ -112,13 +123,16 @@ class vLLMEngineWrapper:
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.get("task", "generate")
+        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+
+        # Convert the task type back to a string to pass to the engine.
+        kwargs["task"] = self.task_type.value
 
         if vllm is None:
             raise ImportError("vLLM is not installed")
 
         # Construct PoolerConfig if override_pooler_config is specified.
-        if self.task_type == "embed" and "override_pooler_config" in kwargs:
+        if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
                 **kwargs["override_pooler_config"]
             )
@@ -166,12 +180,12 @@ class vLLMEngineWrapper:
         else:
             image = []
 
-        if self.task_type == "generate":
+        if self.task_type == vLLMTaskType.GENERATE:
             params = vllm.SamplingParams(**row.pop("sampling_params"))
-        elif self.task_type == "embed":
+        elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams()
         else:
-            raise ValueError("Unsupported task type: %s", self.task_type)
+            raise ValueError(f"Unsupported task type: {self.task_type}")
 
         request = vLLMEngineRequest(
             request_id=self.request_id,
@@ -304,7 +318,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         data_column: str,
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: str = "generate",
+        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
     ):
         """
@@ -344,7 +358,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: str,
+        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -369,6 +383,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         # Override the task if it is different from the stage.
         task = engine_kwargs.get("task", task_type)
+        task = vLLMTaskType(task) if isinstance(task, str) else task
         if task != task_type:
             logger.warning(
                 "The task set in engine kwargs (%s) is different from the "
@@ -422,7 +437,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         """The expected input keys."""
 
         ret = ["prompt"]
-        if self.task_type == "generate":
+        if self.task_type == vLLMTaskType.GENERATE:
             ret.append("sampling_params")
         return ret
 
@@ -465,10 +480,6 @@ class vLLMEngineStage(StatefulStage):
     """
 
     fn: StatefulStageUDF = vLLMEngineStageUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
 
     @root_validator(pre=True)
     def post_init(cls, values):

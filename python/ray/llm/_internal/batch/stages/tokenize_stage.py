@@ -58,10 +58,6 @@ class TokenizeStage(StatefulStage):
     """
 
     fn: StatefulStageUDF = TokenizeUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
 
 
 class DetokenizeUDF(StatefulStageUDF):
@@ -116,7 +112,3 @@ class DetokenizeStage(StatefulStage):
     """
 
     fn: StatefulStageUDF = DetokenizeUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )

@@ -57,7 +57,7 @@ class Processor:
     # The internal used data column name ("__data"). Your input
     # dataset should not contain this column. If you want to use this column
     # in your input dataset, you have to derive and customize Processor.
-    data_column: str = "__data"
+    DATA_COLUMN: str = "__data"
 
     def __init__(
         self,
@@ -74,13 +74,13 @@ class Processor:
         if preprocess is not None:
             self.preprocess = wrap_preprocess(
                 preprocess,
-                self.data_column,
+                self.DATA_COLUMN,
             )
 
         if postprocess is not None:
             self.postprocess = wrap_postprocess(
                 postprocess,
-                self.data_column,
+                self.DATA_COLUMN,
             )
 
         for stage in stages:
@@ -104,7 +104,7 @@ class Processor:
         for stage in self.stages.values():
             kwargs = stage.get_dataset_map_batches_kwargs(
                 batch_size=self.config.batch_size,
-                data_column=self.data_column,
+                data_column=self.DATA_COLUMN,
             )
             dataset = dataset.map_batches(stage.fn, **kwargs)
 
