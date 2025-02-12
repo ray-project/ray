@@ -1,5 +1,10 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
+
+# Provides users an option to turn on strict action env.
+# TODO(aslonnie): make this default; fix the python tests..
+build:strict --incompatible_strict_action_env
+
 ###############################################################################
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
