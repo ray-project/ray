@@ -287,8 +287,7 @@ def _infer_pyarrow_type_from_datetime_dtype(dtype: np.dtype) -> pa.TimestampType
     else:
         arrow_timestamp_unit = numpy_precision
 
-    # NumPy datetime64 always uses UTC timezone.
-    return pa.timestamp(arrow_timestamp_unit, tz="UTC")
+    return pa.timestamp(arrow_timestamp_unit)
 
 
 @DeveloperAPI
