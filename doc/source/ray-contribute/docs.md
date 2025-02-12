@@ -257,7 +257,7 @@ top of this page to get the `.ipynb` file) and start modifying it.
 All the example notebooks in Ray Tune get automatically tested by our CI system, provided you place them in the
 [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples).
 If you have questions about how to test your notebook when contributing to other Ray sub-projects, please make
-sure to ask a question in [the Ray community Slack](https://forms.gle/9TSdDYUgxYs8SA9e8) or directly on GitHub,
+sure to ask a question in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub,
 when opening your pull request.
 
 To work off of an existing example, you could also have a look at the
