@@ -16,6 +16,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
         build_type: Optional[str] = None,
+        install_mask: Optional[str] = None,
         tmp_filesystem: Optional[str] = None,
     ) -> None:
         LinuxContainer.__init__(
@@ -38,4 +39,5 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
             shard_ids=shard_ids,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            install_mask=install_mask,
         )

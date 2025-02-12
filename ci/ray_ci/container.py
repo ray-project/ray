@@ -86,7 +86,9 @@ class Container(abc.ABC):
         return f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-{self.docker_tag}"
 
     @abc.abstractmethod
-    def install_ray(self, build_type: Optional[str] = None) -> None:
+    def install_ray(
+        self, build_type: Optional[str] = None, masks: Optional[str] = None
+    ) -> None:
         """
         Build and install ray in container
         :param build_type: opt, asan, tsan, etc.
