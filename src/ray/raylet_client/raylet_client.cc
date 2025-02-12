@@ -195,11 +195,13 @@ Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<protocol::WaitReply>(reply.data());
   auto found = reply_message->found();
+  result->first.reserve(found->size());
   for (size_t i = 0; i < found->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
     result->first.push_back(object_id);
   }
   auto remaining = reply_message->remaining();
+  result->second.reserve(remaining->size());
   for (size_t i = 0; i < remaining->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
     result->second.push_back(object_id);
