@@ -6,7 +6,10 @@ import os
 import tempfile
 
 from ray import tune
+<<<<<<< HEAD
 from ray.tune import Checkpoint
+=======
+>>>>>>> b4813d1d6a (FailureConfig)
 
 
 def trainable(config):
@@ -28,7 +31,7 @@ def trainable(config):
                 json.dump({"epoch": epoch}, f)
             tune.report(
                 {"epoch": epoch},
-                checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+                checkpoint=tune.Checkpoint.from_directory(temp_checkpoint_dir),
             )
 
 

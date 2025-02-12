@@ -150,7 +150,7 @@ Use the ``TuneConfig(time_budget_s)`` configuration to tell Tune to stop the exp
 Stop on trial failures
 ----------------------
 
-In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the :class:`ray.train.FailureConfig` class.
+In addition to stopping trials based on their performance, you can also stop the entire experiment if any trial encounters a runtime error. To do this, you can use the :class:`ray.tune.FailureConfig` class.
 
 With this configuration, if any trial encounters an error, the entire experiment will stop immediately.
 

@@ -189,10 +189,10 @@ Trial-level fault tolerance deals with individual trial failures in the cluster,
 - Ephemeral network connection issues.
 - Nodes running out of memory or out of disk space.
 
-Ray Tune provides a way to configure failure handling of individual trials with the :class:`~ray.train.FailureConfig`.
+Ray Tune provides a way to configure failure handling of individual trials with the :class:`~ray.tune.FailureConfig`.
 
 Assuming that we're using the ``trainable`` from the previous example that implements
-trial checkpoint saving and loading, here is how to configure :class:`~ray.train.FailureConfig`:
+trial checkpoint saving and loading, here is how to configure :class:`~ray.tune.FailureConfig`:
 
 .. literalinclude:: /tune/doc_code/fault_tolerance.py
     :language: python

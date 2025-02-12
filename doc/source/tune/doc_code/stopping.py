@@ -2,8 +2,8 @@
 
 # fmt: off
 # __stopping_example_trainable_start__
-from ray import train
-
+from ray import tune
+import time
 
 def my_trainable(config):
     i = 1
