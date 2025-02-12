@@ -56,11 +56,12 @@ class MetricsAgentClientImpl : public MetricsAgentClient {
         address, port, client_call_manager_);
   };
 
-  VOID_RPC_CLIENT_METHOD(ReporterService,
-                         ReportOCMetrics,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  VOID_RPC_CLIENT_METHOD(
+      ReporterService,
+      ReportOCMetrics,
+      grpc_client_,
+      /*method_timeout_ms*/ RayConfig::instance().metrics_report_rpc_timeout_ms(),
+      override)
 
  private:
   /// Call Manager for gRPC client.

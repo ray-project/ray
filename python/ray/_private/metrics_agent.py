@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 from collections import namedtuple
-from typing import List, Tuple, Any, Dict, Set
+from typing import List, Tuple, Any, Dict, Set, Optional
 
 from prometheus_client.core import (
     CounterMetricFamily,
@@ -273,7 +273,7 @@ class OpenCensusProxyCollector:
         # See https://github.com/ray-project/ray/pull/43795.
         self._export_counter_as_gauge = env_bool("RAY_EXPORT_COUNTER_AS_GAUGE", True)
 
-    def record(self, metrics: List[Metric], worker_id_hex: str = None):
+    def record(self, metrics: List[Metric], worker_id_hex: Optional[str] = None):
         """Record the metrics reported from the component that reports it.
 
         Args:
@@ -557,7 +557,9 @@ class MetricsAgent:
         # NOTE: When we record this metric, timestamp will be renewed.
         measurement_map.record(tag_map)
 
-    def proxy_export_metrics(self, metrics: List[Metric], worker_id_hex: str = None):
+    def proxy_export_metrics(
+        self, metrics: List[Metric], worker_id_hex: Optional[str] = None
+    ):
         """Proxy export metrics specified by a Opencensus Protobuf.
 
         This API is used to export metrics emitted from
