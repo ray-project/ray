@@ -67,6 +67,8 @@ class ListifyDataForVectorEnv(ConnectorV2):
                     assert len(value) == 1
                     eps_id, agent_id, module_id = key
                     # Get the episode index that corresponds to the ID in the batch.
+                    # Note, the order in the `EnvRunner`s episode list needs to be
+                    # kept for each batch column.
                     eps_index = next(
                         (i for i, eps in enumerate(episodes) if eps.id_ == eps_id), 0
                     )

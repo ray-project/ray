@@ -343,8 +343,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             call_on_episode_start = set()
             extra_model_outputs = defaultdict(dict)
+            # Store the data from the last environment step into the
+            # episodes for all sub-envrironments.
             for env_index in range(self.num_envs):
-
+                # `to_env` returns a dictionary with column keys and
+                # (AgentID, value) tuple values.
                 for col, ma_dict_list in to_env.items():
                     ma_dict = ma_dict_list[env_index]
                     for agent_id, val in ma_dict.items():
@@ -357,20 +360,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Episode has no data in it yet -> Was just reset and needs to be called
                 # with its `add_env_reset()` method.
                 if not self._episodes[env_index].is_reset:
-                    try:
-                        episodes[env_index].add_env_reset(
-                            observations=observations[env_index],
-                            infos=infos[env_index],
-                        )
-                    except:
-                        print(
-                            f"Something went wrong. Observations are: {observations[env_index]}"
-                        )
-                        agent_spaces = {
-                            eps.observation_space
-                            for eps in episodes[env_index].agent_episodes.values
-                        }
-                        print(f"Agent observations spaces: {agent_spaces}")
+                    # Add the reset step data to the episode.
+                    episodes[env_index].add_env_reset(
+                        observations=observations[env_index],
+                        infos=infos[env_index],
+                    )
+                    # Call the callback on episode start so users can hook in.
                     call_on_episode_start.add(env_index)
 
                 # Call `add_env_step()` method on episode.
@@ -380,8 +375,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     ts += self._increase_sampled_metrics(
                         1, observations[env_index], episodes[env_index]
                     )
-                    if any(any(term.values()) for term in terminateds) or any(any(trunc.values()) for trunc in truncateds):
-                        print("One is done.")
                     episodes[env_index].add_env_step(
                         observations=observations[env_index],
                         actions=actions[env_index],
@@ -423,8 +416,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # env_to_module pipeline here.
 
                     # Make the `on_episode_end` callbacks (before finalizing the episode
-                    # object).
-                    # TODO (simon): Check, if we need to pass only the episode that's done.
+                    # object).                    
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
@@ -462,9 +454,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
                 for eps in self._episodes
             ]
-
-            if any(len(eps.agent_episodes) < 2 for eps in ongoing_episodes_continuations):
-                print("ongoing")
+            
             for eps in self._episodes:
                 # Just started Episodes do not have to be returned. There is no data
                 # in them anyway.
@@ -485,8 +475,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
-
-        # self._increase_sampled_metrics(ts, len(done_episodes_to_return))
 
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
@@ -884,7 +872,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
             self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="sum")
 
-        # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+        # Record agent and module metrics.        
         for aid in next_obs:
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_SAMPLED, str(aid)),
