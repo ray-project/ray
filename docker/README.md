@@ -8,6 +8,7 @@ ubuntu:22.04
     └── ray:cpu
 
 nvidia/cuda
-└── base-deps:gpu
-    └── ray:gpu
+└── base-deps:cudaXXX
+    └── ray:cudaXXX
+        └── ray-llm:cudaXXX
 ```

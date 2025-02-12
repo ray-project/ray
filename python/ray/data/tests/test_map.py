@@ -1646,7 +1646,10 @@ def test_map_batches_async_generator(shutdown_only):
     assert runtime < sum(range(n)), runtime
 
     expected_output = [{"input": i, "output": 2**i} for i in range(n)]
-    assert output == expected_output, (output, expected_output)
+    assert sorted(output, key=lambda row: row["input"]) == expected_output, (
+        output,
+        expected_output,
+    )
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):
