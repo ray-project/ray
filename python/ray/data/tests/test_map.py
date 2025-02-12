@@ -15,6 +15,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray.data import Dataset
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -188,6 +189,27 @@ def test_callable_classes(shutdown_only):
     # flat_map with args & kwargs
     result = ds.flat_map(
         StatefulFlatMapFnWithArgs,
+        concurrency=1,
+        fn_args=(1,),
+        fn_kwargs={"kwarg": 2},
+        fn_constructor_args=(1,),
+        fn_constructor_kwargs={"kwarg": 2},
+    ).take()
+    assert sorted(extract_values("id", result)) == list(range(10)), result
+
+    class StatefulFilterFnWithArgs:
+        def __init__(self, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+
+        def __call__(self, x, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+            return True
+
+    # fiter with args & kwargs
+    result = ds.filter(
+        StatefulFilterFnWithArgs,
         concurrency=1,
         fn_args=(1,),
         fn_kwargs={"kwarg": 2},
@@ -1137,7 +1159,8 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     assert values == [11, 15, 19]
 
 
-def test_map_with_memory_resources(shutdown_only):
+@pytest.mark.parametrize("method", [Dataset.map, Dataset.map_batches, Dataset.flat_map])
+def test_map_with_memory_resources(method, shutdown_only):
     """Test that we can use memory resource to limit the concurrency."""
     num_blocks = 50
     memory_per_task = 100 * 1024**2
@@ -1146,19 +1169,35 @@ def test_map_with_memory_resources(shutdown_only):
 
     concurrency_counter = ConcurrencyCounter.remote()
 
-    def map_batches(batch):
+    def map_fn(row_or_batch):
         ray.get(concurrency_counter.inc.remote())
         time.sleep(0.5)
         ray.get(concurrency_counter.decr.remote())
-        return batch
+        if method is Dataset.flat_map:
+            return [row_or_batch]
+        else:
+            return row_or_batch
 
     ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
-    ds = ds.map_batches(
-        map_batches,
-        batch_size=None,
-        num_cpus=1,
-        memory=memory_per_task,
-    )
+    if method is Dataset.map:
+        ds = ds.map(
+            map_fn,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
+    elif method is Dataset.map_batches:
+        ds = ds.map_batches(
+            map_fn,
+            batch_size=None,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
+    elif method is Dataset.flat_map:
+        ds = ds.flat_map(
+            map_fn,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
     assert len(ds.take(num_blocks)) == num_blocks
 
     actual_max_concurrency = ray.get(concurrency_counter.get_max_concurrency.remote())
@@ -1607,7 +1646,10 @@ def test_map_batches_async_generator(shutdown_only):
     assert runtime < sum(range(n)), runtime
 
     expected_output = [{"input": i, "output": 2**i} for i in range(n)]
-    assert output == expected_output, (output, expected_output)
+    assert sorted(output, key=lambda row: row["input"]) == expected_output, (
+        output,
+        expected_output,
+    )
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):

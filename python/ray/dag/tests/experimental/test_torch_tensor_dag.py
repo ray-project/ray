@@ -1207,7 +1207,7 @@ def test_torch_tensor_explicit_communicator(ray_start_regular):
         ValueError,
         match=(
             "Please specify a custom communicator for the DAGNode using "
-            "`with_tensor_transport\(\)`, or specify a communicator or 'create' for "
+            r"`with_tensor_transport\(\)`, or specify a communicator or 'create' for "
             "_default_communicator when calling experimental_compile()."
         ),
     ):
