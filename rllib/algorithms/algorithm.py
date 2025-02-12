@@ -832,7 +832,6 @@ class Algorithm(Checkpointable, Trainable):
                 # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
                 max_restarts=-1,
             )(AggregatorActor)
-            print("Trying to create `self._aggregator_actor_manager`")
             self._aggregator_actor_manager = FaultTolerantActorManager(
                 [
                     agg_cls.remote(self.config, rl_module_spec)
@@ -845,7 +844,6 @@ class Algorithm(Checkpointable, Trainable):
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
-            print("Created `self._aggregator_actor_manager`")
             # Get the devices of each learner.
             learner_locations = list(
                 enumerate(
@@ -854,7 +852,6 @@ class Algorithm(Checkpointable, Trainable):
                     )
                 )
             )
-            print(f"learner_locations={learner_locations}")
             # Get the devices of each AggregatorActor.
             aggregator_locations = list(
                 enumerate(
@@ -863,7 +860,6 @@ class Algorithm(Checkpointable, Trainable):
                     )
                 )
             )
-            print(f"agg_locations={aggregator_locations}")
             self._aggregator_actor_to_learner = {}
             for agg_idx, aggregator_location in aggregator_locations:
                 aggregator_location = aggregator_location.get()
@@ -896,8 +892,6 @@ class Algorithm(Checkpointable, Trainable):
                     "Final AggregatorActor idx -> Learner idx mapping is: "
                     f"{self._aggregator_actor_to_learner}"
                 )
-
-        raise ValueError("Algo setup done!")
 
         # Run `on_algorithm_init` callback after initialization is done.
         make_callback(

@@ -176,7 +176,7 @@ class EnvRunnerGroup:
                         self.env_runner_cls = SingleAgentEnvRunner
             else:
                 self.env_runner_cls = RolloutWorker
-        #self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
+        # self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
         self._ignore_ray_errors_on_env_runners = (
@@ -291,7 +291,7 @@ class EnvRunnerGroup:
         # Create a local worker, if needed.
         if local_env_runner:
             self._local_env_runner = self._make_worker(
-                #cls=self.env_runner_cls,
+                # cls=self.env_runner_cls,
                 env_creator=self._env_creator,
                 validate_env=validate_env,
                 worker_index=0,
@@ -807,7 +807,7 @@ class EnvRunnerGroup:
         old_num_workers = self._worker_manager.num_actors()
         new_workers = [
             self._make_worker(
-                #cls=self._cls,
+                # cls=self._cls,
                 env_creator=self._env_creator,
                 validate_env=None,
                 worker_index=old_num_workers + i + 1,
@@ -1179,7 +1179,7 @@ class EnvRunnerGroup:
     def _make_worker(
         self,
         *,
-        #cls: Callable,
+        # cls: Callable,
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType], None]],
         worker_index: int,
@@ -1212,9 +1212,11 @@ class EnvRunnerGroup:
             if ray.util.get_current_placement_group() is None
             else self._pg_offset + worker_index
         )
-        return ray.remote(**self._remote_args)(self.env_runner_cls).options(
-            placement_group_bundle_index=pg_bundle_idx
-        ).remote(**kwargs)
+        return (
+            ray.remote(**self._remote_args)(self.env_runner_cls)
+            .options(placement_group_bundle_index=pg_bundle_idx)
+            .remote(**kwargs)
+        )
 
     @classmethod
     def _valid_module(cls, class_path):
