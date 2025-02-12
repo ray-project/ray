@@ -13,6 +13,20 @@ py_library(
     ],
 )
 
+# Minimal installation test (should *not* include conftest).
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_minimal_installation.py",
+    ],
+    tags = [
+        "exclusive", "minimal", "team:serve",
+    ],
+    deps = [
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Small tests.
 py_test_module_list(
     size = "small",

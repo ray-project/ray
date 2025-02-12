@@ -230,15 +230,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_serve_ray_minimal.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "minimal", "team:serve"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_4.py",
