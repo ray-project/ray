@@ -1,5 +1,5 @@
-from abc import abstractmethod
-from typing import List
+from typing import List, Callable
+import copy
 
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
@@ -13,7 +13,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.rules.zero_copy_map_fusion import ZeroCopyMapFusionRule
 
 
-class BaseRedundantMapTransformPruning(ZeroCopyMapFusionRule):
+class RedundantMapTransformPruning(ZeroCopyMapFusionRule):
     def _optimize(self, transform_fns: List[MapTransformFn]) -> List[MapTransformFn]:
         """
         Detects and removes redundant MapTransformFn(s) in a sequence by
@@ -103,7 +103,7 @@ class BaseRedundantMapTransformPruning(ZeroCopyMapFusionRule):
         """
         merged_groups = []
         idx = 0
-        copy_grouped_transform_fns = grouped_transform_fns
+        copy_grouped_transform_fns = copy.deepcopy(grouped_transform_fns)
 
         while idx < len(copy_grouped_transform_fns):
             current_group = copy_grouped_transform_fns[idx]
@@ -140,37 +140,151 @@ class BaseRedundantMapTransformPruning(ZeroCopyMapFusionRule):
 
     def _can_merge(
         self,
-        group1: List[MapTransformFn],
-        group2: List[MapTransformFn],
+        first_group: List[MapTransformFn],
+        second_group: List[MapTransformFn],
     ) -> bool:
         """
         Determines if two groups can be merged based on their start, intermediate and
-        end functions.
+        end functions for row or batch map transform functions.
 
         Args:
-        - group1: The first group of MapTransformFn(s).
-        - group2: The second group of MapTransformFn(s).
+        - first_group: The first group of MapTransformFn(s).
+        - second_group: The second group of MapTransformFn(s).
 
         Returns:
         - True if the groups can be merged, False otherwise.
         """
-        return (
-            # group1 matches end MapTransformFn in sequence
-            self._is_end_fn(group1[-1])
-            # group2 matches start MapTransformFn in sequence
-            and self._is_start_fn(group2[0])
+        return self._can_merge_batch_transforms(
+            first_group, second_group
+        ) or self._can_merge_row_transforms(first_group, second_group)
+
+    def _can_merge_row_transforms(
+        self,
+        first_group: List[MapTransformFn],
+        second_group: List[MapTransformFn],
+    ) -> bool:
+        """Check redundant row-based map transform sequences.
+
+        The pattern being checked:
+        BlocksToRowsMapTransformFn ->
+        RowMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row) ->
+        BlocksToRowsMapTransformFn
+
+        For Eg:
+        Input MapTransformFn(s):
+        ------------------------
+        BlocksToRowsMapTransformFn ->
+        RowMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row) ->
+        BlocksToRowsMapTransformFn ->
+        RowMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row) ->
+
+        Optimized MapTransformFn(s):
+        --------------------------
+        BlocksToRowsMapTransformFn ->
+        RowMapTransformFn ->
+        RowMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row)
+
+        Note:
+        1. Redundant MapTransformFn(s) BuildOutputBlocksMapTransformFn and
+        BlocksToRowsMapTransformFn have been pruned.
+        2. BlocksToRowsMapTransformFn must have same set of arguments enforced by
+        __eq__ check.
+        """
+
+        def is_intermediate_fn(fn):
+            """Detect intermediate row MapTransformFn, RowMapTransformFn."""
+            return isinstance(fn, RowMapTransformFn)
+
+        can_merge = (
+            # first_group end matches BuildOutputBlocksMapTransformFn in sequence
+            isinstance(first_group[-1], BuildOutputBlocksMapTransformFn)
+            # second_group start matches BlocksToRowsMapTransformFn in sequence
+            and isinstance(second_group[0], BlocksToRowsMapTransformFn)
             # Both groups have identical start MapTransformFn including args
-            and self._start_fn_values_match(group1[0], group2[0])
-            # group1 matches matches intermediate MapTransformFn in
-            # sequence
-            and self._intermediate_functions_match(group1)
-            # group2 matches matches intermediate MapTransformFn in
-            # sequence
-            and self._intermediate_functions_match(group2)
+            and first_group[0] == second_group[0]
         )
 
+        if can_merge:
+            assert (
+                # first_group matches matches intermediate MapTransformFn in sequence
+                self._intermediate_functions_match(first_group, is_intermediate_fn)
+                and
+                # second_group matches matches intermediate MapTransformFn in sequence
+                self._intermediate_functions_match(second_group, is_intermediate_fn)
+            )
+
+        return can_merge
+
+    def _can_merge_batch_transforms(
+        self,
+        first_group: List[MapTransformFn],
+        second_group: List[MapTransformFn],
+    ) -> bool:
+        """Check for redundant batch-based map transform sequences.
+
+        The pattern being checked:
+        BlocksToBatchesMapTransformFn ->
+        BatchMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch) ->
+        BlocksToBatchesMapTransformFn
+
+
+        For Eg:
+        Input MapTransformFn(s):
+        ------------------------
+        BlocksToBatchesMapTransformFn ->
+        BatchMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch) ->
+        BlocksToBatchesMapTransformFn ->
+        BatchMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch) ->
+
+        Optimized MapTransformFn(s):
+        --------------------------
+        BlocksToRowsMapTransformFn ->
+        BatchMapTransformFn ->
+        BatchMapTransformFn ->
+        BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch)
+
+        Note:
+        1.Redundant MapTransformFn(s) BuildOutputBlocksMapTransformFn and
+        BatchMapTransformFn have been pruned.
+        2. BlocksToBatchesMapTransformFn must have same set of arguments enforced byi
+        __eq__ check.
+        """
+
+        def is_intermediate_fn(fn):
+            """Detect intermediate batch MapTransformFn, BatchMapTransformFn."""
+            return isinstance(fn, BatchMapTransformFn)
+
+        can_merge = (
+            # first_group end matches BuildOutputBlocksMapTransformFn in sequence
+            isinstance(first_group[-1], BuildOutputBlocksMapTransformFn)
+            # second_group start matches BlocksToBatchesMapTransformFn in sequence
+            and isinstance(second_group[0], BlocksToBatchesMapTransformFn)
+            # Both groups have identical start MapTransformFn including args
+            and first_group[0] == second_group[0]
+        )
+
+        if can_merge:
+            assert (
+                # first_group matches matches intermediate MapTransformFn in sequence
+                self._intermediate_functions_match(first_group, is_intermediate_fn)
+                and
+                # second_group matches matches intermediate MapTransformFn in sequence
+                self._intermediate_functions_match(second_group, is_intermediate_fn)
+            )
+
+        return can_merge
+
     def _intermediate_functions_match(
-        self, grouped_transform_fns: List[MapTransformFn]
+        self,
+        grouped_transform_fns: List[MapTransformFn],
+        is_intermediate_fn: Callable[[MapTransformFn], bool],
     ) -> bool:
         """
         Validates that the intermediate MapTransformFn(s) in grouped_transform_fns.
@@ -184,127 +298,7 @@ class BaseRedundantMapTransformPruning(ZeroCopyMapFusionRule):
         # Ensure all functions in intermediate_transform_fns match
         intermediate_transform_fns = grouped_transform_fns[1:-1]
         for fn in intermediate_transform_fns:
-            if not self._is_intermediate_fn(fn):
+            if not is_intermediate_fn(fn):
                 return False
 
         return True
-
-    @abstractmethod
-    def _is_start_fn(self, fn):
-        """Detect start MapTransformFn function in sequence:
-        start -> intermediate(s) -> end -> start.
-        """
-        ...
-
-    @abstractmethod
-    def _is_intermediate_fn(self, fn):
-        """Detect intermediate MapTransformFn function in sequence:
-        start -> intermediate(s) -> end -> start.
-        """
-        ...
-
-    @abstractmethod
-    def _is_end_fn(self, fn):
-        """Detect end MapTransformFn function in sequence:
-        start -> intermediate(s) -> end -> start.i
-        """
-        ...
-
-    def _start_fn_values_match(self, start_fn1, start_fn2):
-        """Check if start MapTransformFn functions logically match. Note that this is
-        enforced with __eq__ in MapTransforFn derived classes.
-        """
-        return start_fn1 == start_fn2
-
-
-class RedundantMapTransformRowPruning(BaseRedundantMapTransformPruning):
-    """Prunes redundant row-based map transform sequences.
-
-    The pattern being checked:
-    BlocksToRowsMapTransformFn ->
-    RowMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row) ->
-    BlocksToRowsMapTransformFn
-
-    For Eg:
-    Input MapTransformFn(s):
-    ------------------------
-    BlocksToRowsMapTransformFn ->
-    RowMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row) ->
-    BlocksToRowsMapTransformFn ->
-    RowMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row) ->
-
-    Optimized MapTransformFn(s):
-    --------------------------
-    BlocksToRowsMapTransformFn ->
-    RowMapTransformFn ->
-    RowMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Row)
-
-    Note:
-    1. Redundant MapTransformFn(s) BuildOutputBlocksMapTransformFn and
-    BlocksToRowsMapTransformFn have been pruned.
-    2. BlocksToRowsMapTransformFn must have same set of arguments enforced by
-    __eq__ check.
-    """
-
-    def _is_start_fn(self, fn):
-        """Detect start row MapTransformFn, BlocksToRowsMapTransformFn."""
-        return isinstance(fn, BlocksToRowsMapTransformFn)
-
-    def _is_intermediate_fn(self, fn):
-        """Detect intermediate row MapTransformFn, RowMapTransformFn."""
-        return isinstance(fn, RowMapTransformFn)
-
-    def _is_end_fn(self, fn):
-        """Detect end row MapTransformFn, BuildOutputBlocksMapTransformFn."""
-        return isinstance(fn, BuildOutputBlocksMapTransformFn)
-
-
-class RedundantMapTransformBatchPruning(BaseRedundantMapTransformPruning):
-    """Prunes redundant batch-based map transform sequences.
-
-    The pattern being checked:
-    BlocksToBatchesMapTransformFn ->
-    BatchMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch) ->
-    BlocksToBatchesMapTransformFn
-
-
-    For Eg:
-    Input MapTransformFn(s):
-    ------------------------
-    BlocksToBatchesMapTransformFn ->
-    BatchMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch) ->
-    BlocksToBatchesMapTransformFn ->
-    BatchMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch) ->
-
-    Optimized MapTransformFn(s):
-    --------------------------
-    BlocksToRowsMapTransformFn ->
-    BatchMapTransformFn ->
-    BatchMapTransformFn ->
-    BuildOutputBlocksMapTransformFn(input_type=MapTransformFnDataType.Batch)
-
-    Note:
-    1.Redundant MapTransformFn(s) BuildOutputBlocksMapTransformFn and
-    BatchMapTransformFn have been pruned.
-    2. BlocksToBatchesMapTransformFn must have same set of arguments enforced byi
-    __eq__ check.
-    """
-
-    def _is_start_fn(self, fn):
-        """Detect start batch MapTransformFn, BlocksToBatchesMapTransformFn."""
-        return isinstance(fn, BlocksToBatchesMapTransformFn)
-
-    def _is_intermediate_fn(self, fn):
-        """Detect intermediate batch MapTransformFn, BatchMapTransformFn."""
-        return isinstance(fn, BatchMapTransformFn)
-
-    def _is_end_fn(self, fn):
-        """Detect end batch MapTransformFn, BuildOutputBatchMapTransformFn."""
-        return isinstance(fn, BuildOutputBlocksMapTransformFn)
