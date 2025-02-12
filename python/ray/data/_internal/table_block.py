@@ -265,8 +265,8 @@ class TableBlockAccessor(BlockAccessor):
         k = min(n_samples, self.num_rows())
         return self._sample(k, sort_key)
 
-    def combine(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
-        """Combine rows with the same key into an accumulator.
+    def _apply_aggregations(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+        """Applies provided aggregations to groups of rows with the same key.
 
         This assumes the block is already sorted by key in ascending order.
 
@@ -342,13 +342,13 @@ class TableBlockAccessor(BlockAccessor):
         return builder.build()
 
     @staticmethod
-    def aggregate_combined_blocks(
+    def _combine_aggregated_blocks(
         blocks: List[Block],
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Tuple[Block, BlockMetadata]:
-        """Aggregate sorted, partially combined blocks with the same key range.
+        """Combine previously aggregated blocks.
 
         This assumes blocks are already sorted by key in ascending order,
         so we can do merge sort to get all the rows with the same key.

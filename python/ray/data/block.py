@@ -486,7 +486,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _apply_aggregations(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -498,7 +498,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(
+    def _combine_aggregated_blocks(
         blocks: List[Block],
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
