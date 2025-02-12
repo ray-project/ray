@@ -1,17 +1,21 @@
 import time
+from collections import defaultdict
 from dataclasses import Field, dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 import ray
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.bundle_queue import BundleQueue, create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
+from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+    from ray.data._internal.execution.streaming_executor_state import OpState
+    from ray.data._internal.execution.resource_manager import ExecutionResources
 
 
 # A metadata key used to mark a dataclass field as a metric.
@@ -22,6 +26,8 @@ _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
 _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["MetricDefinition"] = []
+
+NODE_UNKNOWN = "unknown"
 
 
 class MetricsGroup(Enum):
@@ -102,6 +108,16 @@ class RunningTaskInfo:
     bytes_outputs: int
 
 
+@dataclass
+class NodeMetrics:
+    num_tasks_finished: int = 0
+    obj_store_mem_used: int = 0
+    obj_store_mem_freed: int = 0
+    obj_store_mem_spilled: int = 0
+    bytes_outputs_of_finished_tasks: int = 0
+    blocks_outputs_of_finished_tasks: int = 0
+
+
 class OpRuntimesMetricsMeta(type):
     def __init__(cls, name, bases, dict):
         # NOTE: `Field.name` isn't set until the dataclass is created, so we can't
@@ -121,6 +137,71 @@ class OpRuntimesMetricsMeta(type):
                     map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
+
+
+def estimate_object_store_memory_per_node(
+    op: "PhysicalOperator", state: "OpState"
+) -> Dict[str, int]:
+    usage_per_node = defaultdict(int)
+
+    def iter_bundle_queue_by_node_id(
+        queue: BundleQueue,
+    ) -> Iterator[Tuple[BlockMetadata, NodeMetrics, str]]:
+        for bundle in queue._bundle_to_nodes:
+            for _, meta in bundle.blocks:
+                node_id = (
+                    meta.exec_stats.node_id
+                    if meta.exec_stats and meta.exec_stats.node_id
+                    else NODE_UNKNOWN
+                )
+
+            yield meta, node_id
+
+    # Iterate through inqueue
+    for meta, node_id in iter_bundle_queue_by_node_id(op._metrics._internal_inqueue):
+        usage_per_node[node_id] += meta.size_bytes
+
+    # Iterate through outqueue
+    for meta, node_id in iter_bundle_queue_by_node_id(op._metrics._internal_outqueue):
+        usage_per_node[node_id] += meta.size_bytes
+
+    # Iterate through input buffers of the downstream operators
+    for next_op in op.output_dependencies:
+        for meta, node_id in iter_bundle_queue_by_node_id(
+            next_op._metrics._internal_inqueue
+        ):
+            usage_per_node[node_id] += meta.size_bytes
+            # TODO(mowen): Do we need something akin to
+            # next_op.metrics.obj_store_mem_pending_task_inputs here?
+
+    return usage_per_node
+
+
+def iter_meta_and_node_metrics(
+    ref_bundle: RefBundle, per_node_metrics: Dict[str, NodeMetrics]
+) -> Iterator[Tuple[BlockMetadata, NodeMetrics, str]]:
+    for _, meta in ref_bundle.blocks:
+        if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
+            node_id = meta.exec_stats.node_id
+        else:
+            node_id = NODE_UNKNOWN
+
+        node_metrics = per_node_metrics[node_id]
+        yield meta, node_metrics, node_id
+
+
+def update_object_store_usage(
+    op: "PhysicalOperator", op_usage: "ExecutionResources", state: "OpState"
+) -> None:
+    # Update operator's object store usage, which is used by
+    # DatasetStats and updated on the Ray Data dashboard.
+    op._metrics.obj_store_mem_used = op_usage.object_store_memory
+
+    # Update the per node metrics
+    if op.data_context.enable_per_node_metrics:
+        memory_usage_per_node = estimate_object_store_memory_per_node(op, state)
+        for node_id, usage in memory_usage_per_node.items():
+            op._metrics._per_node_metrics[node_id].obj_store_mem_used = usage
 
 
 @dataclass
@@ -307,6 +388,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._internal_inqueue = create_bundle_queue()
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
+
+        self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
+        self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -537,6 +621,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
 
+        # Update per node metrics
+        if self._per_node_metrics_enabled:
+            for meta, node_metrics, _ in iter_meta_and_node_metrics(
+                output, self._per_node_metrics
+            ):
+                node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
+                node_metrics.blocks_outputs_of_finished_tasks += 1
+
     def on_task_finished(self, task_index: int, exception: Optional[Exception]):
         """Callback when a task is finished."""
         self.num_tasks_running -= 1
@@ -568,7 +660,29 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
 
+            if self._per_node_metrics_enabled:
+                for meta, node_metrics, node_id in iter_meta_and_node_metrics(
+                    inputs, self._per_node_metrics
+                ):
+                    node_metrics.obj_store_mem_spilled += meta.size_bytes
+
         self.obj_store_mem_freed += total_input_size
+
+        # Update per node metrics
+        if self._per_node_metrics_enabled:
+            node_ids = set()
+            for meta, node_metrics, node_id in iter_meta_and_node_metrics(
+                inputs, self._per_node_metrics
+            ):
+                # Stats to update once per node id or if node id is unknown
+                if node_id not in node_ids or node_id == NODE_UNKNOWN:
+                    node_metrics.num_tasks_finished += 1
+
+                # Stats to update once per block
+                node_metrics.obj_store_mem_freed += meta.size_bytes
+
+                # Keep track of node ids to ensure we don't double count
+                node_ids.add(node_id)
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]

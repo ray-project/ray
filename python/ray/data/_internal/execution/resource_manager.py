@@ -12,6 +12,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    update_object_store_usage,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -172,9 +175,7 @@ class ResourceManager:
                 op
             ] = self._global_usage.object_store_memory
 
-            # Update operator's object store usage, which is used by
-            # DatasetStats and updated on the Ray Data dashboard.
-            op._metrics.obj_store_mem_used = op_usage.object_store_memory
+            update_object_store_usage(op, op_usage, state)
 
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_usages()
