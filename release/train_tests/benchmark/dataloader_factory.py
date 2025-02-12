@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, Tuple
 
 import torch
+
+import ray.data
 import ray.train
 from ray.data import Dataset
 
@@ -42,6 +44,10 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         assert isinstance(self.get_dataloader_config(), RayDataConfig), type(
             self.get_dataloader_config()
         )
+
+        # Configure Ray Data settings.
+        data_context = ray.data.DataContext.get_current()
+        data_context.enable_operator_progress_bars = False
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
