@@ -2047,31 +2047,36 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     return Status::Invalid("Duplicate object IDs not supported in wait.");
   }
 
-  size_t missing_owners = 0;
+  size_t objs_without_owners = 0;
+  size_t objs_with_owners = 0;
   std::ostringstream ids_stream;
 
   for (size_t i = 0; i < ids.size(); i++) {
     if (!HasOwner(ids[i])) {
       ids_stream << ids[i] << " ";
-      missing_owners += 1;
+      ++objs_without_owners;
+    } else {
+      ++objs_with_owners;
     }
-  }
-
-  int objects_with_known_owners = ids.size() - missing_owners;
-  // If we are requesting more items than items available, then return a failed status.
-  if (missing_owners > 0 && num_objects > objects_with_known_owners) {
-    std::ostringstream stream;
-    stream << "An application is trying to access a Ray object whose owner is unknown"
-           << "(" << ids_stream.str()
-           << "). "
-              "Please make sure that all Ray objects you are trying to access are part"
-              " of the current Ray session. Note that "
-              "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-              "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
-              " Ray does not know which task created them. "
-              "If this was not how your object ID was generated, please file an issue "
-              "at https://github.com/ray-project/ray/issues/";
-    return Status::ObjectUnknownOwner(stream.str());
+    // enough owned objects to process this batch
+    if (objs_with_owners == static_cast<size_t>(num_objects)) {
+      break;
+    }
+    // not enough objects with owners to process the batch
+    if (static_cast<size_t>(num_objects) > ids.size() - objs_without_owners) {
+      std::ostringstream stream;
+      stream << "An application is trying to access a Ray object whose owner is unknown"
+             << "(" << ids_stream.str()
+             << "). "
+                "Please make sure that all Ray objects you are trying to access are part"
+                " of the current Ray session. Note that "
+                "object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+                "(ObjectID.from_binary(...)) cannot be passed as a task argument because"
+                " Ray does not know which task created them. "
+                "If this was not how your object ID was generated, please file an issue "
+                "at https://github.com/ray-project/ray/issues/";
+      return Status::ObjectUnknownOwner(stream.str());
+    }
   }
 
   absl::flat_hash_set<ObjectID> ready;
