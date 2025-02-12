@@ -7,9 +7,12 @@ User Guides
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
+.. TODO bring this into better order or even some friendlier tree structure
+
 .. toctree::
     :hidden:
 
+    developing-and-debugging
     rllib-advanced-api
     rllib-callback
     checkpoints
@@ -21,7 +24,6 @@ User Guides
     rllib-learner
     rllib-torch2x
     rllib-fault-tolerance
-    rllib-dev
     scaling-guide
 
 .. _rllib-feature-guide:
@@ -32,6 +34,14 @@ RLlib Feature Guides
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: developing-and-debugging
+
+            Development and debugging guide
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
@@ -88,14 +98,6 @@ RLlib Feature Guides
         .. button-ref:: rllib-replay-buffers
 
             Working with replay buffers
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-dev
-
-            Contribute to RLlib
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

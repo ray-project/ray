@@ -4,11 +4,12 @@ from ray.rllib.core import ALL_MODULES  # noqa
 # Algorithm ResultDict keys.
 AGGREGATOR_ACTOR_RESULTS = "aggregator_actors"
 EVALUATION_RESULTS = "evaluation"
+ENV_RUNNER_GROUP_RESULTS = "env_runner_group"
 ENV_RUNNER_RESULTS = "env_runners"
 REPLAY_BUFFER_RESULTS = "replay_buffer"
 LEARNER_GROUP = "learner_group"
 LEARNER_RESULTS = "learners"
-FAULT_TOLERANCE_STATS = "fault_tolerance"
+FAULT_TOLERANCE_STATS = "fault_tolerance"  # deprecated: Use ENV_RUNNER_GROUP_RESULTS
 TIMERS = "timers"
 
 # RLModule metrics.

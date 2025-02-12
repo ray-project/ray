@@ -48,7 +48,7 @@ class FilterManager:
             local_env_runner=False,
             timeout_seconds=timeout_seconds,
         )
-        if len(remote_filters) != worker_set.num_healthy_remote_workers():
+        if len(remote_filters) != worker_set.num_healthy_remote_env_runners():
             logger.error(
                 "Failed to get remote filters from a rollout worker in "
                 "FilterManager! "
@@ -74,7 +74,7 @@ class FilterManager:
                 local_env_runner=False,
                 timeout_seconds=timeout_seconds,
             )
-            if len(results) != worker_set.num_healthy_remote_workers():
+            if len(results) != worker_set.num_healthy_remote_env_runners():
                 logger.error(
                     "Failed to set remote filters to a rollout worker in "
                     "FilterManager. "

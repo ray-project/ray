@@ -62,7 +62,7 @@ class TestCallbacks(unittest.TestCase):
         )
 
         algo = config.build()
-        original_env_runner_ids = algo.env_runner_group.healthy_worker_ids()
+        original_env_runner_ids = algo.env_runner_group.healthy_env_runner_ids()
         for id_ in original_env_runner_ids:
             check(algo.metrics.peek(f"worker_{id_}_recreated", default=0), 0)
         check(algo.metrics.peek("total_num_workers_recreated", default=0), 0)
@@ -80,7 +80,7 @@ class TestCallbacks(unittest.TestCase):
         # the exact worker IDs recreated (the exact number of times) as the actor
         # manager itself. This confirms that the callback is triggered correctly,
         # always.
-        new_worker_ids = algo.env_runner_group.healthy_worker_ids()
+        new_worker_ids = algo.env_runner_group.healthy_env_runner_ids()
         self.assertEqual(len(new_worker_ids), 3)
         for id_ in new_worker_ids:
             # num_restored = algo.env_runner_group.restored_actors_history[id_]
