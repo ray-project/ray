@@ -2689,7 +2689,6 @@ class Algorithm(Checkpointable, Trainable):
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
-        # Convenience config handles for training- and eval-configs.
         config = cls.get_default_config().update_from_dict(config)
         config.validate()
         config.freeze()
@@ -2697,14 +2696,11 @@ class Algorithm(Checkpointable, Trainable):
         eval_config.validate()
         eval_config.freeze()
 
-        # Resources for the main process of this Algorithm.
         if config.enable_rl_module_and_learner:
             main_process = _get_main_process_bundle(config)
-        # @OldAPIStack.
         else:
             main_process = {
                 "CPU": config.num_cpus_for_main_process,
-                # Ignore `config.num_gpus` on the new API stack.
                 "GPU": (
                     0
                     if config._fake_gpus
@@ -2714,18 +2710,13 @@ class Algorithm(Checkpointable, Trainable):
                 ),
             }
 
-        # Resources for remote EnvRunner actors
         env_runner_bundles = _get_env_runner_bundles(config)
 
-        # resources for remote evaluation env samplers or datasets (if any)
         if cls._should_create_evaluation_env_runners(eval_config):
-            # Evaluation workers.
-            # Note: The local eval worker is located on the driver CPU.
             eval_env_runner_bundles = _get_env_runner_bundles(eval_config)
         else:
             eval_env_runner_bundles = []
 
-        # Resources for remote Learner actors.
         learner_bundles = []
         if config.enable_rl_module_and_learner:
             learner_bundles = _get_learner_bundles(config)
@@ -2737,8 +2728,6 @@ class Algorithm(Checkpointable, Trainable):
             + learner_bundles
         )
 
-        # Return PlacementGroupFactory containing all needed resources
-        # (already properly defined as device bundles).
         return PlacementGroupFactory(
             bundles=bundles,
             strategy=config.placement_strategy,

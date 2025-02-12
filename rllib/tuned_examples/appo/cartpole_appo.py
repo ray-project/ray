@@ -15,7 +15,6 @@ args = parser.parse_args()
 config = (
     APPOConfig()
     .environment("CartPole-v1")
-    .experimental(_validate_config=False)
     .training(
         circular_buffer_iterations_per_batch=2,
         vf_loss_coeff=0.05,
