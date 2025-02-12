@@ -276,13 +276,15 @@ ray_cc_library(
     deps = [
         ":compat",
         ":spdlog_fd_sink",
+        ":spdlog_newliner_sink",
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
+        "//src/ray/common:ray_config",
         "@boost//:iostreams",
-        "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_github_spdlog//:spdlog",
     ],
 )
 

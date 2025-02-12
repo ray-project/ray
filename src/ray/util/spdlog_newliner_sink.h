@@ -68,7 +68,9 @@ class spdlog_newliner_sink final : public spdlog::sinks::base_sink<Mutex> {
       spdlog::details::log_msg new_log_msg;
       new_log_msg.payload = std::string_view{buffer_.data(), buffer_.length()};
       internal_sink_->log(std::move(new_log_msg));
+      buffer_.clear();
     }
+    internal_sink_->flush();
   }
 
  private:

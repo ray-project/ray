@@ -41,6 +41,27 @@ std::shared_ptr<spdlog::logger> CreateLogger() {
   return logger;
 }
 
+// Testing scenario: Keep writing to spdlog after flush, and check whether all written
+// content is correctly reflected.
+TEST(NewlinerSinkTest, WriteAfterFlush) {
+  auto logger = CreateLogger();
+  constexpr std::string_view kContent = "hello";
+
+  // First time write and flush.
+  testing::internal::CaptureStdout();
+  logger->log(spdlog::level::info, kContent);
+  logger->flush();
+  std::string stdout_content = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(stdout_content, kContent);
+
+  // Write after flush.
+  testing::internal::CaptureStdout();
+  logger->log(spdlog::level::info, kContent);
+  logger->flush();
+  stdout_content = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(stdout_content, kContent);
+}
+
 TEST(NewlinerSinkTest, AppendAndFlushTest) {
   // Case-1: string with newliner at the end.
   {

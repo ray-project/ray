@@ -939,3 +939,6 @@ RAY_CONFIG(bool, enable_export_api_write, false)
 // src/ray/protobuf/export_api/export_event.proto
 // Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
 RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
+
+// Configuration for pipe logger buffer size.
+RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
