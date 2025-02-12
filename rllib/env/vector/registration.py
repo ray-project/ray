@@ -15,7 +15,7 @@ logger = logging.getLogger(__file__)
 class VectorizeMode(Enum):
     """All possible vectorization modes used in make_vec.
 
-    Note, RLlib does not implement an custom entry point.
+    Note, RLlib does not implement a custom entry point.
     """
 
     ASYNC = "async"
@@ -37,6 +37,8 @@ def make_vec(
     if vectorization_mode is None:
         vectorization_mode = "sync"
 
+    # Create an `gymnasium.envs.registration.EnvSpec` to properly
+    # initialize the sub-environments.
     if isinstance(id, gym.envs.registration.EnvSpec):
         env_spec = id
     elif isinstance(id, str):
@@ -64,6 +66,7 @@ def make_vec(
                 f"Invalid vectorization mode: {vectorization_mode!r}, "
                 f"valid modes: {[mode.value for mode in VectorizeMode]}."
             )
+    assert isinstance(vectorization_mode, VectorizeMode)
 
     def create_single_env() -> MultiAgentEnv:
         single_env = gym.make(env_spec, **env_spec_kwargs.copy())
@@ -79,8 +82,8 @@ def make_vec(
         )
     # Other modes are not implemented, yet.
     else:
-        print(
-            f"For MultiAgentEnv only synchronous environment vectorization "
+        raise ValueError(
+            "For `MultiAgentEnv` only synchronous environment vectorization "
             "is implemented. Use `gym_env_vectorize_mode='sync'`."
         )
 
@@ -93,20 +96,6 @@ def make_vec(
     if len(vector_kwargs) > 0:
         copied_id_spec.kwargs["vector_kwargs"] = vector_kwargs
     env.unwrapped.spec = copied_id_spec
-
-    # Check the autoreset mode.
-    # TODO (simon): This is upcoming in `gymnasium` in the next version.
-    # if "autoreset_mode" not in env.metadata:
-    #     logger.warning(
-    #         f"The `VectorMultiAgentEnv` ({env}) is missing AutoresetMode "
-    #         f"metadata, metadata={env.metadata}."
-    #     )
-    # elif not isinstance(env.metadata["autoreset_mode"], AutoresetMode):
-    #     logger.warning(
-    #         f"The `VectorMultiAgentEnv` ({env}) metadata['autoreset_mode'] "
-    #         "is not an instance of gymnasium.vector.AutoresetMode, "
-    #         f"{type(env.metadata['autoreset_mode'])}."
-    #     )
 
     # Return the `VectorMultiAgentEnv`.
     return env

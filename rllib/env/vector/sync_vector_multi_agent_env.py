@@ -30,18 +30,22 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self.envs = [env_fn() for env_fn in self.env_fns]
 
         self.num_envs = len(self.envs)
+        assert self.num_envs == len(self.env_fns)
         self.metadata = self.envs[0].metadata
         self.metadata["autoreset_mode"] = self.autoreset_mode
         self.render_mode = self.envs[0].render_mode
 
-        # TODO (simon): Check, if we need to define `get_observation_space(agent)`.
+        # TODO (simon, sven): Check, if we need to define `get_observation_space(agent)`.
         self.single_action_spaces = self.envs[0].unwrapped.action_spaces
         self.single_observation_spaces = self.envs[0].unwrapped.observation_spaces
 
         # TODO (simon): Decide if we want to include a spaces check here.
 
+        # Note, if `single_observation_spaces` are not defined, this will
+        # raise an error.
         self._observations = self.create_empty_array(
-            self.single_observation_spaces, n=self.num_envs, fn=np.zeros
+            self.single_observation_spaces,
+            n=self.num_envs,
         )
         self._rewards = [{}] * self.num_envs
         self._terminations = [{}] * self.num_envs
@@ -52,6 +56,7 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[ArrayType, ArrayType]:
 
+        # Check the `seed`.
         if seed is None:
             seed = [None for _ in range(self.num_envs)]
         elif isinstance(seed, int):
@@ -63,44 +68,15 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
                 f"but got length={len(seed)}.",
             )
 
-        if options is not None and "reset_mask" in options:
-            reset_mask = options.pop("reset_mask")
-            assert isinstance(
-                reset_mask, np.ndarray
-            ), f"`options['reset_mask': mask]` must be a numpy array, got {type(reset_mask)}"
-            assert reset_mask.shape == (
-                self.num_envs,
-            ), f"`options['reset_mask': mask]` must have shape `({self.num_envs},)`, got {reset_mask.shape}"
-            assert (
-                reset_mask.dtype == np.bool_
-            ), f"`options['reset_mask': mask]` must have `dtype=np.bool_`, got {reset_mask.dtype}"
-            assert np.any(
-                reset_mask
-            ), f"`options['reset_mask': mask]` must contain a boolean array, got reset_mask={reset_mask}"
+        # Set auto-reset to `False` for all sub-environments. This will be
+        # set to `True` during `VectorMultiAgentEnv.step`.
+        self._autoreset_envs = np.zeros((self.num_envs,), dtype=np.bool_)
 
-            # self._terminations[reset_mask] = False
-            # self._truncations[reset_mask] = False
-            # self._autoreset_envs[reset_mask] = False
-
-            for i, (env, single_seed, env_mask) in enumerate(
-                zip(self.envs, seed, reset_mask)
-            ):
-                if env_mask:
-                    self._observations[i], self._infos[i] = env.reset(
-                        seed=single_seed,
-                        options=options,
-                    )
-
-        else:
-
-            # self._terminations = np.zeros((self.num_envs,), dtype=np.bool_)
-            # self._truncations = np.zeros((self.num_envs,), dtype=np.bool_)
-            self._autoreset_envs = np.zeros((self.num_envs,), dtype=np.bool_)
-
-            for i, (env, single_seed) in enumerate(zip(self.envs, seed)):
-                self._observations[i], self._infos[i] = env.reset(
-                    seed=single_seed, options=options
-                )
+        # Force reset on all sub-environments.
+        for i, (env, single_seed) in enumerate(zip(self.envs, seed)):
+            self._observations[i], self._infos[i] = env.reset(
+                seed=single_seed, options=options
+            )
 
         return (
             deepcopy(self._observations) if self.copy else self._observations,
@@ -111,9 +87,10 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self, actions: List[Dict[AgentID, ActType]]
     ) -> Tuple[ArrayType, ArrayType, ArrayType, ArrayType, ArrayType]:
 
-        infos = []
         for i, action in enumerate(actions):
+            # Note, this will be afeature coming in `gymnasium`s next release.
             if self.autoreset_mode == "next_step":
+                # Auto-reset environments that terminated or truncated.
                 if self._autoreset_envs[i]:
                     self._observations[i], self._infos[i] = self.envs[i].reset()
 
@@ -126,8 +103,10 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
                     self._truncations[i] = {
                         aid: False for aid in self.envs[i].unwrapped.possible_agents
                     }
+                    # Note, this needs to be added for `MultiAgentEpisode`s to work.
                     self._terminations[i].update({"__all__": False})
                     self._truncations[i].update({"__all__": False})
+                # Otherwise make a regular step.
                 else:
                     (
                         self._observations[i],
@@ -136,9 +115,11 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
                         self._truncations[i],
                         self._infos[i],
                     ) = self.envs[i].step(action)
+            # Other autoreset modes are not implemented, yet.
             else:
                 raise ValueError(f"Unexpected autoreset mode: {self.autoreset_mode}")
 
+        # Is any sub-environment terminated or truncated?
         self._autoreset_envs = np.logical_or(
             np.array([t["__all__"] for t in self._terminations]),
             np.array([t["__all__"] for t in self._truncations]),
@@ -194,12 +175,19 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         if hasattr(self, "envs"):
             [env.close() for env in self.envs]
 
+    @property
+    def np_random_seed(self) -> Tuple[int, ...]:
+        """Returns a tuple of random seeds for the wrapped envs."""
+        return self.get_attr("np_random_seed")
+
+    @property
+    def np_random(self) -> Tuple[np.random.Generator, ...]:
+        """Returns a tuple of numpy random generators for the wrapped envs."""
+        return self.get_attr("np_random")
+
     # TODO (simon): Move to space_utils.
     def create_empty_array(
-        self, space: Dict[str, gym.Space], n: int = 1, fn=np.zeros
+        self, space: Dict[str, gym.Space], n: int = 1
     ) -> List[Dict[str, gym.Space]]:
 
-        return [
-            tree.map_structure(lambda x: x.sample(), self.single_observation_spaces)
-            for _ in range(n)
-        ]
+        return [tree.map_structure(lambda x: x.sample(), space) for _ in range(n)]

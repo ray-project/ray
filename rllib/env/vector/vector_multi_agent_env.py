@@ -17,6 +17,10 @@ class VectorMultiAgentEnv:
     render_mode: Optional[str] = None
     closed: bool = False
 
+    # TODO (simon, sven): We could think about enabling here different
+    # spaces for different envs (e.g. different high/lows). In this
+    # case we would need here actually "batched" spaces and not a
+    # single on that holds for all sub-envs.
     single_observation_spaces: Optional[Dict[str, gym.Space]] = None
     single_action_spaces: Optional[Dict[str, gym.Space]] = None
 
@@ -33,6 +37,7 @@ class VectorMultiAgentEnv:
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[ArrayType, ArrayType]:
+        # Set random generators with the provided seeds.
         if seed is not None:
             self._np_random, self._np_random_seed = seeding.np_random(seed)
 
@@ -48,9 +53,11 @@ class VectorMultiAgentEnv:
 
     def close(self, **kwargs: Any):
 
+        # If already closed, there is nothing more to do.
         if self.closed:
             return
 
+        # Otherwise close environments gracefully.
         self.close_extras(**kwargs)
         self.closed = True
 
@@ -63,6 +70,7 @@ class VectorMultiAgentEnv:
         return self
 
     def __del__(self):
+        # Close environemnts, if necessary when deleting instances.
         if not getattr(self, "closed", True):
             self.close()
 

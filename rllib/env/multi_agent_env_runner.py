@@ -416,7 +416,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # env_to_module pipeline here.
 
                     # Make the `on_episode_end` callbacks (before finalizing the episode
-                    # object).                    
+                    # object).
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
@@ -454,7 +454,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
                 for eps in self._episodes
             ]
-            
+
             for eps in self._episodes:
                 # Just started Episodes do not have to be returned. There is no data
                 # in them anyway.
@@ -872,7 +872,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
             self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="sum")
 
-        # Record agent and module metrics.        
+        # Record agent and module metrics.
         for aid in next_obs:
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_SAMPLED, str(aid)),
