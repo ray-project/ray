@@ -222,6 +222,10 @@ class Filter(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: Optional[UserDefinedFunction] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         filter_expr: Optional["pa.dataset.Expression"] = None,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -236,6 +240,10 @@ class Filter(AbstractUDFMap):
             "Filter",
             input_op,
             fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
@@ -313,3 +321,27 @@ class FlatMap(AbstractUDFMap):
     @property
     def can_modify_num_rows(self) -> bool:
         return True
+
+
+class StreamingRepartition(AbstractMap):
+    """Logical operator for streaming repartition operation.
+    Args:
+        target_num_rows_per_block: The targetr number of rows per block granularity for
+        streaming repartition.
+    """
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        target_num_rows_per_block: int,
+    ):
+        super().__init__("StreamingRepartition", input_op)
+        self._target_num_rows_per_block = target_num_rows_per_block
+
+    @property
+    def target_num_rows_per_block(self) -> int:
+        return self._target_num_rows_per_block
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False

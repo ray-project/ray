@@ -329,9 +329,7 @@ html_theme_options = {
     "pygment_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
-        "version_match": (
-            lambda v: v if v in ["master", "latest"] else f"releases/{v}"
-        )(os.getenv("READTHEDOCS_VERSION", "master")),
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
     },
 }
 
@@ -624,6 +622,7 @@ autodoc_mock_imports = [
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",

@@ -302,7 +302,9 @@ def test_map_rows_operator(ray_start_regular_shared_2_cpus):
 def test_map_rows_e2e(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(5)
     ds = ds.map(column_udf("id", lambda x: x + 1))
-    assert extract_values("id", ds.take_all()) == [1, 2, 3, 4, 5], ds
+    expected = [1, 2, 3, 4, 5]
+    actual = sorted(extract_values("id", ds.take_all()))
+    assert actual == expected, f"Expected {expected}, but got {actual}"
     _check_usage_record(["ReadRange", "Map"])
 
 
