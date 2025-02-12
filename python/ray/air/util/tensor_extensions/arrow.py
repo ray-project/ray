@@ -243,6 +243,9 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
     if len(column_values) == 0:
         return None
 
+    # `pyarrow.infer_type` leaks memory if you pass an array with a datetime64 dtype.
+    # To avoid this, we handle datetime64 dtypes separately.
+    # See https://github.com/apache/arrow/issues/45493.
     if np.issubdtype(column_values.dtype, np.datetime64):
         return _infer_pyarrow_type_from_datetime_dtype(column_values.dtype)
 
