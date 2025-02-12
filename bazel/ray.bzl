@@ -102,17 +102,20 @@ def copy_to_workspace(name, srcs, dstdir = ""):
         outs = [name + ".out"],
         cmd = r"""
             mkdir -p -- {dstdir}
+            echo "name={name}" > $@
+            echo "dstdir={dstdir}" >> $@
+            echo "----" >> $@
             for f in {locations}; do
                 rm -f -- {dstdir}$${{f##*/}}
                 cp -f -- "$$f" {dstdir}
+                if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$f" >> $@ ; else sha1sum "$$f" >> $@ ; fi
             done
-            date > $@
         """.format(
+            name = name,
             locations = src_locations,
             dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
         ),
         local = 1,
-        tags = ["no-cache"],
     )
 
 def native_java_binary(module_name, name, native_binary_name):

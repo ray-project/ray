@@ -1444,6 +1444,7 @@ py_test(
 
 # TODO (sven, simon): This runs fine locally, but fails in the CI
 # py_test(
+#    # TODO(#50340): test is flaky.
 #    name = "test_offline_prelearner",
 #    tags = ["team:rllib", "offline"],
 #    size = "medium",
