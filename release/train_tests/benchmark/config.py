@@ -22,6 +22,7 @@ class RayDataConfig(DataLoaderConfig):
 class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
+    # Run CPU training where train workers request a `MOCK_GPU` resource instead.
     mock_gpu: bool = False
 
     # FailureConfig

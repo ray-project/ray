@@ -2121,10 +2121,10 @@
     - __suffix__: skip_training.fault_tolerance
       run:
         timeout: 2700
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_step --num_epochs=8 --max_failures=4
-        prepare: python setup_chaos.py --kill-interval 600 --max-to-kill 2
-
-
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=8 --max_failures=4
+        prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
+      cluster:
+        cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
 - name: train_horovod_multi_node_test
   group: Train tests
