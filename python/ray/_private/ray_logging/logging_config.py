@@ -120,11 +120,12 @@ LoggingConfig.__doc__ = """
                 logger.info("This is a Ray task")
 
             ray.get(f.remote())
+            ray.shutdown()
 
         .. testoutput::
             :options: +MOCK
 
-            2024-06-03 07:53:50,815 INFO test.py:11 -- This is a Ray task name=__main__ job_id=01000000 worker_id=0dbbbd0f17d5343bbeee8228fa5ff675fe442445a1bc06ec899120a8 node_id=577706f1040ea8ebd76f7cf5a32338d79fe442e01455b9e7110cddfc task_id=c8ef45ccd0112571ffffffffffffffffffffffff01000000
+            2025-02-12 12:25:16,836 INFO test-log-config.py:11 -- This is a Ray task name=__main__ job_id=01000000 worker_id=51188d9448be4664bf2ea26ac410b67acaaa970c4f31c5ad3ae776a5 node_id=f683dfbffe2c69984859bc19c26b77eaf3866c458884c49d115fdcd4 task_id=c8ef45ccd0112571ffffffffffffffffffffffff01000000 task_name=f task_func_name=test-log-config.f timestamp_ns=1739391916836884000
 
     2. Configure the logging to use JSON encoding.
         .. testcode::
@@ -142,11 +143,12 @@ LoggingConfig.__doc__ = """
                 logger.info("This is a Ray task")
 
             ray.get(f.remote())
+            ray.shutdown()
 
         .. testoutput::
             :options: +MOCK
 
-            {"asctime": "2025-02-11 11:40:36,352", "levelname": "INFO", "message": "This is a Ray task", "filename": "test-log-config.py", "lineno": 11, "name": "__main__", "job_id": "01000000", "worker_id": "7b9073a20da1f4c683b3a680595ed1c2c1c6f9123e82036248429cd9", "node_id": "2817cf314837ecfcc6e0b05878aa05bb701509fcc86e871a70d458a7", "task_id": "c8ef45ccd0112571ffffffffffffffffffffffff01000000", "task_name": "f", "task_func_name": "test-log-config.f", "timestamp_ns": 1739302836352403000}
+            {"asctime": "2025-02-12 12:25:48,766", "levelname": "INFO", "message": "This is a Ray task", "filename": "test-log-config.py", "lineno": 11, "name": "__main__", "job_id": "01000000", "worker_id": "6d307578014873fcdada0fa22ea6d49e0fb1f78960e69d61dfe41f5a", "node_id": "69e3a5e68bdc7eb8ac9abb3155326ee3cc9fc63ea1be04d11c0d93c7", "task_id": "c8ef45ccd0112571ffffffffffffffffffffffff01000000", "task_name": "f", "task_func_name": "test-log-config.f", "timestamp_ns": 1739391948766949000}
 
     Args:
         encoding: Encoding type for the logs. The valid values are
