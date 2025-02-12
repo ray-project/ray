@@ -808,7 +808,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
+                    rl_module_state=rl_module_state,
                 )
             elif self.eval_env_runner_group:
                 self.eval_env_runner.set_state(rl_module_state)
@@ -817,7 +817,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
-                    rl_module_state=rl_module_state[COMPONENT_RL_MODULE],
+                    rl_module_state=rl_module_state,
                 )
             # TODO (simon): Update modules in DataWorkers.
 
@@ -1020,9 +1020,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
                 # new states back to all EnvRunners.
                 with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
-                    self.env_runner_group.sync_env_runner_states(
-                        config=self.config,
-                    )
+                    self.env_runner_group.sync_env_runner_states(config=self.config)
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
             # in `train_results` and `eval_results`.
