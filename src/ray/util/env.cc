@@ -12,28 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/scoped_env_setter.h"
-
-#include <cstdlib>
-
 #include "ray/util/env.h"
+
+#include "ray/util/logging.h"
 
 namespace ray {
 
-ScopedEnvSetter::ScopedEnvSetter(const char *env_name, const char *value)
-    : env_name_(env_name) {
-  const char *val = ::getenv(env_name);
-  if (val != nullptr) {
-    old_value_ = val;
-  }
-  SetEnv(env_name, value);
+void SetEnv(const std::string &name, const std::string &value) {
+#ifdef _WIN32
+  std::string env = name + "=" + value;
+  int ret = _putenv(env.c_str());
+#else
+  int ret = setenv(name.c_str(), value.c_str(), 1);
+#endif
+  RAY_CHECK_EQ(ret, 0) << "Failed to set env var " << name << " " << value;
 }
 
-ScopedEnvSetter::~ScopedEnvSetter() {
-  UnsetEnv(env_name_.c_str());
-  if (old_value_.has_value()) {
-    SetEnv(env_name_, *old_value_);
-  }
+void UnsetEnv(const std::string &name) {
+#ifdef _WIN32
+  // Use _putenv on Windows with an empty value to unset
+  std::string env = name + "=";
+  int ret = _putenv(env.c_str());
+#else
+  int ret = unsetenv(name.c_str());
+#endif
+  RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
 }
 
 }  // namespace ray

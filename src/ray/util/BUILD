@@ -29,6 +29,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "env",
+    hdrs = ["env.h"],
+    srcs = ["env.cc"],
+    deps = [
+        ":logging",
+    ],
+)
+
+ray_cc_library(
     name = "exponential_backoff",
     srcs = ["exponential_backoff.cc"],
     hdrs = ["exponential_backoff.h"],
@@ -137,7 +146,7 @@ ray_cc_library(
     hdrs = ["scoped_env_setter.h"],
     srcs = ["scoped_env_setter.cc"],
     deps = [
-        ":util",
+        ":env",
     ],
 )
 
