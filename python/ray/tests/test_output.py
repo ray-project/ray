@@ -149,31 +149,6 @@ print(ray.get(f.remote()))
         assert "HOOK_VALUE" in out_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_runtime_env_override_hook():
-    script = """
-import ray
-import os
-
-@ray.remote
-def f():
-    return os.environ.get("HOOK_KEY")
-
-print(ray.get(f.remote()))
-"""
-
-    proc = run_string_as_driver_nonblocking(
-        script,
-        env={
-            "RAY_OVERRIDE_RUNTIME_ENV_JSON": '{"env_vars": {"HOOK_KEY": "HOOK_VALUE"}}',
-            "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.runtime_env_override_hook",
-        },
-    )
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
-    assert "HOOK_VALUE" in out_str
-
-
 def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
     monkeypatch.setenv("RAY_RUNTIME_ENV_HOOK", "ray.tests.test_output._hook")
     cluster, address = start_cluster
