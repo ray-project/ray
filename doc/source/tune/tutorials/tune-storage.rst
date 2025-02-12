@@ -129,7 +129,7 @@ unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.tra
     )
     tuner.fit()
 
-In this example, all experiment results can found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
+In this example, all experiment results can be found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
 
 
 On a multi-node cluster (Deprecated)

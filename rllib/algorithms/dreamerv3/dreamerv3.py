@@ -42,6 +42,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_GRAD_UPDATES_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
+    REPLAY_BUFFER_RESULTS,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
@@ -585,6 +586,11 @@ class DreamerV3(Algorithm):
         # Summarize environment interaction and buffer data.
         report_sampling_and_replay_buffer(
             metrics=self.metrics, replay_buffer=self.replay_buffer
+        )
+        # Get the replay buffer metrics.
+        replay_buffer_results = self.local_replay_buffer.get_metrics()
+        self.metrics.merge_and_log_n_dicts(
+            [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
         )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer

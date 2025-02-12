@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.core import Columns, COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
@@ -16,6 +16,17 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 
 
 class TestOfflinePreLearner(unittest.TestCase):
+
+    EXPECTED_KEYS = [
+        Columns.OBS,
+        Columns.NEXT_OBS,
+        Columns.ACTIONS,
+        Columns.REWARDS,
+        Columns.TERMINATEDS,
+        Columns.TRUNCATEDS,
+        "n_step",
+    ]
+
     def setUp(self) -> None:
         data_path = "tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
@@ -103,17 +114,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         )
         # Ensure all keys are available and the length of each value is the
         # train batch size.
-        keys = [
-            "obs",
-            "new_obs",
-            "actions",
-            "rewards",
-            "terminateds",
-            "truncateds",
-            "n_step",
-            "infos",
-        ]
-        for key in keys:
+        for key in self.EXPECTED_KEYS:
             self.assertIn(key, batch["batch"][0][DEFAULT_POLICY_ID])
             self.assertEqual(
                 len(batch["batch"][0][DEFAULT_POLICY_ID][key]),
@@ -206,7 +207,7 @@ class TestOfflinePreLearner(unittest.TestCase):
             module_spec=algo.offline_data.module_spec,
             module_state=module_state,
         )
-        # Now, pull a batch of defined size formt he dataset.
+        # Now, pull a batch of defined size from the dataset.
         batch = algo.offline_data.data.take_batch(
             self.config.train_batch_size_per_learner
         )
@@ -227,17 +228,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         )
         # Ensure all keys are available and the length of each value is the
         # train batch size.
-        keys = [
-            "obs",
-            "new_obs",
-            "actions",
-            "rewards",
-            "terminateds",
-            "truncateds",
-            "n_step",
-            "infos",
-        ]
-        for key in keys:
+        for key in self.EXPECTED_KEYS:
             self.assertIn(key, batch["batch"][0][DEFAULT_POLICY_ID])
             self.assertEqual(
                 len(batch["batch"][0][DEFAULT_POLICY_ID][key]),

@@ -23,6 +23,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/test_util.h"
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
