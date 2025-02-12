@@ -14,9 +14,7 @@
 
 #include "ray/util/dup2_wrapper.h"
 
-#include <fcntl.h>
 #include <gtest/gtest.h>
-#include <unistd.h>
 
 #include <string_view>
 
@@ -24,6 +22,13 @@
 #include "ray/util/compat.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/temporary_directory.h"
+
+#if defined(__APPLE__) || defined(__linux__)
+#include <fcntl.h>
+#include <unistd.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#endif
 
 namespace ray {
 
