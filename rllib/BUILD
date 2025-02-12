@@ -1442,18 +1442,19 @@ py_test(
     ]
 )
 
-py_test(
-    # TODO(#50340): test is flaky.
-    name = "test_offline_prelearner",
-    tags = ["team:rllib", "offline", "manual"],
-    size = "medium",
-    srcs = ["offline/tests/test_offline_prelearner.py"],
-    # Include the offline data files.
-    data = [
-        "tests/data/cartpole/cartpole-v1_large",
-        "tests/data/cartpole/large.json",
-    ]
-)
+# TODO (sven, simon): This runs fine locally, but fails in the CI
+# py_test(
+#    # TODO(#50340): test is flaky.
+#    name = "test_offline_prelearner",
+#    tags = ["team:rllib", "offline"],
+#    size = "medium",
+#    srcs = ["offline/tests/test_offline_prelearner.py"],
+#    # Include the offline data files.
+#    data = [
+#        "tests/data/cartpole/cartpole-v1_large",
+#        "tests/data/cartpole/large.json",
+#    ]
+# )
 
 # --------------------------------------------------------------------
 # Policies
@@ -2850,6 +2851,7 @@ py_test(
 # --------------------------------------------------------------------
 py_test_module_list(
   files = [
+    "offline/tests/test_offline_prelearner.py",
     "utils/tests/test_utils.py",
   ],
   size = "large",
