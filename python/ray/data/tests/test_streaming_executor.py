@@ -29,13 +29,13 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
+    StreamingExecutor,
     _debug_dump_topology,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
     OpState,
-    Topology,
     _execution_allowed,
     build_streaming_topology,
     process_completed_tasks,
@@ -662,13 +662,13 @@ def test_execution_callbacks():
             self._after_execution_succeeds_called = False
             self._execution_error = None
 
-        def before_execution_starts(self, topology: Topology):
+        def before_execution_starts(self, executor: StreamingExecutor):
             self._before_execution_starts_called = True
 
-        def after_execution_succeeds(self, topology: Topology):
+        def after_execution_succeeds(self, executor: StreamingExecutor):
             self._after_execution_succeeds_called = True
 
-        def after_execution_fails(self, topology: Topology, error: Exception):
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
             self._execution_error = error
 
     # Test the success case.
@@ -727,15 +727,15 @@ def test_execution_callbacks():
     assert isinstance(error, KeyboardInterrupt), error
 
 
-def test_execution_callbacks_topology_arg(tmp_path, restore_data_context):
-    """Test the topology arg in ExecutionCallback."""
+def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
+    """Test the executor arg in ExecutionCallback."""
 
-    topo = None
+    _executor = None
 
     class CustomExecutionCallback(ExecutionCallback):
-        def after_execution_succeeds(self, topology: Topology):
-            nonlocal topo
-            topo = topology
+        def after_execution_succeeds(self, executor: StreamingExecutor):
+            nonlocal _executor
+            _executor = executor
 
     input_path = tmp_path / "input"
     os.makedirs(input_path)
@@ -753,9 +753,11 @@ def test_execution_callbacks_topology_arg(tmp_path, restore_data_context):
 
     ds = ds.write_parquet(output_path)
 
-    assert topo is not None
-    assert len(topo) == 2
-    physical_ops = list(topo.keys())
+    # Test inspecting the metadata of each operator.
+    # E.g., the original input and output paths and the UDF.
+    assert _executor is not None
+    assert len(_executor._topology) == 2
+    physical_ops = list(_executor._topology.keys())
     assert isinstance(physical_ops[0], InputDataBuffer)
     assert isinstance(physical_ops[1], MapOperator)
     logical_ops = physical_ops[1]._logical_operators
@@ -764,7 +766,7 @@ def test_execution_callbacks_topology_arg(tmp_path, restore_data_context):
     assert isinstance(logical_ops[0], Read)
     datasource = logical_ops[0]._datasource
     assert isinstance(datasource, ParquetDatasource)
-    assert datasource.unresolved_path == input_path
+    assert datasource._unresolved_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
     assert logical_ops[1]._fn == udf
