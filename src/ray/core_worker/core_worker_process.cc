@@ -188,7 +188,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 <<<<<<< HEAD
 
 =======
-    
+
 >>>>>>> master
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
