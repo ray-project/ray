@@ -4,6 +4,9 @@ from ray.llm._internal.batch.processor.vllm_engine_proc import (
     vLLMEngineProcessorConfig,
 )
 
+# The GPU type used in the CI.
+ACCELERATOR_TYPE = "T4"
+
 
 def test_vllm_engine_processor(model_opt_125m):
     config = vLLMEngineProcessorConfig(
@@ -16,7 +19,7 @@ def test_vllm_engine_processor(model_opt_125m):
                 RANDOM_ENV_VAR="12345",
             ),
         ),
-        accelerator_type="L40S",
+        accelerator_type=ACCELERATOR_TYPE,
         concurrency=4,
         batch_size=64,
         max_pending_requests=111,
@@ -52,7 +55,7 @@ def test_vllm_engine_processor(model_opt_125m):
         "zero_copy_batch": True,
         "concurrency": 4,
         "max_concurrency": 4,
-        "accelerator_type": "L40S",
+        "accelerator_type": ACCELERATOR_TYPE,
         "num_gpus": 1,
     }
 
@@ -92,7 +95,7 @@ def test_generation_model(model_opt_125m):
             enforce_eager=True,
         ),
         batch_size=16,
-        accelerator_type="L40S",
+        accelerator_type=ACCELERATOR_TYPE,
         concurrency=1,
         apply_chat_template=True,
         chat_template=chat_template,
@@ -139,7 +142,7 @@ def test_embedding_model(model_opt_125m):
             enforce_eager=True,
         ),
         batch_size=16,
-        accelerator_type="L40S",
+        accelerator_type=ACCELERATOR_TYPE,
         concurrency=1,
         apply_chat_template=True,
         chat_template="",
