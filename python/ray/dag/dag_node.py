@@ -149,7 +149,7 @@ class DAGNode(DAGNodeBase):
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
-        elif transport == "nccl":
+        elif transport == "nccl" or transport == "hccl":
             self._type_hint = TorchTensorType(
                 transport=transport,
                 _static_shape=_static_shape,
@@ -158,7 +158,7 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl' or a Communicator type"
+                    "transport must be 'auto', 'nccl', 'hccl' or a Communicator type"
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
