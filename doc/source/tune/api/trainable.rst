@@ -141,7 +141,7 @@ Concept                 Function API                                    Class AP
 Training Iteration      Increments on each `tune.report` call          Increments on each `Trainable.step` call
 Report  metrics         `tune.report(metrics)`                         Return metrics from `Trainable.step`
 Saving a checkpoint     `tune.report(..., checkpoint=checkpoint)`      `Trainable.save_checkpoint`
-Loading a checkpoint    `train.get_checkpoint()`                        `Trainable.load_checkpoint`
+Loading a checkpoint    `tune.get_checkpoint()`                        `Trainable.load_checkpoint`
 Accessing config        Passed as an argument `def train_func(config):` Passed through `Trainable.setup`
 ======================= =============================================== ==============================================
 
