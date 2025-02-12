@@ -17,6 +17,7 @@
 #include <condition_variable>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -73,6 +74,15 @@ void StartStreamDump(
                stream_dumper = stream_dumper]() {
     SetThreadName("PipeReaderThd");
 
+    {
+      std::ofstream outfile;
+      outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
+      // Write to the file
+      outfile << "start reader theread!!!" << std::endl;
+      // Close the file
+      outfile.close();
+    }
+
     const size_t buf_size = GetPipeLogReadSizeOrDefault();
     // Pre-allocate stream buffer to avoid excessive syscall.
     // TODO(hjiang): Should resize without initialization.
@@ -90,6 +100,15 @@ void StartStreamDump(
         std::string_view cur_readsome_buffer{readsome_buffer.data(),
                                              static_cast<uint64_t>(bytes_read)};
         cur_new_line += cur_readsome_buffer;
+      }
+
+      {
+        std::ofstream outfile;
+        outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
+        // Write to the file
+        outfile << cur_new_line << std::endl;
+        // Close the file
+        outfile.close();
       }
 
       // Already read all we have at the moment, stream into logger.
@@ -233,6 +252,15 @@ bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
 }
 
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
+  {
+    std::ofstream outfile;
+    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
+    // Write to the file
+    outfile << "no pipe redirection write to file " << file_path << std::endl;
+    // Close the file
+    outfile.close();
+  }
+
   boost::iostreams::file_descriptor_sink fd_sink{file_path, std::ios_base::out};
   auto handle = fd_sink.handle();
   auto ostream =
@@ -254,9 +282,25 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
 RedirectionFileHandle CreateRedirectionFileHandle(
     const StreamRedirectionOption &stream_redirect_opt) {
+  {
+    std::ofstream outfile;
+    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
+    // Write to the file
+    outfile << "start redirection" << std::endl;
+    // Close the file
+    outfile.close();
+  }
+
   // Case-1: only redirection, but not rotation and tee involved.
   const bool should_use_pipe_stream = ShouldUsePipeStream(stream_redirect_opt);
   if (!should_use_pipe_stream) {
+    std::ofstream outfile;
+    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
+    // Write to the file
+    outfile << "no pipe redirection" << std::endl;
+    // Close the file
+    outfile.close();
+
     return OpenFileForRedirection(stream_redirect_opt.file_path);
   }
 
@@ -298,6 +342,15 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     // Block until destruction finishes.
     promise->get_future().get();
   };
+
+  {
+    std::ofstream outfile;
+    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
+    // Write to the file
+    outfile << "background thread" << std::endl;
+    // Close the file
+    outfile.close();
+  }
 
   auto logger = CreateLogger(stream_redirect_opt);
   StartStreamDump(std::move(pipe_instream), logger, std::move(on_close_completion));

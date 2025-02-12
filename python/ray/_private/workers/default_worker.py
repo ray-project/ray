@@ -3,6 +3,7 @@ import argparse
 import base64
 import json
 import time
+import sys
 
 import ray
 import ray._private.node
@@ -267,6 +268,20 @@ if __name__ == "__main__":
         ray_debugger_external=args.ray_debugger_external,
         worker_launch_time_ms=args.worker_launch_time_ms,
         worker_launched_time_ms=worker_launched_time_ms,
+    )
+
+    stdout_fileno = sys.stdout.fileno()
+    stderr_fileno = sys.stderr.fileno()
+    # We also manually set sys.stdout and sys.stderr because that seems to
+    # have an effect on the output buffering. Without doing this, stdout
+    # and stderr are heavily buffered resulting in seemingly lost logging
+    # statements. We never want to close the stdout file descriptor, dup2 will
+    # close it when necessary and we don't want python's GC to close it.
+    sys.stdout = ray._private.utils.open_log(
+        stdout_fileno, unbuffered=True, closefd=False
+    )
+    sys.stderr = ray._private.utils.open_log(
+        stderr_fileno, unbuffered=True, closefd=False
     )
 
     worker = ray._private.worker.global_worker

@@ -71,6 +71,7 @@ Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
   }
   return Status::OK();
 }
+int64_t GetPid() { return getpid(); }
 #elif defined(_WIN32)
 Status CompleteWrite(MEMFD_TYPE_NON_UNIQUE fd, const char *data, size_t len) {
   DWORD bytes_written;
@@ -97,6 +98,7 @@ Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
   }
   return Status::OK();
 }
+int64_t GetPid() { return (int64_t)(GetCurrentProcessId()); }
 #endif
 
 }  // namespace ray
