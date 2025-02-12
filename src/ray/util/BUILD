@@ -29,6 +29,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "env",
+    hdrs = ["env.h"],
+    srcs = ["env.cc"],
+    deps = [
+        ":logging",
+    ],
+)
+
+ray_cc_library(
     name = "exponential_backoff",
     srcs = ["exponential_backoff.cc"],
     hdrs = ["exponential_backoff.h"],
@@ -137,7 +146,7 @@ ray_cc_library(
     hdrs = ["scoped_env_setter.h"],
     srcs = ["scoped_env_setter.cc"],
     deps = [
-        ":util",
+        ":env",
     ],
 )
 
@@ -267,13 +276,15 @@ ray_cc_library(
     deps = [
         ":compat",
         ":spdlog_fd_sink",
+        ":spdlog_newliner_sink",
         ":stream_redirection_options",
         ":thread_utils",
         ":util",
+        "//src/ray/common:ray_config",
         "@boost//:iostreams",
-        "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_github_spdlog//:spdlog",
     ],
 )
 

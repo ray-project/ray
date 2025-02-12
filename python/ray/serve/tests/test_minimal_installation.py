@@ -1,9 +1,3 @@
-"""
-Test that Serve gives good error message when no deps are installed.
-This tests exist in the ray/tests/ directory instead of ray/serve/tests because
-it needs not to have dependencies on serve's conftest.py.
-"""
-
 import os
 import sys
 

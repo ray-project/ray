@@ -118,11 +118,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "//src/ray/common:status",
         "//src/ray/util",
+        "//src/ray/util:env",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
-        "//src/ray/common:status",
     ],
 )
 
@@ -241,6 +242,7 @@ ray_cc_test(
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
+        "//src/ray/util:scoped_env_setter",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
@@ -250,6 +252,26 @@ ray_cc_test(
 ray_cc_test(
     name = "stream_redirection_utils_test",
     srcs = ["stream_redirection_utils_test.cc"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:stream_redirection_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = [
+        "team:core",
+        # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
+        # ostream concurrently at pipe dumper thread and main thread, which we have ordered
+        # properly. Disable the complete test suite here since it always contains exactly one test
+        # case.
+        "no_tsan",
+    ],
+)
+
+ray_cc_test(
+    name = "stream_redirection_exit_test",
+    srcs = ["stream_redirection_exit_test.cc"],
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util",
