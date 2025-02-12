@@ -358,7 +358,7 @@ Ray enables users to configure the Python logging library to output logs in a st
 If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
 ```
 
-Below are the ways to configure Ray Core's structure logging format:
+The following methods are ways to configure Ray Core's structure logging format:
 
 ##### Method 1: Configure structured logging with `ray.init`
 ```python
