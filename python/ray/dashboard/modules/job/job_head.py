@@ -168,7 +168,7 @@ class JobHead(SubprocessModule):
         self._job_info_client = None
 
         # To make sure that the internal KV is initialized by getting the lazy property
-        self.gcs_client
+        ray.experimental.internal_kv._initialize_internal_kv(self.gcs_aio_client)
         assert ray.experimental.internal_kv._internal_kv_initialized()
 
         # It contains all `JobAgentSubmissionClient` that
