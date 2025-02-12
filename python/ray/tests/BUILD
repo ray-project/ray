@@ -152,6 +152,7 @@ py_test_module_list(
     "accelerators/test_hpu.py",
     "accelerators/test_intel_gpu.py",
     "accelerators/test_amd_gpu.py",
+    "accelerators/test_mlu.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_logging_2.py",
