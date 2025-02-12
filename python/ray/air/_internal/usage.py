@@ -39,6 +39,7 @@ TUNE_SEARCHERS = {
     "HyperOptSearch",
     "NevergradSearch",
     "OptunaSearch",
+    "VizierSearch",
     "ZOOptSearch",
 }
 

@@ -228,6 +228,31 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@unittest.skipIf(
+    sys.version_info < (3, 10), reason="Vizier requires Python 3.10 or higher"
+)
+class VizierWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        from ray.tune.search.vizier import VizierSearch
+
+        space = {
+            "x": tune.uniform(0, 10),
+            "y": tune.uniform(-10, 10),
+            "z": tune.uniform(-10, 0),
+        }
+
+        def cost(space):
+            loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
+            train.report(dict(loss=loss))
+
+        search_alg = VizierSearch(
+            space,
+            metric="loss",
+            mode="min",
+        )
+        return search_alg, cost
+
+
 class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         dim_dict = {
