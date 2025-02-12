@@ -2850,6 +2850,7 @@ py_test(
 # --------------------------------------------------------------------
 py_test_module_list(
   files = [
+    "offline/tests/test_offline_prelearner.py",
     "utils/tests/test_utils.py",
   ],
   size = "large",
