@@ -2121,8 +2121,8 @@
     - __suffix__: skip_training.fault_tolerance
       run:
         timeout: 2700
-        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_step --validate_every_n_steps=650 --num_epochs=4 --max_failures=4
-        prepare: python setup_chaos.py --kill-interval 600 --max-to-kill 2 --kill-delay 600
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step --skip_validation_step --num_epochs=8 --max_failures=4
+        prepare: python setup_chaos.py --kill-interval 600 --max-to-kill 2
 
 
 
