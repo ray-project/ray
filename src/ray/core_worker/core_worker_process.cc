@@ -26,14 +26,17 @@ namespace {
 
 std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 
-// Get output filename for worker.
-std::string GetWorkerOutputFilename(WorkerType worker_type,
-                                    const std::string &job_id,
-                                    const std::string &worker_id) {
-  std::string parsed_job_id = job_id;
-  if (parsed_job_id.empty()) {
+// Get out and error filepath for worker.
+std::string GetWorkerOutputFilepath(WorkerType worker_type,
+                                    const JobID &job_id,
+                                    const std::string &worker_id,
+                                    const std::string &suffix) {
+  std::string parsed_job_id = "";
+  if (job_id.IsNil()) {
     char *job_id_env = ::getenv("RAY_JOB_ID");
     parsed_job_id = job_id_env;
+  } else {
+    parsed_job_id = job_id.Hex();
   }
 
   std::string worker_name;
@@ -47,35 +50,9 @@ std::string GetWorkerOutputFilename(WorkerType worker_type,
 
   if (!parsed_job_id.empty()) {
     return absl::StrFormat(
-        "%s-%s-%s-%d.out", worker_name, worker_id, parsed_job_id, GetPid());
+        "%s-%s-%s-%d.%s", worker_name, worker_id, parsed_job_id, GetPid(), suffix);
   }
-  return absl::StrFormat("%s-%s-%d.out", worker_name, worker_id, GetPid());
-}
-
-// Get error filename for worker.
-std::string GetWorkerErrorFilename(WorkerType worker_type,
-                                   const std::string &job_id,
-                                   const std::string &worker_id) {
-  std::string parsed_job_id = job_id;
-  if (parsed_job_id.empty()) {
-    char *job_id_env = ::getenv("RAY_JOB_ID");
-    parsed_job_id = job_id_env;
-  }
-
-  std::string worker_name;
-  if (worker_type == WorkerType::WORKER) {
-    worker_name = "worker";
-  } else if (worker_type == WorkerType::SPILL_WORKER ||
-             worker_type == WorkerType::RESTORE_WORKER) {
-    parsed_job_id = "";
-    worker_name = "io_worker";
-  }
-
-  if (!parsed_job_id.empty()) {
-    return absl::StrFormat(
-        "%s-%s-%s-%d.err", worker_name, worker_id, parsed_job_id, GetPid());
-  }
-  return absl::StrFormat("%s-%s-%d.err", worker_name, worker_id, GetPid());
+  return absl::StrFormat("%s-%s-%d.%s", worker_name, worker_id, GetPid(), suffix);
 }
 
 }  // namespace
@@ -157,8 +134,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     if (options_.worker_type == WorkerType::WORKER) {
       // Setup redirection for stdout.
       {
-        const std::string fname = GetWorkerOutputFilename(
-            options_.worker_type, options_.job_id.Hex(), worker_id_.Hex());
+        const std::string fname = GetWorkerOutputFilepath(
+            options_.worker_type, options_.job_id, worker_id_.Hex(), /*suffix=*/"out");
         const std::string worker_output_filepath = JoinPaths(options_.log_dir, fname);
 
         ray::StreamRedirectionOption stdout_redirection_options;
@@ -172,8 +149,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
       // Setup redirection for stderr.
       {
-        const std::string fname = GetWorkerErrorFilename(
-            options_.worker_type, options_.job_id.Hex(), worker_id_.Hex());
+        const std::string fname = GetWorkerOutputFilepath(
+            options_.worker_type, options_.job_id, worker_id_.Hex(), /*suffix=*/"err");
         const std::string worker_error_filepath = JoinPaths(options_.log_dir, fname);
 
         ray::StreamRedirectionOption stderr_redirection_options;
