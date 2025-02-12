@@ -2082,6 +2082,10 @@ class Dataset:
         Examples:
 
             >>> import ray
+            >>> ctx = ray.data.DataContext.get_current()
+            >>> # Sanity check. Will remove before merge
+            >>> ctx.execution_options.preserve_order
+            True
             >>> ds1 = ray.data.range(2)
             >>> ds2 = ray.data.range(3)
             >>> ds1.union(ds2).take_all()
