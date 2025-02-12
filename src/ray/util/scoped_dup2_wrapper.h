@@ -20,6 +20,9 @@
 
 namespace ray {
 
+// A RAII-style wrapper for `dup2` syscall, which
+// - Works on cross-platform;
+// - Recovers file descriptor at destruction.
 class ScopedDup2Wrapper {
  public:
   // Duplicate [oldfd] to [newfd], same semantics with syscall `dup2`.
