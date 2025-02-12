@@ -36,7 +36,7 @@ namespace {
 
 constexpr std::string_view kContent = "helloworld\n";
 
-TEST(Dup2WrapperTest, BasicTest) {
+TEST(ScopedDup2WrapperTest, BasicTest) {
   ScopedTemporaryDirectory temp_dir;
   const auto dir = temp_dir.GetDirectory();
   const auto path = dir / "test_file";
@@ -59,7 +59,7 @@ TEST(Dup2WrapperTest, BasicTest) {
 #endif
 
   {
-    auto dup2_wrapper = Dup2Wrapper::New(/*oldfd=*/fd, /*newfd=*/GetStderrHandle());
+    auto dup2_wrapper = ScopedDup2Wrapper::New(/*oldfd=*/fd, /*newfd=*/GetStderrHandle());
 
     // Write to stdout should appear in file.
     std::cerr << kContent << std::flush;

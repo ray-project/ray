@@ -16,7 +16,8 @@
 
 namespace ray {
 
-/*static*/ std::unique_ptr<Dup2Wrapper> Dup2Wrapper::New(HANDLE oldfd, HANLE newfd) {
+/*static*/ std::unique_ptr<ScopedDup2Wrapper> ScopedDup2Wrapper::New(HANDLE oldfd,
+                                                                     HANLE newfd) {
   HANDLE restorefd = NULL;
   BOOL success = DuplicateHandle(GetCurrentProcess(),
                                  oldfd,
@@ -36,10 +37,10 @@ namespace ray {
                             DUPLICATE_SAME_ACCESS);
   RAY_CHECK(success);
 
-  return std::unique_ptr<Dup2Wrapper>(new Dup2Wrapper(oldfd, restorefd));
+  return std::unique_ptr<ScopedDup2Wrapper>(new ScopedDup2Wrapper(oldfd, restorefd));
 }
 
-Dup2Wrapper::~Dup2Wrapper() {
+ScopedDup2Wrapper::~ScopedDup2Wrapper() {
   BOOL success = DuplicateHandle(GetCurrentProcess(),
                                  oldfd_,
                                  GetCurrentProcess(),

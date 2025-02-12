@@ -20,20 +20,20 @@
 
 namespace ray {
 
-class Dup2Wrapper {
+class ScopedDup2Wrapper {
  public:
   // Duplicate [oldfd] to [newfd], same semantics with syscall `dup2`.
-  static std::unique_ptr<Dup2Wrapper> New(MEMFD_TYPE_NON_UNIQUE oldfd,
-                                          MEMFD_TYPE_NON_UNIQUE newfd);
+  static std::unique_ptr<ScopedDup2Wrapper> New(MEMFD_TYPE_NON_UNIQUE oldfd,
+                                                MEMFD_TYPE_NON_UNIQUE newfd);
 
-  Dup2Wrapper(const Dup2Wrapper &) = delete;
-  Dup2Wrapper &operator=(const Dup2Wrapper &) = delete;
+  ScopedDup2Wrapper(const ScopedDup2Wrapper &) = delete;
+  ScopedDup2Wrapper &operator=(const ScopedDup2Wrapper &) = delete;
 
   // Restore oldfd.
-  ~Dup2Wrapper();
+  ~ScopedDup2Wrapper();
 
  private:
-  Dup2Wrapper(MEMFD_TYPE_NON_UNIQUE oldfd, MEMFD_TYPE_NON_UNIQUE restorefd)
+  ScopedDup2Wrapper(MEMFD_TYPE_NON_UNIQUE oldfd, MEMFD_TYPE_NON_UNIQUE restorefd)
       : oldfd_(oldfd), restorefd_(restorefd) {}
 
   MEMFD_TYPE_NON_UNIQUE oldfd_;

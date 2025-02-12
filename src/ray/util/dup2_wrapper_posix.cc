@@ -21,7 +21,8 @@
 
 namespace ray {
 
-/*static*/ std::unique_ptr<Dup2Wrapper> Dup2Wrapper::New(int oldfd, int newfd) {
+/*static*/ std::unique_ptr<ScopedDup2Wrapper> ScopedDup2Wrapper::New(int oldfd,
+                                                                     int newfd) {
   const int restorefd = dup(oldfd);
   RAY_CHECK_NE(restorefd, -1) << "Fails to duplicate oldfd " << oldfd << " because "
                               << strerror(errno);
@@ -30,10 +31,10 @@ namespace ray {
   RAY_CHECK_NE(ret, -1) << "Fails to duplicate oldfd " << oldfd << " to " << newfd
                         << " because " << strerror(errno);
 
-  return std::unique_ptr<Dup2Wrapper>(new Dup2Wrapper(oldfd, restorefd));
+  return std::unique_ptr<ScopedDup2Wrapper>(new ScopedDup2Wrapper(oldfd, restorefd));
 }
 
-Dup2Wrapper::~Dup2Wrapper() {
+ScopedDup2Wrapper::~ScopedDup2Wrapper() {
   const int ret = dup2(oldfd_, restorefd_);
   RAY_CHECK_NE(ret, -1) << "Fails to duplicate oldfd " << oldfd_ << " to " << restorefd_
                         << " because " << strerror(errno);
