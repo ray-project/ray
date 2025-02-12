@@ -118,11 +118,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "//src/ray/common:status",
         "//src/ray/util",
+        "//src/ray/util:env",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
-        "//src/ray/common:status",
     ],
 )
 
@@ -223,6 +224,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "scoped_env_setter_test",
+    srcs = ["scoped_env_setter_test.cc"],
+    deps = [
+        "//src/ray/util:scoped_env_setter",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
@@ -230,6 +242,7 @@ ray_cc_test(
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
+        "//src/ray/util:scoped_env_setter",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",

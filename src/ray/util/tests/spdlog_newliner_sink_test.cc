@@ -29,7 +29,7 @@ namespace {
 std::shared_ptr<spdlog::logger> CreateLogger() {
   auto fd_formatter = std::make_unique<spdlog::pattern_formatter>(
       "%v", spdlog::pattern_time_type::local, std::string(""));
-  auto fd_sink = std::make_shared<non_owned_fd_sink_st>(GetStdoutFd());
+  auto fd_sink = std::make_shared<non_owned_fd_sink_st>(GetStdoutHandle());
   // We have to manually set the formatter, since it's not managed by logger.
   fd_sink->set_formatter(std::move(fd_formatter));
 
@@ -41,7 +41,7 @@ std::shared_ptr<spdlog::logger> CreateLogger() {
   return logger;
 }
 
-// Testing senario: Keep writing to spdlog after flush, and check whether all written
+// Testing scenario: Keep writing to spdlog after flush, and check whether all written
 // content is correctly reflected.
 TEST(NewlinerSinkTest, WriteAfterFlush) {
   auto logger = CreateLogger();
