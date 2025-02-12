@@ -12,6 +12,7 @@ from packaging.version import Version
 import json
 
 import ray
+from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
@@ -189,6 +190,18 @@ class SubprocessModule(abc.ABC):
                 cluster_id=self._config.cluster_id_hex,
             )
         return self._gcs_aio_client
+
+    @property
+    def gcs_client(self):
+        if self._gcs_client is None:
+            self._gcs_client = GcsClient(
+                address=self._config.gcs_address,
+                nums_reconnect_retry=0,
+                cluster_id=self._config.cluster_id_hex,
+            )
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
+        return self._gcs_client
 
     def handle_child_bound_message(
         self,
