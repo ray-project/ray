@@ -9,9 +9,6 @@ import sys
 import tempfile
 
 import ray
-from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
-)
 
 
 @pytest.fixture(scope="function")
@@ -171,6 +168,7 @@ print(json.dumps(ray.get(f.remote())))
             [
                 uv,
                 "run",
+                # We want to run in the system environment so the current installation of Ray can be found here
                 "--python-preference=only-system",
                 "--with",
                 "emoji",
