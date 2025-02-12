@@ -116,6 +116,7 @@ def build_vllm_engine_processor(
                 # is too small, but it should be good enough for batch size >= 64.
                 max_concurrency=4,
                 accelerator_type=config.accelerator_type,
+                runtime_env=config.runtime_env,
             ),
         )
     )

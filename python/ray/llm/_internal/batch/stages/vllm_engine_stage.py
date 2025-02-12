@@ -484,10 +484,9 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs = values["map_batches_kwargs"]
         accelerator_type = map_batches_kwargs.get("accelerator_type", "")
         fn_constructor_kwargs = values["fn_constructor_kwargs"]
-        runtime_env = fn_constructor_kwargs.get("runtime_env", {})
         engine_kwargs = fn_constructor_kwargs.get("engine_kwargs", {})
 
-        ray_remote_args = {"runtime_env": runtime_env}
+        ray_remote_args = {}
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 

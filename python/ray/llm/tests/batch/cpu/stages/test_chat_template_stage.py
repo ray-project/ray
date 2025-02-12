@@ -5,13 +5,10 @@ from ray.llm._internal.batch.stages.chat_template_stage import ChatTemplateUDF
 
 @pytest.fixture
 def mock_tokenizer_setup():
-    with patch(
-        "ray.llm._internal.batch.stages.chat_template_stage.get_cached_tokenizer"
-    ) as mock_get_tokenizer, patch("transformers.AutoTokenizer") as mock_auto_tokenizer:
-        mock_tokenizer = MagicMock()
-        mock_get_tokenizer.return_value = mock_tokenizer
-        mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
-        yield mock_tokenizer
+    with patch("transformers.AutoProcessor") as mock_auto_processor:
+        mock_processor = MagicMock()
+        mock_auto_processor.from_pretrained.return_value = mock_processor
+        yield mock_processor
 
 
 @pytest.mark.asyncio
