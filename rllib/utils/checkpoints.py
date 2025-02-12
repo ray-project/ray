@@ -27,7 +27,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
 from ray.rllib.utils.typing import StateDict
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util import log_once
 from ray.util.annotations import PublicAPI

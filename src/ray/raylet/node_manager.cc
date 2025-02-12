@@ -43,6 +43,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/util.h"
@@ -90,9 +91,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
 
 }  // namespace
 
-namespace ray {
-
-namespace raylet {
+namespace ray::raylet {
 
 void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
   std::vector<std::string> default_keys = {kLabelKeyNodeID};
@@ -1871,14 +1870,30 @@ void NodeManager::HandleCancelTasksWithResourceShapes(
 void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                             rpc::ReportWorkerBacklogReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  HandleReportWorkerBacklog(
+      request, reply, send_reply_callback, worker_pool_, *local_task_manager_);
+}
+
+void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
+                                            rpc::ReportWorkerBacklogReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback,
+                                            WorkerPoolInterface &worker_pool,
+                                            ILocalTaskManager &local_task_manager) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  local_task_manager_->ClearWorkerBacklog(worker_id);
+  if (worker_pool.GetRegisteredWorker(worker_id) == nullptr &&
+      worker_pool.GetRegisteredDriver(worker_id) == nullptr) {
+    // The worker is already disconnected.
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  local_task_manager.ClearWorkerBacklog(worker_id);
   std::unordered_set<SchedulingClass> seen;
   for (const auto &backlog_report : request.backlog_reports()) {
     const TaskSpecification resource_spec(backlog_report.resource_spec());
     const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
     RAY_CHECK(seen.find(scheduling_class) == seen.end());
-    local_task_manager_->SetWorkerBacklog(
+    local_task_manager.SetWorkerBacklog(
         scheduling_class, worker_id, backlog_report.backlog_size());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3292,6 +3307,4 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       shutdown_raylet_gracefully_);
 }
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet

@@ -18,6 +18,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util",
+        "//src/ray/util:function_traits",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -41,6 +42,7 @@ ray_cc_test(
     linkstatic = True,
     deps = [
         "//src/ray/util",
+        "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
@@ -116,11 +118,12 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "//src/ray/common:status",
         "//src/ray/util",
+        "//src/ray/util:env",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
-        "//src/ray/common:status",
     ],
 )
 
@@ -221,6 +224,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "scoped_env_setter_test",
+    srcs = ["scoped_env_setter_test.cc"],
+    deps = [
+        "//src/ray/util:scoped_env_setter",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
     name = "pipe_logger_test",
     srcs = ["pipe_logger_test.cc"],
     deps = [
@@ -228,8 +242,8 @@ ray_cc_test(
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
+        "//src/ray/util:scoped_env_setter",
         "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/cleanup",
     ],
     size = "small",
     tags = ["team:core"],
@@ -238,6 +252,26 @@ ray_cc_test(
 ray_cc_test(
     name = "stream_redirection_utils_test",
     srcs = ["stream_redirection_utils_test.cc"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:stream_redirection_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = [
+        "team:core",
+        # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
+        # ostream concurrently at pipe dumper thread and main thread, which we have ordered
+        # properly. Disable the complete test suite here since it always contains exactly one test
+        # case.
+        "no_tsan",
+    ],
+)
+
+ray_cc_test(
+    name = "stream_redirection_exit_test",
+    srcs = ["stream_redirection_exit_test.cc"],
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util",
@@ -278,10 +312,34 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "spdlog_newliner_sink_test",
+    srcs = ["spdlog_newliner_sink_test.cc"],
+    deps = [
+        "//src/ray/util:spdlog_fd_sink",
+        "//src/ray/util:spdlog_newliner_sink",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
     name = "temporary_directory_test",
     srcs = ["temporary_directory_test.cc"],
     deps = [
         "//src/ray/util:temporary_directory",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "compat_test",
+    srcs = ["compat_test.cc"],
+    deps = [
+        "//src/ray/util:compat",
+        "//src/ray/util:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",

@@ -2,7 +2,6 @@ import copy
 import functools
 import logging
 import queue
-import time
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
@@ -13,7 +12,7 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
+from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate, NumpyToTensor
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
@@ -89,7 +88,6 @@ class IMPALAConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.impala import IMPALAConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -103,7 +101,7 @@ class IMPALAConfig(AlgorithmConfig):
         tune.Tuner(
             "IMPALA",
             param_space=config,
-            run_config=air.RunConfig(stop={"training_iteration": 1}),
+            run_config=tune.RunConfig(stop={"training_iteration": 1}),
         ).fit()
     """
 
@@ -492,11 +490,14 @@ class IMPALAConfig(AlgorithmConfig):
             input_action_space,
             device,
         )
-        # Extend all episodes by one artificial timestep to allow the value function net
-        # to compute the bootstrap values (and add a mask to the batch to know, which
-        # slots to mask out).
         if self.add_default_connectors_to_learner_pipeline:
+            # Extend all episodes by one artificial timestep to allow the value function
+            # net to compute the bootstrap values (and add a mask to the batch to know,
+            # which slots to mask out).
             connector.prepend(AddOneTsToEpisodesAndTruncate())
+            # Remove the NumpyToTensor connector if we have the GPULoaderThreads.
+            if self.num_aggregator_actors_per_learner > 0:
+                connector.remove(NumpyToTensor)
         return connector
 
 
@@ -553,6 +554,7 @@ class IMPALA(Algorithm):
 
         # Queue of data to be sent to the Learner.
         self.data_to_place_on_learner = []
+        self.local_mixin_buffer = None  # @OldAPIStack
         self._batch_being_built = []  # @OldAPIStack
 
         # Create extra aggregation workers and assign each rollout worker to
@@ -562,17 +564,19 @@ class IMPALA(Algorithm):
             i: [] for i in range(self.config.num_learners or 1)
         }
 
-        # Create our local mixin buffer.
+        # Create local mixin buffer if on old API stack and replay
+        # proportion is set.
         if not self.config.enable_rl_module_and_learner:
-            self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
-                capacity=(
-                    self.config.replay_buffer_num_slots
-                    if self.config.replay_buffer_num_slots > 0
-                    else 1
-                ),
-                replay_ratio=self.config.replay_ratio,
-                replay_mode=ReplayMode.LOCKSTEP,
-            )
+            if self.config.replay_proportion > 0.0:
+                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                    capacity=(
+                        self.config.replay_buffer_num_slots
+                        if self.config.replay_buffer_num_slots > 0
+                        else 1
+                    ),
+                    replay_ratio=self.config.replay_ratio,
+                    replay_mode=ReplayMode.LOCKSTEP,
+                )
 
         # This variable is used to keep track of the statistics from the most recent
         # update of the learner group
@@ -612,8 +616,6 @@ class IMPALA(Algorithm):
                 (ENV_RUNNER_RESULTS, MEAN_NUM_EPISODE_LISTS_RECEIVED),
                 len(episode_refs),
             )
-
-        time.sleep(0.01)
 
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
@@ -672,16 +674,16 @@ class IMPALA(Algorithm):
             self.metrics.log_value(
                 (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_aggregated_lifetime"),
                 self.config.train_batch_size_per_learner
+                * (self.config.num_learners or 1)
                 * len(data_packages_for_learner_group),
                 reduce="sum",
+                with_throughput=True,
             )
 
         else:
             data_packages_for_learner_group = self._pre_queue_episode_refs(
                 episode_refs, package_size=self.config.total_train_batch_size
             )
-
-        time.sleep(0.01)
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -733,7 +735,7 @@ class IMPALA(Algorithm):
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 # TODO (sven): Rename this metric into a more fitting name: ex.
-                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
+                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`.
                 self.metrics.log_value(
                     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
                     1,
@@ -757,8 +759,6 @@ class IMPALA(Algorithm):
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
-        time.sleep(0.01)
-
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
@@ -773,8 +773,6 @@ class IMPALA(Algorithm):
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                 )
-
-        time.sleep(0.01)
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
@@ -866,8 +864,10 @@ class IMPALA(Algorithm):
         # `batch_refs` is a list of tuple(aggregator_actor_id, ObjRef[MABatch]).
 
         # Each ObjRef[MABatch] was returned by one AggregatorActor from a single
-        # `get_batch()` call and the underlying MABatch is already located on a
-        # particular GPU (matching one particular Learner).
+        # `get_batch()` call.
+        # TODO (sven): Add this comment, once valid:
+        #  .. and the underlying MABatch is already located on a particular GPU
+        #  (matching one particular Learner).
         for agg_actor_id, ma_batch_ref in batch_refs:
             learner_actor_id = self._aggregator_actor_to_learner[agg_actor_id]
             self._ma_batches_being_built[learner_actor_id].append(ma_batch_ref)
@@ -1014,8 +1014,14 @@ class IMPALA(Algorithm):
             batch = batch.decompress_if_needed()
             # Only make a pass through the buffer, if replay proportion is > 0.0 (and
             # we actually have one).
-            self.local_mixin_buffer.add(batch)
-            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            if self.local_mixin_buffer:
+                self.local_mixin_buffer.add(batch)
+                batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            else:
+                # TODO(jjyao) somehow deep copy the batch
+                # fix a memory leak issue. Need to investigate more
+                # to know why.
+                batch = batch.copy()
             if batch:
                 processed_batches.append(batch)
 
