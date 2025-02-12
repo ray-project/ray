@@ -14,7 +14,10 @@
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
+#include "ray/util/compat.h"
 #include "ray/util/event.h"
+#include "ray/util/stream_redirection_options.h"
+#include "ray/util/stream_redirection_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -22,6 +25,58 @@ namespace core {
 namespace {
 
 std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
+
+// Get output filename for worker.
+std::string GetWorkerOutputFilename(WorkerType worker_type,
+                                    const std::string &job_id,
+                                    const std::string &worker_id) {
+  std::string parsed_job_id = job_id;
+  if (parsed_job_id.empty()) {
+    char *job_id_env = ::getenv("RAY_JOB_ID");
+    parsed_job_id = job_id_env;
+  }
+
+  std::string worker_name;
+  if (worker_type == WorkerType::WORKER) {
+    worker_name = "worker";
+  } else if (worker_type == WorkerType::SPILL_WORKER ||
+             worker_type == WorkerType::RESTORE_WORKER) {
+    parsed_job_id = "";
+    worker_name = "io_worker";
+  }
+
+  if (!parsed_job_id.empty()) {
+    return absl::StrFormat(
+        "%s-%s-%s-%d.out", worker_name, worker_id, parsed_job_id, GetPid());
+  }
+  return absl::StrFormat("%s-%s-%d.out", worker_name, worker_id, GetPid());
+}
+
+// Get error filename for worker.
+std::string GetWorkerErrorFilename(WorkerType worker_type,
+                                   const std::string &job_id,
+                                   const std::string &worker_id) {
+  std::string parsed_job_id = job_id;
+  if (parsed_job_id.empty()) {
+    char *job_id_env = ::getenv("RAY_JOB_ID");
+    parsed_job_id = job_id_env;
+  }
+
+  std::string worker_name;
+  if (worker_type == WorkerType::WORKER) {
+    worker_name = "worker";
+  } else if (worker_type == WorkerType::SPILL_WORKER ||
+             worker_type == WorkerType::RESTORE_WORKER) {
+    parsed_job_id = "";
+    worker_name = "io_worker";
+  }
+
+  if (!parsed_job_id.empty()) {
+    return absl::StrFormat(
+        "%s-%s-%s-%d.err", worker_name, worker_id, parsed_job_id, GetPid());
+  }
+  return absl::StrFormat("%s-%s-%d.err", worker_name, worker_id, GetPid());
+}
 
 }  // namespace
 
@@ -79,20 +134,57 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                      ? ComputeDriverIdFromJob(options_.job_id)
                      : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
-    std::stringstream app_name_ss;
-    app_name_ss << LanguageString(options_.language) << "-core-"
-                << WorkerTypeString(options_.worker_type);
-    if (!worker_id_.IsNil()) {
-      app_name_ss << "-" << worker_id_;
+    // Setup logging for worker system logging.
+    {
+      std::stringstream app_name_ss;
+      app_name_ss << LanguageString(options_.language) << "-core-"
+                  << WorkerTypeString(options_.worker_type);
+      if (!worker_id_.IsNil()) {
+        app_name_ss << "-" << worker_id_;
+      }
+      const std::string app_name = app_name_ss.str();
+      const std::string log_filepath =
+          RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
+      RayLog::StartRayLog(app_name,
+                          RayLogLevel::INFO,
+                          log_filepath,
+                          ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+                          ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     }
-    const std::string app_name = app_name_ss.str();
-    const std::string log_filepath =
-        RayLog::GetLogFilepathFromDirectory(options_.log_dir, /*app_name=*/app_name);
-    RayLog::StartRayLog(app_name,
-                        RayLogLevel::INFO,
-                        log_filepath,
-                        ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-                        ray::RayLog::GetRayLogRotationBackupCountOrDefault());
+
+    // Setup logging for worker application logging.
+    if (options_.worker_type == WorkerType::WORKER) {
+      // Setup redirection for stdout.
+      {
+        const std::string fname = GetWorkerOutputFilename(
+            options_.worker_type, options_.job_id.Hex(), worker_id_.Hex());
+        const std::string worker_output_filepath = JoinPaths(options_.log_dir, fname);
+
+        ray::StreamRedirectionOption stdout_redirection_options;
+        stdout_redirection_options.file_path = worker_output_filepath;
+        stdout_redirection_options.rotation_max_size =
+            ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+        stdout_redirection_options.rotation_max_file_count =
+            ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+        ray::RedirectStdout(stdout_redirection_options);
+      }
+
+      // Setup redirection for stderr.
+      {
+        const std::string fname = GetWorkerErrorFilename(
+            options_.worker_type, options_.job_id.Hex(), worker_id_.Hex());
+        const std::string worker_error_filepath = JoinPaths(options_.log_dir, fname);
+
+        ray::StreamRedirectionOption stderr_redirection_options;
+        stderr_redirection_options.file_path = worker_error_filepath;
+        stderr_redirection_options.rotation_max_size =
+            ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
+        stderr_redirection_options.rotation_max_file_count =
+            ray::RayLog::GetRayLogRotationBackupCountOrDefault();
+        ray::RedirectStderr(stderr_redirection_options);
+      }
+    }
+
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols

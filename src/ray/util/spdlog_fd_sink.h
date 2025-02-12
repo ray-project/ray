@@ -16,6 +16,9 @@
 
 #include <spdlog/sinks/base_sink.h>
 
+#include <fstream>
+#include <string_view>
+
 #include "ray/util/compat.h"
 #include "ray/util/util.h"
 

@@ -32,6 +32,12 @@
 
 namespace ray {
 
+// Environmenr variable, which indicates the pipe size of read.
+//
+// TODO(hjiang): Should document the env variable after end-to-end integration has
+// finished.
+inline constexpr std::string_view kPipeLogReadBufSizeEnv = "RAY_PIPE_LOG_READ_BUF_SIZE";
+
 // File handle requires active destruction via owner calling [Close].
 class RedirectionFileHandle {
  public:
