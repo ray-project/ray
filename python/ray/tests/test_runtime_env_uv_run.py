@@ -230,9 +230,7 @@ print(json.dumps(ray.get(f.remote())))
             },
             cwd=os.path.dirname(uv),
         )
-        out_str = proc.stdout.read().decode(
-            "ascii"
-        )
+        out_str = proc.stdout.read().decode("ascii")
         assert json.loads(out_str) == {
             "working_dir_files": os.listdir(os.path.dirname(uv))
         }
