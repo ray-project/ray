@@ -501,10 +501,6 @@ class Trainable:
             # Update the checkpoint result to include auto-filled metrics.
             checkpoint_result.metrics.update(self._last_result)
 
-        print(f"checkpoint_result: {checkpoint_result}")
-        print(
-            f"type(checkpoint_result.checkpoint): {type(checkpoint_result.checkpoint)}"
-        )
         return checkpoint_result
 
     @DeveloperAPI
