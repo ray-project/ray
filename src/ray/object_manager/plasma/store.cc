@@ -331,7 +331,7 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
 
 void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   client->Close();
-  RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
+  RAY_LOG(INFO) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
   absl::flat_hash_map<ObjectID, const LocalObject *> sealed_objects;
   auto &object_ids = client->GetObjectIDs();

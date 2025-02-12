@@ -1560,12 +1560,20 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
+            RAY_LOG(INFO)
+                << "[myan] Releasing in PutInLocalPlasmaStore in PinObjectIDs callback. "
+                << "object_id=" << object_id.Hex()
+                << ", worker_id=" << this.GetWorkerID().Hex();
+
             if (!plasma_store_provider_->Release(object_id).ok()) {
               RAY_LOG(ERROR).WithField(object_id)
                   << "Failed to release object, might cause a leak in plasma.";
             }
           });
     } else {
+      RAY_LOG(INFO) << "[myan] Releasing in PutInLocalPlasmaStore. "
+                    << "object_id=" << object_id.Hex()
+                    << ", worker_id=" << this.GetWorkerID().Hex();
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
@@ -1752,6 +1760,10 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
         {object_id},
         generator_id,
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          RAY_LOG(INFO) << "[myan] Releasing in SealExisting in PinObjectIDs callback. "
+                        << "object_id=" << object_id.Hex()
+                        << ", worker_id=" << this.GetWorkerID().Hex();
+
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
           if (!plasma_store_provider_->Release(object_id).ok()) {
@@ -1760,6 +1772,9 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
           }
         });
   } else {
+    RAY_LOG(INFO) << "[myan] Release in SealExisting callback. "
+                  << "object_id=" << object_id.Hex()
+                  << ", worker_id=" << this.GetWorkerID().Hex();
     RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     reference_counter_->FreePlasmaObjects({object_id});
   }
