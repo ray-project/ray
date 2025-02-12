@@ -343,7 +343,8 @@ def main():
         train_loop_config={"factory": factory},
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,
-            use_gpu=True,
+            use_gpu=not benchmark_config.mock_gpu,
+            resources_per_worker={"MOCK_GPU": 1} if benchmark_config.mock_gpu else None,
         ),
         run_config=ray.train.RunConfig(
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",

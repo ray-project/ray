@@ -22,6 +22,7 @@ class RayDataConfig(DataLoaderConfig):
 class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
+    mock_gpu: bool = False
 
     # FailureConfig
     max_failures: int = 0
