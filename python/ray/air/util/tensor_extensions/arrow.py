@@ -280,17 +280,23 @@ def _infer_pyarrow_type_from_datetime_dtype(dtype: np.dtype) -> pa.TimestampType
     assert np.issubdtype(dtype, np.datetime64)
     numpy_precision, _ = np.datetime_data(dtype)
 
-    # The lowest resolution Arrow supports is seconds.
-    if numpy_precision in {"Y", "M", "W", "D", "h", "m"}:
-        arrow_timestamp_unit = "s"
-    # The highest resolution Arrow supports is nanoseconds.
+    # For day precision, use Arrow's date32 type since it's optimized for dates
+    if numpy_precision == "D":
+        arrow_type = pa.date32()
+    # For precisions coarser than seconds (year, month, week, hour, minute), use Arrow
+    # seconds unit since it's the coarsest Arrow timestamp supports
+    elif numpy_precision in {"Y", "M", "W", "h", "m"}:
+        arrow_type = pa.timestamp("s")
+    # For precisions finer than nanoseconds (pico, femto, atto), use Arrow
+    # nanoseconds unit since it's the finest Arrow timestamp supports
     elif numpy_precision in {"ps", "fs", "as"}:
-        arrow_timestamp_unit = "ns"
-    # Otherwise, use the same resolution as NumPy.
+        arrow_type = pa.timestamp("ns")
+    # For second, milli, micro and nano precisions, use matching Arrow unit
+    # since they are directly supported
     else:
-        arrow_timestamp_unit = numpy_precision
+        arrow_type = pa.timestamp(numpy_precision)
 
-    return pa.timestamp(arrow_timestamp_unit)
+    return arrow_type
 
 
 @DeveloperAPI
