@@ -151,37 +151,106 @@ def test_uv_run_runtime_env_hook(with_uv):
 
     uv = with_uv
 
-    def check_uv_run(args, runtime_env, expected_output):
-        output = (
-            subprocess.check_output(
-                [uv, "run", "--no-project"]
-                + args
-                + [ray._private.runtime_env.uv_runtime_env_hook.__file__]
-                + [json.dumps(runtime_env)]
-            )
-            .strip()
-            .decode()
+    def check_uv_run(
+        cmd, runtime_env, expected_output, subprocess_kwargs=None, expected_error=None
+    ):
+        result = subprocess.run(
+            cmd
+            + [ray._private.runtime_env.uv_runtime_env_hook.__file__]
+            + [json.dumps(runtime_env)],
+            capture_output=True,
+            **(subprocess_kwargs if subprocess_kwargs else {}),
         )
-        assert json.loads(output) == expected_output
+        output = result.stdout.strip().decode()
+        print(output)
+        if result.returncode != 0:
+            assert expected_error
+            assert expected_error in result.stderr.decode()
+        else:
+            assert json.loads(output) == expected_output
 
     check_uv_run(
-        [],
-        {},
-        {"py_executable": f"{uv} run --no-project", "working_dir": f"{os.getcwd()}"},
+        cmd=[uv, "run", "--no-project"],
+        runtime_env={},
+        expected_output={
+            "py_executable": f"{uv} run --no-project",
+            "working_dir": f"{os.getcwd()}",
+        },
     )
     check_uv_run(
-        ["--directory", "/tmp"],
-        {},
-        {
+        cmd=[uv, "run", "--no-project", "--directory", "/tmp"],
+        runtime_env={},
+        expected_output={
             "py_executable": f"{uv} run --no-project --directory /tmp",
             "working_dir": "/tmp",
         },
     )
     check_uv_run(
-        [],
+        [uv, "run", "--no-project"],
         {"working_dir": "/some/path"},
         {"py_executable": f"{uv} run --no-project", "working_dir": "/some/path"},
     )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir).resolve()
+        with open(tmp_dir / "pyproject.toml", "w") as file:
+            file.write("[project]\n")
+            file.write('name = "test"\n')
+            file.write('version = "0.1"\n')
+            file.write('dependencies = ["psutil"]\n')
+        check_uv_run(
+            cmd=[uv, "run"],
+            runtime_env={},
+            expected_output={"py_executable": f"{uv} run", "working_dir": f"{tmp_dir}"},
+            subprocess_kwargs={"cwd": tmp_dir},
+        )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir).resolve()
+        os.makedirs(tmp_dir / "cwd")
+        requirements = tmp_dir / "requirements.txt"
+        with open(requirements, "w") as file:
+            file.write("psutil\n")
+        check_uv_run(
+            cmd=[uv, "run", "--with-requirements", requirements],
+            runtime_env={},
+            expected_output={
+                "py_executable": f"{uv} run --with-requirements {requirements}",
+                "working_dir": f"{tmp_dir}",
+            },
+            subprocess_kwargs={"cwd": tmp_dir},
+        )
+
+    # Check things fail if there is a pyproject.toml upstream of the current working directory
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir).resolve()
+        os.makedirs(tmp_dir / "cwd")
+        with open(tmp_dir / "pyproject.toml", "w") as file:
+            file.write("[project]\n")
+            file.write('name = "test"\n')
+            file.write('version = "0.1"\n')
+            file.write('dependencies = ["psutil"]\n')
+        check_uv_run(
+            cmd=[uv, "run"],
+            runtime_env={},
+            expected_output=None,
+            subprocess_kwargs={"cwd": tmp_dir / "cwd"},
+            expected_error="Please make sure the pyproject.toml file is in the working directory.",
+        )
+
+    # Check things fail if there is a requirements.txt upstream to the current working directory
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir).resolve()
+        os.makedirs(tmp_dir / "cwd")
+        with open(tmp_dir / "requirements.txt", "w") as file:
+            file.write("psutil\n")
+        check_uv_run(
+            cmd=[uv, "run", "--with-requirements", tmp_dir / "requirements.txt"],
+            runtime_env={},
+            expected_output=None,
+            subprocess_kwargs={"cwd": tmp_dir / "cwd"},
+            expected_error="Please make sure the requirements file is in the working directory.",
+        )
 
     # Check without uv run
     subprocess.check_output(
