@@ -12,28 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/scoped_env_setter.h"
+// Util function on environment variables.
 
-#include <cstdlib>
+#pragma once
 
-#include "ray/util/env.h"
+#include <string>
 
 namespace ray {
 
-ScopedEnvSetter::ScopedEnvSetter(const char *env_name, const char *value)
-    : env_name_(env_name) {
-  const char *val = ::getenv(env_name);
-  if (val != nullptr) {
-    old_value_ = val;
-  }
-  SetEnv(env_name, value);
-}
-
-ScopedEnvSetter::~ScopedEnvSetter() {
-  UnsetEnv(env_name_.c_str());
-  if (old_value_.has_value()) {
-    SetEnv(env_name_, *old_value_);
-  }
-}
+// Set and override environment variable [name].
+void SetEnv(const std::string &name, const std::string &value);
+void UnsetEnv(const std::string &name);
 
 }  // namespace ray
