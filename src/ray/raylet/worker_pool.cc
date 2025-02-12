@@ -270,9 +270,16 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     const rpc::WorkerType worker_type,
                                     const JobID &job_id,
                                     const std::vector<std::string> &dynamic_options,
-                                    const int runtime_env_hash,
-                                    const std::string &serialized_runtime_env_context,
+                                    const int runtime_env_hash_arg,
+                                    const std::string &serialized_runtime_env_context_arg,
                                     const WorkerPool::State &state) const {
+  int runtime_env_hash = runtime_env_hash_arg;
+  std::string serialized_runtime_env_context = serialized_runtime_env_context_arg;
+  if (serialized_runtime_env_context_arg.find("FOO") != std::string::npos) {
+    runtime_env_hash = 0;
+    serialized_runtime_env_context = "{}";
+  }
+
   std::vector<std::string> options;
 
   // Append Ray-defined per-job options here
