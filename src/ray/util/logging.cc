@@ -345,20 +345,6 @@ void RayLog::InitLogFormat() {
   return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
 }
 
-/*static*/ std::string RayLog::GetErrLogFilepathFromDirectory(
-    const std::string &log_dir, const std::string &app_name) {
-  if (log_dir.empty()) {
-    return "";
-  }
-
-#ifdef _WIN32
-  int pid = _getpid();
-#else
-  pid_t pid = getpid();
-#endif
-  return JoinPaths(log_dir, absl::StrFormat("%s_%d.err", app_name, pid));
-}
-
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
                                     RayLogLevel severity_threshold,
                                     const std::string &log_filepath,

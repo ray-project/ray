@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <fstream>
-
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
 #include "ray/util/compat.h"
@@ -54,6 +52,7 @@ std::string GetWorkerOutputFilename(WorkerType worker_type,
   return absl::StrFormat("%s-%s-%d.out", worker_name, worker_id, GetPid());
 }
 
+// Get error filename for worker.
 std::string GetWorkerErrorFilename(WorkerType worker_type,
                                    const std::string &job_id,
                                    const std::string &worker_id) {
@@ -155,20 +154,11 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
     // Setup logging for worker application logging.
     if (options_.worker_type == WorkerType::WORKER) {
+      // Setup redirection for stdout.
       {
         const std::string fname = GetWorkerOutputFilename(
             options_.worker_type, options_.job_id.Hex(), worker_id_.Hex());
         const std::string worker_output_filepath = JoinPaths(options_.log_dir, fname);
-
-        // {
-        //   std::ofstream outfile;
-        //   outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
-        //   // Write to the file
-        //   outfile << "no pipe redirection write to file " << worker_output_filepath <<
-        //   std::endl;
-        //   // Close the file
-        //   outfile.close();
-        // }
 
         ray::StreamRedirectionOption stdout_redirection_options;
         stdout_redirection_options.file_path = worker_output_filepath;
@@ -179,22 +169,11 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         ray::RedirectStdout(stdout_redirection_options);
       }
 
-      /// ----------------------------
-
+      // Setup redirection for stderr.
       {
         const std::string fname = GetWorkerErrorFilename(
             options_.worker_type, options_.job_id.Hex(), worker_id_.Hex());
         const std::string worker_error_filepath = JoinPaths(options_.log_dir, fname);
-
-        // {
-        //   std::ofstream outfile;
-        //   outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
-        //   // Write to the file
-        //   outfile << "no pipe redirection write to file " << worker_output_filepath <<
-        //   std::endl;
-        //   // Close the file
-        //   outfile.close();
-        // }
 
         ray::StreamRedirectionOption stderr_redirection_options;
         stderr_redirection_options.file_path = worker_error_filepath;

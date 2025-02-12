@@ -17,7 +17,6 @@
 #include <condition_variable>
 #include <cstring>
 #include <deque>
-#include <fstream>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -37,21 +36,6 @@
 namespace ray {
 
 namespace {
-
-// Default pipe log read buffer size.
-constexpr size_t kDefaultPipeLogReadBufSize = 1024;
-
-size_t GetPipeLogReadSizeOrDefault() {
-  // TODO(hjiang): Write a util function `GetEnvOrDefault`.
-  const char *var_value = std::getenv(kPipeLogReadBufSizeEnv.data());
-  if (var_value != nullptr) {
-    size_t read_buf_size = 0;
-    if (absl::SimpleAtoi(var_value, &read_buf_size) && read_buf_size > 0) {
-      return read_buf_size;
-    }
-  }
-  return kDefaultPipeLogReadBufSize;
-}
 
 struct StreamDumper {
   absl::Mutex mu;
@@ -235,15 +219,6 @@ bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
 }
 
 RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
-  {
-    std::ofstream outfile;
-    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
-    // Write to the file
-    outfile << "no pipe redirection write to file " << file_path << std::endl;
-    // Close the file
-    outfile.close();
-  }
-
   boost::iostreams::file_descriptor_sink fd_sink{file_path, std::ios_base::out};
   auto handle = fd_sink.handle();
   auto ostream =
@@ -265,25 +240,9 @@ RedirectionFileHandle OpenFileForRedirection(const std::string &file_path) {
 
 RedirectionFileHandle CreateRedirectionFileHandle(
     const StreamRedirectionOption &stream_redirect_opt) {
-  {
-    std::ofstream outfile;
-    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
-    // Write to the file
-    outfile << "start redirection" << std::endl;
-    // Close the file
-    outfile.close();
-  }
-
   // Case-1: only redirection, but not rotation and tee involved.
   const bool should_use_pipe_stream = ShouldUsePipeStream(stream_redirect_opt);
   if (!should_use_pipe_stream) {
-    std::ofstream outfile;
-    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
-    // Write to the file
-    outfile << "no pipe redirection" << std::endl;
-    // Close the file
-    outfile.close();
-
     return OpenFileForRedirection(stream_redirect_opt.file_path);
   }
 
@@ -325,15 +284,6 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     // Block until destruction finishes.
     promise->get_future().get();
   };
-
-  {
-    std::ofstream outfile;
-    outfile.open("/tmp/testoutput", std::ios::out | std::ios::app);
-    // Write to the file
-    outfile << "background thread" << std::endl;
-    // Close the file
-    outfile.close();
-  }
 
   auto logger = CreateLogger(stream_redirect_opt);
   StartStreamDump(std::move(pipe_instream), logger, std::move(on_close_completion));
