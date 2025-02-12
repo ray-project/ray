@@ -38,13 +38,13 @@ from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
-from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -2082,10 +2082,6 @@ class Dataset:
         Examples:
 
             >>> import ray
-            >>> ctx = ray.data.DataContext.get_current()
-            >>> # Sanity check. Will remove before merge
-            >>> ctx.execution_options.preserve_order
-            True
             >>> ds1 = ray.data.range(2)
             >>> ds2 = ray.data.range(3)
             >>> ds1.union(ds2).take_all()
