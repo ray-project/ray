@@ -1443,8 +1443,9 @@ py_test(
 )
 
 py_test(
+    # TODO(#50340): test is flaky.
     name = "test_offline_prelearner",
-    tags = ["team:rllib", "offline"],
+    tags = ["team:rllib", "offline", "manual"],
     size = "medium",
     srcs = ["offline/tests/test_offline_prelearner.py"],
     # Include the offline data files.
