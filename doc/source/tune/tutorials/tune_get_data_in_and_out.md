@@ -269,15 +269,15 @@ def training_function(config, data):
         tune.report(metrics={"metric": metric})
 
 
-tuner = ray.tune.Tuner(
+tuner = tune.Tuner(
     tune.with_parameters(training_function, data=data),
     param_space={
         "hyperparameter_a": tune.uniform(0, 20),
         "hyperparameter_b": tune.uniform(-100, 100),
         "epochs": 10,
     },
-    tune_config=ray.tune.TuneConfig(num_samples=4, metric="metric", mode="max"),
-    run_config=ray.tune.RunConfig(
+    tune_config=tune.TuneConfig(num_samples=4, metric="metric", mode="max"),
+    run_config=tune.RunConfig(
         callbacks=[MLflowLoggerCallback(experiment_name="example")]
     ),
 )
@@ -304,9 +304,7 @@ import os
 import pickle
 import tempfile
 
-from ray import train
-from ray.train import Checkpoint
-
+from ray import tune
 
 def training_function(config, data):
     model = {
@@ -316,7 +314,7 @@ def training_function(config, data):
     epochs = config["epochs"]
 
     # Load the checkpoint, if there is any.
-    checkpoint = session.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     start_epoch = 0
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
@@ -341,11 +339,11 @@ def training_function(config, data):
                 pickle.dump(checkpoint_dict, f)
             tune.report(
                 {"metric": metric},
-                checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
+                checkpoint=tune.Checkpoint.from_directory(temp_checkpoint_dir),
             )
 
 
-tuner = Tuner(
+tuner = tune.Tuner(
     tune.with_parameters(training_function, data=data),
     param_space={
         "hyperparameter_a": tune.uniform(0, 20),
@@ -353,7 +351,7 @@ tuner = Tuner(
         "epochs": 10,
     },
     tune_config=tune.TuneConfig(num_samples=4, metric="metric", mode="max"),
-    run_config=RunConfig(
+    run_config=tune.RunConfig(
         callbacks=[MLflowLoggerCallback(experiment_name="example")]
     ),
 )

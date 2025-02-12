@@ -55,11 +55,10 @@ We can configure cloud storage by telling Ray Tune to **upload to a remote** ``s
 .. code-block:: python
 
     from ray import tune
-    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,
-        run_config=RunConfig(
+        run_config=tune.RunConfig(
             name="experiment_name",
             storage_path="s3://bucket-name/sub-path/",
         )

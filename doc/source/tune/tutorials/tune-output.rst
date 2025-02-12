@@ -320,11 +320,12 @@ You can then pass in your own logger as follows:
 .. code-block:: python
 
     from ray import tune
-    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=RunConfig(name="experiment_name", callbacks=[CustomLoggerCallback("log_test.txt")])
+        run_config=tune.RunConfig(
+            name="experiment_name", callbacks=[CustomLoggerCallback("log_test.txt")]
+        )
     )
     results = tuner.fit()
 
