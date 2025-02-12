@@ -2090,7 +2090,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   } else {
     for (const auto &object_id : plasma_object_ids) {
-      if (ready.size() == num_objects) {
+      if (static_cast<int>(ready.size()) == num_objects) {
         break;
       }
       ready.insert(object_id);

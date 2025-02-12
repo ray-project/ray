@@ -469,7 +469,7 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
     if (result_objects[i] != nullptr) {
       if (result_objects[i]->IsInPlasmaError()) {
         plasma_object_ids->insert(id_vector[i]);
-      } else if (ready->size() < num_objects) {
+      } else if (static_cast<int>(ready->size()) < num_objects) {
         ready->insert(id_vector[i]);
       }
     }
