@@ -4,9 +4,12 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
+import os
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
     add_execution_callback,
@@ -26,6 +29,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
+    StreamingExecutor,
     _debug_dump_topology,
     _validate_dag,
 )
@@ -39,6 +43,9 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.logical.operators.map_operator import MapRows
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -646,7 +653,7 @@ def test_time_scheduling():
     assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
 
 
-def test_executor_callbacks():
+def test_execution_callbacks():
     """Test ExecutionCallback."""
 
     class CustomExecutionCallback(ExecutionCallback):
@@ -655,13 +662,13 @@ def test_executor_callbacks():
             self._after_execution_succeeds_called = False
             self._execution_error = None
 
-        def before_execution_starts(self):
+        def before_execution_starts(self, executor: StreamingExecutor):
             self._before_execution_starts_called = True
 
-        def after_execution_succeeds(self):
+        def after_execution_succeeds(self, executor: StreamingExecutor):
             self._after_execution_succeeds_called = True
 
-        def after_execution_fails(self, error: Exception):
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
             self._execution_error = error
 
     # Test the success case.
@@ -718,6 +725,56 @@ def test_executor_callbacks():
     assert not callback._after_execution_succeeds_called
     error = callback._execution_error
     assert isinstance(error, KeyboardInterrupt), error
+
+
+def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
+    """Test the executor arg in ExecutionCallback."""
+
+    _executor = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def after_execution_succeeds(self, executor: StreamingExecutor):
+            nonlocal _executor
+            _executor = executor
+
+    input_path = tmp_path / "input"
+    os.makedirs(input_path)
+    output_path = tmp_path / "output"
+
+    ctx = DataContext.get_current()
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+    ds = ray.data.read_parquet(input_path)
+
+    def udf(row):
+        return row
+
+    ds = ds.map(udf)
+
+    ds = ds.write_parquet(output_path)
+
+    # Test inspecting the metadata of each operator.
+    # E.g., the original input and output paths and the UDF.
+    assert _executor is not None
+    assert len(_executor._topology) == 2
+    physical_ops = list(_executor._topology.keys())
+    assert isinstance(physical_ops[0], InputDataBuffer)
+    assert isinstance(physical_ops[1], MapOperator)
+    logical_ops = physical_ops[1]._logical_operators
+
+    assert len(logical_ops) == 3
+    assert isinstance(logical_ops[0], Read)
+    datasource = logical_ops[0]._datasource
+    assert isinstance(datasource, ParquetDatasource)
+    assert datasource._unresolved_paths == input_path
+
+    assert isinstance(logical_ops[1], MapRows)
+    assert logical_ops[1]._fn == udf
+
+    assert isinstance(logical_ops[2], Write)
+    datasink = logical_ops[2]._datasink_or_legacy_datasource
+    assert isinstance(datasink, ParquetDatasink)
+    assert datasink.unresolved_path == output_path
 
 
 if __name__ == "__main__":
