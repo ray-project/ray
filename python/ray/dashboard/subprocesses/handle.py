@@ -298,7 +298,7 @@ class SubprocessModuleHandle:
         # TODO: error handling
         response = aiohttp.web.WebSocketResponse()
         await response.prepare(request)
-        await response.send_str(first_data)
+        await response.send_str(first_data.decode())
         return response
 
     @staticmethod
@@ -307,7 +307,7 @@ class SubprocessModuleHandle:
     ) -> aiohttp.web.StreamResponse:
         # TODO: error handling
         response = await asyncio.wrap_future(prev_fut)
-        await response.send_str(data)
+        await response.send_str(data.decode())
         return response
 
     @staticmethod
@@ -339,7 +339,7 @@ class SubprocessModuleHandle:
         """
         try:
             response = await asyncio.wrap_future(prev_fut)
-            await response.send_str(str(exception).encode())
+            await response.send_str(str(exception))
             await response.send_eof()
             response_fut.set_result(response)
         except Exception as e:
