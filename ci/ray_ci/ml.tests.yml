@@ -1,2 +1,1 @@
-flaky_tests:
-  # non-gpu tests
+flaky_tests: []
