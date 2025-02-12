@@ -138,10 +138,10 @@ Here are a few key concepts and what they look like for the Function and Class A
 ======================= =============================================== ==============================================
 Concept                 Function API                                    Class API
 ======================= =============================================== ==============================================
-Training Iteration      Increments on each `tune.report` call          Increments on each `Trainable.step` call
-Report  metrics         `tune.report(metrics)`                         Return metrics from `Trainable.step`
-Saving a checkpoint     `tune.report(..., checkpoint=checkpoint)`      `Trainable.save_checkpoint`
-Loading a checkpoint    `tune.get_checkpoint()`                        `Trainable.load_checkpoint`
+Training Iteration      Increments on each `tune.report` call           Increments on each `Trainable.step` call
+Report  metrics         `tune.report(metrics)`                          Return metrics from `Trainable.step`
+Saving a checkpoint     `tune.report(..., checkpoint=checkpoint)`       `Trainable.save_checkpoint`
+Loading a checkpoint    `tune.get_checkpoint()`                         `Trainable.load_checkpoint`
 Accessing config        Passed as an argument `def train_func(config):` Passed through `Trainable.setup`
 ======================= =============================================== ==============================================
 
