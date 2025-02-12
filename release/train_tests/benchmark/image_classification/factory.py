@@ -58,7 +58,7 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         )
 
         if self.benchmark_config.validate_every_n_steps > 0:
-            # TODO: This is just hard-coded for now. Maybe move this to be a configuration.
+            # TODO: This runs really slowly and needs to be tuned.
             # Maybe move this to the RayDataLoaderFactory.
             cpus_to_exclude = 16
             train_ds.context.execution_options.exclude_resources = (
