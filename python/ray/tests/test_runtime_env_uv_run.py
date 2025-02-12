@@ -168,21 +168,31 @@ print(json.dumps(ray.get(f.remote())))
         f.write(script)
         f.close()
         proc = subprocess.Popen(
-            [uv, "run", "--python-preference=only-system", "--with", "emoji", "--no-project", f.name],
+            [
+                uv,
+                "run",
+                "--python-preference=only-system",
+                "--with",
+                "emoji",
+                "--no-project",
+                f.name,
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={
                 "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_run_runtime_env_hook",
-                "PYTHONPATH": ':'.join(sys.path),
+                "PYTHONPATH": ":".join(sys.path),
                 "PATH": os.environ["PATH"],
             },
             cwd=os.path.dirname(uv),
         )
-        out_str = proc.stdout.read().decode("ascii") # + proc.stderr.read().decode("ascii")
-        assert json.loads(out_str) == {"working_dir_files": os.listdir(os.path.dirname(uv))}
-
-
+        out_str = proc.stdout.read().decode(
+            "ascii"
+        )  # + proc.stderr.read().decode("ascii")
+        assert json.loads(out_str) == {
+            "working_dir_files": os.listdir(os.path.dirname(uv))
+        }
 
 
 if __name__ == "__main__":
