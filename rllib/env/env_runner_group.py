@@ -85,6 +85,7 @@ class EnvRunnerGroup:
         logdir: Optional[str] = None,
         _setup: bool = True,
         tune_trial_id: Optional[str] = None,
+        pg_offset: int = 0,
         # Deprecated args.
         num_env_runners: Optional[int] = None,
         num_workers=DEPRECATED_VALUE,
@@ -140,6 +141,7 @@ class EnvRunnerGroup:
             ),
         }
         self._tune_trial_id = tune_trial_id
+        self._pg_offset = pg_offset
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
         self.env_runner_cls = config.env_runner_cls
@@ -174,7 +176,6 @@ class EnvRunnerGroup:
                         self.env_runner_cls = SingleAgentEnvRunner
             else:
                 self.env_runner_cls = RolloutWorker
-        self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
         self._ignore_ray_errors_on_env_runners = (
@@ -289,7 +290,6 @@ class EnvRunnerGroup:
         # Create a local worker, if needed.
         if local_env_runner:
             self._local_env_runner = self._make_worker(
-                cls=self.env_runner_cls,
                 env_creator=self._env_creator,
                 validate_env=validate_env,
                 worker_index=0,
@@ -805,7 +805,6 @@ class EnvRunnerGroup:
         old_num_workers = self._worker_manager.num_actors()
         new_workers = [
             self._make_worker(
-                cls=self._cls,
                 env_creator=self._env_creator,
                 validate_env=None,
                 worker_index=old_num_workers + i + 1,
@@ -1177,7 +1176,6 @@ class EnvRunnerGroup:
     def _make_worker(
         self,
         *,
-        cls: Callable,
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType], None]],
         worker_index: int,
@@ -1188,7 +1186,7 @@ class EnvRunnerGroup:
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
     ) -> Union[EnvRunner, ActorHandle]:
-        worker = cls(
+        kwargs = dict(
             env_creator=env_creator,
             validate_env=validate_env,
             default_policy_class=self._policy_class,
@@ -1202,7 +1200,19 @@ class EnvRunnerGroup:
             tune_trial_id=self._tune_trial_id,
         )
 
-        return worker
+        if worker_index == 0:
+            return self.env_runner_cls(**kwargs)
+
+        pg_bundle_idx = (
+            -1
+            if ray.util.get_current_placement_group() is None
+            else self._pg_offset + worker_index
+        )
+        return (
+            ray.remote(**self._remote_args)(self.env_runner_cls)
+            .options(placement_group_bundle_index=pg_bundle_idx)
+            .remote(**kwargs)
+        )
 
     @classmethod
     def _valid_module(cls, class_path):

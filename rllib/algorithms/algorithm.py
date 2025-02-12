@@ -41,7 +41,12 @@ from ray.tune import Checkpoint
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
-from ray.rllib.algorithms.utils import AggregatorActor
+from ray.rllib.algorithms.utils import (
+    AggregatorActor,
+    _get_env_runner_bundles,
+    _get_learner_bundles,
+    _get_main_process_bundle,
+)
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core import (
@@ -185,52 +190,13 @@ if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
     from ray.rllib.offline.offline_data import OfflineData
 
-try:
-    from ray.rllib.extensions import AlgorithmBase
-except ImportError:
-
-    class AlgorithmBase:
-        @staticmethod
-        def _get_learner_bundles(
-            config: AlgorithmConfig,
-        ) -> List[Dict[str, Union[float, int]]]:
-            """Selects the right resource bundles for learner workers based off of cf.
-
-            Args:
-                config: The AlgorithmConfig instance to extract bundle-information from.
-
-            Returns:
-                A list of resource bundles for the learner workers.
-            """
-            _num = config.num_learners
-            assert _num > 0
-
-            num_cpus_per_learner = (
-                config.num_cpus_per_learner
-                if config.num_cpus_per_learner != "auto"
-                else 1
-                if config.num_gpus_per_learner == 0
-                else 0
-            )
-
-            all_learners = [
-                {
-                    "CPU": _num
-                    * (num_cpus_per_learner + config.num_aggregator_actors_per_learner),
-                    "GPU": _num * config.num_gpus_per_learner,
-                }
-            ]
-
-            return all_learners
-
-
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class Algorithm(Checkpointable, Trainable, AlgorithmBase):
+class Algorithm(Checkpointable, Trainable):
     """An RLlib algorithm responsible for training one or more neural network models.
 
     You can write your own Algorithm classes by sub-classing from `Algorithm`
@@ -696,6 +662,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 config=self.evaluation_config,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
+                pg_offset=self.config.num_env_runners,
             )
 
         self.evaluation_dataset = None
@@ -2722,111 +2689,48 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def default_resource_request(
         cls, config: Union[AlgorithmConfig, PartialAlgorithmConfigDict]
     ) -> Union[Resources, PlacementGroupFactory]:
-        # Default logic for RLlib Algorithms:
-        # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_main_process` and `num_gpus` for the local worker and
-        # `num_cpus_per_env_runner` and `num_gpus_per_env_runner` for the remote
-        # EnvRunners to determine their CPU/GPU resource needs.
+        config = cls.get_default_config().update_from_dict(config)
+        config.validate()
+        config.freeze()
+        eval_config = config.get_evaluation_config_object()
+        eval_config.validate()
+        eval_config.freeze()
 
-        # Convenience config handles.
-        cf = cls.get_default_config().update_from_dict(config)
-        cf.validate()
-        cf.freeze()
-
-        # get evaluation config
-        eval_cf = cf.get_evaluation_config_object()
-        eval_cf.validate()
-        eval_cf.freeze()
-
-        # Resources for the main process of this Algorithm.
-        if cf.enable_rl_module_and_learner:
-            # Training is done on local Learner.
-            if cf.num_learners == 0:
-                num_cpus_per_learner = (
-                    cf.num_cpus_per_learner
-                    if cf.num_cpus_per_learner != "auto"
-                    else 1
-                    if cf.num_gpus_per_learner == 0
-                    else 0
-                )
-                driver = {
-                    # Sampling and training is not done concurrently when local is
-                    # used, so pick the max.
-                    "CPU": (max(num_cpus_per_learner, cf.num_cpus_for_main_process)),
-                    "GPU": cf.num_gpus_per_learner,
-                }
-            # Training is done on n remote Learners.
-            else:
-                driver = {"CPU": cf.num_cpus_for_main_process, "GPU": 0}
+        if config.enable_rl_module_and_learner:
+            main_process = _get_main_process_bundle(config)
         else:
-            driver = {
-                "CPU": cf.num_cpus_for_main_process,
-                # Ignore `cf.num_gpus` on the new API stack.
+            main_process = {
+                "CPU": config.num_cpus_for_main_process,
                 "GPU": (
                     0
-                    if cf._fake_gpus
-                    else cf.num_gpus
-                    if not cf.enable_rl_module_and_learner
+                    if config._fake_gpus
+                    else config.num_gpus
+                    if not config.enable_rl_module_and_learner
                     else 0
                 ),
             }
 
-        # resources for remote rollout env samplers
-        rollout_bundles = [
-            {
-                "CPU": cf.num_cpus_per_env_runner,
-                "GPU": cf.num_gpus_per_env_runner,
-                **cf.custom_resources_per_env_runner,
-            }
-            for _ in range(cf.num_env_runners)
-        ]
+        env_runner_bundles = _get_env_runner_bundles(config)
 
-        # resources for remote evaluation env samplers or datasets (if any)
-        if cls._should_create_evaluation_env_runners(eval_cf):
-            # Evaluation workers.
-            # Note: The local eval worker is located on the driver CPU.
-            evaluation_bundles = [
-                {
-                    "CPU": eval_cf.num_cpus_per_env_runner,
-                    "GPU": eval_cf.num_gpus_per_env_runner,
-                    **eval_cf.custom_resources_per_env_runner,
-                }
-                for _ in range(eval_cf.evaluation_num_env_runners)
-            ]
+        if cls._should_create_evaluation_env_runners(eval_config):
+            eval_env_runner_bundles = _get_env_runner_bundles(eval_config)
         else:
-            # resources for offline dataset readers during evaluation
-            # Note (Kourosh): we should not claim extra workers for
-            # training on the offline dataset, since rollout workers have already
-            # claimed it.
-            # Another Note (Kourosh): dataset reader will not use placement groups so
-            # whatever we specify here won't matter because dataset won't even use it.
-            # Disclaimer: using ray dataset in tune may cause deadlock when multiple
-            # tune trials get scheduled on the same node and do not leave any spare
-            # resources for dataset operations. The workaround is to limit the
-            # max_concurrent trials so that some spare cpus are left for dataset
-            # operations. This behavior should get fixed by the dataset team. more info
-            # found here:
-            # https://docs.ray.io/en/master/data/dataset-internals.html#datasets-tune
-            evaluation_bundles = []
+            eval_env_runner_bundles = []
 
-        # resources for remote learner workers
         learner_bundles = []
-        if cf.enable_rl_module_and_learner:
-            if cf.num_learners > 0:
-                learner_bundles = cls._get_learner_bundles(cf)
-            # Aggregation actors (for the local learner).
-            else:
-                learner_bundles = [
-                    {"CPU": 1} for _ in range(cf.num_aggregator_actors_per_learner)
-                ]
+        if config.enable_rl_module_and_learner:
+            learner_bundles = _get_learner_bundles(config)
 
-        bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
+        bundles = (
+            [main_process]
+            + env_runner_bundles
+            + eval_env_runner_bundles
+            + learner_bundles
+        )
 
-        # Return PlacementGroupFactory containing all needed resources
-        # (already properly defined as device bundles).
         return PlacementGroupFactory(
             bundles=bundles,
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=config.placement_strategy,
         )
 
     @DeveloperAPI
