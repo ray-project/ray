@@ -789,7 +789,6 @@ ray.init(address="{}")
 
 ray_usage_lib.record_library_usage("post_init")
 ray.workflow.init()
-ray.data.range(10)
 
 class Actor:
     def get_actor_metadata(self):
@@ -830,7 +829,6 @@ with joblib.parallel_backend("ray"):
     expected = {
         "pre_init",
         "post_init",
-        "dataset",
         "workflow",
         "util.ActorGroup",
         "util.ActorPool",
