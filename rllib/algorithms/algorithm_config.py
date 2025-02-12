@@ -997,16 +997,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = EnvToModulePipeline(
@@ -1079,16 +1079,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = ModuleToEnvPipeline(
@@ -4572,20 +4572,6 @@ class AlgorithmConfig(_Config):
                         f"policy ID ({pid}) that was not defined in "
                         f"`config.multi_agent(policies=..)`!"
                     )
-
-        # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
-        #  multi-agent.
-        if (
-            self.is_multi_agent
-            and self.enable_env_runner_and_connector_v2
-            and self.num_envs_per_env_runner > 1
-        ):
-            self._value_error(
-                "For now, using env vectorization "
-                "(`config.num_envs_per_env_runner > 1`) in combination with "
-                "multi-agent AND the new EnvRunners is not supported! Try setting "
-                "`config.num_envs_per_env_runner = 1`."
-            )
 
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""

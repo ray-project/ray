@@ -389,7 +389,7 @@ def make_multi_agent(
             #  with data fields.
             if config is None:
                 config = {}
-            num = config.pop("num_agents", 1)
+            num = config.get("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.envs = [gym.make(env_name_or_creator) for _ in range(num)]
             else:

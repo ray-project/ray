@@ -79,11 +79,16 @@ class UnBatchToIndividualItems(ConnectorV2):
                         memorized_map_structure[module_id]
                     ):
                         key = (eps_id, agent_id, module_id)
-                        # TODO (sven): Support vectorization for MultiAgentEnvRunner.
-                        # AgentIDs whose SingleAgentEpisodes are already done, should
-                        # not send any data back to the EnvRunner for further
-                        # processing.
-                        if episodes[0].agent_episodes[agent_id].is_done:
+
+                        # Check, if an agent episode is already done. For this we need
+                        # to get the corresponding episode in the `EnvRunner`s list of
+                        # episodes.
+                        episode = next(
+                            (eps for eps in episodes if eps.id_ == eps_id), None
+                        )
+                        # If an episode has not just started and the agent's episode
+                        # is done do not return data.
+                        if episode and episode.agent_episodes[agent_id].is_done:
                             continue
 
                         new_column_data[key].append(column_data[i])

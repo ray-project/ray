@@ -20,6 +20,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.env.vector.registration import make_vec
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
@@ -42,6 +43,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    SAMPLE_TIMER,
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
@@ -104,7 +106,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(
-            self.env.unwrapped, device=self._device
+            self.env, device=self._device
         )
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
@@ -167,7 +169,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 (`num_episodes != None`), this is fixed to True.
 
         Returns:
-            A list of `MultiAgentEpisode` instances, carrying the sampled data.
+            A list of `SingleAgentEpisode` instances, carrying the sampled data.
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
@@ -178,139 +180,134 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 value=time.perf_counter() - self._time_after_sampling,
             )
 
-        # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and the exploration behavior.
-        if explore is None:
-            explore = self.config.explore
-        if num_timesteps is None and num_episodes is None:
-            if self.config.batch_mode == "truncate_episodes":
-                num_timesteps = self.config.get_rollout_fragment_length(
-                    worker_index=self.worker_index,
-                )
-            else:
-                num_episodes = 1
-
-        # Sample n timesteps.
-        if num_timesteps is not None:
-            samples = self._sample_timesteps(
-                num_timesteps=num_timesteps,
-                explore=explore,
-                random_actions=random_actions,
-                force_reset=force_reset,
-            )
-        # Sample m episodes.
-        else:
-            samples = self._sample_episodes(
-                num_episodes=num_episodes,
-                explore=explore,
-                random_actions=random_actions,
-            )
-
-        # Make the `on_sample_end` callback.
-        make_callback(
-            "on_sample_end",
-            callbacks_objects=self._callbacks,
-            callbacks_functions=self.config.callbacks_on_sample_end,
-            kwargs=dict(
-                env_runner=self,
-                metrics_logger=self.metrics,
-                samples=samples,
-            ),
+        # Log current weight seq no.
+        self.metrics.log_value(
+            key=WEIGHTS_SEQ_NO,
+            value=self._weights_seq_no,
+            window=1,
         )
+
+        with self.metrics.log_time(SAMPLE_TIMER):
+            # If no execution details are provided, use the config to try to infer the
+            # desired timesteps/episodes to sample and exploration behavior.
+            if explore is None:
+                explore = self.config.explore
+            if (
+                num_timesteps is None
+                and num_episodes is None
+                and self.config.batch_mode == "truncate_episodes"
+            ):
+                num_timesteps = (
+                    self.config.get_rollout_fragment_length(self.worker_index)
+                    * self.num_envs
+                )
+
+            # Sample n timesteps.
+            if num_timesteps is not None:
+                samples = self._sample(
+                    num_timesteps=num_timesteps,
+                    explore=explore,
+                    random_actions=random_actions,
+                    force_reset=force_reset,
+                )
+            # Sample m episodes.
+            elif num_episodes is not None:
+                samples = self._sample(
+                    num_episodes=num_episodes,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
+            # For complete episodes mode, sample as long as the number of timesteps
+            # done is smaller than the `train_batch_size`.
+            else:
+                samples = self._sample(
+                    num_episodes=self.num_envs,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
+
+            # Make the `on_sample_end` callback.
+            make_callback(
+                "on_sample_end",
+                callbacks_objects=self._callbacks,
+                callbacks_functions=self.config.callbacks_on_sample_end,
+                kwargs=dict(
+                    env_runner=self,
+                    metrics_logger=self.metrics,
+                    samples=samples,
+                ),
+            )
 
         self._time_after_sampling = time.perf_counter()
 
         return samples
 
-    def _sample_timesteps(
+    def _sample(
         self,
-        num_timesteps: int,
+        *,
+        num_timesteps: Optional[int] = None,
+        num_episodes: Optional[int] = None,
         explore: bool,
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[MultiAgentEpisode]:
-        """Helper method to sample n timesteps.
 
-        Args:
-            num_timesteps: int. Number of timesteps to sample during rollout.
-            explore: boolean. If in exploration or inference mode. Exploration
-                mode might for some algorithms provide extza model outputs that
-                are redundant in inference mode.
-            random_actions: boolean. If actions should be sampled from the action
-                space. In default mode (i.e. `False`) we sample actions frokm the
-                policy.
-
-        Returns:
-            `Lists of `MultiAgentEpisode` instances, carrying the collected sample data.
-        """
         done_episodes_to_return: List[MultiAgentEpisode] = []
 
-        # Have to reset the env.
-        if force_reset or self._needs_initial_reset:
-            # Create n new episodes and make the `on_episode_created` callbacks.
-            self._episode = self._new_episode()
-            self._make_on_episode_callback("on_episode_created")
+        # Have to reset the env (on all vector sub_envs).
+        if force_reset or num_episodes is not None or self._needs_initial_reset:
+            episodes = self._episodes = [None for _ in range(self.num_envs)]
 
-            # Erase all cached ongoing episodes (these will never be completed and
-            # would thus never be returned/cleaned by `get_metrics` and cause a memory
-            # leak).
-            self._ongoing_episodes_for_metrics.clear()
-
-            # Try resetting the environment.
-            # TODO (simon): Check, if we need here the seed from the config.
-            obs, infos = self._try_env_reset()
-
-            self._cached_to_module = None
-
-            # Call `on_episode_start()` callbacks.
-            self._make_on_episode_callback("on_episode_start")
+            shared_data = self._shared_data = {}
+            self._reset_envs(episodes, shared_data, explore)
 
             # We just reset the env. Don't have to force this again in the next
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
+        else:
+            episodes = self._episodes
+            shared_data = self._shared_data
 
-            # Set the initial observations in the episodes.
-            self._episode.add_env_reset(observations=obs, infos=infos)
+        if num_episodes is not None:
+            self._needs_initial_reset = True
 
-            self._shared_data = {
-                "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
-            }
-
-        # Loop through timesteps.
+        # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
         ts = 0
-
-        while ts < num_timesteps:
+        eps = 0
+        while (
+            (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
+        ):
             # Act randomly.
             if random_actions:
                 # Only act (randomly) for those agents that had an observation.
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            aid: self.env.unwrapped.get_action_space(aid).sample()
-                            for aid in self._episode.get_agents_to_act()
+                            aid: self.env.envs[i]
+                            .unwrapped.get_action_space(aid)
+                            .sample()
+                            for aid in self._episodes[i].get_agents_to_act()
                         }
+                        for i in range(self.num_envs)
                     ]
                 }
             # Compute an action using the RLModule.
             else:
-                # Env-to-module connector.
-                to_module = self._cached_to_module or self._env_to_module(
-                    rl_module=self.module,
-                    episodes=[self._episode],
-                    explore=explore,
-                    shared_data=self._shared_data,
-                    metrics=self.metrics,
-                )
+                # Env-to-module connector (already cached).
+                to_module = self._cached_to_module
+                assert to_module is not None
                 self._cached_to_module = None
 
-                # MultiRLModule forward pass: Explore or not.
+                # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = (
+                    # Global env steps sampled are (roughly) this EnvRunner's lifetime
+                    # count times the number of env runners in the algo.
+                    global_env_steps_lifetime = (
                         self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                        + ts
                     ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
-                        to_module, t=env_steps_lifetime
+                        to_module, t=global_env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -319,9 +316,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     batch=to_env,
-                    episodes=[self._episode],
+                    episodes=episodes,
                     explore=explore,
-                    shared_data=self._shared_data,
+                    shared_data=shared_data,
                     metrics=self.metrics,
                 )
 
@@ -332,329 +329,190 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-
             # Try stepping the environment.
-            # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
-            #  Support vectorized multi-agent envs.
-            results = self._try_env_step(actions_for_env[0])
-            # If any failure occurs during stepping -> Throw away all data collected
-            # thus far and restart sampling procedure.
+            results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
-                return self._sample_timesteps(
+                return self._sample(
                     num_timesteps=num_timesteps,
+                    num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
                     force_reset=True,
                 )
-            obs, rewards, terminateds, truncateds, infos = results
+            observations, rewards, terminateds, truncateds, infos = results
 
-            # TODO (sven): This simple approach to re-map `to_env` from a
-            #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
-            #  a vectorized env.
+            call_on_episode_start = set()
             extra_model_outputs = defaultdict(dict)
-            for col, ma_dict_list in to_env.items():
-                # TODO (sven): Support vectorized MA env.
-                ma_dict = ma_dict_list[0]
-                for agent_id, val in ma_dict.items():
-                    extra_model_outputs[agent_id][col] = val
-                    extra_model_outputs[agent_id][WEIGHTS_SEQ_NO] = self._weights_seq_no
-            extra_model_outputs = dict(extra_model_outputs)
+            # Store the data from the last environment step into the
+            # episodes for all sub-envrironments.
+            for env_index in range(self.num_envs):
+                # `to_env` returns a dictionary with column keys and
+                # (AgentID, value) tuple values.
+                for col, ma_dict_list in to_env.items():
+                    ma_dict = ma_dict_list[env_index]
+                    for agent_id, val in ma_dict.items():
+                        extra_model_outputs[agent_id][col] = val
+                        extra_model_outputs[agent_id][
+                            WEIGHTS_SEQ_NO
+                        ] = self._weights_seq_no
+                extra_model_outputs = dict(extra_model_outputs)
 
-            # Record the timestep in the episode instance.
-            self._episode.add_env_step(
-                obs,
-                actions[0],
-                rewards,
-                infos=infos,
-                terminateds=terminateds,
-                truncateds=truncateds,
-                extra_model_outputs=extra_model_outputs,
-            )
+                # Episode has no data in it yet -> Was just reset and needs to be called
+                # with its `add_env_reset()` method.
+                if not self._episodes[env_index].is_reset:
+                    # Add the reset step data to the episode.
+                    episodes[env_index].add_env_reset(
+                        observations=observations[env_index],
+                        infos=infos[env_index],
+                    )
+                    # Call the callback on episode start so users can hook in.
+                    call_on_episode_start.add(env_index)
 
-            ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
-
-            # Make the `on_episode_step` callback (before finalizing the episode
-            # object).
-            self._make_on_episode_callback("on_episode_step")
-
-            # Episode is done for all agents. Wrap up the old one and create a new
-            # one (and reset it) to continue.
-            if self._episode.is_done:
-                # We have to perform an extra env-to-module pass here, just in case
-                # the user's connector pipeline performs (permanent) transforms
-                # on each observation (including this final one here). Without such
-                # a call and in case the structure of the observations change
-                # sufficiently, the following `to_numpy()` call on the episode will
-                # fail.
-                if self.module is not None:
-                    self._env_to_module(
-                        episodes=[self._episode],
-                        explore=explore,
-                        rl_module=self.module,
-                        shared_data=self._shared_data,
-                        metrics=self.metrics,
+                # Call `add_env_step()` method on episode.
+                else:
+                    # Only increase ts when we actually stepped (not reset'd as a reset
+                    # does not count as a timestep).
+                    ts += self._increase_sampled_metrics(
+                        1, observations[env_index], episodes[env_index]
+                    )
+                    episodes[env_index].add_env_step(
+                        observations=observations[env_index],
+                        actions=actions[env_index],
+                        rewards=rewards[env_index],
+                        infos=infos[env_index],
+                        terminateds=terminateds[env_index],
+                        truncateds=truncateds[env_index],
+                        extra_model_outputs=extra_model_outputs,
                     )
 
-                # Make the `on_episode_end` callback (before finalizing the episode,
-                # but after(!) the last env-to-module connector call has been made.
-                # -> All obs (even the terminal one) should have been processed now (by
-                # the connector, if applicable).
-                self._make_on_episode_callback("on_episode_end")
+            # Env-to-module connector pass (cache results as we will do the RLModule
+            # forward pass only in the next `while`-iteration.
+            if self.module is not None:
+                self._cached_to_module = self._env_to_module(
+                    episodes=episodes,
+                    explore=explore,
+                    rl_module=self.module,
+                    shared_data=shared_data,
+                    metrics=self.metrics,
+                )
 
-                self._prune_zero_len_sa_episodes(self._episode)
-
-                # Numpy'ize the episode.
-                if self.config.episodes_to_numpy:
-                    done_episodes_to_return.append(self._episode.to_numpy())
-                # Leave episode as lists of individual (obs, action, etc..) items.
+            for env_index in range(self.num_envs):
+                # Call `on_episode_start()` callback (always after reset).
+                if env_index in call_on_episode_start:
+                    self._make_on_episode_callback(
+                        "on_episode_start", env_index, episodes
+                    )
+                # Make the `on_episode_step` callbacks.
                 else:
-                    done_episodes_to_return.append(self._episode)
+                    self._make_on_episode_callback(
+                        "on_episode_step", env_index, episodes
+                    )
 
-                # Create a new episode instance.
-                self._episode = self._new_episode()
-                self._make_on_episode_callback("on_episode_created")
+                # Episode is done.
+                if episodes[env_index].is_done:
+                    eps += 1
 
-                # Reset the environment.
-                obs, infos = self._try_env_reset()
-                # Add initial observations and infos.
-                self._episode.add_env_reset(observations=obs, infos=infos)
+                    # TODO (simon): Check, if we need to run another time the
+                    # env_to_module pipeline here.
 
-                # Make the `on_episode_start` callback.
-                self._make_on_episode_callback("on_episode_start")
+                    # Make the `on_episode_end` callbacks (before finalizing the episode
+                    # object).
+                    self._make_on_episode_callback(
+                        "on_episode_end", env_index, episodes
+                    )
 
-        # Already perform env-to-module connector call for next call to
-        # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
-        if self.module is not None:
-            self._cached_to_module = self._env_to_module(
-                rl_module=self.module,
-                episodes=[self._episode],
-                explore=explore,
-                shared_data=self._shared_data,
-                metrics=self.metrics,
-            )
+                    self._prune_zero_len_sa_episodes(episodes[env_index])
 
-        # Store done episodes for metrics.
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(episodes[env_index].to_numpy())
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(episodes[env_index])
+
+                    # Also early-out if we reach the number of episodes within this
+                    # for-loop.
+                    if eps == num_episodes:
+                        break
+
+                    # Create a new episode object with no data in it and execute
+                    # `on_episode_created` callback (before the `env.reset()` call).
+                    self._new_episode(env_index, episodes)
+
+        # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        # ... and all ongoing episode chunks.
 
         # Also, make sure we start new episode chunks (continuing the ongoing episodes
         # from the to-be-returned chunks).
-        ongoing_episode_continuation = self._episode.cut(
-            len_lookback_buffer=self.config.episode_lookback_horizon
-        )
-
         ongoing_episodes_to_return = []
-        # Just started Episodes do not have to be returned. There is no data
-        # in them anyway.
-        if self._episode.env_t > 0:
-            self._episode.validate()
-            self._ongoing_episodes_for_metrics[self._episode.id_].append(self._episode)
+        # Only if we are doing individual timesteps: We have to maybe cut an ongoing
+        # episode and continue building it on the next call to `sample()`.
+        if num_timesteps is not None:
+            ongoing_episodes_continuations = [
+                eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
+                for eps in self._episodes
+            ]
 
-            self._prune_zero_len_sa_episodes(self._episode)
+            for eps in self._episodes:
+                # Just started Episodes do not have to be returned. There is no data
+                # in them anyway.
+                if eps.env_t == 0:
+                    continue
+                eps.validate()
+                self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
-            # Numpy'ize the episode.
-            if self.config.episodes_to_numpy:
-                ongoing_episodes_to_return.append(self._episode.to_numpy())
-            # Leave episode as lists of individual (obs, action, etc..) items.
-            else:
-                ongoing_episodes_to_return.append(self._episode)
+                self._prune_zero_len_sa_episodes(eps)
 
-        # Continue collecting into the cut Episode chunk.
-        self._episode = ongoing_episode_continuation
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    # Any possibly compress observations.
+                    ongoing_episodes_to_return.append(eps.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    ongoing_episodes_to_return.append(eps)
+
+            # Continue collecting into the cut Episode chunks.
+            self._episodes = ongoing_episodes_continuations
 
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
 
-    def _sample_episodes(
-        self,
-        num_episodes: int,
-        explore: bool,
-        random_actions: bool = False,
-    ) -> List[MultiAgentEpisode]:
-        """Helper method to run n episodes.
+    def _reset_envs(self, episodes, shared_data, explore):
+        for env_index in range(self.num_envs):
+            self._new_episode(env_index, episodes)
 
-        See docstring of `self.sample()` for more details.
-        """
-        # If user calls sample(num_timesteps=..) after this, we must reset again
-        # at the beginning.
-        self._needs_initial_reset = True
-
-        done_episodes_to_return: List[MultiAgentEpisode] = []
-
-        # Create a new multi-agent episode.
-        _episode = self._new_episode()
-        self._make_on_episode_callback("on_episode_created", _episode)
-        _shared_data = {
-            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
-        }
+        # Erase all cached ongoing episodes (these will never be completed and
+        # would this never be returned/cleaned by `get_metrics` and cause a memory
+        # leak).
+        self._ongoing_episodes_for_metrics.clear()
 
         # Try resetting the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self._try_env_reset()
-        # Set initial obs and infos in the episodes.
-        _episode.add_env_reset(observations=obs, infos=infos)
-        self._make_on_episode_callback("on_episode_start", _episode)
+        observations, infos = self._try_env_reset()
 
-        # Loop over episodes.
-        eps = 0
-        ts = 0
-        while eps < num_episodes:
-            # Act randomly.
-            if random_actions:
-                # Only act (randomly) for those agents that had an observation.
-                to_env = {
-                    Columns.ACTIONS: [
-                        {
-                            aid: self.env.unwrapped.get_action_space(aid).sample()
-                            for aid in self._episode.get_agents_to_act()
-                        }
-                    ]
-                }
-            # Compute an action using the RLModule.
-            else:
-                # Env-to-module connector.
-                to_module = self._env_to_module(
-                    rl_module=self.module,
-                    episodes=[_episode],
-                    explore=explore,
-                    shared_data=_shared_data,
-                    metrics=self.metrics,
-                )
-
-                # MultiRLModule forward pass: Explore or not.
-                if explore:
-                    env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
-                    ) * (self.config.num_env_runners or 1)
-                    to_env = self.module.forward_exploration(
-                        to_module, t=env_steps_lifetime
-                    )
-                else:
-                    to_env = self.module.forward_inference(to_module)
-
-                # Module-to-env connector.
-                to_env = self._module_to_env(
-                    rl_module=self.module,
-                    batch=to_env,
-                    episodes=[_episode],
-                    explore=explore,
-                    shared_data=_shared_data,
-                    metrics=self.metrics,
-                )
-
-            # Extract the (vectorized) actions (to be sent to the env) from the
-            # module/connector output. Note that these actions are fully ready (e.g.
-            # already unsquashed/clipped) to be sent to the environment) and might not
-            # be identical to the actions produced by the RLModule/distribution, which
-            # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(Columns.ACTIONS)
-            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-
-            # Try stepping the environment.
-            # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
-            #  Support vectorized multi-agent envs.
-            results = self._try_env_step(actions_for_env[0])
-            # If any failure occurs during stepping -> Throw away all data collected
-            # thus far and restart sampling procedure.
-            if results == ENV_STEP_FAILURE:
-                return self._sample_episodes(
-                    num_episodes=num_episodes,
-                    explore=explore,
-                    random_actions=random_actions,
-                )
-            obs, rewards, terminateds, truncateds, infos = results
-
-            # TODO (sven): This simple approach to re-map `to_env` from a
-            #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
-            #  a vectorized env.
-            extra_model_outputs = defaultdict(dict)
-            for col, ma_dict_list in to_env.items():
-                # TODO (sven): Support vectorized MA env.
-                ma_dict = ma_dict_list[0]
-                for agent_id, val in ma_dict.items():
-                    extra_model_outputs[agent_id][col] = val
-                    extra_model_outputs[agent_id][WEIGHTS_SEQ_NO] = self._weights_seq_no
-            extra_model_outputs = dict(extra_model_outputs)
-
-            # Record the timestep in the episode instance.
-            _episode.add_env_step(
-                obs,
-                actions[0],
-                rewards,
-                infos=infos,
-                terminateds=terminateds,
-                truncateds=truncateds,
-                extra_model_outputs=extra_model_outputs,
+        # Set the initial obs and infos in the episodes.
+        for env_index in range(self.num_envs):
+            episodes[env_index].add_env_reset(
+                observations=observations[env_index],
+                infos=infos[env_index],
             )
 
-            ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
+        # Run the env-to-module connector to make sure the reset-obs/infos have
+        # properly been processed (if applicable).
+        self._cached_to_module = None
+        if self.module:
+            self._cached_to_module = self._env_to_module(
+                rl_module=self.module,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+                metrics=self.metrics,
+            )
 
-            # Make `on_episode_step` callback before finalizing the episode.
-            self._make_on_episode_callback("on_episode_step", _episode)
-
-            # TODO (sven, simon): We have to check, if we need this elaborate
-            # function here or if the `MultiAgentEnv` defines the cases that
-            # can happen.
-            # Right now we have:
-            #   1. Most times only agents that step get `terminated`, `truncated`
-            #       i.e. the rest we have to check in the episode.
-            #   2. There are edge cases like, some agents terminated, all others
-            #       truncated and vice versa.
-            # See also `MultiAgentEpisode` for handling the `__all__`.
-            if _episode.is_done:
-                # Increase episode count.
-                eps += 1
-
-                # We have to perform an extra env-to-module pass here, just in case
-                # the user's connector pipeline performs (permanent) transforms
-                # on each observation (including this final one here). Without such
-                # a call and in case the structure of the observations change
-                # sufficiently, the following `to_numpy()` call on the episode will
-                # fail.
-                if self.module is not None:
-                    self._env_to_module(
-                        episodes=[_episode],
-                        explore=explore,
-                        rl_module=self.module,
-                        shared_data=_shared_data,
-                        metrics=self.metrics,
-                    )
-
-                # Make the `on_episode_end` callback (before finalizing the episode,
-                # but after(!) the last env-to-module connector call has been made.
-                # -> All obs (even the terminal one) should have been processed now (by
-                # the connector, if applicable).
-                self._make_on_episode_callback("on_episode_end", _episode)
-
-                self._prune_zero_len_sa_episodes(_episode)
-
-                # Numpy'ize the episode.
-                if self.config.episodes_to_numpy:
-                    done_episodes_to_return.append(_episode.to_numpy())
-                # Leave episode as lists of individual (obs, action, etc..) items.
-                else:
-                    done_episodes_to_return.append(_episode)
-
-                # Also early-out if we reach the number of episodes within this
-                # for-loop.
-                if eps == num_episodes:
-                    break
-
-                # Create a new episode instance.
-                _episode = self._new_episode()
-                self._make_on_episode_callback("on_episode_created", _episode)
-
-                # Try resetting the environment.
-                obs, infos = self._try_env_reset()
-                # Add initial observations and infos.
-                _episode.add_env_reset(observations=obs, infos=infos)
-
-                # Make `on_episode_start` callback.
-                self._make_on_episode_callback("on_episode_start", _episode)
-
-        self._done_episodes_for_metrics.extend(done_episodes_to_return)
-
-        return done_episodes_to_return
+        # Call `on_episode_start()` callbacks (always after reset).
+        for env_index in range(self.num_envs):
+            self._make_on_episode_callback("on_episode_start", env_index, episodes)
 
     @override(EnvRunner)
     def get_spaces(self):
@@ -887,14 +745,23 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             entry_point=entry_point,
             disable_env_checker=True,
         )
+        vectorize_mode = self.config.gym_env_vectorize_mode
 
         # Perform actual gym.make call.
-        self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
-        self.num_envs = 1
-        # If required, check the created MultiAgentEnv.
+        self.env = make_vec(
+            "rllib-multi-agent-env-v0",
+            num_envs=self.config.num_envs_per_env_runner,
+            vectorization_mode=vectorize_mode,
+        )
+        self.num_envs: int = self.env.num_envs
+        assert self.num_envs == self.config.num_envs_per_env_runner
+        # self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
+        # self.num_envs = 1
+        # If required, check the created MultiAgentEnv instances.
         if not self.config.disable_env_checking:
             try:
-                check_multiagent_environments(self.env.unwrapped)
+                for env in self.env.envs:
+                    check_multiagent_environments(env.unwrapped)
             except Exception as e:
                 logger.exception(e.args[0])
         # If not required, still check the type (must be MultiAgentEnv).
@@ -959,20 +826,22 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             EpisodeID, List[MultiAgentEpisode]
         ] = defaultdict(list)
 
-    def _new_episode(self):
-        return MultiAgentEpisode(
+    def _new_episode(self, env_index, episodes=None):
+        episodes = episodes if episodes is not None else self._episodes
+        episodes[env_index] = MultiAgentEpisode(
             observation_space={
-                aid: self.env.unwrapped.get_observation_space(aid)
-                for aid in self.env.unwrapped.possible_agents
+                aid: self.env.envs[env_index].unwrapped.get_observation_space(aid)
+                for aid in self.env.envs[env_index].unwrapped.possible_agents
             },
             action_space={
-                aid: self.env.unwrapped.get_action_space(aid)
-                for aid in self.env.unwrapped.possible_agents
+                aid: self.env.envs[env_index].unwrapped.get_action_space(aid)
+                for aid in self.env.envs[env_index].unwrapped.possible_agents
             },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
+        self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, episode=None):
+    def _make_on_episode_callback(self, which: str, idx: int, episode=None):
         episode = episode if episode is not None else self._episode
         make_callback(
             which,
@@ -984,7 +853,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 metrics_logger=self.metrics,
                 env=self.env.unwrapped,
                 rl_module=self.module,
-                env_index=0,
+                env_index=idx,
             ),
         )
 
@@ -1004,7 +873,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
             self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="sum")
 
-        # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
+        # Record agent and module metrics.
         for aid in next_obs:
             self.metrics.log_value(
                 (NUM_AGENT_STEPS_SAMPLED, str(aid)),
