@@ -36,10 +36,10 @@ class ScopedDup2Wrapper {
   ~ScopedDup2Wrapper();
 
  private:
-  ScopedDup2Wrapper(MEMFD_TYPE_NON_UNIQUE oldfd, MEMFD_TYPE_NON_UNIQUE restorefd)
-      : oldfd_(oldfd), restorefd_(restorefd) {}
+  ScopedDup2Wrapper(MEMFD_TYPE_NON_UNIQUE newfd, MEMFD_TYPE_NON_UNIQUE restorefd)
+      : newfd_(newfd), restorefd_(restorefd) {}
 
-  MEMFD_TYPE_NON_UNIQUE oldfd_;
+  MEMFD_TYPE_NON_UNIQUE newfd_;
   MEMFD_TYPE_NON_UNIQUE restorefd_;
 };
 

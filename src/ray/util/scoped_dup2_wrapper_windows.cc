@@ -17,10 +17,10 @@
 namespace ray {
 
 /*static*/ std::unique_ptr<ScopedDup2Wrapper> ScopedDup2Wrapper::New(HANDLE oldfd,
-                                                                     HANLE newfd) {
+                                                                     HANDLE newfd) {
   HANDLE restorefd = NULL;
   BOOL success = DuplicateHandle(GetCurrentProcess(),
-                                 oldfd,
+                                 newfd,
                                  GetCurrentProcess(),
                                  &restorefd,
                                  0,
@@ -28,27 +28,19 @@ namespace ray {
                                  DUPLICATE_SAME_ACCESS);
   RAY_CHECK(success);
 
-  success = DuplicateHandle(GetCurrentProcess(),
-                            oldfd,
-                            GetCurrentProcess(),
-                            &newfd,
-                            0,
-                            FALSE,
-                            DUPLICATE_SAME_ACCESS);
-  RAY_CHECK(success);
+  int old_win_fd = _open_osfhandle(reinterpret_cast<intptr_t>(oldfd), _O_WRONLY);
+  int new_win_fd = _open_osfhandle(reinterpret_cast<intptr_t>(newfd), _O_WRONLY);
+  RAY_CHECK_NE(_dup2(old_win_fd, new_win_fd), -1) << "Fails to duplicate file descriptor";
 
-  return std::unique_ptr<ScopedDup2Wrapper>(new ScopedDup2Wrapper(oldfd, restorefd));
+  return std::unique_ptr<ScopedDup2Wrapper>(new ScopedDup2Wrapper(newfd, restorefd));
 }
 
 ScopedDup2Wrapper::~ScopedDup2Wrapper() {
-  BOOL success = DuplicateHandle(GetCurrentProcess(),
-                                 oldfd_,
-                                 GetCurrentProcess(),
-                                 &restorefd_,
-                                 0,
-                                 FALSE,
-                                 DUPLICATE_SAME_ACCESS);
-  RAY_CHECK(success);
+  int restore_win_fd = _open_osfhandle(reinterpret_cast<intptr_t>(restorefd_), _O_WRONLY);
+  int new_win_fd = _open_osfhandle(reinterpret_cast<intptr_t>(newfd_), _O_WRONLY);
+  RAY_CHECK_NE(_dup2(restore_win_fd, new_win_fd), -1)
+      << "Fails to duplicate file descriptor";
+  RAY_CHECK_OK(Close(restorefd_));
 }
 
 }  // namespace ray
