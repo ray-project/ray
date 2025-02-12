@@ -11,7 +11,6 @@ from ray._private.test_utils import (
 
 
 import ray
-from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 from ray.exceptions import RuntimeEnvSetupError
 from ray._private.runtime_env.packaging import (
