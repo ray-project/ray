@@ -97,7 +97,6 @@ __all__ = [
     "report",
     "get_context",
     "TuneContext",
-    # TODO(justinvyu): [Deprecated]
     "SyncConfig",
 ]
 

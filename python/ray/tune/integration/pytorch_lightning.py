@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Type, Union
 
 from ray import train
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.util import log_once
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -176,7 +176,7 @@ class TuneReportCheckpointCallback(TuneCallback):
             return
 
         with self._get_checkpoint(trainer) as checkpoint:
-            train.report(report_dict, checkpoint=checkpoint)
+            tune.report(report_dict, checkpoint=checkpoint)
 
 
 class _TuneCheckpointCallback(TuneCallback):

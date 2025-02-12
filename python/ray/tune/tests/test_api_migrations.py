@@ -60,7 +60,7 @@ def test_trainable_fn_utils(tmp_path):
 
 def test_configs():
     with pytest.warns(RayDeprecationWarning, match="update your imports"):
-        ray.tune.Tuner(lambda c: None, run_config=ray.train.RunConfig())
+        ray.tune.Tuner(lambda c: None, run_config=ray.tune.RunConfig())
 
     with pytest.warns(RayDeprecationWarning, match="update your imports"):
         ray.tune.Tuner(
