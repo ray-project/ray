@@ -449,7 +449,7 @@ ray.get(actor_instance.print_message.remote())
 
 #### Add metadata to structured logs
 
-You can add extra fields to the log entries by using the `extra` parameter in the `logger.info` method.
+Add extra fields to the log entries by using the `extra` parameter in the `logger.info` method.
 
 ```python
 import ray
