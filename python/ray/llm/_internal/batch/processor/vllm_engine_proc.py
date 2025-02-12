@@ -32,6 +32,9 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     max_pending_requests: Optional[int] = None
     # Whether to apply chat template.
     apply_chat_template: bool = True
+    # The chat template to use. This is usually not needed if the model
+    # checkpoint already contains the chat template.
+    chat_template: Optional[str] = None
     # Whether to tokenize the input.
     tokenize: bool = True
     # Whether to detokenize the output.
@@ -70,6 +73,7 @@ def build_vllm_engine_processor(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
                     model=config.model,
+                    chat_template=config.chat_template,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
