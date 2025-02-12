@@ -157,7 +157,7 @@ import os
 
 @ray.remote
 def f():
-    return os.environment.get("HOOK_KEY")
+    return os.environ.get("HOOK_KEY")
 
 print(ray.get(f.remote()))
 """
