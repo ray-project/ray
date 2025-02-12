@@ -137,93 +137,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
-    # @override(EnvRunner)
-    # def sample(
-    #     self,
-    #     *,
-    #     num_timesteps: int = None,
-    #     num_episodes: int = None,
-    #     explore: bool = None,
-    #     random_actions: bool = False,
-    #     force_reset: bool = False,
-    # ) -> List[MultiAgentEpisode]:
-    #     """Runs and returns a sample (n timesteps or m episodes) on the env(s).
-
-    #     Args:
-    #         num_timesteps: The number of timesteps to sample during this call.
-    #             Note that only one of `num_timetseps` or `num_episodes` may be provided.
-    #         num_episodes: The number of episodes to sample during this call.
-    #             Note that only one of `num_timetseps` or `num_episodes` may be provided.
-    #         explore: If True, will use the RLModule's `forward_exploration()`
-    #             method to compute actions. If False, will use the RLModule's
-    #             `forward_inference()` method. If None (default), will use the `explore`
-    #             boolean setting from `self.config` passed into this EnvRunner's
-    #             constructor. You can change this setting in your config via
-    #             `config.env_runners(explore=True|False)`.
-    #         random_actions: If True, actions will be sampled randomly (from the action
-    #             space of the environment). If False (default), actions or action
-    #             distribution parameters are computed by the RLModule.
-    #         force_reset: Whether to force-reset all (vector) environments before
-    #             sampling. Useful if you would like to collect a clean slate of new
-    #             episodes via this call. Note that when sampling n episodes
-    #             (`num_episodes != None`), this is fixed to True.
-
-    #     Returns:
-    #         A list of `MultiAgentEpisode` instances, carrying the sampled data.
-    #     """
-    #     assert not (num_timesteps is not None and num_episodes is not None)
-
-    #     # Log time between `sample()` requests.
-    #     if self._time_after_sampling is not None:
-    #         self.metrics.log_value(
-    #             key=TIME_BETWEEN_SAMPLING,
-    #             value=time.perf_counter() - self._time_after_sampling,
-    #         )
-
-    #     # If no execution details are provided, use the config to try to infer the
-    #     # desired timesteps/episodes to sample and the exploration behavior.
-    #     if explore is None:
-    #         explore = self.config.explore
-    #     if num_timesteps is None and num_episodes is None:
-    #         if self.config.batch_mode == "truncate_episodes":
-    #             num_timesteps = self.config.get_rollout_fragment_length(
-    #                 worker_index=self.worker_index,
-    #             )
-    #         else:
-    #             num_episodes = 1
-
-    #     # Sample n timesteps.
-    #     if num_timesteps is not None:
-    #         samples = self._sample_timesteps(
-    #             num_timesteps=num_timesteps,
-    #             explore=explore,
-    #             random_actions=random_actions,
-    #             force_reset=force_reset,
-    #         )
-    #     # Sample m episodes.
-    #     else:
-    #         samples = self._sample_episodes(
-    #             num_episodes=num_episodes,
-    #             explore=explore,
-    #             random_actions=random_actions,
-    #         )
-
-    #     # Make the `on_sample_end` callback.
-    #     make_callback(
-    #         "on_sample_end",
-    #         callbacks_objects=self._callbacks,
-    #         callbacks_functions=self.config.callbacks_on_sample_end,
-    #         kwargs=dict(
-    #             env_runner=self,
-    #             metrics_logger=self.metrics,
-    #             samples=samples,
-    #         ),
-    #     )
-
-    #     self._time_after_sampling = time.perf_counter()
-
-    #     return samples
-
     @override(EnvRunner)
     def sample(
         self,
@@ -444,10 +357,20 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Episode has no data in it yet -> Was just reset and needs to be called
                 # with its `add_env_reset()` method.
                 if not self._episodes[env_index].is_reset:
-                    episodes[env_index].add_env_reset(
-                        observations=observations[env_index],
-                        infos=infos[env_index],
-                    )
+                    try:
+                        episodes[env_index].add_env_reset(
+                            observations=observations[env_index],
+                            infos=infos[env_index],
+                        )
+                    except:
+                        print(
+                            f"Something went wrong. Observations are: {observations[env_index]}"
+                        )
+                        agent_spaces = {
+                            eps.observation_space
+                            for eps in episodes[env_index].agent_episodes.values
+                        }
+                        print(f"Agent observations spaces: {agent_spaces}")
                     call_on_episode_start.add(env_index)
 
                 # Call `add_env_step()` method on episode.
@@ -457,6 +380,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     ts += self._increase_sampled_metrics(
                         1, observations[env_index], episodes[env_index]
                     )
+                    if any(any(term.values()) for term in terminateds) or any(any(trunc.values()) for trunc in truncateds):
+                        print("One is done.")
                     episodes[env_index].add_env_step(
                         observations=observations[env_index],
                         actions=actions[env_index],
@@ -538,6 +463,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 for eps in self._episodes
             ]
 
+            if any(len(eps.agent_episodes) < 2 for eps in ongoing_episodes_continuations):
+                print("ongoing")
             for eps in self._episodes:
                 # Just started Episodes do not have to be returned. There is no data
                 # in them anyway.
