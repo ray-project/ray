@@ -751,6 +751,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self.env = make_vec(
             "rllib-multi-agent-env-v0",
             num_envs=self.config.num_envs_per_env_runner,
+            vectorization_mode=vectorize_mode,
         )
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
