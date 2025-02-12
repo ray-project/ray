@@ -192,7 +192,7 @@ We refer to these saved files as **trial artifacts**.
     are uploaded periodically from each trial (or from each remote training worker for Ray Train)
     to the :class:`RunConfig(storage_path) <ray.tune.RunConfig>`.
 
-    See the :class:`~ray.train.SyncConfig` API reference for artifact syncing configuration options.
+    See the :class:`~ray.tune.SyncConfig` API reference for artifact syncing configuration options.
 
 You can save trial artifacts directly in the trainable, as shown below:
 

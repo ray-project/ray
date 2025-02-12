@@ -39,7 +39,7 @@ Tune provides support for three scenarios:
 
 .. seealso::
 
-    See :class:`~ray.train.SyncConfig` for the full set of configuration options as well as more details.
+    See :class:`~ray.tune.SyncConfig` for the full set of configuration options as well as more details.
 
 
 .. _tune-cloud-checkpointing:
