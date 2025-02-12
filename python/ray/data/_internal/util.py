@@ -319,7 +319,7 @@ def _check_import(obj, *, module: str, package: str) -> None:
     except ImportError:
         raise ImportError(
             f"`{obj.__class__.__name__}` depends on '{module}', but Ray Data couldn't "
-            f"import '{module}'. Install '{module}' by running `pip install {package}`."
+            f"import it. Install '{module}' by running `pip install {package}`."
         )
 
 
