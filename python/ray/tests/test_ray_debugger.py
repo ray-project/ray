@@ -16,7 +16,7 @@ from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 
-def _pexpect_spawn(cmd: str) -> Union[pexpect.spawn, PopenSpawn]:
+def _pexpect_spawn(cmd: str) -> Union["pexpect.spawn", PopenSpawn]:
     """Handles compatibility for pexpect on Windows."""
     if sys.platform == "win32":
         p = PopenSpawn(cmd, encoding="utf-8")
