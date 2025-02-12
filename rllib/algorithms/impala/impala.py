@@ -554,6 +554,7 @@ class IMPALA(Algorithm):
 
         # Queue of data to be sent to the Learner.
         self.data_to_place_on_learner = []
+        self.local_mixin_buffer = None  # @OldAPIStack
         self._batch_being_built = []  # @OldAPIStack
 
         # Create extra aggregation workers and assign each rollout worker to
@@ -563,17 +564,19 @@ class IMPALA(Algorithm):
             i: [] for i in range(self.config.num_learners or 1)
         }
 
-        # Create our local mixin buffer.
+        # Create local mixin buffer if on old API stack and replay
+        # proportion is set.
         if not self.config.enable_rl_module_and_learner:
-            self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
-                capacity=(
-                    self.config.replay_buffer_num_slots
-                    if self.config.replay_buffer_num_slots > 0
-                    else 1
-                ),
-                replay_ratio=self.config.replay_ratio,
-                replay_mode=ReplayMode.LOCKSTEP,
-            )
+            if self.config.replay_proportion > 0.0:
+                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                    capacity=(
+                        self.config.replay_buffer_num_slots
+                        if self.config.replay_buffer_num_slots > 0
+                        else 1
+                    ),
+                    replay_ratio=self.config.replay_ratio,
+                    replay_mode=ReplayMode.LOCKSTEP,
+                )
 
         # This variable is used to keep track of the statistics from the most recent
         # update of the learner group
@@ -1011,8 +1014,14 @@ class IMPALA(Algorithm):
             batch = batch.decompress_if_needed()
             # Only make a pass through the buffer, if replay proportion is > 0.0 (and
             # we actually have one).
-            self.local_mixin_buffer.add(batch)
-            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            if self.local_mixin_buffer:
+                self.local_mixin_buffer.add(batch)
+                batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            else:
+                # TODO(jjyao) somehow deep copy the batch
+                # fix a memory leak issue. Need to investigate more
+                # to know why.
+                batch = batch.copy()
             if batch:
                 processed_batches.append(batch)
 
