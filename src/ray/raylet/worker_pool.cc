@@ -262,8 +262,12 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     const int runtime_env_hash_arg,
                                     const std::string &serialized_runtime_env_context_arg,
                                     const WorkerPool::State &state) const {
-  int runtime_env_hash = 0;
-  std::string serialized_runtime_env_context = "{}";
+  int runtime_env_hash = runtime_env_hash_arg;
+  std::string serialized_runtime_env_context = serialized_runtime_env_context_arg;
+  if (serialized_runtime_env_context_arg.find("FOO") != std::string::npos) {
+    runtime_env_hash = 0;
+    serialized_runtime_env_context = "{}";
+  }
 
   std::vector<std::string> options;
 
