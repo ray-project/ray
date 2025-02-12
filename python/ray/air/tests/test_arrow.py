@@ -2,7 +2,6 @@ import gc
 from dataclasses import dataclass, field
 
 import numpy as np
-import psutil
 import pyarrow as pa
 import pytest
 
@@ -15,6 +14,8 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.tests.conftest import *  # noqa
 
+import psutil
+
 
 @dataclass
 class UserObj:
@@ -22,33 +23,34 @@ class UserObj:
 
 
 @pytest.mark.parametrize(
-    "numpy_precision, expected_arrow_unit",
+    "numpy_precision, expected_arrow_type",
     [
-        # The lowest resolution Arrow supports is seconds.
-        ("Y", "s"),
-        ("M", "s"),
-        ("D", "s"),
-        ("h", "s"),
-        ("m", "s"),
-        ("s", "s"),
-        ("ms", "ms"),
-        ("us", "us"),
-        ("ns", "ns"),
-        # The highest resolution Arrow supports is nanoseconds.
-        ("ps", "ns"),
-        ("fs", "ns"),
-        ("as", "ns"),
+        ("ms", pa.timestamp("ms")),
+        ("us", pa.timestamp("us")),
+        ("ns", pa.timestamp("ns")),
+        # Arrow has a special date32 type for dates.
+        ("D", pa.date32()),
+        # The coarsest resolution Arrow supports is seconds.
+        ("Y", pa.timestamp("s")),
+        ("M", pa.timestamp("s")),
+        ("h", pa.timestamp("s")),
+        ("m", pa.timestamp("s")),
+        ("s", pa.timestamp("s")),
+        # The finest resolution Arrow supports is nanoseconds.
+        ("ps", pa.timestamp("ns")),
+        ("fs", pa.timestamp("ns")),
+        ("as", pa.timestamp("ns")),
     ],
 )
 def test_convert_datetime_array(
     numpy_precision: str,
-    expected_arrow_unit: str,
+    expected_arrow_type: pa.DataType,
 ):
     numpy_array = np.zeros(1, dtype=f"datetime64[{numpy_precision}]")
 
     pyarrow_array = _convert_to_pyarrow_native_array(numpy_array, "")
 
-    assert pyarrow_array.type.unit == expected_arrow_unit
+    assert pyarrow_array.type == expected_arrow_type
     assert len(numpy_array) == len(pyarrow_array)
 
 
