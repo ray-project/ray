@@ -32,7 +32,7 @@ def uv_run_runtime_env_hook(runtime_env: Dict[str, Any]) -> Dict[str, Any]:
     known_args, unknown_args = uv_run_parser.parse_known_args(cmdline)
 
     # Extract the arguments of 'uv run' that are not arguments of the script
-    uv_run_args = cmdline[:len(cmdline) - len(sys.argv)]
+    uv_run_args = cmdline[: len(cmdline) - len(sys.argv)]
     runtime_env["py_executable"] = " ".join(uv_run_args)
 
     # If the user specified a working_dir, we will always honor it, otherwise
