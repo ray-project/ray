@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import Field
 
+from ray.data.block import UserDefinedFunction
+
 from ray.llm._internal.batch.processor.base import (
     Processor,
     ProcessorConfig,
@@ -36,13 +38,19 @@ class HttpRequestProcessorConfig(ProcessorConfig):
 
 
 def build_http_request_processor(
-    config: HttpRequestProcessorConfig, **kwargs
+    config: HttpRequestProcessorConfig,
+    preprocess: Optional[UserDefinedFunction] = None,
+    postprocess: Optional[UserDefinedFunction] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
 
     Args:
         config: The configuration for the processor.
-        **kwargs: The keyword arguments for the processor.
+        preprocess: An optional lambda function that takes a row (dict) as input
+            and returns a preprocessed row (dict). The output row must contain the
+            required fields for the following processing stages.
+        postprocess: An optional lambda function that takes a row (dict) as input
+            and returns a postprocessed row (dict).
 
     Returns:
         The constructed processor.
@@ -59,7 +67,12 @@ def build_http_request_processor(
             ),
         )
     ]
-    processor = Processor(config, stages, **kwargs)
+    processor = Processor(
+        config,
+        stages,
+        preprocess=preprocess,
+        postprocess=postprocess,
+    )
     return processor
 
 
