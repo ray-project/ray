@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/dup2_wrapper.h"
+#include "ray/util/scoped_dup2_wrapper.h"
 
 namespace ray {
 

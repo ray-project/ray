@@ -16,7 +16,7 @@
 
 #include <cstring>
 
-#include "ray/util/dup2_wrapper.h"
+#include "ray/util/scoped_dup2_wrapper.h"
 #include "ray/util/logging.h"
 
 namespace ray {

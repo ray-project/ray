@@ -325,13 +325,13 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "dup2_wrapper_test",
-    srcs = ["dup2_wrapper_test.cc"],
+    name = "scoped_dup2_wrapper_test",
+    srcs = ["scoped_dup2_wrapper_test.cc"],
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util:compat",
-        "//src/ray/util:dup2_wrapper",
         "//src/ray/util:filesystem",
+        "//src/ray/util:scoped_dup2_wrapper",
         "//src/ray/util:temporary_directory",
         "@com_google_googletest//:gtest_main",
     ],
