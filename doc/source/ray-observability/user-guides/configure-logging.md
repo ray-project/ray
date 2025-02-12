@@ -368,7 +368,7 @@ ray.init(
 )
 ```
 
-Users can configure the following parameters:
+You can configure the following parameters:
 
 * `encoding`: The encoding format for the logs. The default is `TEXT` for plain text logs.
 The other option is `JSON` for structured logs.
