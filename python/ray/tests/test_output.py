@@ -151,7 +151,7 @@ print(ray.get(f.remote()))
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_runtime_env_override_hook():
-    script = f"""
+    script = """
 import ray
 import os
 
