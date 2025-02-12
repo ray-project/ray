@@ -1,10 +1,10 @@
 import json
 import os
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
-def runtime_env_override_hook(runtime_env: Dict[str, Any]) -> Dict[str, Any]:
+def runtime_env_override_hook(runtime_env) -> Dict[str, Any]:
     """Hook to override the runtime environment from RAY_OVERRIDE_RUNTIME_ENV_JSON."""
 
     if "RAY_OVERRIDE_RUNTIME_ENV_JSON" in os.environ:
@@ -13,15 +13,17 @@ def runtime_env_override_hook(runtime_env: Dict[str, Any]) -> Dict[str, Any]:
     return runtime_env
 
 
-def uv_run_runtime_env_hook(runtime_env: Dict[str, Any]) -> Dict[str, Any]:
+def uv_run_runtime_env_hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Hook that detects if the driver is run in 'uv run' and sets the runtime environment accordingly."""
+
+    runtime_env = runtime_env or {}
 
     import argparse
     import psutil
 
     parent = psutil.Process().parent()
     cmdline = parent.cmdline()
-    if cmdline[0] != "uv" or cmdline[1] != "run":
+    if os.path.basename(cmdline[0]) != "uv" or cmdline[1] != "run":
         # This means the driver was not run with 'uv run' -- in this case
         # we leave the runtime environment unchanged
         return runtime_env

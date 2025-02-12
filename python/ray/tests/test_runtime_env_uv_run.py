@@ -1,5 +1,6 @@
-# End-to-end tests for using "uv run" with py_executable
+# End-to-end tests for using "uv run"
 
+import json
 import os
 from pathlib import Path
 import pytest
@@ -8,6 +9,9 @@ import sys
 import tempfile
 
 import ray
+from ray._private.test_utils import (
+    run_string_as_driver_nonblocking,
+)
 
 
 @pytest.fixture(scope="function")
@@ -141,6 +145,44 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
         return emoji.emojize("Ray rocks :thumbs_up:")
 
     assert ray.get(emojize.remote()) == "The package was edited"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+def test_uv_run_runtime_env_hook(shutdown_only, with_uv):
+
+    uv = with_uv
+
+    script = """
+import json
+import ray
+import os
+
+@ray.remote
+def f():
+    import emoji
+    return {"working_dir_files": os.listdir(os.getcwd())}
+print(json.dumps(ray.get(f.remote())))
+"""
+
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+        f.write(script)
+        f.close()
+        proc = subprocess.Popen(
+            [uv, "run", "--python-preference=only-system", "--with", "emoji", "--no-project", f.name],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={
+                "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_run_runtime_env_hook",
+                "PYTHONPATH": ':'.join(sys.path),
+                "PATH": os.environ["PATH"],
+            },
+            cwd=os.path.dirname(uv),
+        )
+        out_str = proc.stdout.read().decode("ascii") # + proc.stderr.read().decode("ascii")
+        assert json.loads(out_str) == {"working_dir_files": os.listdir(os.path.dirname(uv))}
+
+
 
 
 if __name__ == "__main__":
