@@ -193,11 +193,7 @@ def compute_global_norm(gradients_list: "ParamList") -> TensorType:
         ),
         norm_type,
     ).nan_to_num(neginf=-10e8, posinf=10e8)
-    if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
-        raise RuntimeError(
-            f"The total norm of order {norm_type} for gradients from "
-            "`parameters` is non-finite, so it cannot be clipped. "
-        )
+
     # Return the global norm.
     return total_norm
 
