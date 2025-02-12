@@ -145,7 +145,41 @@ def test_uv_run_editable(shutdown_only, with_uv, tmp_working_dir):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_runtime_env_hook(shutdown_only, with_uv):
+def test_uv_run_runtime_env_hook(with_uv):
+
+    import ray._private.runtime_env.uv_runtime_env_hook
+
+    uv = with_uv
+
+    def check_uv_run(args, expected_output):
+        output = (
+            subprocess.check_output(
+                [uv, "run", "--no-project"]
+                + args
+                + [ray._private.runtime_env.uv_runtime_env_hook.__file__]
+            )
+            .strip()
+            .decode()
+        )
+        assert output == expected_output
+
+    check_uv_run(
+        [],
+        f'{{"py_executable": "{uv} run --no-project", "working_dir": "{os.getcwd()}"}}',
+    )
+    check_uv_run(
+        ["--directory", "/tmp"],
+        f'{{"py_executable": "{uv} run --no-project --directory /tmp", "working_dir": "/tmp"}}',
+    )
+
+    # Check without uv run
+    subprocess.check_output(
+        [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__]
+    ).strip().decode() == "{}"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv):
 
     uv = with_uv
 
@@ -179,7 +213,7 @@ print(json.dumps(ray.get(f.remote())))
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={
-                "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_run_runtime_env_hook",
+                "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_runtime_env_hook.hook",
                 "PYTHONPATH": ":".join(sys.path),
                 "PATH": os.environ["PATH"],
             },
