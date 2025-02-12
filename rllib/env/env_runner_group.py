@@ -1208,7 +1208,6 @@ class EnvRunnerGroup:
             if ray.util.get_current_placement_group() is None
             else self._pg_offset + worker_index
         )
-        print(f"pg_bundle_idx={pg_bundle_idx}")
         return (
             ray.remote(**self._remote_args)(self.env_runner_cls)
             .options(placement_group_bundle_index=pg_bundle_idx)

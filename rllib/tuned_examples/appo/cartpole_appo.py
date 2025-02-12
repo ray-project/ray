@@ -14,8 +14,6 @@ args = parser.parse_args()
 
 config = (
     APPOConfig()
-    .experimental(_validate_config=False)
-    #.resources(placement_strategy="SPREAD")
     .environment("CartPole-v1")
     .training(
         circular_buffer_iterations_per_batch=2,
