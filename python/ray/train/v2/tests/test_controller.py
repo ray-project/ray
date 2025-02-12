@@ -33,12 +33,10 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
-    WorkerGroupPollStatus,
-    WorkerStatus,
-)
-from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
+    WorkerGroupPollStatus,
     WorkerGroupState,
+    WorkerStatus,
 )
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -103,7 +101,9 @@ class MockScalingPolicy(ScalingPolicy):
         return NoopDecision()
 
     def make_decision_for_running_worker_group(
-        self, worker_group_status: WorkerGroupPollStatus
+        self,
+        worker_group_state: WorkerGroupState,
+        worker_group_status: WorkerGroupPollStatus,
     ) -> ScalingDecision:
         if self._monitor_decision_queue:
             return self._monitor_decision_queue.pop(0)

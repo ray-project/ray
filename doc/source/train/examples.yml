@@ -167,3 +167,8 @@ examples:
       - generative ai
       - natural language processing
     link: examples/lightning/dolly_lightning_fsdp_finetuning
+  - title: Train a tabular model with XGBoost
+    frameworks:
+      - xgboost
+    skill_level: beginner
+    link: examples/xgboost/distributed-xgboost-lightgbm

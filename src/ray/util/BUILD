@@ -29,6 +29,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "env",
+    hdrs = ["env.h"],
+    srcs = ["env.cc"],
+    deps = [
+        ":logging",
+    ],
+)
+
+ray_cc_library(
     name = "exponential_backoff",
     srcs = ["exponential_backoff.cc"],
     hdrs = ["exponential_backoff.h"],
@@ -129,6 +138,15 @@ ray_cc_library(
         "@com_google_googletest//:gtest_prod",
         "@com_google_protobuf//:protobuf",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "scoped_env_setter",
+    hdrs = ["scoped_env_setter.h"],
+    srcs = ["scoped_env_setter.cc"],
+    deps = [
+        ":env",
     ],
 )
 
@@ -282,6 +300,16 @@ ray_cc_library(
 ray_cc_library(
     name = "spdlog_fd_sink",
     hdrs = ["spdlog_fd_sink.h"],
+    deps = [
+        ":compat",
+        ":util",
+        "@com_github_spdlog//:spdlog",
+    ],
+)
+
+ray_cc_library(
+    name = "spdlog_newliner_sink",
+    hdrs = ["spdlog_newliner_sink.h"],
     deps = [
         ":compat",
         ":util",
