@@ -303,7 +303,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           if (!result.empty()) {
             if (filter_non_dead_actor) {
               for (auto &iter : result) {
-                if (iter.state() == gcs::ActorTableData::DEAD) {
+                if (iter.state() == rpc::ActorTableData::DEAD) {
                   actors.emplace_back(iter);
                 }
               }
@@ -408,7 +408,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void CheckActorData(const gcs::ActorTableData &actor,
+  void CheckActorData(const rpc::ActorTableData &actor,
                       rpc::ActorTableData_ActorState expected_state) {
     ASSERT_TRUE(actor.state() == expected_state);
   }
@@ -519,7 +519,7 @@ TEST_P(GcsClientTest, TestJobInfo) {
 
   // Subscribe to all jobs.
   std::atomic<int> job_updates(0);
-  auto on_subscribe = [&job_updates](const JobID &job_id, const gcs::JobTableData &data) {
+  auto on_subscribe = [&job_updates](const JobID &job_id, const rpc::JobTableData &data) {
     job_updates++;
   };
   ASSERT_TRUE(SubscribeToAllJobs(on_subscribe));
@@ -543,7 +543,7 @@ TEST_P(GcsClientTest, TestActorInfo) {
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe to any update operations of an actor.
-  auto on_subscribe = [](const ActorID &actor_id, const gcs::ActorTableData &data) {};
+  auto on_subscribe = [](const ActorID &actor_id, const rpc::ActorTableData &data) {};
   ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
 
   // Register an actor to GCS.
@@ -730,9 +730,9 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // Number of notifications for the following `SubscribeActor` operation.
   std::atomic<int> num_subscribe_one_notifications(0);
   // All the notifications for the following `SubscribeActor` operation.
-  std::vector<gcs::ActorTableData> subscribe_one_notifications;
+  std::vector<rpc::ActorTableData> subscribe_one_notifications;
   auto actor_subscribe = [&num_subscribe_one_notifications, &subscribe_one_notifications](
-                             const ActorID &actor_id, const gcs::ActorTableData &data) {
+                             const ActorID &actor_id, const rpc::ActorTableData &data) {
     subscribe_one_notifications.emplace_back(data);
     ++num_subscribe_one_notifications;
     RAY_LOG(INFO) << "The number of actor subscription messages received is "

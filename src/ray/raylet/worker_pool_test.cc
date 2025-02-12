@@ -570,6 +570,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, CompareWorkerProcessObjects) {
   ASSERT_TRUE(!std::equal_to<T>()(a, empty));
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, TestGetRegisteredDriver) {
+  rpc::JobConfig job_config;
+  auto job_id = JobID::FromInt(11111);
+  auto driver = RegisterDriver(Language::PYTHON, job_id, job_config);
+  ASSERT_EQ(worker_pool_->GetRegisteredDriver(driver->WorkerId()), driver);
+  ASSERT_EQ(worker_pool_->GetRegisteredDriver(WorkerID::FromRandom()), nullptr);
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
   auto [proc, token] = worker_pool_->StartWorkerProcess(

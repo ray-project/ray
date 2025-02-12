@@ -3,19 +3,12 @@ from typing import Optional
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import get_total_obj_store_mem_on_node
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
-
-# pyarrow.Table.slice is slow when the table has many chunks
-# so we combine chunks into a single one to make slice faster
-# with the cost of an extra copy.
-# See https://github.com/ray-project/ray/issues/31108 for more details.
-# TODO(jjyao): remove this once
-# https://github.com/apache/arrow/issues/35126 is resolved.
-MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 10
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
@@ -137,15 +130,14 @@ class Batcher(BatcherInterface):
                 output.add_block(accessor.to_block())
                 needed -= accessor.num_rows()
             else:
-                if (
-                    isinstance(accessor, ArrowBlockAccessor)
-                    and block.num_columns > 0
-                    and block.column(0).num_chunks
-                    >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
-                ):
+                # Try de-fragmenting table in case its columns
+                # have too many chunks (potentially hindering performance of
+                # subsequent slicing operation)
+                if isinstance(accessor, ArrowBlockAccessor):
                     accessor = BlockAccessor.for_block(
-                        transform_pyarrow.combine_chunks(block)
+                        transform_pyarrow.try_combine_chunked_columns(block)
                     )
+
                 # We only need part of the block to fill out a batch.
                 output.add_block(accessor.slice(0, needed, copy=False))
                 # Add the rest of the block to the leftovers.
@@ -355,17 +347,12 @@ class ShufflingBatcher(BatcherInterface):
             ).random_shuffle(self._shuffle_seed)
             if self._shuffle_seed is not None:
                 self._shuffle_seed += 1
-            if (
-                isinstance(
-                    BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
-                )
-                and self._shuffle_buffer.num_columns > 0
-                and self._shuffle_buffer.column(0).num_chunks
-                >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
+
+            if isinstance(
+                BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
             ):
-                self._shuffle_buffer = transform_pyarrow.combine_chunks(
-                    self._shuffle_buffer
-                )
+                self._shuffle_buffer = try_combine_chunked_columns(self._shuffle_buffer)
+
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()
             self._batch_head = 0
