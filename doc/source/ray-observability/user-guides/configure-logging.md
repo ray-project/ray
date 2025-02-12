@@ -262,7 +262,7 @@ Set up the Python logger for driver and worker processes separately:
 
 ![Set up python loggers](../images/setup-logger-application.png)
 
-If you want to control the logger for particular actors or tasks, view [customizing logger for individual worker process](#customizing-worker-process-loggers) below.
+If you want to control the logger for particular actors or tasks, view the following [customizing logger for individual worker process](#customizing-worker-process-loggers).
 
 :::
 
