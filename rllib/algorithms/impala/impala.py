@@ -554,8 +554,7 @@ class IMPALA(Algorithm):
 
         # Queue of data to be sent to the Learner.
         self.data_to_place_on_learner = []
-        # The local mixin buffer (if required).
-        self.local_mixin_buffer = None
+        self.local_mixin_buffer = None  # @OldAPIStack
         self._batch_being_built = []  # @OldAPIStack
 
         # Create extra aggregation workers and assign each rollout worker to
@@ -565,7 +564,8 @@ class IMPALA(Algorithm):
             i: [] for i in range(self.config.num_learners or 1)
         }
 
-        # Create our local mixin buffer if the num of aggregation workers is 0.
+        # Create local mixin buffer if on old API stack and replay
+        # proportion is set.
         if not self.config.enable_rl_module_and_learner:
             if self.config.replay_proportion > 0.0:
                 self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
