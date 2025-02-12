@@ -1,5 +1,3 @@
-import collections
-import heapq
 import logging
 import random
 from typing import (
@@ -10,7 +8,6 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -28,14 +25,13 @@ from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import NULL_SENTINEL, find_partitions, keys_equal, is_nan
+from ray.data._internal.util import find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockType,
-    KeyType,
     U,
 )
 from ray.data.context import DataContext
@@ -50,7 +46,6 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-    from ray.data.aggregate import AggregateFn
 
 
 T = TypeVar("T")

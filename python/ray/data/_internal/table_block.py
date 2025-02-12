@@ -9,7 +9,9 @@ from typing import (
     Mapping,
     Optional,
     TypeVar,
-    Union, Tuple, Sequence,
+    Union,
+    Tuple,
+    Sequence,
 )
 
 import numpy as np
@@ -20,7 +22,14 @@ from ray.data._internal.numpy_support import is_array_like
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import MiB, keys_equal, NULL_SENTINEL, is_nan
-from ray.data.block import Block, BlockAccessor, BlockType, BlockExecStats, BlockMetadata, KeyType
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockType,
+    BlockExecStats,
+    BlockMetadata,
+    KeyType,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -265,7 +274,9 @@ class TableBlockAccessor(BlockAccessor):
         k = min(n_samples, self.num_rows())
         return self._sample(k, sort_key)
 
-    def _apply_aggregations(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _apply_aggregations(
+        self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
+    ) -> Block:
         """Applies provided aggregations to groups of rows with the same key.
 
         This assumes the block is already sorted by key in ascending order.
