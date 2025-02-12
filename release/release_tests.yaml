@@ -2428,7 +2428,9 @@
 
   stable: true
 
-  frequency: nightly
+  # frequency was nightly.
+  # TODO(#50217): re-enable after fixing the flakiness.
+  frequency: manual
   team: rllib
   cluster:
     byod:

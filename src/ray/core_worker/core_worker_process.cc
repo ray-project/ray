@@ -148,6 +148,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       RayLog::StartRayLog(app_name,
                           RayLogLevel::INFO,
                           log_filepath,
+                          /*err_log_filepath=*/"",
                           ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
                           ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     }
@@ -184,7 +185,11 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         ray::RedirectStderr(stderr_redirection_options);
       }
     }
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> master
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols

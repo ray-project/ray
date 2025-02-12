@@ -345,9 +345,24 @@ void RayLog::InitLogFormat() {
   return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
 }
 
+/*static*/ std::string RayLog::GetErrLogFilepathFromDirectory(
+    const std::string &log_dir, const std::string &app_name) {
+  if (log_dir.empty()) {
+    return "";
+  }
+
+#ifdef _WIN32
+  int pid = _getpid();
+#else
+  pid_t pid = getpid();
+#endif
+  return JoinPaths(log_dir, absl::StrFormat("%s_%d.err", app_name, pid));
+}
+
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
                                     RayLogLevel severity_threshold,
                                     const std::string &log_filepath,
+                                    const std::string &err_log_filepath,
                                     size_t log_rotation_max_size,
                                     size_t log_rotation_file_num) {
   InitSeverityThreshold(severity_threshold);
@@ -373,10 +388,8 @@ void RayLog::InitLogFormat() {
     }
   }
 
-  const auto log_fname = log_filepath;
-
   // Set sink for stdout.
-  if (!log_fname.empty()) {
+  if (!log_filepath.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -387,7 +400,7 @@ void RayLog::InitLogFormat() {
     }
 
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_fname, log_rotation_max_size_, log_rotation_file_num_);
+        log_filepath, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
@@ -397,11 +410,17 @@ void RayLog::InitLogFormat() {
     sinks[0] = std::move(console_sink);
   }
 
-  // In all cases, log errors to the console log so they are in driver logs.
-  // https://github.com/ray-project/ray/issues/12893
-  auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-  err_sink->set_level(spdlog::level::err);
-  sinks[1] = std::move(err_sink);
+  // Set sink for stderr.
+  if (!err_log_filepath.empty()) {
+    auto err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+        err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    err_sink->set_level(spdlog::level::err);
+    sinks[1] = std::move(err_sink);
+  } else {
+    auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    err_sink->set_level(spdlog::level::err);
+    sinks[1] = std::move(err_sink);
+  }
 
   // Set the combined logger.
   auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(),
