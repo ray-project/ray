@@ -14,6 +14,7 @@ user-guides/storage
 user-guides/config
 user-guides/configuring-autoscaling
 user-guides/kuberay-gcs-ft
+user-guides/kuberay-gcs-persistent-ft
 user-guides/gke-gcs-bucket
 user-guides/persist-kuberay-custom-resource-logs
 user-guides/persist-kuberay-operator-logs
@@ -28,6 +29,7 @@ user-guides/k8s-autoscaler
 user-guides/static-ray-cluster-without-kuberay
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
+user-guides/reduce-image-pull-latency
 ```
 
 
@@ -47,6 +49,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-gpu`
 * {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
+* {ref}`kuberay-gcs-persistent-ft`
 * {ref}`persist-kuberay-custom-resource-logs`
 * {ref}`persist-kuberay-operator-logs`
 * {ref}`kuberay-dev-serve`
@@ -59,3 +62,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`deploy-a-static-ray-cluster-without-kuberay`
 * {ref}`kubectl-plugin`
 * {ref}`kuberay-auth`
+* {ref}`reduce-image-pull-latency`

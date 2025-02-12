@@ -15,7 +15,7 @@ filegroup(
         exclude = ["*.bazel"],
     ),
 )
-    
+
 
 make(
     name = "redis",
