@@ -108,7 +108,7 @@ class EventHead(
         )
 
         # To init gcs_client in internal_kv for record_extra_usage_tag.
-        ray.experimental.internal_kv._initialize_internal_kv(self.gcs_aio_client)
+        assert self.gcs_client is not None
         assert ray.experimental.internal_kv._internal_kv_initialized()
 
     async def limit_handler_(self):
