@@ -387,8 +387,7 @@ not JSON parsable.
 
 ##### Method 2: Configure structured logging with an environment variable
 
-You can configure the `RAY_LOGGING_CONFIG_ENCODING` environment variable to set the encoding format for the logs.
-You can set the value to `TEXT` or `JSON`.
+You can set the `RAY_LOGGING_CONFIG_ENCODING` environment variable to `TEXT` or `JSON` to set the encoding format for the logs.
 Note that the environment variable needs to be set before `import ray`.
 
 ```python
