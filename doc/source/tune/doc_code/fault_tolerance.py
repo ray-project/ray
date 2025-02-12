@@ -6,10 +6,6 @@ import os
 import tempfile
 
 from ray import tune
-<<<<<<< HEAD
-from ray.tune import Checkpoint
-=======
->>>>>>> b4813d1d6a (FailureConfig)
 
 
 def trainable(config):
