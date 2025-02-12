@@ -274,7 +274,7 @@ If you are using any of the Ray libraries, follow the instructions provided in t
 
 ### Customizing worker process loggers
 
-When using Ray, Tasks and Actors are executed remotely in Ray's worker processes. To provide your own logging configuration for the worker processes, customize the worker loggers with the instructions below:
+Ray executes Tasks and Actors remotely in Ray's worker processes. To provide your own logging configuration for the worker processes, customize the worker loggers with the instructions below:
 ::::{tab-set}
 
 :::{tab-item} Ray Core: individual worker process
