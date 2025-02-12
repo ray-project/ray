@@ -71,6 +71,8 @@ cdef extern from * namespace "ray::gcs" nogil:
     """
     #include <thread>
     #include "ray/gcs/gcs_server/store_client_kv.h"
+    #include "ray/gcs/redis_client.h"
+    #include "ray/gcs/store_client/redis_store_client.h"
     namespace ray {
     namespace gcs {
 
@@ -135,7 +137,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                            c_string* data)
 
 
-cdef extern from * namespace "ray::gcs" nogil:
+cdef extern from "ray/gcs/store_client/redis_store_client.h" namespace "ray::gcs" nogil:
     c_bool RedisDelKeyPrefixSync(const c_string& host,
                                  c_int32_t port,
                                  const c_string& username,
