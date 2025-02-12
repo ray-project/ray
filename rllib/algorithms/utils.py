@@ -131,7 +131,7 @@ def _get_learner_bundles(config):
         pass
 
     if config.num_learners == 0:
-        return [{"CPU": config.num_aggregator_actors_per_learner}]
+        return []
 
     num_cpus_per_learner = (
         config.num_cpus_per_learner
@@ -162,7 +162,7 @@ def _get_main_process_bundle(config):
             else 0
         )
         bundle = {
-            "CPU": max(num_cpus_per_learner, config.num_cpus_for_main_process),
+            "CPU": 5,#max(num_cpus_per_learner, config.num_cpus_for_main_process) + config.num_aggregator_actors_per_learner,
             "GPU": config.num_gpus_per_learner,
         }
     else:

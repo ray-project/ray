@@ -831,7 +831,7 @@ class Algorithm(Checkpointable, Trainable):
                 # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
                 # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
                 max_restarts=-1,
-            )(AggregatorActor)
+            )(AggregatorActor).options(placement_group_bundle_index=0 if self.config.num_learners == 0 else None)
             self._aggregator_actor_manager = FaultTolerantActorManager(
                 [
                     agg_cls.remote(self.config, rl_module_spec)
@@ -2727,6 +2727,8 @@ class Algorithm(Checkpointable, Trainable):
             + eval_env_runner_bundles
             + learner_bundles
         )
+
+        print(bundles)
 
         return PlacementGroupFactory(
             bundles=bundles,
