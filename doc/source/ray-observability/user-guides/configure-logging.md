@@ -545,7 +545,7 @@ If you need node IP, use {py:obj}`ray.nodes` API to fetch all nodes and map the 
 ::::
 
 ### System logs
-Most of Ray’s system or component logs are structured by default. <br />
+Ray structures most system or component logs by default. <br />
 
 Logging format for Python logs <br />
 ```bash
