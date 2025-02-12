@@ -1596,9 +1596,10 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     const ActorID &actor_id = worker->GetActorId();
     const TaskID &task_id = worker->GetAssignedTaskId();
     RAY_LOG(INFO) << "[myan] Disconnecting Worker with actor_id="
-                  << "Nil" if actor_id.IsNil() else actor_id.Hex() << ", task_id="
-                  << "Nil" if task_id.IsNil() else task_id.Hex() << ", worker_id="
-                  << "Nil" if worker->WorkerId().IsNil() else worker->WorkerId().Hex();
+                  << (actor_id.IsNil() ? "Nil" : actor_id.Hex())
+                  << ", task_id=" << (task_id.IsNil() ? "Nil" : task_id.Hex())
+                  << ", worker_id="
+                  << (worker->WorkerId().IsNil() ? "Nil" : worker->WorkerId().Hex());
 
     // If the worker was running a task or actor, clean up the task and push an
     // error to the driver, unless the worker is already dead.
@@ -1656,7 +1657,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(job_id, nullptr));
     RAY_LOG(INFO) << "[myan] Disconnecting Driver with job_id=" << job_id.Hex()
                   << ", worker_id="
-                  << "Nil" if worker->WorkerId().IsNil() else worker->WorkerId().Hex();
+                  << (worker->WorkerId().IsNil() ? "Nil" : worker->WorkerId().Hex());
 
     worker_pool_.DisconnectDriver(worker);
 

@@ -409,6 +409,8 @@ Status ReadReleaseRequest(uint8_t *data,
   RAY_LOG(INFO) << "[myan] Successfully read the message...";
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   RAY_LOG(INFO) << "[myan] Successfully verified the flatbuffer...";
+  RAY_DCHECK(message->object_id() != nullptr);
+  RAY_LOG(INFO) << "[myan] Successfully verified the message->object_id() != null...";
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   RAY_LOG(INFO) << "[myan] Successfully read the object_id...";
   *may_unmap = message->may_unmap();
