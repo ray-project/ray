@@ -1293,7 +1293,8 @@ py_test(
 py_test(
     name = "test_learner_group_async_update",
     main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    # TODO(#50114): mark as manual as it is flaky.
+    tags = ["team:rllib", "multi_gpu", "exclusive", "manual"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
     args = ["TestLearnerGroupAsyncUpdate"]
