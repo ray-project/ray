@@ -151,30 +151,41 @@ def test_uv_run_runtime_env_hook(with_uv):
 
     uv = with_uv
 
-    def check_uv_run(args, expected_output):
+    def check_uv_run(args, runtime_env, expected_output):
         output = (
             subprocess.check_output(
                 [uv, "run", "--no-project"]
                 + args
                 + [ray._private.runtime_env.uv_runtime_env_hook.__file__]
+                + [json.dumps(runtime_env)]
             )
             .strip()
             .decode()
         )
-        assert output == expected_output
+        assert json.loads(output) == expected_output
 
     check_uv_run(
         [],
-        f'{{"py_executable": "{uv} run --no-project", "working_dir": "{os.getcwd()}"}}',
+        {},
+        {"py_executable": f"{uv} run --no-project", "working_dir": f"{os.getcwd()}"},
     )
     check_uv_run(
         ["--directory", "/tmp"],
-        f'{{"py_executable": "{uv} run --no-project --directory /tmp", "working_dir": "/tmp"}}',
+        {},
+        {
+            "py_executable": f"{uv} run --no-project --directory /tmp",
+            "working_dir": "/tmp",
+        },
+    )
+    check_uv_run(
+        [],
+        {"working_dir": "/some/path"},
+        {"py_executable": f"{uv} run --no-project", "working_dir": "/some/path"},
     )
 
     # Check without uv run
     subprocess.check_output(
-        [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__]
+        [sys.executable, ray._private.runtime_env.uv_runtime_env_hook.__file__, "{}"]
     ).strip().decode() == "{}"
 
 

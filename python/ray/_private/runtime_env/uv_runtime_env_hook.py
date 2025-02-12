@@ -40,4 +40,5 @@ if __name__ == "__main__":
 
     # This is used for unit testing if the runtime_env_hook picks up the
     # right settings.
-    print(json.dumps(hook({})))
+    runtime_env = json.loads(sys.argv[1])
+    print(json.dumps(hook(runtime_env)))
