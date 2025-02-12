@@ -16,7 +16,7 @@
 
 #include <cstdlib>
 
-#include "ray/util/util.h"
+#include "ray/util/env.h"
 
 namespace ray {
 
@@ -26,13 +26,13 @@ ScopedEnvSetter::ScopedEnvSetter(const char *env_name, const char *value)
   if (val != nullptr) {
     old_value_ = val;
   }
-  setEnv(env_name, value);
+  SetEnv(env_name, value);
 }
 
 ScopedEnvSetter::~ScopedEnvSetter() {
-  unsetEnv(env_name_.c_str());
+  UnsetEnv(env_name_.c_str());
   if (old_value_.has_value()) {
-    setEnv(env_name_, *old_value_);
+    SetEnv(env_name_, *old_value_);
   }
 }
 
