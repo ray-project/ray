@@ -339,7 +339,7 @@ logging_setup_func()
 :::
 
 :::{tab-item} Ray libraries
-If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
+If you use any of the Ray libraries, follow the instructions provided in the documentation for the library.
 :::
 
 ::::
