@@ -512,14 +512,20 @@ class BlockAccessor:
         raise NotImplementedError
 
 
-def _get_block_boundaries(columns: list[np.ndarray]) -> np.ndarray:
-    """Compute boundaries of the groups within a block, which is represented
-    by a list of 1D numpy arrays for each column. In each column,
-    NaNs/None are considered to be the same group.
+def _get_group_boundaries_sorted(block: Block, key: Union[str, List[str]]) -> np.ndarray:
+    """
+    NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+
+    Compute boundaries of the groups within a block based on provided
+    key (a column or a list of columns)
+
+    NOTE: In each column, NaNs/None are considered to be the same group.
 
     Args:
-        columns: a list of 1D numpy arrays. This is generally given by the
-        dictionary values of ``BlockAccessor.to_numpy()``.
+        block: sorted block for which grouping of rows will be determined
+                based on provided key
+        key: column or list of columns determining the key for every
+                based on which the block will be grouped
 
     Returns:
         A list of starting indices of each group and an end index of the last
@@ -527,6 +533,24 @@ def _get_block_boundaries(columns: list[np.ndarray]) -> np.ndarray:
         entries are 0 and ``len(array)`` respectively.
     """
 
+    block_accessor = BlockAccessor.for_block(block)
+
+    # Get the list of boundaries including first start and last end indices
+    if key:
+        projected_block = block_accessor.to_numpy(key)
+
+        if isinstance(key, str):
+            projected_block = [projected_block]
+        else:
+            # projected_block is a dict of arrays
+            projected_block = list(projected_block.values())
+
+        return _get_group_boundaries_sorted_numpy(projected_block)
+
+    return np.array([0, block_accessor.num_rows()])
+
+
+def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
     # There are 3 categories: general, numerics with NaN, and categorical with None.
     # We only needed to check the last element for NaNs/None, as they are assumed to
     # be sorted.

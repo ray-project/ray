@@ -10,7 +10,7 @@ from ray.data.block import (
     CallableClass,
     DataBatch,
     UserDefinedFunction,
-    _get_block_boundaries,
+    _get_group_boundaries_sorted,
 )
 from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
@@ -199,20 +199,7 @@ class GroupedData:
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
 
-            # Get the list of boundaries including first start and last end indices
-            if self._key:
-                projected_block = block_accessor.to_numpy(self._key)
-
-                # get_block_boundaries() expects a list of arrays
-                if isinstance(self._key, str):
-                    projected_block = [projected_block]
-                else:
-                    # projected_block is a dict of arrays
-                    projected_block = list(projected_block.values())
-
-                boundaries = _get_block_boundaries(projected_block)
-            else:
-                boundaries = [0, block_accessor.num_rows()]
+            boundaries = _get_group_boundaries_sorted(block, self._key)
 
             for start, end in zip(boundaries[:-1], boundaries[1:]):
                 group_block = block_accessor.slice(start, end, copy=False)
