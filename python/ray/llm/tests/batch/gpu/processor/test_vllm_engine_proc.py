@@ -1,8 +1,3 @@
-import os
-import tempfile
-import requests
-import pytest
-
 import ray
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.vllm_engine_proc import (
@@ -10,41 +5,9 @@ from ray.llm._internal.batch.processor.vllm_engine_proc import (
 )
 
 
-@pytest.fixture(scope="module")
-def download_model_ckpt():
-    """
-    Download the model checkpoint and tokenizer from S3 for testing
-    The reason to download the model from S3 is to avoid downloading the model
-    from HuggingFace hub during testing, which is flaky because of the rate
-    limit and HF hub downtime.
-    """
-
-    REMOTE_URL = "https://air-example-data.s3.amazonaws.com/facebook-opt-125m/"
-    FILE_LIST = [
-        "config.json",
-        "flax_model.msgpack",
-        "generation_config.json",
-        "merges.txt",
-        "pytorch_model.bin",
-        "special_tokens_map.json",
-        "tokenizer_config.json",
-        "vocab.json",
-    ]
-
-    # Create a temporary directory and save the model and tokenizer.
-    with tempfile.TemporaryDirectory() as checkpoint_dir:
-        # Download the model checkpoint and tokenizer from S3.
-        for file_name in FILE_LIST:
-            response = requests.get(REMOTE_URL + file_name)
-            with open(os.path.join(checkpoint_dir, file_name), "wb") as fp:
-                fp.write(response.content)
-
-        yield os.path.abspath(checkpoint_dir)
-
-
-def test_vllm_engine_processor(download_model_ckpt):
+def test_vllm_engine_processor(model_opt_125m):
     config = vLLMEngineProcessorConfig(
-        model=download_model_ckpt,
+        model=model_opt_125m,
         engine_kwargs=dict(
             max_model_len=8192,
         ),
@@ -73,7 +36,7 @@ def test_vllm_engine_processor(download_model_ckpt):
 
     stage = processor.get_stage_by_name("vLLMEngineStage")
     assert stage.fn_constructor_kwargs == {
-        "model": download_model_ckpt,
+        "model": model_opt_125m,
         "engine_kwargs": {
             "max_model_len": 8192,
             "distributed_executor_backend": "mp",
@@ -94,7 +57,7 @@ def test_vllm_engine_processor(download_model_ckpt):
     }
 
 
-def test_generation_model(download_model_ckpt):
+def test_generation_model(model_opt_125m):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
     chat_template = """
@@ -119,7 +82,7 @@ def test_generation_model(download_model_ckpt):
     """
 
     processor_config = vLLMEngineProcessorConfig(
-        model=download_model_ckpt,
+        model=model_opt_125m,
         engine_kwargs=dict(
             enable_prefix_caching=False,
             enable_chunked_prefill=True,
@@ -164,9 +127,9 @@ def test_generation_model(download_model_ckpt):
     assert all("resp" in out for out in outs)
 
 
-def test_embedding_model(download_model_ckpt):
+def test_embedding_model(model_opt_125m):
     processor_config = vLLMEngineProcessorConfig(
-        model=download_model_ckpt,
+        model=model_opt_125m,
         task_type="embed",
         engine_kwargs=dict(
             enable_prefix_caching=False,
@@ -206,3 +169,63 @@ def test_embedding_model(download_model_ckpt):
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
     assert all("prompt" in out for out in outs)
+
+
+def test_vision_model():
+    processor_config = vLLMEngineProcessorConfig(
+        model="llava-hf/llava-1.5-7b-hf",
+        task_type="generate",
+        engine_kwargs=dict(
+            # Skip CUDA graph capturing to reduce startup time.
+            enforce_eager=True,
+        ),
+        runtime_env=dict(
+            env_vars=dict(
+                VLLM_USE_V1="1",
+            ),
+        ),
+        apply_chat_template=True,
+        has_image=True,
+        tokenize=False,
+        detokenize=False,
+        batch_size=16,
+        accelerator_type="L40S",
+        concurrency=1,
+    )
+
+    processor = ProcessorBuilder.build(
+        processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Say {row['id']} words about this image.",
+                        },
+                        {
+                            "type": "image",
+                            "image": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg",
+                        },
+                    ],
+                },
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=50,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 5})
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 60
+    assert all("resp" in out for out in outs)

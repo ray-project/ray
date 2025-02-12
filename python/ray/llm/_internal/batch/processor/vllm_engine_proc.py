@@ -1,6 +1,9 @@
 """The vLLM engine processor."""
-
 from typing import Any, Dict, Optional
+
+from pydantic import root_validator
+
+from ray.data.block import UserDefinedFunction
 
 import ray
 from ray.llm._internal.batch.processor.base import (
@@ -15,6 +18,7 @@ from ray.llm._internal.batch.stages import (
     TokenizeStage,
     DetokenizeStage,
 )
+from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 
 
 class vLLMEngineProcessorConfig(ProcessorConfig):
@@ -25,7 +29,7 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     # The engine kwargs.
     engine_kwargs: Dict[str, Any]
     # The task type.
-    task_type: str = "generate"
+    task_type: vLLMTaskType = vLLMTaskType.GENERATE
     # The runtime environment.
     runtime_env: Optional[Dict[str, Any]] = None
     # The maximum number of pending requests.
@@ -42,14 +46,27 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     # Whether the input messages have images.
     has_image: bool = False
 
+    @root_validator(pre=True)
+    def validate_task_type(cls, values):
+        task_type_str = values.get("task_type", "generate")
+        values["task_type"] = vLLMTaskType(task_type_str)
+        return values
+
 
 def build_vllm_engine_processor(
-    config: vLLMEngineProcessorConfig, **kwargs
+    config: vLLMEngineProcessorConfig,
+    preprocess: Optional[UserDefinedFunction] = None,
+    postprocess: Optional[UserDefinedFunction] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
     Args:
         config: The configuration for the processor.
-        **kwargs: The keyword arguments for the processor.
+        preprocess: An optional lambda function that takes a row (dict) as input
+            and returns a preprocessed row (dict). The output row must contain the
+            required fields for the following processing stages.
+        postprocess: An optional lambda function that takes a row (dict) as input
+            and returns a postprocessed row (dict).
+
     Returns:
         The constructed processor.
     """
@@ -60,7 +77,6 @@ def build_vllm_engine_processor(
     if config.has_image:
         stages.append(
             PrepareImageStage(
-                fn_constructor_kwargs={},
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
@@ -139,7 +155,12 @@ def build_vllm_engine_processor(
             )
         )
 
-    processor = Processor(config, stages, **kwargs)
+    processor = Processor(
+        config,
+        stages,
+        preprocess=preprocess,
+        postprocess=postprocess,
+    )
     return processor
 
 
