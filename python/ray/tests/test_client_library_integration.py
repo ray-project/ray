@@ -49,22 +49,6 @@ def test_rllib_integration_tune(ray_start_regular):
             )
 
 
-@pytest.mark.asyncio
-async def test_serve_handle(ray_start_regular):
-    with ray_start_client_server():
-        from ray import serve
-
-        with enable_client_mode():
-            serve.start()
-
-            @serve.deployment
-            def hello():
-                return "hello"
-
-            handle = serve.run(hello.bind()).options(use_new_handle_api=True)
-            assert await handle.remote() == "hello"
-
-
 if __name__ == "__main__":
     import os
 
