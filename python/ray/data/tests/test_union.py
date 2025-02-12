@@ -1,5 +1,3 @@
-import time
-
 import pyarrow as pa
 import pytest
 
@@ -29,15 +27,12 @@ def test_union_with_preserve_order(ray_start_10_cpus_shared, restore_data_contex
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
-    def slow_map(row):
-        time.sleep(0.01)
-        return row
-
     # To reproduce the bug, you need three or more input datasets, and the first dataset
-    # can't finish first.
-    ds1 = ray.data.from_items([{"id": 0}]).map(slow_map)
-    ds2 = ray.data.from_items([{"id": 1}])
-    ds3 = ray.data.from_items([{"id": 2}])
+    # can't finish first. To emulate this behavior, the test adds a `map` to the first
+    # dataset and materializes the other two.
+    ds1 = ray.data.from_items([{"id": 0}]).map(lambda x: x)
+    ds2 = ray.data.from_items([{"id": 1}]).materialize()
+    ds3 = ray.data.from_items([{"id": 2}]).materialize()
     ds = ds1.union(ds2, ds3)
 
     assert [row["id"] for row in ds.take_all()] == [0, 1, 2]
