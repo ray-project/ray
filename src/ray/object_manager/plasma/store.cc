@@ -431,7 +431,9 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   case fb::MessageType::PlasmaReleaseRequest: {
     // May unmap: client knows a fallback-allocated fd is involved.
     // Should unmap: server finds refcnt == 0 -> need to be unmapped.
-    RAY_LOG(INFO) << "[myan] Received release request...";
+    RAY_LOG(INFO) << "[myan] Received release request..."
+                  << "MessageType=" << EnumNameMessageType(type)
+                  << "IntegerValue=" << static_cast<int>(type);
     bool may_unmap;
     RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
     RAY_LOG(INFO) << "[myan] Successfully read the release request..." << object_id;
@@ -486,20 +488,21 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   case fb::MessageType::PlasmaConnectRequest: {
     RAY_RETURN_NOT_OK(SendConnectReply(client, allocator_.GetFootprintLimit()));
   } break;
-  case fb::MessageType::PlasmaDisconnectClient:
+  case fb::MessageType::PlasmaDisconnectClient: {
     RAY_LOG(INFO) << "[myan] Received Disconnect request...";
     RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
     DisconnectClient(client);
     return Status::Disconnected("The Plasma Store client is disconnected.");
-    break;
+  } break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
     RAY_LOG(INFO) << "[myan] Received DebugString request...";
     RAY_RETURN_NOT_OK(SendGetDebugStringReply(
         client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
   } break;
   default:
-    RAY_LOG(INFO) << "[myan] Received request falls into default... MessageType="
-                  << EnumNameMessageType(type);
+    RAY_LOG(INFO) << "[myan] Received request falls into default... "
+                  << "MessageType=" << EnumNameMessageType(type)
+                  << "IntegerValue=" << static_cast<int>(type);
     // This code should be unreachable.
     RAY_CHECK(0);
   }
