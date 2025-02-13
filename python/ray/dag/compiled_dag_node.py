@@ -228,6 +228,8 @@ def do_profile_tasks(
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
     for task in tasks:
+        task.destroy_cuda_event()
+    for task in tasks:
         task.cancel()
 
 
@@ -471,6 +473,12 @@ class ExecutableTask:
         self.input_reader.close()
         self.output_writer.close()
 
+    def destroy_cuda_event(self):
+        from ray.experimental.channel.common import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.reset_gpu_future(self.task_idx)
+
     def prepare(self, overlap_gpu_communication: bool = False):
         """
         Prepare the task for execution. The `exec_operation` function can only
@@ -696,6 +704,9 @@ class ExecutableTask:
                 wait_future = True
             with self.stream:
                 output_val = self.fetch_intermediate_future(wait_future)
+            if not wait_future and overlap_gpu_communication:
+                assert isinstance(output_val, GPUFuture)
+                output_val.cache(self.task_idx)
             try:
                 self.output_writer.write(output_val)
             except RayChannelError:

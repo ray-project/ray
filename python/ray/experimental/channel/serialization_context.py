@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 if TYPE_CHECKING:
     import numpy as np
     import torch
+    from ray.dag.dag_operation_future import GPUFuture
 
 
 class _SerializationContext:
@@ -27,6 +28,7 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
+        self.gpu_futures: Dict[int, GPUFuture] = {}
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
@@ -61,6 +63,19 @@ class _SerializationContext:
     def reset_data(self, channel_id: str) -> None:
         self.intra_process_channel_buffers.pop(channel_id, None)
         self.channel_id_to_num_readers.pop(channel_id, None)
+
+    def set_gpu_future(self, fut_id: int, fut: "GPUFuture") -> None:
+        print(f"setting gpu future [{fut_id}]")
+        assert (
+            fut_id not in self.gpu_futures
+        ), f"GPUFuture with id={fut_id} is already cached."
+        self.gpu_futures[fut_id] = fut
+
+    def reset_gpu_future(self, fut_id: int) -> None:
+        print(f"resetting gpu future [{fut_id}]")
+        if fut_id in self.gpu_futures:
+            print(f"removing gpu future [{fut_id}]")
+            self.gpu_futures.pop(fut_id).destroy_event()
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self._use_external_transport = use_external_transport
