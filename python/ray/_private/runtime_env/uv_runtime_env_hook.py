@@ -31,7 +31,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     uv_run_args = cmdline[: len(cmdline) - len(sys.argv)]
     runtime_env["py_executable"] = " ".join(uv_run_args)
 
-    # If the user specified a working_dir, we will always honor it, otherwise
+    # If the user specified a working_dir, we always honor it, otherwise
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
         runtime_env["working_dir"] = known_args.directory or os.getcwd()
