@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "ray/common/bundle_spec.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -375,7 +376,10 @@ void NodeResourceInstanceSet::AllocateWithReference(
       // Only CPU resource can go negative due to the behavior
       // that ray.get() will temporarily release the CPU resource.
       // See https://github.com/ray-project/ray/pull/50517.
-      RAY_CHECK(IsCPUOrPlacementGroupCPUResource(resource_id));
+      RAY_CHECK(IsCPUOrPlacementGroupCPUResource(resource_id))
+          << "Resource " << resource_id.Binary()
+          << " has less availability than requested. Available: "
+          << debug_string(available) << ", requested: " << debug_string(ref_allocation);
     }
     available[i] -= ref_allocation[i];
   }
