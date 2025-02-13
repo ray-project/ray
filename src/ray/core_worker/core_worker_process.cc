@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/stats/stats.h"
 #include "ray/util/compat.h"
+#include "ray/util/env.h"
 #include "ray/util/event.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/stream_redirection_utils.h"
@@ -131,7 +132,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     }
 
     // Setup logging for worker application logging.
-    if (options_.worker_type == WorkerType::WORKER) {
+    if (options_.worker_type == WorkerType::WORKER && !IsEnvSet("RAY_LOG_TO_STDERR")) {
       // Setup redirection for stdout.
       {
         const std::string fname = GetWorkerOutputFilepath(
@@ -182,7 +183,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
-  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
+  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this
+  // line.
   InitializeSystemConfig();
 
   // Assume stats module will be initialized exactly once in once process.
@@ -249,9 +251,9 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
 }
 
 void CoreWorkerProcessImpl::InitializeSystemConfig() {
-  // We have to create a short-time thread here because the RPC request to get the system
-  // config from Raylet is asynchronous, and we need to synchronously initialize the
-  // system config in the constructor of `CoreWorkerProcessImpl`.
+  // We have to create a short-time thread here because the RPC request to get the
+  // system config from Raylet is asynchronous, and we need to synchronously initialize
+  // the system config in the constructor of `CoreWorkerProcessImpl`.
   std::promise<std::string> promise;
   std::thread thread([&] {
     instrumented_io_context io_service;
