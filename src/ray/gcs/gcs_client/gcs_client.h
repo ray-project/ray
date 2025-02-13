@@ -66,7 +66,11 @@ class GcsClientOptions {
             cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
     size_t pos = gcs_address.rfind(':');
     RAY_CHECK(pos != std::string::npos);
-    gcs_address_ = gcs_address.substr(0, pos);
+    if (gcs_address[0] == '[' && gcs_address[pos - 1] == ']') {
+      gcs_address_ = gcs_address.substr(1, pos - 2);
+    } else {
+      gcs_address_ = gcs_address.substr(0, pos);
+    }
     gcs_port_ = std::stoi(gcs_address.substr(pos + 1));
     boost::asio::ip::address address =
         boost::asio::ip::address().from_string(gcs_address_);
