@@ -19,21 +19,15 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         # we leave the runtime environment unchanged
         return runtime_env
 
-    # Parse known arguments of uv run that impact the runtime environment
-    uv_run_parser = argparse.ArgumentParser()
-    uv_run_parser.add_argument("--with-requirements", nargs="?")
-    uv_run_parser.add_argument("--project", nargs="?")
-    uv_run_parser.add_argument("--no-project", action="store_true")
-
     # Extract the arguments of 'uv run' that are not arguments of the script
     uv_run_args = cmdline[: len(cmdline) - len(sys.argv)]
-    known_args, _ = uv_run_parser.parse_known_args(uv_run_args)
+
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process
     try:
-        dir_index = uv_run_args.index('--directory')
+        dir_index = uv_run_args.index("--directory")
         # Remove both --directory and its value
-        remaining_uv_run_args = uv_run_args[:dir_index] + uv_run_args[dir_index + 2:]
+        remaining_uv_run_args = uv_run_args[:dir_index] + uv_run_args[dir_index + 2 :]
     except ValueError:
         remaining_uv_run_args = uv_run_args
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
@@ -42,6 +36,17 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
         runtime_env["working_dir"] = os.getcwd()
+
+    # In the last part of the function we do some error checking that should catch
+    # the most common cases of how things are different in Ray, i.e. not the whole
+    # file system will be available on the workers, only the working_dir.
+
+    # First parse the arguments we need to check
+    uv_run_parser = argparse.ArgumentParser()
+    uv_run_parser.add_argument("--with-requirements", nargs="?")
+    uv_run_parser.add_argument("--project", nargs="?")
+    uv_run_parser.add_argument("--no-project", action="store_true")
+    known_args, _ = uv_run_parser.parse_known_args(uv_run_args)
 
     working_dir = Path(runtime_env["working_dir"]).resolve()
 
