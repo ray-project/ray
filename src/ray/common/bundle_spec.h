@@ -126,6 +126,8 @@ std::string GetOriginalResourceName(const std::string &resource);
 // Returns "" if the resource is not a wildcard resource.
 std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource);
 
+bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id);
+
 /// Parse the given resource and get the pg related information.
 ///
 /// \param resource name of the resource.

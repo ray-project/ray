@@ -371,7 +371,11 @@ void NodeResourceInstanceSet::AllocateWithReference(
   RAY_CHECK_EQ(available.size(), ref_allocation.size());
 
   for (size_t i = 0; i < ref_allocation.size(); i++) {
-    RAY_CHECK_GE(available[i], ref_allocation[i]);
+    if (available[i] < ref_allocation[i]) {
+      // Only CPU resource can go negative due to the behavior
+      // that ray.get() will temporarily release the CPU resource.
+      RAY_CHECK(IsCPUOrPlacementGroupCPUResource(resource_id));
+    }
     available[i] -= ref_allocation[i];
   }
 
