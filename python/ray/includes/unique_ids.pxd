@@ -2,6 +2,11 @@ from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libc.stdint cimport uint8_t, uint32_t, int64_t
 
+# Note: we removed the staticmethod declarations in
+# https://github.com/ray-project/ray/pull/47984 due
+# to a compiler bug in Cython 3.0.x -- we should see
+# if we can bring them back in Cython 3.1.x if the
+# bug is fixed.
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CBaseID[T]:
         size_t Hash() const
