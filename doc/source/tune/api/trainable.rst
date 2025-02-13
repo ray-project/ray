@@ -4,10 +4,10 @@
     API does not really have a signature to just describe.
 .. TODO: Reusing actors and advanced resources allocation seem ill-placed.
 
-Training in Tune (tune.Trainable, train.report)
+Training in Tune (tune.Trainable, tune.report)
 =================================================
 
-Training can be done with either a **Function API** (:func:`train.report() <ray.train.report>`) or
+Training can be done with either a **Function API** (:func:`tune.report() <ray.tune.report>`) or
 **Class API** (:ref:`tune.Trainable <tune-trainable-docstring>`).
 
 For the sake of example, let's maximize this objective function:
@@ -28,14 +28,14 @@ into a Ray actor process and runs in parallel.
 The ``config`` argument in the function is a dictionary populated automatically by Ray Tune and corresponding to
 the hyperparameters selected for the trial from the :ref:`search space <tune-key-concepts-search-spaces>`.
 
-With the Function API, you can report intermediate metrics by simply calling :func:`train.report() <ray.train.report>` within the function.
+With the Function API, you can report intermediate metrics by simply calling :func:`tune.report() <ray.tune.report>` within the function.
 
 .. literalinclude:: /tune/doc_code/trainable.py
     :language: python
     :start-after: __function_api_report_intermediate_metrics_start__
     :end-before: __function_api_report_intermediate_metrics_end__
 
-.. tip:: Do not use :func:`train.report() <ray.train.report>` within a ``Trainable`` class.
+.. tip:: Do not use :func:`tune.report() <ray.tune.report>` within a ``Trainable`` class.
 
 In the previous example, we reported on every step, but this metric reporting frequency
 is configurable. For example, we could also report only a single time at the end with the final score:
@@ -62,7 +62,7 @@ See how to configure checkpointing for a function trainable :ref:`here <tune-fun
 Class Trainable API
 --------------------------
 
-.. caution:: Do not use :func:`train.report() <ray.train.report>` within a ``Trainable`` class.
+.. caution:: Do not use :func:`tune.report() <ray.tune.report>` within a ``Trainable`` class.
 
 The Trainable **class API** will require users to subclass ``ray.tune.Trainable``. Here's a naive example of this API:
 
@@ -138,10 +138,10 @@ Here are a few key concepts and what they look like for the Function and Class A
 ======================= =============================================== ==============================================
 Concept                 Function API                                    Class API
 ======================= =============================================== ==============================================
-Training Iteration      Increments on each `train.report` call          Increments on each `Trainable.step` call
-Report  metrics         `train.report(metrics)`                         Return metrics from `Trainable.step`
-Saving a checkpoint     `train.report(..., checkpoint=checkpoint)`      `Trainable.save_checkpoint`
-Loading a checkpoint    `train.get_checkpoint()`                        `Trainable.load_checkpoint`
+Training Iteration      Increments on each `tune.report` call           Increments on each `Trainable.step` call
+Report  metrics         `tune.report(metrics)`                          Return metrics from `Trainable.step`
+Saving a checkpoint     `tune.report(..., checkpoint=checkpoint)`       `Trainable.save_checkpoint`
+Loading a checkpoint    `tune.get_checkpoint()`                         `Trainable.load_checkpoint`
 Accessing config        Passed as an argument `def train_func(config):` Passed through `Trainable.setup`
 ======================= =============================================== ==============================================
 
