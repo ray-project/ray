@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <fcntl.h>  // For _O_WTEXT
+#include <io.h>     // For _open_osfhandle
+#include <windows.h>
+
 #include "ray/util/scoped_dup2_wrapper.h"
 
 namespace ray {
