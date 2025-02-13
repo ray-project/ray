@@ -102,10 +102,11 @@ class TrainStateManager:
     def update_train_run_errored(
         self,
         run_id: str,
+        status_detail: str,
     ):
         run = self._runs[run_id]
         run.status = RunStatus.ERRORED
-        run.status_detail = None  # TODO: Add status detail.
+        run.status_detail = status_detail
         run.end_time_ms = _current_time_ms()
         self._create_or_update_train_run(run)
 
@@ -190,10 +191,11 @@ class TrainStateManager:
         self,
         run_id: str,
         attempt_id: str,
+        status_detail: str,
     ):
         run_attempt = self._run_attempts[run_id][attempt_id]
         run_attempt.status = RunAttemptStatus.ERRORED
-        run_attempt.status_detail = None  # TODO: Add status detail.
+        run_attempt.status_detail = status_detail
         run_attempt.end_time_ms = _current_time_ms()
         self._create_or_update_train_run_attempt(run_attempt)
 
@@ -208,7 +210,7 @@ class TrainStateManager:
         run_attempt.end_time_ms = _current_time_ms()
         self._create_or_update_train_run_attempt(run_attempt)
 
-    # TODO: Add export API functionality to these.
+    # TODO: Add export API functionality to these. Or maybe in Actor.
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ray.get(self._state_actor.create_or_update_train_run.remote(run))

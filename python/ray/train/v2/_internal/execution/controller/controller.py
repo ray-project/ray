@@ -206,12 +206,7 @@ class TrainController:
                 next_state=RunningState(),
             )
 
-        errors_str = "\n".join(
-            [
-                f"[Rank {worker_rank}]\n{error}"
-                for worker_rank, error in worker_group_status.errors.items()
-            ]
-        )
+        errors_str = worker_group_status.get_error_string()
 
         if failure_decision == FailureDecision.RESTART:
             logger.error(

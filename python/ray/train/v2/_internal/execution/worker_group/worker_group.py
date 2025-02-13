@@ -162,7 +162,7 @@ class WorkerGroup:
         self._worker_group_state: Optional[WorkerGroupState] = None
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
-
+        self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
         # Environment variables
         self._worker_group_start_timeout_s = float(
             os.environ.get(
@@ -235,7 +235,7 @@ class WorkerGroup:
             [callback.on_worker_group_start for callback in self._callbacks]
         ):
             for callback in self._callbacks:
-                callback.before_worker_group_start(self)
+                callback.before_worker_group_start(worker_group_context)
 
             pg = placement_group(
                 bundles=[worker_group_context.resources_per_worker]
@@ -437,6 +437,7 @@ class WorkerGroup:
         for callback in self._callbacks:
             callback.after_worker_group_poll_status(worker_group_poll_status)
 
+        self._latest_poll_status = worker_group_poll_status
         return worker_group_poll_status
 
     def _poll_workers_and_collect_errors(
@@ -645,6 +646,10 @@ class WorkerGroup:
     def get_worker_group_state(self) -> WorkerGroupState:
         self._assert_active()
         return self._worker_group_state
+
+    def get_latest_poll_status(self) -> Optional[WorkerGroupPollStatus]:
+        self._assert_active()
+        return self._latest_poll_status
 
     def __len__(self) -> int:
         self._assert_active()

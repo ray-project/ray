@@ -20,7 +20,9 @@ class RunStatus(str, Enum):
     # The Train run is currently in progress.
     RUNNING = "RUNNING"
     # The Train run is recovering from a failure or restart.
-    RECOVERING = "RECOVERING"
+    RESTARTING = "RESTARTING"
+    # The Train run is resizing.
+    RESIZING = "RESIZING"
 
     # ===== Terminal States ======
     # The Train run completed successfully.

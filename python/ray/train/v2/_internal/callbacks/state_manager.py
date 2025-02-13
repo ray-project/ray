@@ -22,6 +22,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupContext,
     WorkerGroupState,
 )
+from ray.train.v2._internal.execution.worker_group.poll import WorkerGroupPollStatus
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         elif isinstance(current_state, ErroredState):
             self._state_manager.update_train_run_errored(
                 run_id=self._run_id,
-                status_detail=current_state.training_failed_error.format_exc(),
+                status_detail=str(current_state.training_failed_error),
             )
 
         elif isinstance(current_state, FinishedState):
@@ -92,15 +93,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
 
         # TODO: ABORT is not handled by Controller.
 
-    def before_worker_group_start(self, worker_group: WorkerGroup):
-        self._state_manager.update_train_run_scheduling(
-            run_id=self._run_id,
-        )
-
-        worker_group_context: WorkerGroupContext = (
-            worker_group.get_worker_group_context()
-        )
-
+    def before_worker_group_start(self, worker_group_context: WorkerGroupContext):
         self._state_manager.create_train_run_attempt(
             run_id=self._run_id,
             attempt_id=worker_group_context.run_attempt_id,
@@ -108,67 +101,32 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             resources_per_worker=worker_group_context.resources_per_worker,
         )
 
-    def after_worker_group_start(self, worker_group):
+    def after_worker_group_start(self, worker_group: WorkerGroup):
         worker_group_context: WorkerGroupContext = (
             worker_group.get_worker_group_context()
         )
         worker_group_state: WorkerGroupState = worker_group.get_worker_group_state()
-
-        self._state_manager.update_train_run_running(
-            run_id=self._run_id,
-        )
-
         self._state_manager.update_train_run_attempt_running(
             run_id=self._run_id,
             attempt_id=worker_group_context.run_attempt_id,
             workers=worker_group_state.workers,
         )
 
-    # def before_worker_group_shutdown(self, worker_group):
-
-    #     # TODO: Implement this logic. Properly handle the errors.
-
-    #     worker_group_state: WorkerGroupState = worker_group.get_worker_group_state()
-
-    #     if worker_group_state is None:
-    #         logger.error(
-    #             "WorkerGroupState is not available. "
-    #             "StateManagerCallback.before_worker_group_shutdown cannot proceed."
-    #         )
-    #         return
-
-    #     # TODO: Populate WorkerGroupState with the error information.
-    #     # Should the WorkerGroupState <> WorkerGroupStatus relationship be inversed?
-    #     # Pass WorkerGroupState around and read WorkerGroupState.worker_group_status.
-
-    #     # TODO: Set to `worker_group_state.worker_group_status` instead.
-    #     worker_group_status: WorkerGroupPollStatus = None
-    #     if worker_group_status is not None:
-    #         if worker_group_status.errors:
-    #             # ERROR CASE
-    #             def format_errors(worker_group_status):
-    #                 # TODO: This is a temporary solution.
-    #                 return "\n".join(
-    #                     [
-    #                         f"[Rank {worker_rank}]\n{error}"
-    #                         for worker_rank, error in worker_group_status.errors.items()
-    #                     ]
-    #                 )
-
-    #             self._state_manager.update_train_run_attempt_errored(
-    #                 run_id=self._run_id,
-    #                 attempt_id=worker_group.get_worker_group_context().run_attempt_id,
-    #                 status_detail=format_errors(worker_group_status.errors),
-    #             )
-    #             return
-
-    #     # SUCCESS CASE
-
-    #     self._state_manager.update_train_run_attempt_finished(
-    #         run_id=self._run_id,
-    #         attempt_id=worker_group.get_worker_group_context().run_attempt_id,
-    #     )
-
-    # def before_controller_shutdown(self):
-    #     # TODO: Not sure if this is needed.
-    #     # This may already be handled by `after_controller_state_update`.
+    def before_worker_group_shutdown(self, worker_group: WorkerGroup):
+        worker_group_context: WorkerGroupContext = (
+            worker_group.get_worker_group_context()
+        )
+        worker_group_poll_status: WorkerGroupPollStatus = (
+            worker_group.get_latest_poll_status()
+        )
+        if worker_group_poll_status.errors:
+            self._state_manager.update_train_run_attempt_errored(
+                run_id=self._run_id,
+                attempt_id=worker_group_context.run_attempt_id,
+                status_detail=worker_group_poll_status.get_error_string(),
+            )
+        else:
+            self._state_manager.update_train_run_attempt_finished(
+                run_id=self._run_id,
+                attempt_id=worker_group_context.run_attempt_id,
+            )

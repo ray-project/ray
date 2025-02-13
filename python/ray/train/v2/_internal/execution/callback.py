@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ray.train.v2._internal.execution.worker_group import (
         Worker,
         WorkerGroup,
+        WorkerGroupContext,
         WorkerGroupPollStatus,
     )
 
@@ -36,7 +37,7 @@ class WorkerGroupCallback(RayTrainCallback):
     def on_worker_group_start(self):
         yield
 
-    def before_worker_group_start(self, worker_group: "WorkerGroup"):
+    def before_worker_group_start(self, worker_group_context: "WorkerGroupContext"):
         """Called before the worker group actors are initialized."""
         pass
 
