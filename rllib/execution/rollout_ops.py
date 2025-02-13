@@ -97,7 +97,7 @@ def synchronous_parallel_sample(
     ):
         # No remote workers in the set -> Use local worker for collecting
         # samples.
-        if worker_set.num_remote_workers() <= 0:
+        if worker_set.num_remote_env_runners() <= 0:
             sampled_data = [worker_set.local_env_runner.sample(**random_action_kwargs)]
             if _return_metrics:
                 stats_dicts = [worker_set.local_env_runner.get_metrics()]
@@ -116,7 +116,7 @@ def synchronous_parallel_sample(
             # remote workers left: Break.
             # There is no point staying in this loop, since we will not be able to
             # get any new samples if we don't have any healthy remote workers left.
-            if not sampled_data or worker_set.num_healthy_remote_workers() <= 0:
+            if not sampled_data or worker_set.num_healthy_remote_env_runners() <= 0:
                 if not sampled_data:
                     logger.warning(
                         "No samples returned from remote workers. If you have a "
@@ -124,7 +124,7 @@ def synchronous_parallel_sample(
                         "`sample_timeout_s` or decreasing the "
                         "`rollout_fragment_length` in `AlgorithmConfig.env_runners()."
                     )
-                elif worker_set.num_healthy_remote_workers() <= 0:
+                elif worker_set.num_healthy_remote_env_runners() <= 0:
                     logger.warning(
                         "No healthy remote workers left. Trying to restore workers ..."
                     )

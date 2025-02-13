@@ -115,13 +115,13 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     AGGREGATOR_ACTOR_RESULTS,
     ALL_MODULES,
+    ENV_RUNNER_GROUP_RESULTS,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     EPISODE_LEN_MEAN,
     EPISODE_RETURN_MEAN,
     EVALUATION_ITERATION_TIMER,
     EVALUATION_RESULTS,
-    FAULT_TOLERANCE_STATS,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -546,7 +546,7 @@ class Algorithm(Checkpointable, Trainable):
         Returns:
             List of remote worker IDs to fetch metrics from.
         """
-        return self.env_runner_group.healthy_worker_ids()
+        return self.env_runner_group.healthy_env_runner_ids()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Trainable)
@@ -1099,7 +1099,7 @@ class Algorithm(Checkpointable, Trainable):
                 self.env_runner_group.local_env_runner
             )
         # There is only a local eval EnvRunner -> Run on that.
-        elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
+        elif self.eval_env_runner_group.num_healthy_remote_env_runners() == 0:
             (
                 eval_results,
                 env_steps,
@@ -1107,7 +1107,7 @@ class Algorithm(Checkpointable, Trainable):
                 batches,
             ) = self._evaluate_on_local_env_runner(self.eval_env_runner)
         # There are healthy remote evaluation workers -> Run on these.
-        elif self.eval_env_runner_group.num_healthy_remote_workers() > 0:
+        elif self.eval_env_runner_group.num_healthy_remote_env_runners() > 0:
             # Running in automatic duration mode (parallel with training step).
             if self.config.evaluation_duration == "auto":
                 assert parallel_train_future is not None
@@ -1277,7 +1277,9 @@ class Algorithm(Checkpointable, Trainable):
         all_batches = []
 
         # How many episodes have we run (across all eval workers)?
-        num_healthy_workers = self.eval_env_runner_group.num_healthy_remote_workers()
+        num_healthy_workers = (
+            self.eval_env_runner_group.num_healthy_remote_env_runners()
+        )
         # Do we have to force-reset the EnvRunners before the first round of `sample()`
         # calls.?
         force_reset = self.config.evaluation_force_reset_envs_before_iteration
@@ -1383,7 +1385,7 @@ class Algorithm(Checkpointable, Trainable):
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = (
-                self.eval_env_runner_group.num_healthy_remote_workers()
+                self.eval_env_runner_group.num_healthy_remote_env_runners()
             )
 
         if num_healthy_workers == 0:
@@ -1467,7 +1469,9 @@ class Algorithm(Checkpointable, Trainable):
 
         # How many episodes have we run (across all eval workers)?
         num_units_done = 0
-        num_healthy_workers = self.eval_env_runner_group.num_healthy_remote_workers()
+        num_healthy_workers = (
+            self.eval_env_runner_group.num_healthy_remote_env_runners()
+        )
 
         env_steps = agent_steps = 0
 
@@ -1531,7 +1535,7 @@ class Algorithm(Checkpointable, Trainable):
                 selected_eval_worker_ids = [
                     worker_id
                     for i, worker_id in enumerate(
-                        self.eval_env_runner_group.healthy_worker_ids()
+                        self.eval_env_runner_group.healthy_env_runner_ids()
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
@@ -1573,7 +1577,7 @@ class Algorithm(Checkpointable, Trainable):
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = (
-                self.eval_env_runner_group.num_healthy_remote_workers()
+                self.eval_env_runner_group.num_healthy_remote_env_runners()
             )
 
         if num_healthy_workers == 0:
@@ -3102,15 +3106,17 @@ class Algorithm(Checkpointable, Trainable):
         # any of the failed workers are back.
         if self.eval_env_runner_group is not None:
             # Add number of healthy evaluation workers after this iteration.
-            eval_results[
-                "num_healthy_workers"
-            ] = self.eval_env_runner_group.num_healthy_remote_workers()
-            eval_results[
-                "num_in_flight_async_reqs"
-            ] = self.eval_env_runner_group.num_in_flight_async_reqs()
-            eval_results[
-                "num_remote_worker_restarts"
-            ] = self.eval_env_runner_group.num_remote_worker_restarts()
+            eval_results[ENV_RUNNER_GROUP_RESULTS] = {
+                "num_healthy_env_runners": (
+                    self.eval_env_runner_group.num_healthy_remote_env_runners()
+                ),
+                "num_remote_env_runner_restarts": (
+                    self.eval_env_runner_group.num_remote_env_runner_restarts()
+                ),
+                "num_in_flight_async_reqs": (
+                    self.eval_env_runner_group.num_in_flight_async_reqs()
+                ),
+            }
 
         return {EVALUATION_RESULTS: eval_results}
 
@@ -3221,17 +3227,22 @@ class Algorithm(Checkpointable, Trainable):
 
         # EnvRunner actors fault tolerance stats.
         if self.env_runner_group:
-            results[FAULT_TOLERANCE_STATS] = {
-                "num_healthy_workers": (
-                    self.env_runner_group.num_healthy_remote_workers()
+            results[ENV_RUNNER_GROUP_RESULTS] = {
+                "num_healthy_env_runners": (
+                    self.env_runner_group.num_healthy_remote_env_runners()
                 ),
-                "num_remote_worker_restarts": (
-                    self.env_runner_group.num_remote_worker_restarts()
+                "num_env_runner_restarts": (
+                    self.env_runner_group.num_remote_env_runner_restarts()
                 ),
-            }
-            results["env_runner_group"] = {
                 "actor_manager_num_outstanding_async_reqs": (
                     self.env_runner_group.num_in_flight_async_reqs()
+                ),
+                # Deprecated keys. Remove at some point.
+                "num_healthy_workers": (
+                    self.env_runner_group.num_healthy_remote_env_runners()
+                ),
+                "num_remote_worker_restarts": (
+                    self.env_runner_group.num_remote_env_runner_restarts()
                 ),
             }
 
@@ -3677,13 +3688,13 @@ class Algorithm(Checkpointable, Trainable):
 
         results[
             "num_healthy_workers"
-        ] = self.env_runner_group.num_healthy_remote_workers()
+        ] = self.env_runner_group.num_healthy_remote_env_runners()
         results[
             "num_in_flight_async_sample_reqs"
         ] = self.env_runner_group.num_in_flight_async_reqs()
         results[
             "num_remote_worker_restarts"
-        ] = self.env_runner_group.num_remote_worker_restarts()
+        ] = self.env_runner_group.num_remote_env_runner_restarts()
 
         # Train-steps- and env/agent-steps this iteration.
         for c in [
