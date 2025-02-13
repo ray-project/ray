@@ -12,15 +12,6 @@ _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
 
 
-class FileToTags:
-    file: str
-    tags: Set[str]
-
-    def __init__(self, file: str, tags: Set[str]):
-        self.file = file
-        self.tags = tags
-
-
 _TESTS_YAML = """
 ci/pipeline/test_conditional_testing.py: lint tools
 python/ray/data/__init__.py: lint data linux_wheels macos_wheels ml train
@@ -47,7 +38,7 @@ python/requirements/test-requirements.txt:
     - python dashboard linux_wheels macos_wheels java python_dependencies
 python/_raylet.pyx:
     - lint ml tune train serve workflow data
-    - python dashboard linux_wheels macos_wheels java compiled_python
+    - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
     - lint ml tune train serve workflow data
     - python dashboard linux_wheels macos_wheels java accelerated_dag
@@ -80,12 +71,20 @@ src/ray.cpp:
 BUILD.bazel:
     - lint ml tune train data serve core_cpp cpp java
     - python doc linux_wheels macos_wheels dashboard tools
-    - release_tests compiled_python
+    - release_tests
 """
 
 
 def test_conditional_testing_pull_request():
     script = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/determine_tests_to_run.py")
+
+    class FileToTags:
+        file: str
+        tags: Set[str]
+
+        def __init__(self, file: str, tags: Set[str]):
+            self.file = file
+            self.tags = tags
 
     test_cases: List[FileToTags] = []
     test_cases_yaml = yaml.safe_load(_TESTS_YAML)
