@@ -65,27 +65,27 @@ for workload_type in ["small", "large"]:
             checkpoint_config = None
         elif backend == "FILE_STORAGE":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.FILE_STORAGE,
                 id_column="id",
                 checkpoint_path=f"{CHECKPOINT_DIR_FILE_STORAGE}/{backend}",
+                override_backend=CheckpointBackend.FILE_STORAGE,
             )
         elif backend == "FILE_STORAGE_ROW":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.FILE_STORAGE_ROW,
                 id_column="id",
                 checkpoint_path=f"{CHECKPOINT_DIR_FILE_STORAGE}/{backend}",
+                override_backend=CheckpointBackend.FILE_STORAGE_ROW,
             )
         elif backend == "CLOUD_OBJECT_STORAGE":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.CLOUD_OBJECT_STORAGE,
                 id_column="id",
                 checkpoint_path=f"{CHECKPOINT_DIR_CLOUD_OBJECT_STORAGE}/{backend}",
+                override_backend=CheckpointBackend.CLOUD_OBJECT_STORAGE,
             )
         elif backend == "CLOUD_OBJECT_STORAGE_ROW":
             checkpoint_config = CheckpointConfig(
-                backend=CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
                 id_column="id",
                 checkpoint_path=f"{CHECKPOINT_DIR_CLOUD_OBJECT_STORAGE}/{backend}",
+                override_backend=CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
             )
         else:
             raise ValueError(f"Unknown checkpoint backend: {backend}")

@@ -4,13 +4,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pyarrow
 import pyarrow.csv as pcsv
-from pyarrow.fs import FileSelector, S3FileSystem
+from pyarrow.fs import FileSelector
 
 from ray.anyscale.data.checkpoint.interfaces import (
     BatchBasedCheckpointFilter,
     CheckpointConfig,
     CheckpointWriter,
-    CloudObjectStorageCheckpointIO,
 )
 from ray.data import DataContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -20,22 +19,17 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class CloudObjectStorageCheckpointFilter(
-    BatchBasedCheckpointFilter, CloudObjectStorageCheckpointIO
-):
+class CloudObjectStorageCheckpointFilter(BatchBasedCheckpointFilter):
     """CheckpointFilter implementation for CLOUD_OBJECT_STORAGE backend, reading all
     checkpoint files into object store prior to filtering rows."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
 
-        if self.fs is None:
-            self.fs = S3FileSystem()
-
     def load_checkpoint(self) -> Block:
         def read_checkpoint_file(file) -> Block:
             if file.path.endswith(".csv"):
-                with self.fs.open_input_file(file.path) as f:
+                with self.filesystem.open_input_file(file.path) as f:
                     try:
                         return pcsv.read_csv(f)
                     except pyarrow.lib.ArrowInvalid as e:
@@ -49,7 +43,7 @@ class CloudObjectStorageCheckpointFilter(
             recursive=True,
             allow_not_found=True,
         )
-        file_info = self.fs.get_file_info(file_paths)
+        file_info = self.filesystem.get_file_info(file_paths)
 
         id_blocks = []
         with ThreadPoolExecutor(max_workers=self.filter_num_threads) as executor:
@@ -65,20 +59,15 @@ class CloudObjectStorageCheckpointFilter(
         return builder.build()
 
     def delete_checkpoint(self):
-        self.fs.delete_dir(self.checkpoint_path)
+        self.filesystem.delete_dir(self.checkpoint_path)
 
 
-class CloudObjectStorageCheckpointWriter(
-    CheckpointWriter, CloudObjectStorageCheckpointIO
-):
+class CloudObjectStorageCheckpointWriter(CheckpointWriter):
     """CheckpointWriter implementation for CLOUD_OBJECT_STORAGE backend, writing one
     checkpoint file per output block written."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
-
-        if self.fs is None:
-            self.fs = S3FileSystem()
 
     def write_block_checkpoint(self, block: BlockAccessor):
         # Write a single checkpoint file for the block being written.
@@ -98,7 +87,9 @@ class CloudObjectStorageCheckpointWriter(
 
         def _write():
             # TODO: add some checkpoint metadata, like timestamp, etc. in Body
-            with self.fs.open_output_stream(f"{bucket}/{file_key}") as out_stream:
+            with self.filesystem.open_output_stream(
+                f"{bucket}/{file_key}"
+            ) as out_stream:
                 pcsv.write_csv(checkpoint_ids_block, out_stream)
 
         try:

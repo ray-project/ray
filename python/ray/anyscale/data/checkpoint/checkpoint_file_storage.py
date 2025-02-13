@@ -12,7 +12,6 @@ from ray.anyscale.data.checkpoint.interfaces import (
     BatchBasedCheckpointFilter,
     CheckpointConfig,
     CheckpointWriter,
-    FileStorageCheckpointIO,
 )
 from ray.data import DataContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -22,7 +21,7 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class FileStorageCheckpointFilter(BatchBasedCheckpointFilter, FileStorageCheckpointIO):
+class FileStorageCheckpointFilter(BatchBasedCheckpointFilter):
     """CheckpointFilter implementation for FILE_STORAGE backend, reading all
     checkpoint files into object store prior to filtering rows."""
 
@@ -57,7 +56,7 @@ class FileStorageCheckpointFilter(BatchBasedCheckpointFilter, FileStorageCheckpo
         shutil.rmtree(self.checkpoint_path)
 
 
-class FileStorageCheckpointWriter(CheckpointWriter, FileStorageCheckpointIO):
+class FileStorageCheckpointWriter(CheckpointWriter):
     """CheckpointWriter implementation for FILE_STORAGE backend, writing one
     checkpoint file per output block written."""
 

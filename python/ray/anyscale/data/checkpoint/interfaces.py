@@ -1,15 +1,14 @@
 import abc
 import os
-from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Optional
+from typing import Optional, Tuple
 
 import pyarrow
 import pyarrow.compute as pc
 
-from ray.data._internal.execution.operators.map_transformer import Row
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.datasource.path_util import _unwrap_protocol
+from ray.util.annotations import PublicAPI
 
 
 class CheckpointBackend(Enum):
@@ -69,41 +68,68 @@ class CheckpointBackend(Enum):
     """
 
 
-@dataclass
+@PublicAPI(stability="beta")
 class CheckpointConfig:
-    """Configuration for row-level checkpointing.
+    """Configuration for row-level checkpointing."""
 
-    Attribute:
-        backend: The storage backend to use for checkpointing.
-        id_column: Name of the ID column in the input dataset.
-            ID values must the unique across all rows in the dataset and must persist
-            during all operators.
-        delete_checkpoint_on_success: If true, automatically delete checkpoint
-            data when the dataset execution succeeds. Only supported for
-            batch-based backend currently.
-        fs: Optional filesystem object used to read/write checkpoint files.
-            If not specified, constructs a Pyarrow FileSystem when necessary.
-        checkpoint_path: Optional path where checkpoint files are written.
-            If not specified, use default paths configured for each backend.
-        filter_num_threads: Number of threads used to filter checkpointed rows.
-            Only used for row-based backends.
-        write_num_threads: Number of threads used to write checkpoint files for
-            completed rows.
-    """
+    DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR = "ANYSCALE_ARTIFACT_STORAGE"
+    DEFAULT_CHECKPOINT_PATH_DIR = "ray_data_checkpoint"
 
-    backend: CheckpointBackend
+    def __init__(
+        self,
+        id_column: str,
+        checkpoint_path: Optional[str] = None,
+        *,
+        delete_checkpoint_on_success: bool = True,
+        override_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        override_backend: Optional[CheckpointBackend] = None,
+        filter_num_threads: int = 3,
+        write_num_threads: int = 3,
+    ):
+        """
+        Args:
+            id_column: Name of the ID column in the input dataset.
+                ID values must the unique across all rows in the dataset and must persist
+                during all operators.
+            checkpoint_path: Path to store the checkpoint data. It can be a path to a cloud
+                object storage (e.g. `s3://bucket/path`) or a file system path.
+                If the latter, the path must be a network-mounted file system (e.g.
+                `/mnt/cluster_storage/`) that is accessible to the entire cluster.
+                If not set, defaults to `${ANYSCALE_ARTIFACT_STORAGE}/ray_data_checkpoint`.
+            delete_checkpoint_on_success: If true, automatically delete checkpoint
+                data when the dataset execution succeeds. Only supported for
+                batch-based backend currently.
+            override_filesystem: Override the :class:`pyarrow.fs.FileSystem` object used to
+                read/write checkpoint data. Use this when you want to use custom credentials.
+            override_backend: Override the :class:`CheckpointBackend` object used to
+                access the checkpoint backend storage. Only use this if you want to use
+                the row-backend checkpoint backends. By default, batch-based backends
+                are used.
+            filter_num_threads: Number of threads used to filter checkpointed rows.
+                Only used for row-based backends.
+            write_num_threads: Number of threads used to write checkpoint files for
+                completed rows.
+        """
+        self.id_column: str = id_column
+        if (
+            self.id_column is None
+            or not isinstance(self.id_column, str)
+            or len(self.id_column) == 0
+        ):
+            raise InvalidCheckpointingConfig(
+                "Checkpoint ID column must be as an non-empty string, "
+                f"but got {self.id_column}"
+            )
 
-    id_column: str
-
-    delete_checkpoint_on_success: bool = True
-
-    fs: Optional[pyarrow.fs.FileSystem] = None
-
-    checkpoint_path: Optional[str] = None
-
-    filter_num_threads: int = 3
-
-    write_num_threads: int = 3
+        self.checkpoint_path: str = (
+            checkpoint_path or self._get_default_checkpoint_path()
+        )
+        inferred_backend, inferred_fs = self._infer_backend_and_fs(self.checkpoint_path)
+        self.filesystem: "pyarrow.fs.FileSystem" = override_filesystem or inferred_fs
+        self.backend: CheckpointBackend = override_backend or inferred_backend
+        self.delete_checkpoint_on_success: bool = delete_checkpoint_on_success
+        self.filter_num_threads: int = filter_num_threads
+        self.write_num_threads: int = write_num_threads
 
     def is_row_based(self):
         """Whether the checkpoint backend is row-based."""
@@ -119,29 +145,28 @@ class CheckpointConfig:
             CheckpointBackend.CLOUD_OBJECT_STORAGE,
         ]
 
-    def id_column_name(self) -> Optional[str]:
-        """Returns the name of the ID column, if `id_col` is a string."""
-        return self.id_column if isinstance(self.id_column, str) else None
-
-    def id_column_function(self) -> Optional[Callable[[Row], str]]:
-        """Returns the ID generation function, if `id_col` is a function."""
-        return self.id_column if callable(self.id_column) else None
-
-    def __post_init__(self):
-        if not isinstance(self.backend, CheckpointBackend):
+    def _get_default_checkpoint_path(self) -> str:
+        artifact_storage = os.environ.get(self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR)
+        if artifact_storage is None:
             raise InvalidCheckpointingConfig(
-                f"Checkpoint backend is invalid {self.backend}, "
-                f"available options: {[backend.value for backend in CheckpointBackend]}"
+                f"`{self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR}` env var is not set, "
+                "please explictly set `CheckpointConfig.checkpoint_path`."
             )
-        if (
-            self.id_column is None
-            or not isinstance(self.id_column, str)
-            or len(self.id_column) == 0
-        ):
+        return f"{artifact_storage}/{self.DEFAULT_CHECKPOINT_PATH_DIR}"
+
+    def _infer_backend_and_fs(
+        self, checkpoint_path
+    ) -> Tuple[CheckpointBackend, "pyarrow.fs.FileSystem"]:
+        try:
+            fs, _ = pyarrow.fs.FileSystem.from_uri(checkpoint_path)
+            if isinstance(fs, pyarrow.fs.LocalFileSystem):
+                return CheckpointBackend.FILE_STORAGE, fs
+            else:
+                return CheckpointBackend.CLOUD_OBJECT_STORAGE, fs
+        except Exception as e:
             raise InvalidCheckpointingConfig(
-                "Checkpoint ID column must be as an non-empty string, "
-                f"but got {self.id_column}"
-            )
+                f"Invalid checkpoint path: {checkpoint_path}. "
+            ) from e
 
 
 class InvalidCheckpointingConfig(Exception):
@@ -159,56 +184,16 @@ class InvalidCheckpointingOperators(Exception):
     pass
 
 
-class CheckpointIO(abc.ABC):
-    """Base class for checkpoint IO operations."""
-
-    def get_checkpoint_path(self, config: CheckpointConfig) -> str:
-        checkpoint_path = config.checkpoint_path
-        if checkpoint_path:
-            return checkpoint_path
-        else:
-            default_checkpoint_path = self._get_default_checkpoint_path()
-            if default_checkpoint_path is None:
-                raise ValueError("CheckpointConfig.checkpoint_path must be set")
-            return default_checkpoint_path
-
-    @abc.abstractmethod
-    def _get_default_checkpoint_path(self) -> Optional[str]:
-        """Returns the default path where checkpoint files are written,
-        or `None` if the path cannot be inferred."""
-        ...
-
-
-class CloudObjectStorageCheckpointIO(CheckpointIO):
-    """CheckpointIO for cloud object storage backends."""
-
-    def get_checkpoint_path(self, config: CheckpointConfig) -> str:
-        return _unwrap_protocol(super().get_checkpoint_path(config))
-
-    def _get_default_checkpoint_path(self) -> Optional[str]:
-        artifact_storage = os.environ.get("ANYSCALE_ARTIFACT_STORAGE")
-        if artifact_storage is None:
-            return None
-        return f"{artifact_storage}/ray_data_checkpoint"
-
-
-class FileStorageCheckpointIO(CheckpointIO):
-    """CheckpointIO for FILE_STORAGE backends."""
-
-    def _get_default_checkpoint_path(self) -> Optional[str]:
-        return "/mnt/cluster_storage/ray_data_checkpoint"
-
-
-class CheckpointFilter(CheckpointIO, abc.ABC):
+class CheckpointFilter(abc.ABC):
     """Abstract class which defines the interface for filtering checkpointed rows
     based on varying backends.
     """
 
     def __init__(self, config: CheckpointConfig):
         self.ckpt_config = config
-        self.checkpoint_path = self.get_checkpoint_path(config)
+        self.checkpoint_path = _unwrap_protocol(self.ckpt_config.checkpoint_path)
         self.id_column = self.ckpt_config.id_column
-        self.fs = self.ckpt_config.fs
+        self.filesystem = self.ckpt_config.filesystem
         self.filter_num_threads = self.ckpt_config.filter_num_threads
 
 
@@ -343,7 +328,7 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         return filtered_batch
 
 
-class CheckpointWriter(CheckpointIO):
+class CheckpointWriter:
     """Abstract class which defines the interface for writing row-level
     checkpoints based on varying backends.
 
@@ -351,9 +336,9 @@ class CheckpointWriter(CheckpointIO):
 
     def __init__(self, config: CheckpointConfig):
         self.ckpt_config = config
-        self.checkpoint_path = self.get_checkpoint_path(config)
+        self.checkpoint_path = _unwrap_protocol(self.ckpt_config.checkpoint_path)
         self.id_col = self.ckpt_config.id_column
-        self.fs = self.ckpt_config.fs
+        self.filesystem = self.ckpt_config.filesystem
         self.write_num_threads = self.ckpt_config.write_num_threads
 
     def write_block_checkpoint(self, block: BlockAccessor):
