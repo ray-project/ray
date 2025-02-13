@@ -41,8 +41,9 @@ install_miniconda() {
     esac
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
+    local miniforge_url="https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-${miniconda_platform}-${HOSTTYPE}.sh"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
-    curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
+    curl -f -s -L -o "${miniconda_target}" "${miniforge_url}"
     chmod +x "${miniconda_target}"
 
     case "${OSTYPE}" in
@@ -78,9 +79,6 @@ install_miniconda() {
 
     ${restore_shell_state}  # Restore set -x
   fi
-
-  conda config --add channels conda-forge
-  conda config --set channel_priority strict
 
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
