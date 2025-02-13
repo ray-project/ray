@@ -24,12 +24,10 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process
-    try:
-        dir_index = uv_run_args.index("--directory")
-        # Remove both --directory and its value
-        remaining_uv_run_args = uv_run_args[:dir_index] + uv_run_args[dir_index + 2 :]
-    except ValueError:
-        remaining_uv_run_args = uv_run_args
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--directory", nargs="?")
+    _, remaining_uv_run_args = parser.parse_known_args(uv_run_args)
+
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
 
     # If the user specified a working_dir, we always honor it, otherwise
