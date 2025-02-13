@@ -227,6 +227,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     ) -> Tuple["RunStatus", Optional[str]]:
         from ray.train.v2._internal.state.schema import ActorStatus, RunStatus
 
+        # TODO: Move this to the TrainStateActor.
+
         # The train run can be unexpectedly terminated before the final run
         # status was updated. This could be due to errors outside of the training
         # function (e.g., system failure or user interruption) that crashed the
