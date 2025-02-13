@@ -126,13 +126,14 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If worker group fails to start.
         """
 
-        worker_group = cls(train_run_context, callbacks)
-        worker_group._start(worker_group_context)
+        worker_group = cls(train_run_context, worker_group_context, callbacks)
+        worker_group._start()
         return worker_group
 
     def __init__(
         self,
         train_run_context: TrainRunContext,
+        worker_group_context: WorkerGroupContext,
         callbacks: Optional[
             List[Union[WorkerGroupCallback, WorkerCallback, TrainContextCallback]]
         ] = None,
@@ -148,6 +149,9 @@ class WorkerGroup:
             experiment_dir_name=run_config.name,
             storage_filesystem=run_config.storage_filesystem,
         )
+
+        self._worker_group_context: WorkerGroupContext = worker_group_context
+
         callbacks = callbacks or []
         # Group of callbacks that are specific to worker group itself.
         self._callbacks = [c for c in callbacks if isinstance(c, WorkerGroupCallback)]
@@ -158,7 +162,6 @@ class WorkerGroup:
             if isinstance(c, (WorkerCallback, TrainContextCallback))
         ]
 
-        self._worker_group_context: Optional[WorkerGroupContext] = None
         self._worker_group_state: Optional[WorkerGroupState] = None
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
@@ -190,7 +193,6 @@ class WorkerGroup:
 
     def _start(
         self,
-        worker_group_context: WorkerGroupContext,
     ):
         """Internal method to start the worker group."""
 
@@ -199,7 +201,6 @@ class WorkerGroup:
         try:
             self._start_impl(
                 worker_group_state_builder,
-                worker_group_context,
             )
         except Exception as e:
             if not self.has_started():
@@ -212,13 +213,11 @@ class WorkerGroup:
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
-        worker_group_context: WorkerGroupContext,
     ):
         """Implementation of worker group startup.
 
         Args:
             worker_group_state_builder: Builder for constructing worker group state.
-            worker_group_context: Context for the worker group.
 
         Raises:
             ValueError: If workers are already started.
@@ -226,7 +225,7 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If workers fail during initialization.
         """
         self._assert_inactive()
-        self._worker_group_context = worker_group_context
+        worker_group_context = self._worker_group_context
 
         # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
         # The current execution order is as follows:`on_worker_group_start` callbacks
@@ -412,7 +411,6 @@ class WorkerGroup:
             logger.debug("Worker group shutdown successful.")
 
     def _clear_state(self):
-        self._worker_group_context = None
         self._worker_group_state = None
         self._world_rank_to_ongoing_poll = {}
 
@@ -637,10 +635,6 @@ class WorkerGroup:
         return self._worker_group_state.workers
 
     def get_worker_group_context(self) -> WorkerGroupContext:
-        # self._assert_active()
-        # TODO: Figure out the right validation. This is needed before active.
-        # Consider passing in the worker group context to the constructor.
-        assert self._worker_group_context is not None
         return self._worker_group_context
 
     def get_worker_group_state(self) -> WorkerGroupState:
