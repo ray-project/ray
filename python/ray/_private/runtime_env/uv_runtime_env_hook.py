@@ -45,7 +45,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         raise RuntimeError(
             f"You specified --with-requirements={known_args.with_requirements} but "
             f"the requirements file is not in the working_dir {runtime_env['working_dir']}, "
-            "so the workers will not have access to the file. Please make sure "
+            "so the workers will not have access to the file. Make sure "
             "the requirements file is in the working directory. "
             "You can do so by specifying --directory in 'uv run', by changing the current "
             "working directory before running 'uv run', or by using the 'working_dir' "
