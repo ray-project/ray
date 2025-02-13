@@ -100,3 +100,4 @@ Status Close(MEMFD_TYPE_NON_UNIQUE fd) {
 #endif
 
 }  // namespace ray
+

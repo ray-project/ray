@@ -81,3 +81,4 @@ template <typename Equal>
 RefEq(Equal &&) -> RefEq<std::remove_reference_t<Equal>>;
 
 }  // namespace ray::utils::container
+

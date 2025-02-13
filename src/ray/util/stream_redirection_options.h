@@ -38,3 +38,4 @@ struct StreamRedirectionOption {
 };
 
 }  // namespace ray
+

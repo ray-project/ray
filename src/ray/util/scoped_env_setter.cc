@@ -37,3 +37,4 @@ ScopedEnvSetter::~ScopedEnvSetter() {
 }
 
 }  // namespace ray
+

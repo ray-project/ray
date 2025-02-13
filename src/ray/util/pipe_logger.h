@@ -114,3 +114,4 @@ RedirectionFileHandle CreateRedirectionFileHandle(
     const StreamRedirectionOption &stream_redirect_opt);
 
 }  // namespace ray
+

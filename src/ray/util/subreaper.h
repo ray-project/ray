@@ -123,3 +123,4 @@ class KnownChildrenTracker {
 void SetSigchldIgnore();
 
 }  // namespace ray
+

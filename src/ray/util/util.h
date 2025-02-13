@@ -196,3 +196,4 @@ std::string FormatFloat(float value, int32_t precision);
 std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms);
 
 }  // namespace ray
+

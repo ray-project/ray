@@ -33,3 +33,4 @@ TEST(ThrottlerTest, BasicTest) {
   now += 5;
   EXPECT_TRUE(throttler.AbleToRun());
 }
+

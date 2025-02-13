@@ -45,3 +45,4 @@ void random_sample(Iterator begin,
   }
   return;
 }
+

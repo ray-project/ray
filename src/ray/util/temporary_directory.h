@@ -40,3 +40,4 @@ class ScopedTemporaryDirectory {
 };
 
 }  // namespace ray
+

@@ -37,3 +37,4 @@ class ScopedEnvSetter {
 };
 
 }  // namespace ray
+

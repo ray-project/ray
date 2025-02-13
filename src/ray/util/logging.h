@@ -446,3 +446,4 @@ class Voidify {
 };
 
 }  // namespace ray
+

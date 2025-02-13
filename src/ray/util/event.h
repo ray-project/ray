@@ -379,3 +379,4 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
                    bool emit_event_to_log_file);
 
 }  // namespace ray
+

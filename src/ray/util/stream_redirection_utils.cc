@@ -126,3 +126,4 @@ void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutFd()); }
 void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrFd()); }
 
 }  // namespace ray
+

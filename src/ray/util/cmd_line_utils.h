@@ -35,3 +35,4 @@ std::vector<std::string> ParseCommandLine(
 /// \return The command-line string, including any necessary escape sequences.
 std::string CreateCommandLine(const std::vector<std::string> &args,
                               CommandLineSyntax syntax = CommandLineSyntax::System);
+

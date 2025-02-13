@@ -29,3 +29,4 @@ template <int N>
 constexpr bool AlwaysTrueValue = true;
 
 }  // namespace ray
+

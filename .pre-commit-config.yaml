@@ -44,7 +44,7 @@ repos:
     rev: 2.0.0
     hooks:
       - id: cpplint
-        args: ["--filter=-whitespace/line_length,build/c++11,-build/c++14,-build/c++17"]
+        args: ["--filter=-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-whitespace/indent_namespace,-runtime/int,-runtime/references"]
 
   - repo: https://github.com/psf/black
     rev: 22.10.0

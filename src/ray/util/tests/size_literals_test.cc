@@ -29,3 +29,4 @@ TEST(SizeLiteralsTest, BasicTest) {
 }  // namespace
 
 }  // namespace ray::literals
+

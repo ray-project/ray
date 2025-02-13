@@ -45,3 +45,4 @@ static_assert(index_of_int, "Index of int should be 1");
 // can't test IndexOf not found because it's a compile error
 
 }  // namespace ray
+

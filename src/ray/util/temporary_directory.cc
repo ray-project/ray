@@ -32,3 +32,4 @@ ScopedTemporaryDirectory::~ScopedTemporaryDirectory() {
 }
 
 }  // namespace ray
+

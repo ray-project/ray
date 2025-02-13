@@ -14,6 +14,8 @@
 
 #include "ray/util/env.h"
 
+#include <string>
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -40,3 +42,4 @@ void UnsetEnv(const std::string &name) {
 }
 
 }  // namespace ray
+

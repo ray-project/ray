@@ -210,3 +210,4 @@ class CounterMapThreadSafe {
  private:
   ray::MutexProtected<CounterMap<K>> counter_map_;
 };
+

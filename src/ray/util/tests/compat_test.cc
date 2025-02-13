@@ -50,3 +50,4 @@ TEST(CompatTest, WriteTest) {
 }  // namespace
 
 }  // namespace ray
+

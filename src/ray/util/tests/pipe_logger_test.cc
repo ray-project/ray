@@ -319,3 +319,4 @@ INSTANTIATE_TEST_SUITE_P(PipeLoggerTest, PipeLoggerTest, testing::Values(1024, 3
 }  // namespace
 
 }  // namespace ray
+

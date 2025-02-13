@@ -25,3 +25,4 @@ inline int64_t current_sys_time_s() {
 }
 
 }  // namespace ray
+
