@@ -10,7 +10,7 @@ This tutorial shows how to deploy a text generator that processes multiple queri
 
 - How to implement a Ray Serve deployment that handles batched requests
 - How to configure and optimize batch processing
-- Different ways to query the model from Python and HTTP
+- How to query the model from HTTP and Python
 
 Batching can significantly improve performance when your model supports parallel processing (like GPU acceleration or vectorized operations).
 It increases both throughput and hardware utilization by processing multiple requests together.
