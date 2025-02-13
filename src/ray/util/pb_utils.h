@@ -7,7 +7,9 @@ template <typename T, typename = void>
 struct has_equal_operator : std::false_type {};
 
 template <typename T>
-struct has_equal_operator<T, decltype((void)(std::declval<T>() == std::declval<T>()), void())> : std::true_type {};
+struct has_equal_operator<T,
+                          decltype((void)(std::declval<T>() == std::declval<T>()),
+                                   void())> : std::true_type {};
 
 template <class K, class V>
 bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
@@ -19,17 +21,17 @@ bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
   for (const auto &pair : lhs) {
     auto it = rhs.find(pair.first);
     if (it == rhs.end()) {
-        return false;
+      return false;
     }
-    
+
     if constexpr (has_equal_operator<V>::value) {
-        if (it->second != pair.second) {
-            return false;
-        }
+      if (it->second != pair.second) {
+        return false;
+      }
     } else {
-        if (!google::protobuf::util::MessageDifferencer::Equals(it->second, pair.second)) {
-            return false;
-        }
+      if (!google::protobuf::util::MessageDifferencer::Equals(it->second, pair.second)) {
+        return false;
+      }
     }
   }
 
