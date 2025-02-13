@@ -476,35 +476,45 @@ class TableBlockAccessor(BlockAccessor):
     def normalize_block_types(
         cls,
         blocks: List[Block],
-        normalize_type: Optional[BlockType] = None,
+        target_block_type: Optional[BlockType] = None,
     ) -> List[Block]:
         """Normalize input blocks to the specified `normalize_type`. If the blocks
-        are already all of the same type, returns the original blocks.
+        are already all of the same type, returns original blocks.
 
          Args:
             blocks: A list of TableBlocks to be normalized.
-            normalize_type: The type to normalize the blocks to. If None,
-                the default block type (Arrow) is used.
+            target_block_type: The type to normalize the blocks to. If None,
+                will be chosen such that to minimize amount of data conversions.
 
         Returns:
             A list of blocks of the same type.
         """
-        seen_types = set()
+        seen_types: Dict[BlockType, int] = collections.defaultdict()
+
         for block in blocks:
-            acc = BlockAccessor.for_block(block)
-            if not isinstance(acc, TableBlockAccessor):
+            block_accessor = BlockAccessor.for_block(block)
+            if not isinstance(block_accessor, TableBlockAccessor):
                 raise ValueError(
                     "Block type normalization is only supported for TableBlock, "
                     f"but received block of type: {type(block)}."
                 )
-            seen_types.add(type(block))
 
-        # Return original blocks if they are all of the same type.
+            seen_types[block_accessor.block_type()] += 1
+
+        # If there's just 1 block-type, short-circuit
         if len(seen_types) <= 1:
             return blocks
 
+        # Pick the most prevalent block-type
+        if target_block_type is None:
+            _, target_block_type = sorted(
+                seen_types.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )[0]
+
         results = [
-            cls.try_convert_block_type(block, normalize_type) for block in blocks
+            cls.try_convert_block_type(block, target_block_type) for block in blocks
         ]
 
         if any(not isinstance(block, type(results[0])) for block in results):

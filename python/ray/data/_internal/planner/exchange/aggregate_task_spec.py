@@ -69,7 +69,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
-            mapper_outputs, normalize_type=batch_format
+            mapper_outputs, target_block_type=batch_format
         )
         return BlockAccessor.for_block(normalized_blocks[0])._combine_aggregated_blocks(
             list(normalized_blocks), key, aggs, finalize=not partial_reduce
