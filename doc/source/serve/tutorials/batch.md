@@ -183,5 +183,5 @@ results = [r.result() for r in responses]
 
 ## Performance Considerations
 
-- Increase `max_batch_size` if you have sufficient memory and want higher throughput at the cost of increased latency
+- Increase `max_batch_size` if you have sufficient memory and want higher throughput (possibly at the cost of increased latency)
 - Increase `batch_wait_timeout_s` if throughput is more important than latency
