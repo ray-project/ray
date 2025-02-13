@@ -10,7 +10,6 @@ from ray.data.block import (
     CallableClass,
     DataBatch,
     UserDefinedFunction,
-    _get_group_boundaries_sorted,
 )
 from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
@@ -211,7 +210,7 @@ class GroupedData:
                     f"or a list of columns (got '{self._key}')"
                 )
 
-            boundaries = _get_group_boundaries_sorted(block, keys)
+            boundaries = block_accessor._get_group_boundaries_sorted(keys)
 
             for start, end in zip(boundaries[:-1], boundaries[1:]):
                 group_block = block_accessor.slice(start, end, copy=False)

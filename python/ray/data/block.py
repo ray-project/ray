@@ -511,39 +511,36 @@ class BlockAccessor:
         """Return the block type of this block."""
         raise NotImplementedError
 
+    def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
+        """
+        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
 
-def _get_group_boundaries_sorted(block: Block, keys: List[str]) -> np.ndarray:
-    """
-    NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+        Compute boundaries of the groups within a block based on provided
+        key (a column or a list of columns)
 
-    Compute boundaries of the groups within a block based on provided
-    key (a column or a list of columns)
+        NOTE: In each column, NaNs/None are considered to be the same group.
 
-    NOTE: In each column, NaNs/None are considered to be the same group.
+        Args:
+            block: sorted block for which grouping of rows will be determined
+                    based on provided key
+            keys: list of columns determining the key for every row based on
+                    which the block will be grouped
 
-    Args:
-        block: sorted block for which grouping of rows will be determined
-                based on provided key
-        keys: list of columns determining the key for every row based on
-                which the block will be grouped
+        Returns:
+            A list of starting indices of each group and an end index of the last
+            group, i.e., there are ``num_groups + 1`` entries and the first and last
+            entries are 0 and ``len(array)`` respectively.
+        """
 
-    Returns:
-        A list of starting indices of each group and an end index of the last
-        group, i.e., there are ``num_groups + 1`` entries and the first and last
-        entries are 0 and ``len(array)`` respectively.
-    """
+        if keys:
+            # Convert key columns to Numpy (to perform vectorized
+            # ops on them)
+            projected_block = self.to_numpy(keys)
 
-    block_accessor = BlockAccessor.for_block(block)
+            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
 
-    if keys:
-        # Convert key columns to Numpy (to perform vectorized
-        # ops on them)
-        projected_block = block_accessor.to_numpy(keys)
-
-        return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
-
-    # If no keys are specified, whole block is considered a single group
-    return np.array([0, block_accessor.num_rows()])
+        # If no keys are specified, whole block is considered a single group
+        return np.array([0, self.num_rows()])
 
 
 def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
