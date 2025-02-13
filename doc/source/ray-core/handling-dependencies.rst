@@ -383,7 +383,7 @@ or use the `--with` flag to specify individual requirements.
 
     export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
 
-  Run your driver via:
+  Run your driver with the following command:
 
   .. code-block:: sh
 
