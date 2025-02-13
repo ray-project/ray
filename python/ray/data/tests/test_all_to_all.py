@@ -12,7 +12,7 @@ import ray
 from packaging.version import parse as parse_version
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    combine_chunks,
+    combine_chunks, MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data._internal.util import is_nan
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -1100,9 +1100,19 @@ def test_groupby_agg_bad_on(ray_start_regular_shared_2_cpus, configure_shuffle_m
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pandas", "pyarrow"])
 def test_groupby_arrow_multi_agg(
-    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method, ds_format
 ):
+    if (
+        ds_format == "pyarrow" and
+        parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
+    ):
+        pytest.skip(
+            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
+            "promoting from int64 to double)"
+        )
+
     # NOTE: Do not change the seed
     random.seed(1738379113)
 
@@ -1111,6 +1121,7 @@ def test_groupby_arrow_multi_agg(
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = (
         ray.data.from_pandas(df)
+        .map_batches(lambda df: df, batch_size=None, batch_format=ds_format)
         .repartition(num_parts)
         .groupby("A")
         .aggregate(
@@ -1123,26 +1134,30 @@ def test_groupby_arrow_multi_agg(
             Quantile("B"),
         )
     )
-    assert agg_ds.count() == 3
 
-    # NOTE: Make sure resulting dataset is sorted by the grouped column
-    agg_df = agg_ds.to_pandas().sort_values(by="A")
+    agg_df = agg_ds.to_pandas().sort_values(by="A").reset_index(drop=True)
 
-    expected_grouped = df.groupby("A")["B"]
+    grouped_df = df.groupby("A", as_index=False).agg({
+        "B": ["count", "sum", "min", "max", "mean", "std", "quantile"],
+    })
 
-    np.testing.assert_array_equal(agg_df["count()"].to_numpy(), [34, 33, 33])
-    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
-        result = agg_df[f"{agg}(B)"].to_numpy()
-        expected = getattr(expected_grouped, agg)().to_numpy()
-        if agg == "std":
-            np.testing.assert_array_almost_equal(result, expected)
-        else:
-            np.testing.assert_array_equal(result, expected)
+    grouped_df.columns = [
+        "A", "count()", "sum(B)", "min(B)", "max(B)", "mean(B)", "std(B)", "quantile(B)",
+    ]
+
+    expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)
+
+    print(f"Expected: {expected_df}")
+    print(f"Result: {agg_df}")
+
+    pd.testing.assert_frame_equal(expected_df, agg_df)
+
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
 
     result_row = (
         ray.data.from_pandas(df)
+        .map_batches(lambda df: df, batch_size=None, batch_format=ds_format)
         .repartition(num_parts)
         .aggregate(
             Sum("A"),
@@ -1153,13 +1168,21 @@ def test_groupby_arrow_multi_agg(
             Quantile("A"),
         )
     )
-    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
-        result = result_row[f"{agg}(A)"]
-        expected = getattr(df["A"], agg)()
-        if agg == "std":
-            assert math.isclose(result, expected)
-        else:
-            assert result == expected
+
+    expected_row = {
+        f"{agg}(A)": getattr(df["A"], agg)()
+        for agg in ["sum", "min", "max", "mean", "std", "quantile"]
+    }
+
+    def _round_to_14_digits(row):
+        return {
+            # NOTE: Pandas and Arrow diverge on 14th digit (due to different formula
+            #       used with diverging FP numerical stability), hence we round it up
+            k: round(v, 14)
+            for k, v in row.items()
+        }
+
+    assert _round_to_14_digits(expected_row) == _round_to_14_digits(result_row)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
