@@ -10,7 +10,6 @@ from ray.train.v2._internal.state.schema import TrainRun, TrainRunAttempt
 logger = logging.getLogger(__name__)
 
 
-@ray.remote(num_cpus=0)
 class TrainStateActor:
     def __init__(self):
         self._runs: Dict[str, TrainRun] = {}
@@ -30,6 +29,24 @@ class TrainStateActor:
         return self._run_attempts
 
 
+class PrintTrainStateActor(TrainStateActor):
+    def create_or_update_train_run(self, run: TrainRun) -> None:
+        super().create_or_update_train_run(run)
+        print(f"[RUN] {run.id=} {run.status.name=}")
+
+    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
+        super().create_or_update_train_run_attempt(run_attempt)
+        print(
+            f"[ATTEMPT] {run_attempt.run_id=} {run_attempt.attempt_id=} {run_attempt.status.name=}"
+        )
+
+    def get_train_runs(self) -> Dict[str, TrainRun]:
+        return super().get_train_runs()
+
+    def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
+        return super().get_train_run_attempts()
+
+
 TRAIN_STATE_ACTOR_NAME = "train_v2_state_actor"
 TRAIN_STATE_ACTOR_NAMESPACE = "_train_state_actor"
 
@@ -40,15 +57,20 @@ def get_or_create_state_actor() -> ActorHandle:
     """Get or create the Ray Train State Actor."""
 
     with _state_actor_lock:
-        state_actor = TrainStateActor.options(
-            name=TRAIN_STATE_ACTOR_NAME,
-            namespace=TRAIN_STATE_ACTOR_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-            resources={"node:__internal_head__": 0.001},
-            # Escape from the parent's placement group
-            scheduling_strategy="DEFAULT",
-        ).remote()
+        state_actor = (
+            ray.remote(PrintTrainStateActor)
+            .options(
+                num_cpus=0,
+                name=TRAIN_STATE_ACTOR_NAME,
+                namespace=TRAIN_STATE_ACTOR_NAMESPACE,
+                get_if_exists=True,
+                lifetime="detached",
+                resources={"node:__internal_head__": 0.001},
+                # Escape from the parent's placement group
+                scheduling_strategy="DEFAULT",
+            )
+            .remote()
+        )
 
     # Ensure the state actor is ready
     ray.get(state_actor.__ray_ready__.remote())

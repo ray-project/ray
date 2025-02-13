@@ -346,7 +346,6 @@ def test_controller_callback():
 
         def after_controller_state_update(
             self,
-            controller: TrainController,
             previous_state: TrainControllerState,
             current_state: TrainControllerState,
         ):

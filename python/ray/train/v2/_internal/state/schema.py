@@ -13,10 +13,10 @@ class RunStatus(str, Enum):
     """Enumeration of the possible statuses for a Train run."""
 
     # ====== Active States ======
-    # The Train run is currently in the process of starting.
-    STARTING = "STARTING"
+    # The Train run is currently in the process of initializing.
+    INITIALIZING = "INITIALIZING"
     # The Train run is waiting to be scheduled.
-    PENDING = "PENDING"
+    SCHEDULING = "SCHEDULING"
     # The Train run is currently in progress.
     RUNNING = "RUNNING"
     # The Train run is recovering from a failure or restart.

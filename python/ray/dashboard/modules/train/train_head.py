@@ -34,7 +34,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
         self._train_stats_actor = None  # Train V1
-        self._train_state_actor = None  # Train V2
+        self._train_v2_state_actor = None  # Train V2
         self._job_info_client = None
         self._gcs_actor_info_stub = None
 
@@ -57,7 +57,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                 "when setting up Ray on your cluster.",
             )
 
-        state_actor = await self.get_train_state_actor()
+        state_actor = await self.get_train_v2_state_actor()
 
         if state_actor is None:
             return Response(
@@ -436,17 +436,17 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             )
         return None
 
-    async def get_train_state_actor(self):
+    async def get_train_v2_state_actor(self):
         """
         Gets the Train state actor and caches it as an instance variable.
         """
         try:
             from ray.train.v2._internal.state.state_actor import get_state_actor
 
-            if self._train_state_actor is None:
-                self._train_state_actor = get_state_actor()
+            if self._train_v2_state_actor is None:
+                self._train_v2_state_actor = get_state_actor()
 
-            return self._train_state_actor
+            return self._train_v2_state_actor
         except ImportError:
             logger.exception(
                 "Train is not installed. Please run `pip install ray[train]` "

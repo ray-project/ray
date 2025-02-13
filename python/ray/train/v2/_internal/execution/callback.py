@@ -7,7 +7,6 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from ray.train import Checkpoint
     from ray.train.v2._internal.execution.controller import (
-        TrainController,
         TrainControllerState,
     )
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
@@ -79,7 +78,6 @@ class ControllerCallback(RayTrainCallback):
 
     def after_controller_state_update(
         self,
-        controller: "TrainController",
         previous_state: "TrainControllerState",
         current_state: "TrainControllerState",
     ):

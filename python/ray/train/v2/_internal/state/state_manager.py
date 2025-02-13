@@ -45,7 +45,7 @@ class TrainStateManager:
             id=id,
             name=name,
             job_id=job_id,
-            status=RunStatus.STARTING,
+            status=RunStatus.INITIALIZING,
             status_detail=None,
             controller_actor_id=controller_actor_id,
             start_time_ms=_current_time_ms(),
@@ -53,12 +53,12 @@ class TrainStateManager:
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
 
-    def update_train_run_pending(
+    def update_train_run_scheduling(
         self,
         run_id: str,
     ) -> None:
         run = self._runs[run_id]
-        run.status = RunStatus.PENDING
+        run.status = RunStatus.SCHEDULING
         run.status_detail = None
         self._create_or_update_train_run(run)
 
@@ -68,6 +68,24 @@ class TrainStateManager:
     ) -> None:
         run = self._runs[run_id]
         run.status = RunStatus.RUNNING
+        run.status_detail = None
+        self._create_or_update_train_run(run)
+
+    def update_train_run_restarting(
+        self,
+        run_id: str,
+    ) -> None:
+        run = self._runs[run_id]
+        run.status = RunStatus.RESTARTING
+        run.status_detail = None
+        self._create_or_update_train_run(run)
+
+    def update_train_run_resizing(
+        self,
+        run_id: str,
+    ) -> None:
+        run = self._runs[run_id]
+        run.status = RunStatus.RESIZING
         run.status_detail = None
         self._create_or_update_train_run(run)
 
@@ -91,6 +109,7 @@ class TrainStateManager:
         run.end_time_ms = _current_time_ms()
         self._create_or_update_train_run(run)
 
+    # TODO: This may be handled in the StateManager.
     def update_train_run_aborted(
         self,
         run_id: str,
@@ -99,15 +118,6 @@ class TrainStateManager:
         run.status = RunStatus.ABORTED
         run.status_detail = None  # TODO: Add status detail.
         run.end_time_ms = _current_time_ms()
-        self._create_or_update_train_run(run)
-
-    def update_train_run_recovering(
-        self,
-        run_id: str,
-    ) -> None:
-        run = self._runs[run_id]
-        run.status = RunStatus.RECOVERING
-        run.status_detail = None  # TODO: Add status detail.
         self._create_or_update_train_run(run)
 
     def create_train_run_attempt(
