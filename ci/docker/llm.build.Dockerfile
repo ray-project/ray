@@ -14,7 +14,7 @@ RUN <<EOF
 
 set -euo pipefail
 
-MINIMAL_INSTALL=1 ./ci/env/install-dependencies.sh
+SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 
 pip install --no-deps -r python/requirements_compiled_rayllm_test_py311.txt
 

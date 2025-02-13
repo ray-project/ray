@@ -1246,6 +1246,7 @@ class Learner(Checkpointable):
 
         state = {
             "should_module_be_updated": self.config.policies_to_train,
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
         }
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
@@ -1256,7 +1257,6 @@ class Learner(Checkpointable):
                 ),
                 **kwargs,
             )
-            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
 
