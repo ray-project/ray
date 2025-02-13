@@ -66,7 +66,10 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
 
     worker_group = DummyWorkerGroup()
     worker_group_context = WorkerGroupContext(
-        train_fn=lambda: None, num_workers=10, resources_per_worker={"CPU": 1}
+        run_attempt_id="test_run_attempt_id",
+        train_fn=lambda: None,
+        num_workers=10,
+        resources_per_worker={"CPU": 1},
     )
     worker_group._start(worker_group_context)
     checkpoint_handler.after_worker_group_start(worker_group)
