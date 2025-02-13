@@ -62,7 +62,7 @@ class HttpRequestUDF(StatefulStageUDF):
 
                 # Normalize the row to a JSON body.
                 json_body = {}
-                for key, value in row.items():
+                for key, value in row["payload"].items():
                     if isinstance(value, np.ndarray):
                         json_body[key] = value.tolist()
                     else:
@@ -87,9 +87,12 @@ class HttpRequestUDF(StatefulStageUDF):
                         )
                     yield {
                         self.IDX_IN_BATCH_COLUMN: idx_in_batch,
-                        **resp_json,
+                        "http_response": resp_json,
                     }
 
+    @property
+    def expected_input_keys(self) -> List[str]:
+        return ["payload"]
 
 class HttpRequestStage(StatefulStage):
     """
