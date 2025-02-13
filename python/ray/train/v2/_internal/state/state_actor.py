@@ -32,12 +32,12 @@ class TrainStateActor:
 class PrintTrainStateActor(TrainStateActor):
     def create_or_update_train_run(self, run: TrainRun) -> None:
         super().create_or_update_train_run(run)
-        print(f"[RUN] {run.id=} {run.status.name=}")
+        print(f"[RUN] {run.id=} {run.status.name=} {run.status_detail=}")
 
     def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
         super().create_or_update_train_run_attempt(run_attempt)
         print(
-            f"[ATTEMPT] {run_attempt.run_id=} {run_attempt.attempt_id=} {run_attempt.status.name=}"
+            f"[ATTEMPT] {run_attempt.run_id=} {run_attempt.attempt_id=} {run_attempt.status.name=} {run_attempt.status_detail=}"
         )
 
     def get_train_runs(self) -> Dict[str, TrainRun]:
