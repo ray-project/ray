@@ -532,7 +532,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = PandasBlockAccessor._empty_table()
         else:
             # Handle blocks of different types.
-            blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
+            blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.PANDAS)
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
