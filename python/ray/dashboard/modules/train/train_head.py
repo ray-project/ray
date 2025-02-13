@@ -190,7 +190,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                     in [process["pid"] for process in gpu["processesPids"]]
                 ]
                 # Need to convert processesPids into a proper list.
-                # It's some weird ImmutableList structureo
+                # It's some weird ImmutableList structure
                 # We also convert the list of processes into a single item since
                 # an actor is only a single process and cannot match multiple
                 # processes.

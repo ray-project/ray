@@ -44,6 +44,7 @@ def _default_inactive_worker_group(**kwargs):
 
 
 default_worker_group_context = WorkerGroupContext(
+    run_attempt_id="test_run_attempt_id",
     train_fn=lambda: None,
     num_workers=4,
     resources_per_worker={"CPU": 1},
@@ -122,6 +123,7 @@ def test_start_timeout(monkeypatch):
 def test_poll_status_running():
     wg = _default_inactive_worker_group()
     worker_group_context = WorkerGroupContext(
+        run_attempt_id="test_run_attempt_id",
         train_fn=lambda: time.sleep(60),
         num_workers=4,
         resources_per_worker={"CPU": 1},
@@ -138,6 +140,7 @@ def test_poll_status_running():
 def test_poll_status_finished():
     wg = _default_inactive_worker_group()
     worker_group_context = WorkerGroupContext(
+        run_attempt_id="test_run_attempt_id",
         train_fn=lambda: "done",
         num_workers=4,
         resources_per_worker={"CPU": 1},
@@ -173,6 +176,7 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
 
     wg = _default_inactive_worker_group()
     worker_group_context = WorkerGroupContext(
+        run_attempt_id="test_run_attempt_id",
         train_fn=train_fn,
         num_workers=4,
         resources_per_worker={"CPU": 1},
