@@ -190,6 +190,9 @@ def test_allreduce_get_partial(ray_start_cluster):
     indirect=True,
 )
 def test_allreduce_wrong_shape(ray_start_cluster):
+    """
+    Test an error is thrown when Tensors participated in all-reduce have inconsistent shapes.
+    """
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
 
