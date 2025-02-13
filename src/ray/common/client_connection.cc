@@ -22,6 +22,7 @@
 #include <boost/bind/bind.hpp>
 #include <chrono>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 
 #include "ray/common/event_stats.h"
@@ -253,6 +254,13 @@ ray::Status ServerConnection::WriteMessage(int64_t type,
   bytes_written_ += length;
 
   auto write_cookie = RayConfig::instance().ray_cookie();
+
+  std::ostringstream message_stream;
+  for (int i = 0; i < length; ++i) {
+    message_stream << static_cast<int>(message[i]) << ",";
+  }
+  RAY_LOG(INFO) << "[myan] WriteMessage cookie=" << write_cookie << ", type=" << type
+                << ", length=" << length << ", message=" << message_stream.str();
   return WriteBuffer({
       boost::asio::buffer(&write_cookie, sizeof(write_cookie)),
       boost::asio::buffer(&type, sizeof(type)),
