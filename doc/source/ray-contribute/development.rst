@@ -195,7 +195,7 @@ After that, you can now move back to the top level Ray directory:
 
 .. code-block:: shell
 
-  cd ../..
+  cd -
 
 
 Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment you could be using as described above.
