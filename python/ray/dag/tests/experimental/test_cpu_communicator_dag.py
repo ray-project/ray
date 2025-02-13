@@ -218,7 +218,7 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     ref = compiled_dag.execute(
         [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
     )
-    # A timeout error is raised because of shape mismatch.
+    # A task error is raised because of shape mismatch.
     with pytest.raises(RayTaskError):
         ray.get(ref)
 
