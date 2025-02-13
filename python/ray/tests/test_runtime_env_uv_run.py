@@ -259,11 +259,12 @@ def test_uv_run_runtime_env_hook(with_uv):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv):
+def test_uv_run_runtime_env_hook_e2e(shutdown_only, with_uv, temp_dir):
 
     uv = with_uv
+    tmp_out_dir = Path(temp_dir)
 
-    script = """
+    script = f"""
 import json
 import ray
 import os
@@ -271,14 +272,16 @@ import os
 @ray.remote
 def f():
     import emoji
-    return {"working_dir_files": os.listdir(os.getcwd())}
-print(json.dumps(ray.get(f.remote())))
+    return {{"working_dir_files": os.listdir(os.getcwd())}}
+
+with open("{tmp_out_dir / "output.txt"}", "w") as out:
+    json.dump(ray.get(f.remote()), out)
 """
 
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
         f.write(script)
         f.close()
-        proc = subprocess.Popen(
+        subprocess.run(
             [
                 uv,
                 "run",
@@ -298,11 +301,12 @@ print(json.dumps(ray.get(f.remote())))
                 "PATH": os.environ["PATH"],
             },
             cwd=os.path.dirname(uv),
+            check=True,
         )
-        out_str = proc.stdout.read().decode("ascii")
-        assert json.loads(out_str) == {
-            "working_dir_files": os.listdir(os.path.dirname(uv))
-        }
+        with open(tmp_out_dir / "output.txt") as f:
+            assert json.load(f) == {
+                "working_dir_files": os.listdir(os.path.dirname(uv))
+            }
 
 
 if __name__ == "__main__":
