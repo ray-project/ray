@@ -68,13 +68,14 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    io_context_->GetIoService(),
                                    client_pool_.get(),
                                    ClusterID::Nil());
-  // Test AddNodeAddedListener.
+  // Test SetNodeAddedListener.
   int node_count = 1000;
-  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
-  node_manager.AddNodeAddedListener(
-      [&added_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
-        added_nodes.emplace_back(std::move(node));
-      });
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> added_nodes;
+  node_manager.SetNodeAddedListener(
+      {[&added_nodes](std::shared_ptr<const rpc::GcsNodeInfo> node) {
+         added_nodes.emplace_back(std::move(node));
+       },
+       io_context_->GetIoService()});
   for (int i = 0; i < node_count; ++i) {
     auto node = Mocker::GenNodeInfo();
     node_manager.AddNode(node);
@@ -82,18 +83,19 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   ASSERT_EQ(node_count, added_nodes.size());
 
   // Test GetAllAliveNodes.
-  auto &alive_nodes = node_manager.GetAllAliveNodes();
+  const auto &alive_nodes = node_manager.GetAllAliveNodes();
   ASSERT_EQ(added_nodes.size(), alive_nodes.size());
   for (const auto &node : added_nodes) {
     ASSERT_EQ(1, alive_nodes.count(NodeID::FromBinary(node->node_id())));
   }
 
-  // Test AddNodeRemovedListener.
-  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> removed_nodes;
-  node_manager.AddNodeRemovedListener(
-      [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
-        removed_nodes.emplace_back(std::move(node));
-      });
+  // Test SetNodeRemovedListener.
+  std::vector<std::shared_ptr<const rpc::GcsNodeInfo>> removed_nodes;
+  node_manager.SetNodeRemovedListener(
+      {[&removed_nodes](std::shared_ptr<const rpc::GcsNodeInfo> node) {
+         removed_nodes.emplace_back(std::move(node));
+       },
+       io_context_->GetIoService()});
   rpc::NodeDeathInfo death_info;
   for (int i = 0; i < node_count; ++i) {
     node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);

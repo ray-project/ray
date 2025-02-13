@@ -59,7 +59,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
 
     health_check = gcs::GcsHealthCheckManager::Create(
         io_service,
-        [this](const NodeID &id) { dead_nodes.insert(id); },
+        {[this](const NodeID &id) { dead_nodes.insert(id); }, io_service},
         initial_delay_ms,
         timeout_ms,
         period_ms,
