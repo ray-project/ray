@@ -28,6 +28,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFn,
     MapTransformFnDataType,
 )
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.logical.interfaces import Plan, Rule
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
@@ -64,7 +65,7 @@ class CheckpointExecutionCallback(ExecutionCallback):
         self._ckpt_filter = BatchBasedCheckpointFilter.create(config)
         self._checkpoint_ref: Optional[ObjectRef[Block]] = None
 
-    def before_execution_starts(self):
+    def before_execution_starts(self, executor: StreamingExecutor):
         # Load checkpoint data before execution starts.
         scheduling_strategy = NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(),
@@ -74,7 +75,7 @@ class CheckpointExecutionCallback(ExecutionCallback):
             scheduling_strategy=scheduling_strategy,
         ).remote(self._ckpt_filter)
 
-    def after_execution_succeeds(self):
+    def after_execution_succeeds(self, executor: StreamingExecutor):
         # Remove the callback from the DataContext.
         remove_execution_callback(self, self._context)
         # Delete checkpoint data.
@@ -84,7 +85,7 @@ class CheckpointExecutionCallback(ExecutionCallback):
         except Exception:
             logger.warning("Failed to delete checkpoint data.", exc_info=True)
 
-    def after_execution_fails(self, error: Exception):
+    def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
         # Remove the callback from the DataContext.
         remove_execution_callback(self, self._context)
 
