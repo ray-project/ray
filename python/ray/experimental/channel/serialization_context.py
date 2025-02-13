@@ -28,7 +28,7 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
-        self.gpu_futures: Dict[int, GPUFuture] = {}
+        self.gpu_futures: Dict[int, "GPUFuture"] = {}
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."

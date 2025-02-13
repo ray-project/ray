@@ -63,7 +63,7 @@ class TorchTensorWorker:
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
-        return (tensor[-1].item(), tensor.shape, tensor.dtype)
+        return (tensor[0].item(), tensor.shape, tensor.dtype)
 
     def recv_and_matmul(self, two_d_tensor):
         """
@@ -88,7 +88,7 @@ class TorchTensorWorker:
     def compute_inc(self, tensor, repeat):
         for _ in range(repeat):
             tensor += 1
-        return tensor[-1].item(), tensor.shape, tensor.dtype
+        return tensor[0].item(), tensor.shape, tensor.dtype
 
     def compute_with_tuple_args(self, args, i: int):
         shape, dtype, value = args[i]
@@ -234,10 +234,7 @@ def test_torch_tensor_nccl(ray_start_regular):
 
 @pytest.mark.parametrize(
     "ray_start_regular, overlap_gpu_communication",
-    [
-        ({"num_cpus": 4}, False),
-        ({"num_cpus": 4}, True),
-    ],
+    [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
     indirect=["ray_start_regular"],
 )
 def test_torch_tensor_nccl_overlap_p2p(ray_start_regular, overlap_gpu_communication):
@@ -285,13 +282,7 @@ def test_torch_tensor_nccl_overlap_p2p(ray_start_regular, overlap_gpu_communicat
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize(
-    "overlap_gpu_communication",
-    [
-        False,
-        True,
-    ],
-)
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
 def test_torch_tensor_nccl_overlap_collective(
     ray_start_regular, overlap_gpu_communication
 ):
@@ -348,13 +339,7 @@ def test_torch_tensor_nccl_overlap_collective(
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize(
-    "overlap_gpu_communication",
-    [
-        False,
-        True,
-    ],
-)
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
 def test_torch_tensor_nccl_overlap_p2p_and_collective(
     ray_start_regular, overlap_gpu_communication
 ):
