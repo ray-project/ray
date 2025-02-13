@@ -235,7 +235,7 @@ def test_uv_run_runtime_env_hook(with_uv):
             runtime_env={},
             expected_output=None,
             subprocess_kwargs={"cwd": tmp_dir / "cwd"},
-            expected_error="Please make sure the pyproject.toml file is in the working directory.",
+            expected_error="Make sure the pyproject.toml file is in the working directory.",
         )
 
     # Check things fail if there is a requirements.txt upstream to the current working directory
