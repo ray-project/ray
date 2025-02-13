@@ -1186,17 +1186,34 @@ def test_groupby_arrow_multi_agg(
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_multi_agg_alias(
-    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method
+@pytest.mark.parametrize("ds_format", ["pandas", "pyarrow"])
+#@pytest.mark.parametrize("ignore_nulls", [True, False])
+def test_groupby_arrow_multi_agg_with_nans(
+    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method, ds_format,
 ):
+    if (
+        ds_format == "pyarrow" and
+        parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
+    ):
+        pytest.skip(
+            "Pyarrow < 14.0 doesn't support type promotions (hence fails "
+            "promoting from int64 to double)"
+        )
+
     # NOTE: Do not change the seed
-    random.seed(1738379859)
+    random.seed(1738379113)
 
     xs = list(range(100))
     random.shuffle(xs)
-    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+
+    df = pd.DataFrame({
+        "A": [x % 3 for x in xs] + [(np.nan if x % 2 == 0 else None) for x in xs],
+        "B": xs + [(x if x % 2 == 1 else np.nan) for x in xs]
+    })
+
     agg_ds = (
         ray.data.from_pandas(df)
+        .map_batches(lambda df: df, batch_size=None, batch_format=ds_format)
         .repartition(num_parts)
         .groupby("A")
         .aggregate(
@@ -1209,44 +1226,54 @@ def test_groupby_arrow_multi_agg_alias(
         )
     )
 
-    # NOTE: Make sure resulting dataset is sorted by the grouped column
-    agg_df = agg_ds.to_pandas().sort_values(by=["A"])
+    agg_df = agg_ds.to_pandas().sort_values(by="A").reset_index(drop=True)
 
-    expected_grouped = df.groupby("A")["B"]
+    grouped_df = df.groupby("A", as_index=False, dropna=False).agg({
+        "B": ["sum", "min", "max", "mean", "std", "quantile"],
+    })
 
-    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
-        result = agg_df[f"{agg}_b"].to_numpy()
-        print(agg)
-        print(result)
-        expected = getattr(expected_grouped, agg)().to_numpy()
-        print(expected)
-        if agg == "std":
-            np.testing.assert_array_almost_equal(result, expected)
-        else:
-            np.testing.assert_array_equal(result, expected)
+    grouped_df.columns = [
+        "A", "sum_b", "min_b", "max_b", "mean_b", "std_b", "quantile_b",
+    ]
+
+    expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)
+
+    print(f"Expected: {expected_df}")
+    print(f"Result: {agg_df}")
+
+    pd.testing.assert_frame_equal(expected_df, agg_df)
+
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
+
     result_row = (
         ray.data.from_pandas(df)
+        .map_batches(lambda df: df, batch_size=None, batch_format=ds_format)
         .repartition(num_parts)
         .aggregate(
-            Sum("A", alias_name="sum_b"),
-            Min("A", alias_name="min_b"),
-            Max("A", alias_name="max_b"),
-            Mean("A", alias_name="mean_b"),
-            Std("A", alias_name="std_b"),
-            Quantile("A", alias_name="quantile_b"),
+            Sum("A", alias_name="sum_a"),
+            Min("A", alias_name="min_a"),
+            Max("A", alias_name="max_a"),
+            Mean("A", alias_name="mean_a"),
+            Std("A", alias_name="std_a"),
+            Quantile("A", alias_name="quantile_a"),
         )
     )
-    for agg in ["sum", "min", "max", "mean", "quantile", "std"]:
-        result = result_row[f"{agg}_b"]
-        print(result)
-        expected = getattr(df["A"], agg)()
-        print(expected)
-        if agg == "std":
-            assert math.isclose(result, expected)
-        else:
-            assert result == expected
+
+    expected_row = {
+        f"{agg}_a": getattr(df["A"], agg)()
+        for agg in ["sum", "min", "max", "mean", "std", "quantile"]
+    }
+
+    def _round_to_14_digits(row):
+        return {
+            # NOTE: Pandas and Arrow diverge on 14th digit (due to different formula
+            #       used with diverging FP numerical stability), hence we round it up
+            k: round(v, 14)
+            for k, v in row.items()
+        }
+
+    assert _round_to_14_digits(expected_row) == _round_to_14_digits(result_row)
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
