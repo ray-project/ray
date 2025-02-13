@@ -28,7 +28,7 @@ from ray.data.block import (
     BlockType,
     BlockExecStats,
     BlockMetadata,
-    KeyType,
+    KeyType, _get_group_boundaries_sorted,
 )
 
 if TYPE_CHECKING:
@@ -357,7 +357,7 @@ class TableBlockAccessor(BlockAccessor):
         blocks: List[Block],
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
-        finalize: bool,
+        finalize: bool = True,
     ) -> Tuple[Block, BlockMetadata]:
         """Combine previously aggregated blocks.
 
