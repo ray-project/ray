@@ -524,8 +524,8 @@ def _get_group_boundaries_sorted(block: Block, keys: List[str]) -> np.ndarray:
     Args:
         block: sorted block for which grouping of rows will be determined
                 based on provided key
-        key: column or list of columns determining the key for every
-                based on which the block will be grouped
+        keys: list of columns determining the key for every row based on
+                which the block will be grouped
 
     Returns:
         A list of starting indices of each group and an end index of the last
