@@ -82,13 +82,13 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 
 :::{tab-item} ARM64 (Apple silicon)
 ```sh
-curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.sample.yaml | sed 's/2.41.0/2.41.0-aarch64/g' | kubectl apply -f -
 ```
 :::
 
 :::{tab-item} x86-64 (Intel/Linux)
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 :::
 
@@ -172,7 +172,7 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 ## Step 6: Delete the RayJob
 
 ```sh
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
@@ -182,7 +182,7 @@ kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/r
 :::{tab-item} ARM64 (Apple silicon)
 
 ```sh
-curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml | sed 's/2.9.0/2.9.0-aarch64/g' | kubectl apply -f -
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.shutdown.yaml | sed 's/2.41.0/2.41.0-aarch64/g' | kubectl apply -f -
 ```
 
 :::
@@ -190,7 +190,7 @@ curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operato
 :::{tab-item} x86-64 (Intel/Linux)
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
 
 :::
@@ -198,9 +198,9 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ra
 ::::
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted
-because it contains the ray job logs and does not use any cluster resources once completed. In addition, the submitter job will always
-be cleaned up when the RayJob is eventually deleted due to its owner reference back to the RayJob.
+Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job isn't deleted
+because it contains the ray job logs and doesn't use any cluster resources once completed. In addition, the RayJob cleans up the submitter job
+when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
 
@@ -222,7 +222,7 @@ kubectl get raycluster
 
 ```sh
 # Step 10.1: Delete the RayJob
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-job.shutdown.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 10.2: Delete the KubeRay operator
 helm uninstall kuberay-operator
