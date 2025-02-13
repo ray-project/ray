@@ -79,7 +79,8 @@ install_miniconda() {
     ${restore_shell_state}  # Restore set -x
   fi
 
-  conda config --set anaconda_anon_usage off
+  conda config --add channels conda-forge
+  conda config --set channel_priority strict
 
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
