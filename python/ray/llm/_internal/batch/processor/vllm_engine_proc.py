@@ -1,6 +1,8 @@
 """The vLLM engine processor."""
 from typing import Any, Dict, Optional
 
+from pydantic import ConfigDict, Field
+
 from ray.data.block import UserDefinedFunction
 
 import ray
@@ -22,12 +24,16 @@ from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 class vLLMEngineProcessorConfig(ProcessorConfig):
     """The configuration for the vLLM engine processor."""
 
+    model_config = ConfigDict(use_enum_values=True)
+
     # The model name.
     model: str
     # The engine kwargs.
     engine_kwargs: Dict[str, Any]
     # The task type.
-    task_type: vLLMTaskType = vLLMTaskType(use_enum_values=True)
+    task_type: Optional[vLLMTaskType] = Field(
+        default=vLLMTaskType.GENERATE, validate_default=True
+    )
     # The runtime environment.
     runtime_env: Optional[Dict[str, Any]] = None
     # The maximum number of pending requests.
