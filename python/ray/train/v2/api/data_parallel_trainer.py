@@ -110,7 +110,6 @@ class DataParallelTrainer:
                 StateManagerCallback(self.train_run_context, self.datasets)
             )
 
-        # TODO: Add support for user-defined callbacks
         # Add internal callback that invokes all user-defined callbacks.
         user_callbacks = [
             cb for cb in self.run_config.callbacks if isinstance(cb, UserCallback)
