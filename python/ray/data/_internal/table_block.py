@@ -377,6 +377,9 @@ class TableBlockAccessor(BlockAccessor):
             If key is None then the k column is omitted.
         """
 
+        # Handle blocks of different types.
+        blocks = TableBlockAccessor.normalize_block_types(blocks)
+
         stats = BlockExecStats.builder()
         keys = sort_key.get_columns()
 
@@ -393,9 +396,6 @@ class TableBlockAccessor(BlockAccessor):
             return tuple(
                 [NULL_SENTINEL if v is None or is_nan(v) else v for v in values]
             )
-
-        # Handle blocks of different types.
-        blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
 
         iter = heapq.merge(
             *[
