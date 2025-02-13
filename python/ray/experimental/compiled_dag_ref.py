@@ -97,11 +97,18 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If not yet, release native buffers to avoid execution result leak. Note that
-        # we skip python-based deserialization as the values stored in the buffers are
-        # not used.
-        if not self._ray_get_called:
-            self._dag.release_output_channel_buffers(self._execution_index)
+        if self._ray_get_called:
+            return
+
+        if self._execution_index > self._dag._max_finished_execution_index:
+            # Execute and buffer results until self._execution_index - 1
+            self._dag._execute_until(self._execution_index, self._channel_index - 1)
+            # Release native buffer for self._execution_index, this skips
+            # python-based deserialization as the value is not used.
+            self._dag._release_native_buffer(self._execution_index)
+        else:
+            # If the execution index is already finished, just get the results
+            self._dag._get_execution_results(self._execution_index, self._channel_index)
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
@@ -112,8 +119,11 @@ class CompiledDAGRef:
 
         self._ray_get_called = True
         try:
-            return_vals = self._dag._execute_until(
+            self._dag._execute_until(
                 self._execution_index, self._channel_index, timeout
+            )
+            return_vals = self._dag._get_execution_results(
+                self._execution_index, self._channel_index
             )
         except RayChannelTimeoutError:
             raise

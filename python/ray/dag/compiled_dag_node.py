@@ -2223,20 +2223,24 @@ class CompiledDAG:
                 del self._result_buffer[execution_index]
         return result
 
-    def release_output_channel_buffers(self, execution_index: int):
+    def _release_native_buffer(self, execution_index: int):
+        """
+        Release native buffer for the given execution index.
+
+        Args:
+            execution_index: The execution index to release the buffer for.
+        """
+        assert self._max_finished_execution_index + 1 == execution_index, (
+            "The max finished execution index must be one less than the "
+            "execution index to release the buffer for."
+        )
         from ray.dag import DAGContext
 
         ctx = DAGContext.get_current()
         timeout = ctx.get_timeout
 
-        while self._max_finished_execution_index < execution_index:
-            self._max_finished_execution_index += 1
-            start_time = time.monotonic()
-            self._dag_output_fetcher.release_channel_buffers(timeout)
-
-            if timeout != -1:
-                timeout -= time.monotonic() - start_time
-                timeout = max(timeout, 0)
+        self._dag_output_fetcher.release_channel_buffers(timeout)
+        self._max_finished_execution_index += 1
 
     def _execute_until(
         self,
@@ -2296,8 +2300,6 @@ class CompiledDAG:
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-
-        return self._get_execution_results(execution_index, channel_index)
 
     def execute(
         self,
