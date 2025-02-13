@@ -6,7 +6,6 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.context import DEFAULT_BATCH_SIZE
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
@@ -148,7 +147,7 @@ class MapBatches(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
+        batch_size: Optional[int] = None,
         batch_format: str = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
@@ -271,7 +270,7 @@ class Project(AbstractMap):
             ray_remote_args=ray_remote_args,
             compute=compute,
         )
-        self._batch_size = DEFAULT_BATCH_SIZE
+        self._batch_size = None
         self._cols = cols or []
         self._cols_rename = cols_rename or {}
         self._batch_format = "pyarrow"
