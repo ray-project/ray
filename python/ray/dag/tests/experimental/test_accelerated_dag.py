@@ -265,9 +265,16 @@ class TestDAGRefDestruction:
             dag = MultiOutputNode([a.inc.bind(inp), a.inc.bind(inp)])
         compiled_dag = dag.experimental_compile()
         ref_list = compiled_dag.execute(1)
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
         ref1, ref2 = compiled_dag.execute(2)
         del ref1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {1: {0}}
+        assert compiled_dag._got_ref_idxs == {}
         ray.get(ref2)
+        assert compiled_dag._result_buffer == {0: {0: 1, 1: 2}}
         ray.get(ref_list)
         # Test that that ref1 doesn't stay in result_buffer
         assert len(compiled_dag._result_buffer) == 0

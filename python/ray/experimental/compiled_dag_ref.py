@@ -103,6 +103,7 @@ class CompiledDAGRef:
         # can based on the dag's current max_finished_execution_index.
         # if not self._ray_get_called:
         self._dag._destructed_ref_idxs[self._execution_index].add(self._channel_index)
+        self._dag._try_release_once(self._execution_index)
         self._dag._try_release_buffers()
 
     def get(self, timeout: Optional[float] = None):
@@ -120,6 +121,7 @@ class CompiledDAGRef:
             return_vals = self._dag._get_execution_results(
                 self._execution_index, self._channel_index
             )
+            self._dag._try_release_once(self._execution_index)
             self._dag._try_release_buffers()
         except RayChannelTimeoutError:
             raise
@@ -230,4 +232,5 @@ class CompiledDAGFuture:
             )
         )
         self._dag._destructed_ref_idxs[self._execution_index].add(self._channel_index)
+        self._dag._try_release_once(self._execution_index)
         self._dag._try_release_buffers()

@@ -2232,9 +2232,6 @@ class CompiledDAG:
         assert execution_index in self._result_buffer
 
         if channel_index is None:
-            self._got_ref_idxs[execution_index].update(
-                self._result_buffer[execution_index].keys()
-            )
             # Convert results stored in self._result_buffer back to original
             # list representation
             result = [
@@ -2244,9 +2241,10 @@ class CompiledDAG:
                     key=lambda kv: kv[0],
                 )
             ]
+            assert execution_index not in self._result_buffer
         else:
-            self._got_ref_idxs[execution_index].add(channel_index)
             result = [self._result_buffer[execution_index].pop(channel_index)]
+        self._got_ref_idxs[execution_index].add(channel_index)
         return result
 
     def _next_execution_can_be_released(self) -> bool:
@@ -2262,11 +2260,37 @@ class CompiledDAG:
             == len(self.dag_output_channels)
         )
 
-    def _try_release_once(self, timeout: Optional[float] = None) -> bool:
-        idx_to_release = self._max_finished_execution_index + 1
-        if self._destructed_ref_idxs[idx_to_release] == set(
+    def _try_release_result_buffer(self, execution_index: int):
+        if self._got_ref_idxs.get(execution_index, set()).union(
+            self._destructed_ref_idxs.get(execution_index, set())
+        ) == set(range(len(self.dag_output_channels))) or self._got_ref_idxs.get(
+            execution_index, set()
+        ) == {
+            None
+        }:
+            logger.info(
+                f"releasing result buffers for execution index {execution_index}"
+            )
+            self._result_buffer.pop(execution_index)
+            self._destructed_ref_idxs.pop(execution_index, set())
+            self._got_ref_idxs.pop(execution_index, set())
+            self._max_finished_execution_index += 1
+            return True
+        return False
+
+    def _try_release_native_buffer(
+        self, idx_to_release: int, timeout: Optional[float] = None
+    ) -> bool:
+        # logger.info(f"checking execution index {idx_to_release}", stack_info=True)
+        # logger.info(f"self._destructed_ref_idxs {self._destructed_ref_idxs}")
+        # logger.info(f"self._got_ref_idxs {self._got_ref_idxs}")
+        # logger.info(f"self._result_buffer {self._result_buffer}")
+        if self._destructed_ref_idxs.get(idx_to_release, set()) == set(
             range(len(self.dag_output_channels))
-        ):
+        ) or self._destructed_ref_idxs.get(idx_to_release, set()) == {None}:
+            logger.info(
+                f"releasing native buffers for execution index {idx_to_release}"
+            )
             try:
                 self._dag_output_fetcher.release_channel_buffers(timeout)
             except RayChannelTimeoutError as e:
@@ -2277,15 +2301,18 @@ class CompiledDAG:
                     "seconds. Otherwise, this may indicate that the execution "
                     "is hanging."
                 ) from e
-            self._max_finished_execution_index += 1
+            self._destructed_ref_idxs.pop(idx_to_release)
+            assert idx_to_release not in self._result_buffer
             return True
-        elif self._got_ref_idxs[idx_to_release] + self._destructed_ref_idxs[
-            idx_to_release
-        ] == set(range(len(self.dag_output_channels))):
-            self._result_buffer.pop(idx_to_release)
-            self._max_finished_execution_index += 1
-            return True
-        return False
+        else:
+            return False
+
+    def _try_release_once(
+        self, idx_to_release: int, timeout: Optional[float] = None
+    ) -> bool:
+        return self._try_release_native_buffer(
+            idx_to_release, timeout
+        ) or self._try_release_result_buffer(idx_to_release)
 
     def _try_release_buffers(self):
         """
@@ -2297,8 +2324,11 @@ class CompiledDAG:
         timeout = self._get_timeout
         while True:
             start_time = time.monotonic()
-            if not self._try_release_once(timeout):
+            if not self._try_release_once(
+                self._max_finished_execution_index + 1, timeout
+            ):
                 break
+            self._max_finished_execution_index += 1
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2351,13 +2381,15 @@ class CompiledDAG:
             # If a CompiledDagRef for a specific execution index has been destructed,
             # release the channel buffers for that execution index instead of caching
             try:
-                if not self._try_release_once(timeout):
+                if not self._try_release_native_buffer(
+                    self._max_finished_execution_index + 1, timeout
+                ):
                     result = self._dag_output_fetcher.read(timeout)
                     self._cache_execution_results(
                         self._max_finished_execution_index + 1,
                         result,
                     )
-                    self._max_finished_execution_index += 1
+                self._max_finished_execution_index += 1
             except RayChannelTimeoutError as e:
                 raise RayChannelTimeoutError(
                     "If the execution is expected to take a long time, increase "
