@@ -16,5 +16,6 @@ py_test(
     deps = [
         ci_require("bazel-runfiles"),
         ci_require("pytest"),
+        ci_require("pyyaml"),
     ],
 )
