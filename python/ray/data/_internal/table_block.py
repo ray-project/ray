@@ -28,7 +28,7 @@ from ray.data.block import (
     BlockType,
     BlockExecStats,
     BlockMetadata,
-    KeyType, _get_group_boundaries_sorted,
+    KeyType,
 )
 
 if TYPE_CHECKING:
@@ -274,9 +274,7 @@ class TableBlockAccessor(BlockAccessor):
         k = min(n_samples, self.num_rows())
         return self._sample(k, sort_key)
 
-    def _aggregate(
-        self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
-    ) -> Block:
+    def _aggregate(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Applies provided aggregations to groups of rows with the same key.
 
         This assumes the block is already sorted by key in ascending order.
