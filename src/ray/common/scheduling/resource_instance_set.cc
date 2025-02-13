@@ -374,6 +374,7 @@ void NodeResourceInstanceSet::AllocateWithReference(
     if (available[i] < ref_allocation[i]) {
       // Only CPU resource can go negative due to the behavior
       // that ray.get() will temporarily release the CPU resource.
+      // See https://github.com/ray-project/ray/pull/50517.
       RAY_CHECK(IsCPUOrPlacementGroupCPUResource(resource_id));
     }
     available[i] -= ref_allocation[i];
