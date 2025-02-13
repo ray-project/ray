@@ -2060,17 +2060,17 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> ready;
-  ready.reserve(num_objects);
   int64_t start_time = current_time_ms();
-  RAY_RETURN_NOT_OK(memory_store_->Wait(
-      memory_object_ids,
-      std::min(static_cast<int>(memory_object_ids.size()), num_objects),
-      timeout_ms,
-      worker_context_,
-      &ready,
-      &plasma_object_ids));
+  std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>
+      ready_and_plasma_object_ids;
+  RAY_ASSIGN_OR_RETURN(
+      ready_and_plasma_object_ids,
+      memory_store_->Wait(
+          memory_object_ids,
+          std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+          timeout_ms,
+          worker_context_));
+  auto &[ready, plasma_object_ids] = ready_and_plasma_object_ids;
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =
@@ -2091,7 +2091,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   } else {
     for (const auto &object_id : plasma_object_ids) {
-      if (static_cast<int>(ready.size()) == num_objects) {
+      if (ready.size() == static_cast<size_t>(num_objects)) {
         break;
       }
       ready.insert(object_id);

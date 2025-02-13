@@ -22,6 +22,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
 
@@ -91,13 +92,12 @@ class CoreWorkerMemoryStore {
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
-  /// Convenience wrapper around Get() that stores ready objects in a given result set.
-  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
-              int num_objects,
-              int64_t timeout_ms,
-              const WorkerContext &ctx,
-              absl::flat_hash_set<ObjectID> *ready,
-              absl::flat_hash_set<ObjectID> *plasma_object_ids);
+  /// Waits for a number of objects to be ready from the list of object_ids given.
+  StatusOr<std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>> Wait(
+      const absl::flat_hash_set<ObjectID> &object_ids,
+      int num_objects,
+      int64_t timeout_ms,
+      const WorkerContext &ctx);
 
   /// Get an object if it exists.
   ///

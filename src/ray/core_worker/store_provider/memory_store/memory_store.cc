@@ -445,12 +445,11 @@ Status CoreWorkerMemoryStore::Get(
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_ids,
-                                   int num_objects,
-                                   int64_t timeout_ms,
-                                   const WorkerContext &ctx,
-                                   absl::flat_hash_set<ObjectID> *ready,
-                                   absl::flat_hash_set<ObjectID> *plasma_object_ids) {
+StatusOr<std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>>
+CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+                            int num_objects,
+                            int64_t timeout_ms,
+                            const WorkerContext &ctx) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
@@ -466,17 +465,19 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);
   }
+  absl::flat_hash_set<ObjectID> ready;
+  ready.reserve(num_objects);
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
       if (result_objects[i]->IsInPlasmaError()) {
-        plasma_object_ids->insert(id_vector[i]);
-      } else if (static_cast<int>(ready->size()) < num_objects) {
-        ready->insert(id_vector[i]);
+        plasma_object_ids.insert(id_vector[i]);
+      } else if (ready.size() < static_cast<size_t>(num_objects)) {
+        ready.insert(id_vector[i]);
       }
     }
   }
-
-  return Status::OK();
+  return std::make_pair(std::move(ready), std::move(plasma_object_ids));
 }
 
 void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids,
