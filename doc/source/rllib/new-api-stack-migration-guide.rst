@@ -1,8 +1,5 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
-
 .. _rllib-new-api-stack-migration-guide:
 
 .. testcode::
@@ -14,6 +11,8 @@
 
 New API stack migration guide
 =============================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 This page explains, step by step, how to convert and translate your existing old API stack
 RLlib classes and code to RLlib's new API stack.
@@ -241,7 +240,7 @@ It allows you to specify:
 #. the number of `Learner` workers through `.learners(num_learners=...)`.
 #. the resources per learner; use `.learners(num_gpus_per_learner=1)` for GPU training
    and `.learners(num_gpus_per_learner=0)` for CPU training.
-#. the custom Learner class you want to use. See this `example <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__ for more details.
+#. the custom Learner class you want to use. See this `example <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__ for more details.
 #. a config dict you would like to set for your custom learner:
    `.learners(learner_config_dict={...})`. Note that every `Learner` has access to the
    entire `AlgorithmConfig` object through `self.config`, but setting the
@@ -531,7 +530,7 @@ customizations inside the old stack's Policy class, you need to move the logic i
 See :ref:`Learner <learner-guide>` for details on how to write a custom Learner .
 
 The following example scripts show how to write:
-- `a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__
+- `a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__
 - `a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
 
 Note that the new API stack doesn't support the Policy class. In the old stack, this class holds a

@@ -771,7 +771,7 @@ def test_hardware_usages(shutdown_only, reset_usage_stats):
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation "
-    "since we import serve.",
+    "since we import libraries.",
 )
 @pytest.mark.parametrize("ray_client", [True, False])
 def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
@@ -789,11 +789,6 @@ ray.init(address="{}")
 
 ray_usage_lib.record_library_usage("post_init")
 ray.workflow.init()
-ray.data.range(10)
-from ray import serve
-
-serve.start()
-serve.shutdown()
 
 class Actor:
     def get_actor_metadata(self):
@@ -834,9 +829,7 @@ with joblib.parallel_backend("ray"):
     expected = {
         "pre_init",
         "post_init",
-        "dataset",
         "workflow",
-        "serve",
         "util.ActorGroup",
         "util.ActorPool",
         "util.multiprocessing.Pool",

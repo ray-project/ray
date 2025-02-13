@@ -1,12 +1,11 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/new_api_stack.rst
-
 .. _rllib-hierarchical-environments-doc:
-
 
 Hierarchical Environments
 =========================
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 You can implement hierarchical training as a special case of multi-agent RL. For example, consider a two-level hierarchy of policies,
 where a top-level policy issues high level tasks that are executed at a finer timescale by one or more low-level policies.

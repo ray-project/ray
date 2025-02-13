@@ -85,6 +85,7 @@ class EnvRunnerGroup:
         logdir: Optional[str] = None,
         _setup: bool = True,
         tune_trial_id: Optional[str] = None,
+        pg_offset: int = 0,
         # Deprecated args.
         num_env_runners: Optional[int] = None,
         num_workers=DEPRECATED_VALUE,
@@ -140,6 +141,7 @@ class EnvRunnerGroup:
             ),
         }
         self._tune_trial_id = tune_trial_id
+        self._pg_offset = pg_offset
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
         self.env_runner_cls = config.env_runner_cls
@@ -174,7 +176,6 @@ class EnvRunnerGroup:
                         self.env_runner_cls = SingleAgentEnvRunner
             else:
                 self.env_runner_cls = RolloutWorker
-        self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
         self._ignore_ray_errors_on_env_runners = (
@@ -289,7 +290,6 @@ class EnvRunnerGroup:
         # Create a local worker, if needed.
         if local_env_runner:
             self._local_env_runner = self._make_worker(
-                cls=self.env_runner_cls,
                 env_creator=self._env_creator,
                 validate_env=validate_env,
                 worker_index=0,
@@ -329,57 +329,46 @@ class EnvRunnerGroup:
         """Returns the local EnvRunner."""
         return self._local_env_runner
 
-    @DeveloperAPI
     def healthy_env_runner_ids(self) -> List[int]:
         """Returns the list of remote worker IDs."""
         return self._worker_manager.healthy_actor_ids()
 
-    @DeveloperAPI
     def healthy_worker_ids(self) -> List[int]:
         """Returns the list of remote worker IDs."""
         return self.healthy_env_runner_ids()
 
-    @DeveloperAPI
     def num_remote_env_runners(self) -> int:
         """Returns the number of remote EnvRunners."""
         return self._worker_manager.num_actors()
 
-    @DeveloperAPI
     def num_remote_workers(self) -> int:
         """Returns the number of remote EnvRunners."""
         return self.num_remote_env_runners()
 
-    @DeveloperAPI
     def num_healthy_remote_env_runners(self) -> int:
         """Returns the number of healthy remote workers."""
         return self._worker_manager.num_healthy_actors()
 
-    @DeveloperAPI
     def num_healthy_remote_workers(self) -> int:
         """Returns the number of healthy remote workers."""
         return self.num_healthy_remote_env_runners()
 
-    @DeveloperAPI
     def num_healthy_env_runners(self) -> int:
         """Returns the number of all healthy workers, including the local worker."""
         return int(bool(self._local_env_runner)) + self.num_healthy_remote_workers()
 
-    @DeveloperAPI
     def num_healthy_workers(self) -> int:
         """Returns the number of all healthy workers, including the local worker."""
         return self.num_healthy_env_runners()
 
-    @DeveloperAPI
     def num_in_flight_async_reqs(self) -> int:
         """Returns the number of in-flight async requests."""
         return self._worker_manager.num_outstanding_async_reqs()
 
-    @DeveloperAPI
     def num_remote_worker_restarts(self) -> int:
         """Total number of times managed remote workers have been restarted."""
         return self._worker_manager.total_num_restarts()
 
-    @DeveloperAPI
     def sync_env_runner_states(
         self,
         *,
@@ -425,7 +414,7 @@ class EnvRunnerGroup:
                         if env_steps_sampled is not None
                         else {}
                     ),
-                    **(rl_module_state if rl_module_state is not None else {}),
+                    **(rl_module_state or {}),
                 }
             )
             return
@@ -535,7 +524,6 @@ class EnvRunnerGroup:
                 timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
 
-    @DeveloperAPI
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
@@ -794,7 +782,6 @@ class EnvRunnerGroup:
         # Add the policy to all remote workers.
         self.foreach_env_runner(_create_new_policy_fn, local_env_runner=False)
 
-    @DeveloperAPI
     def add_workers(self, num_workers: int, validate: bool = False) -> None:
         """Creates and adds a number of remote workers to this worker set.
 
@@ -814,7 +801,6 @@ class EnvRunnerGroup:
         old_num_workers = self._worker_manager.num_actors()
         new_workers = [
             self._make_worker(
-                cls=self._cls,
                 env_creator=self._env_creator,
                 validate_env=None,
                 worker_index=old_num_workers + i + 1,
@@ -840,7 +826,6 @@ class EnvRunnerGroup:
                     else:
                         raise e
 
-    @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Hard overrides the remote EnvRunners in this set with the provided ones.
 
@@ -851,7 +836,6 @@ class EnvRunnerGroup:
         self._worker_manager.clear()
         self._worker_manager.add_actors(new_remote_workers)
 
-    @DeveloperAPI
     def stop(self) -> None:
         """Calls `stop` on all EnvRunners (including the local one)."""
         try:
@@ -866,7 +850,6 @@ class EnvRunnerGroup:
         finally:
             self._worker_manager.clear()
 
-    @DeveloperAPI
     def is_policy_to_train(
         self, policy_id: PolicyID, batch: Optional[SampleBatchType] = None
     ) -> bool:
@@ -878,7 +861,6 @@ class EnvRunnerGroup:
         else:
             raise NotImplementedError
 
-    @DeveloperAPI
     def foreach_env_runner(
         self,
         func: Callable[[EnvRunner], T],
@@ -947,7 +929,6 @@ class EnvRunnerGroup:
 
         return local_result + remote_results
 
-    @DeveloperAPI
     def foreach_env_runner_with_id(
         self,
         func: Callable[[int, EnvRunner], T],
@@ -1014,7 +995,6 @@ class EnvRunnerGroup:
 
         return local_result + remote_results
 
-    @DeveloperAPI
     def foreach_env_runner_async(
         self,
         func: Callable[[EnvRunner], T],
@@ -1046,13 +1026,12 @@ class EnvRunnerGroup:
             remote_actor_ids=remote_worker_ids,
         )
 
-    @DeveloperAPI
     def fetch_ready_async_reqs(
         self,
         *,
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> List[Tuple[int, T]]:
         """Get esults from outstanding asynchronous requests that are ready.
 
@@ -1086,7 +1065,6 @@ class EnvRunnerGroup:
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
 
-    @DeveloperAPI
     def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Calls `func` with each worker's (policy, PolicyID) tuple.
 
@@ -1112,7 +1090,6 @@ class EnvRunnerGroup:
             results.extend(r)
         return results
 
-    @DeveloperAPI
     def foreach_policy_to_train(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
@@ -1132,7 +1109,6 @@ class EnvRunnerGroup:
             results.extend(r)
         return results
 
-    @DeveloperAPI
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
         """Calls `func` with all workers' sub-environments as args.
 
@@ -1156,7 +1132,6 @@ class EnvRunnerGroup:
             )
         )
 
-    @DeveloperAPI
     def foreach_env_with_context(
         self, func: Callable[[BaseEnv, EnvContext], List[T]]
     ) -> List[List[T]]:
@@ -1183,8 +1158,7 @@ class EnvRunnerGroup:
             )
         )
 
-    @DeveloperAPI
-    def probe_unhealthy_workers(self) -> List[int]:
+    def probe_unhealthy_env_runners(self) -> List[int]:
         """Checks for unhealthy workers and tries restoring their states.
 
         Returns:
@@ -1198,7 +1172,6 @@ class EnvRunnerGroup:
     def _make_worker(
         self,
         *,
-        cls: Callable,
         env_creator: EnvCreator,
         validate_env: Optional[Callable[[EnvType], None]],
         worker_index: int,
@@ -1209,7 +1182,7 @@ class EnvRunnerGroup:
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
         ] = None,
     ) -> Union[EnvRunner, ActorHandle]:
-        worker = cls(
+        kwargs = dict(
             env_creator=env_creator,
             validate_env=validate_env,
             default_policy_class=self._policy_class,
@@ -1223,7 +1196,19 @@ class EnvRunnerGroup:
             tune_trial_id=self._tune_trial_id,
         )
 
-        return worker
+        if worker_index == 0:
+            return self.env_runner_cls(**kwargs)
+
+        pg_bundle_idx = (
+            -1
+            if ray.util.get_current_placement_group() is None
+            else self._pg_offset + worker_index
+        )
+        return (
+            ray.remote(**self._remote_args)(self.env_runner_cls)
+            .options(placement_group_bundle_index=pg_bundle_idx)
+            .remote(**kwargs)
+        )
 
     @classmethod
     def _valid_module(cls, class_path):
@@ -1244,6 +1229,10 @@ class EnvRunnerGroup:
                     f"input {class_path}"
                 )
         return False
+
+    @Deprecated(new="EnvRunnerGroup.probe_unhealthy_env_runners", error=False)
+    def probe_unhealthy_workers(self, *args, **kwargs):
+        return self.probe_unhealthy_env_runners(*args, **kwargs)
 
     @Deprecated(new="EnvRunnerGroup.foreach_env_runner", error=False)
     def foreach_worker(self, *args, **kwargs):
