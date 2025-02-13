@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime
 from enum import Enum
+from io import StringIO
 from itertools import chain
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -17,9 +18,9 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 )
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
-    get_demand_report,
-    get_per_node_breakdown,
-    get_usage_report,
+    format_pg,
+    format_resource_demand_summary,
+    parse_usage,
 )
 from ray.autoscaler.v2.schema import (
     NODE_DEATH_CAUSE_RAYLET_DIED,
@@ -322,16 +323,113 @@ class ClusterStatusFormatter:
 
     @classmethod
     def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
-        lm_summary = cls._parse_lm_summary(data)
-        autoscaler_summary = cls._parse_autoscaler_summary(data)
+        header = cls._header_info(data, verbose)
+        separator_len = min(len(header), header.index("\n"))
+        separator = "-" * separator_len
 
+        # Parse ClusterStatus information to output format
+        available_node_report = cls._available_node_report(data)
+        idle_node_report = cls._idle_node_report(data)
+        pending_report = cls._pending_node_report(data)
+        failure_report = cls._failed_node_report(data, verbose)
+        cluster_usage_report = cls._cluster_usage_report(data, verbose)
+        demand_report = cls._demand_report(data)
+        node_usage_report = cls._node_usage_report(data, verbose)
+
+        # Format Cluster Status information into one output
+        formatted_output = f"""{header}
+Node status
+{separator}
+Active:
+{available_node_report}"""
+
+        formatted_output += f"""
+Idle:
+{idle_node_report}"""
+
+        formatted_output += f"""
+Pending:
+{pending_report}
+{failure_report}
+
+Resources
+{separator}
+{"Total " if verbose else ""}Usage:
+{cluster_usage_report}
+{"Total " if verbose else ""}Demands:
+{demand_report}
+{node_usage_report}"""
+
+        return formatted_output.strip()
+
+    @classmethod
+    def _node_usage_report(cls, data: ClusterStatus, verbose: bool) -> str:
+        usage_by_node = {}
+        node_type_mapping = {}
+        idle_time_map = {}
+        for node in chain(data.active_nodes, data.idle_nodes):
+            # TODO(rickyx): we should actually add node type info here.
+            # TODO(rickyx): we could also show node idle time.
+            usage_by_node[node.node_id] = {
+                u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
+            }
+            node_type_mapping[node.node_id] = node.ray_node_type_name
+            idle_time_map[node.node_id] = node.resource_usage.idle_time_ms
+
+        if node_type_mapping is None:
+            node_type_mapping = {}
+
+        node_activities = {
+            node.node_id: (node.instance_id, node.node_activity)
+            for node in data.active_nodes
+        }
+
+        sio = StringIO()
+        if verbose:
+            if usage_by_node:
+                for node_id, usage in usage_by_node.items():
+                    print(file=sio)  # Print a newline.
+                    node_string = f"Node: {node_id}"
+                    if node_id in node_type_mapping:
+                        node_type = node_type_mapping[node_id]
+                        node_string += f" ({node_type})"
+                    print(node_string, file=sio)
+                    if (
+                        idle_time_map
+                        and node_id in idle_time_map
+                        and idle_time_map[node_id] > 0
+                    ):
+                        print(f" Idle: {idle_time_map[node_id]} ms", file=sio)
+
+                    print(" Usage:", file=sio)
+                    for line in parse_usage(usage, verbose):
+                        print(f"  {line}", file=sio)
+                    # Don't print anything if not provided.
+                    if not node_activities:
+                        continue
+                    print(" Activity:", file=sio)
+                    if node_id not in node_activities:
+                        print("  (no activity)", file=sio)
+                    else:
+                        # Note: We have node instance ID here.
+                        _, reasons = node_activities[node_id]
+                        for reason in reasons:
+                            print(f"  {reason}", file=sio)
+        else:
+            print(file=sio)
+
+        return sio.getvalue()
+
+    @classmethod
+    def _header_info(cls, data: ClusterStatus, verbose: bool) -> str:
         time = datetime.fromtimestamp(data.stats.request_ts_s)
+        if time is None:
+            time = datetime.now()
         gcs_request_time = data.stats.gcs_request_time_s
         non_terminated_nodes_time = data.stats.none_terminated_node_request_time_s
         autoscaler_update_time = data.stats.autoscaler_iteration_time_s
 
         header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
-        separator = "-" * len(header)
         if verbose:
             header += "\n"
             if gcs_request_time:
@@ -345,55 +443,58 @@ class ClusterStatusFormatter:
                 header += (
                     "Autoscaler iteration time: " f"{autoscaler_update_time:3f}s\n"
                 )
+        return header
 
+    @classmethod
+    def _available_node_report(cls, data: ClusterStatus) -> str:
         available_node_report_lines = []
-        if not autoscaler_summary.active_nodes:
+        active_nodes = _count_by(data.active_nodes, "ray_node_type_name")
+
+        if not active_nodes:
             available_node_report = " (no active nodes)"
         else:
-            for node_type, count in autoscaler_summary.active_nodes.items():
+            for node_type, count in active_nodes.items():
                 line = f" {count} {node_type}"
                 available_node_report_lines.append(line)
             available_node_report = "\n".join(available_node_report_lines)
+        return available_node_report
 
-        if not autoscaler_summary.idle_nodes:
+    @classmethod
+    def _idle_node_report(cls, data: ClusterStatus) -> str:
+        idle_nodes = _count_by(data.idle_nodes, "ray_node_type_name")
+        if not idle_nodes:
             idle_node_report = " (no idle nodes)"
         else:
             idle_node_report_lines = []
-            for node_type, count in autoscaler_summary.idle_nodes.items():
+            for node_type, count in idle_nodes.items():
                 line = f" {count} {node_type}"
                 idle_node_report_lines.append(line)
             idle_node_report = "\n".join(idle_node_report_lines)
+        return idle_node_report
 
-        pending_lines = []
-        for node_type, count in autoscaler_summary.pending_launches.items():
-            line = f" {node_type}, {count} launching"
-            pending_lines.append(line)
-        for ip, node_type, status in autoscaler_summary.pending_nodes:
-            line = f" {ip}: {node_type}, {status.lower()}"
-            pending_lines.append(line)
-        if pending_lines:
-            pending_report = "\n".join(pending_lines)
-        else:
-            pending_report = " (no pending nodes)"
-
+    @classmethod
+    def _failed_node_report(cls, data: ClusterStatus, verbose: bool) -> str:
         failure_lines = []
-        for ip, node_type in autoscaler_summary.failed_nodes:
-            line = f" {node_type}: NodeTerminated (ip: {ip})"
+        failed_nodes = []
+        for node in data.failed_nodes:
+            failed_nodes.append((node.instance_id, node.ray_node_type_name))
+        for instance_id, node_type in failed_nodes:
+            line = f" {node_type}: NodeTerminated (instance_id: {instance_id})"
             failure_lines.append(line)
-        auto_node_avail_summary = autoscaler_summary.node_availability_summary
-        if auto_node_avail_summary:
-            records = sorted(
-                auto_node_avail_summary.node_availabilities.values(),
-                key=lambda record: record.last_checked_timestamp,
+
+        # Parse failed launches to failure report
+        failed_launches = data.failed_launches
+        if failed_launches:
+            failed_launches = sorted(
+                failed_launches,
+                key=lambda failed_launch: failed_launch.request_ts_s,
             )
-            for record in records:
-                if record.is_available:
-                    continue
-                assert record.unavailable_node_information is not None
-                node_type = record.node_type
-                category = record.unavailable_node_information.category
-                description = record.unavailable_node_information.description
-                attempted_time = datetime.fromtimestamp(record.last_checked_timestamp)
+            for failed_launch in failed_launches:
+                # assert failed_launch.unavailable_node_information is not None
+                node_type = failed_launch.ray_node_type_name
+                category = "LaunchFailed"
+                description = failed_launch.details
+                attempted_time = datetime.fromtimestamp(failed_launch.request_ts_s)
                 formatted_time = (
                     # This `:02d` funny business is python syntax for printing a 2
                     # digit number with a leading zero as padding if needed.
@@ -415,43 +516,93 @@ class ClusterStatusFormatter:
         else:
             failure_report += " (no failures)"
 
-        usage_report = get_usage_report(lm_summary, verbose)
-        demand_report = get_demand_report(lm_summary)
-        formatted_output = f"""{header}
-    Node status
-    {separator}
-    Active:
-    {available_node_report}"""
+        return failure_report
 
-        if not autoscaler_summary.legacy:
-            formatted_output += f"""
-    Idle:
-    {idle_node_report}"""
+    @classmethod
+    def _pending_node_report(cls, data: ClusterStatus) -> str:
+        pending_lines = []
+        pending_launches = _count_by(data.pending_launches, "ray_node_type_name")
+        pending_nodes = []
+        for node in data.pending_nodes:
+            pending_nodes.append(
+                (node.instance_id, node.ray_node_type_name, node.details)
+            )
+        for node_type, count in pending_launches.items():
+            line = f" {node_type}, {count} launching"
+            pending_lines.append(line)
+        for ip, node_type, status in pending_nodes:
+            line = f" {ip}: {node_type}, {status.lower()}"
+            pending_lines.append(line)
+        if pending_lines:
+            pending_report = "\n".join(pending_lines)
+        else:
+            pending_report = " (no pending nodes)"
+        return pending_report
 
-        formatted_output += f"""
-    Pending:
-    {pending_report}
-    {failure_report}
+    @classmethod
+    def _demand_report(cls, data: ClusterStatus) -> str:
+        demand_lines = []
+        resource_demands = []
+        for demand in data.resource_demands.ray_task_actor_demand:
+            for bundle_by_count in demand.bundles_by_count:
+                resource_demands.append((bundle_by_count.bundle, bundle_by_count.count))
+        if resource_demands:
+            demand_lines.extend(format_resource_demand_summary(resource_demands))
 
-    Resources
-    {separator}
-    {"Total " if verbose else ""}Usage:
-    {usage_report}
-    {"Total " if verbose else ""}Demands:
-    {demand_report}"""
+        pg_demand = []
+        pg_demand_strs = []
+        pg_demand_str_to_demand = {}
+        for pg_demand in data.resource_demands.placement_group_demand:
+            s = pg_demand.strategy + "|" + pg_demand.state
+            pg_demand_strs.append(s)
+            pg_demand_str_to_demand[s] = pg_demand
+        pg_freqs = Counter(pg_demand_strs)
+        pg_demand = [
+            (
+                {
+                    "strategy": pg_demand_str_to_demand[pg_str].strategy,
+                    "bundles": [
+                        (bundle_count.bundle, bundle_count.count)
+                        for bundle_count in pg_demand_str_to_demand[
+                            pg_str
+                        ].bundles_by_count
+                    ],
+                },
+                freq,
+            )
+            for pg_str, freq in pg_freqs.items()
+        ]
+        for entry in pg_demand:
+            pg, count = entry
+            pg_str = format_pg(pg)
+            line = f" {pg_str}: {count}+ pending placement groups"
+            demand_lines.append(line)
 
-        if verbose:
-            if lm_summary.usage_by_node:
-                formatted_output += get_per_node_breakdown(
-                    lm_summary,
-                    autoscaler_summary.node_type_mapping,
-                    autoscaler_summary.node_activities,
-                    verbose,
-                )
-            else:
-                formatted_output += "\n"
+        request_demand = [
+            (bc.bundle, bc.count)
+            for constraint_demand in data.resource_demands.cluster_constraint_demand
+            for bc in constraint_demand.bundles_by_count
+        ]
+        for bundle, count in request_demand:
+            line = f" {bundle}: {count}+ from request_resources()"
+            demand_lines.append(line)
+        if len(demand_lines) > 0:
+            demand_report = "\n".join(demand_lines)
+        else:
+            demand_report = " (no resource demands)"
+        return demand_report
 
-        return formatted_output.strip()
+    @classmethod
+    def _cluster_usage_report(cls, data: ClusterStatus, verbose: bool) -> str:
+        usage = {
+            u.resource_name: (u.used, u.total) for u in data.cluster_resource_usage
+        }
+        usage_lines = parse_usage(usage, verbose)
+
+        sio = StringIO()
+        for line in usage_lines:
+            print(f" {line  }", file=sio)
+        return sio.getvalue()
 
     @classmethod
     def _parse_autoscaler_summary(cls, data: ClusterStatus) -> AutoscalerSummary:
@@ -469,7 +620,7 @@ class ClusterStatusFormatter:
         for node in data.failed_nodes:
             failed_nodes.append((node.instance_id, node.ray_node_type_name))
 
-        # From IP to node type name.
+        # From instance ID to node type name.
         node_type_mapping = {}
         for node in chain(data.active_nodes, data.idle_nodes):
             node_type_mapping[node.instance_id] = node.ray_node_type_name
