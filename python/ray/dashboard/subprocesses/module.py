@@ -101,6 +101,7 @@ class SubprocessModule(abc.ABC):
         self._parent_bound_queue = parent_bound_queue
         self._parent_process_pid = parent_process_pid
         # Lazy init
+        self._gcs_client = None
         self._gcs_aio_client = None
         self._gcs_client = None
         self._parent_process_death_detection_task = None
@@ -195,13 +196,14 @@ class SubprocessModule(abc.ABC):
     @property
     def gcs_client(self):
         if self._gcs_client is None:
-            self._gcs_client = GcsClient(
-                address=self._config.gcs_address,
-                nums_reconnect_retry=0,
-                cluster_id=self._config.cluster_id_hex,
-            )
-        if not ray.experimental.internal_kv._internal_kv_initialized():
-            ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
+            if not ray.experimental.internal_kv._internal_kv_initialized():
+                gcs_client = GcsClient(
+                    address=self._config.gcs_address,
+                    nums_reconnect_retry=0,
+                    cluster_id=self._config.cluster_id_hex,
+                )
+                ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+            self._gcs_client = ray.experimental.internal_kv.internal_kv_get_gcs_client()
         return self._gcs_client
 
     def handle_child_bound_message(
