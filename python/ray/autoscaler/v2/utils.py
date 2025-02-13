@@ -314,11 +314,6 @@ class ClusterStatusFormatter:
     """
     A formatter to format the ClusterStatus into a string.
 
-    TODO(rickyx): We right now parse the ClusterStatus to the legacy format
-    by using the `format_info_string`.
-    In the future, we should refactor the `format_info_string` to directly format
-    the ClusterStatus into a string as we migrate eventually away from v1.
-
     """
 
     @classmethod
