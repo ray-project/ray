@@ -150,6 +150,16 @@ Status ServerConnection::WriteBuffer(
     while (bytes_remaining != 0) {
       size_t bytes_written =
           socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), error);
+
+      RAY_LOG(INFO) << "[myan] WriteBuffer bytes_written=" << bytes_written;
+      std::ostringstream byte_stream;
+      for (size_t i = 0; i < bytes_written; ++i) {
+        byte_stream << static_cast<int>(
+                           *(boost::asio::buffer_cast<const uint8_t *>(b) + position + i))
+                    << " ";
+      }
+      RAY_LOG(INFO) << "[myan] Bytes: " << byte_stream.str();
+
       position += bytes_written;
       bytes_remaining -= bytes_written;
       if (error.value() == EINTR) {
