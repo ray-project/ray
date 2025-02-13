@@ -30,8 +30,8 @@ Deploy the KubeRay operator with the [Helm chart repository](https://github.com/
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install both CRDs and KubeRay operator v1.2.2.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2
+# Install both CRDs and KubeRay operator v1.3.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.3.0
 
 # Confirm that the operator is running in the namespace `default`.
 kubectl get pods
@@ -45,7 +45,7 @@ kubectl get pods
 
 ```sh
 # Install CRD and KubeRay operator.
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=master"
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.3.0"
 
 # Confirm that the operator is running.
 kubectl get pods
@@ -70,21 +70,21 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
   :::{tab-item} Helm ARM64 (Apple Silicon)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.2.2 --set 'image.tag=2.9.0-aarch64'
+  helm install raycluster kuberay/ray-cluster --version 1.3.0 --set 'image.tag=2.41.0-aarch64'
   ```
   :::
 
   :::{tab-item} Helm x86-64 (Intel/Linux)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.2.2
+  helm install raycluster kuberay/ray-cluster --version 1.3.0
   ```
   :::
 
   :::{tab-item} Kustomize
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay repository:
-  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.sample.yaml"
+  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.sample.yaml"
   ```
   :::
 
@@ -99,7 +99,7 @@ kubectl get rayclusters
 # raycluster-kuberay   1                 1                   2      3G       0      ready    95s
 ```
 
-The KubeRay operator will detect the RayCluster object. The operator will then start your Ray cluster by creating head and worker pods. To view Ray cluster's pods, run the following command:
+The KubeRay operator detects the RayCluster object and starts your Ray cluster by creating head and worker pods. To view Ray cluster's pods, run the following command:
 
 ```sh
 # View the pods in the RayCluster named "raycluster-kuberay"
@@ -209,7 +209,7 @@ kind delete cluster
 
 ```sh
 # [Step 6.1]: Delete the RayCluster CR
-kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.sample.yaml"
+kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-cluster.sample.yaml"
 
 # Confirm that the RayCluster's pods are gone by running
 kubectl get pods
