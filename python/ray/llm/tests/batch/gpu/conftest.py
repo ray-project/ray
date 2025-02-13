@@ -2,16 +2,26 @@ import os
 import tempfile
 import requests
 import pytest
+from typing import Generator, List
 
 S3_ARTIFACT_URL = "https://air-example-data.s3.amazonaws.com/"
 
 
-def download_model_from_s3(remote_url, file_list):
+def download_model_from_s3(
+    remote_url: str, file_list: List[str]
+) -> Generator[str, None, None]:
     """
     Download the model checkpoint and tokenizer from S3 for testing
     The reason to download the model from S3 is to avoid downloading the model
     from HuggingFace hub during testing, which is flaky because of the rate
     limit and HF hub downtime.
+
+    Args:
+        remote_url: The remote URL to download the model from.
+        file_list: The list of files to download.
+
+    Yields:
+        The path to the downloaded model checkpoint and tokenizer.
     """
     with tempfile.TemporaryDirectory() as checkpoint_dir:
         for file_name in file_list:

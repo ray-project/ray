@@ -1,8 +1,6 @@
 """The vLLM engine processor."""
 from typing import Any, Dict, Optional
 
-from pydantic import root_validator
-
 from ray.data.block import UserDefinedFunction
 
 import ray
@@ -29,7 +27,7 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     # The engine kwargs.
     engine_kwargs: Dict[str, Any]
     # The task type.
-    task_type: vLLMTaskType = vLLMTaskType.GENERATE
+    task_type: vLLMTaskType = vLLMTaskType(use_enum_values=True)
     # The runtime environment.
     runtime_env: Optional[Dict[str, Any]] = None
     # The maximum number of pending requests.
@@ -45,12 +43,6 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     detokenize: bool = True
     # Whether the input messages have images.
     has_image: bool = False
-
-    @root_validator(pre=True)
-    def validate_task_type(cls, values):
-        task_type_str = values.get("task_type", "generate")
-        values["task_type"] = vLLMTaskType(task_type_str)
-        return values
 
 
 def build_vllm_engine_processor(

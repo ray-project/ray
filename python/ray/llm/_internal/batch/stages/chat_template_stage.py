@@ -32,7 +32,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         # because tokenizers of VLM models may not have chat template attribute.
         # However, this may not be a reliable solution, because processors and
         # tokenizers are not standardized across different models.
-        self.processor = AutoProcessor.from_pretrained(model)
+        self.processor = AutoProcessor.from_pretrained(model, trust_remote_code=True)
         self.chat_template = chat_template
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:

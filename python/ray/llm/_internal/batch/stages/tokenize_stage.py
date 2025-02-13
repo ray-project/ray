@@ -25,7 +25,12 @@ class TokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+        self.tokenizer = get_cached_tokenizer(
+            AutoTokenizer.from_pretrained(
+                model,
+                trust_remote_code=True,
+            )
+        )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -76,7 +81,12 @@ class DetokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+        self.tokenizer = get_cached_tokenizer(
+            AutoTokenizer.from_pretrained(
+                model,
+                trust_remote_code=True,
+            )
+        )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
