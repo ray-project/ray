@@ -4,7 +4,7 @@ import aiohttp
 import asyncio
 import time
 import numpy as np
-from typing import Any, Dict, AsyncIterator, Optional, List
+from typing import Any, Dict, AsyncIterator, Optional, List, Type
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
@@ -99,7 +99,7 @@ class HttpRequestStage(StatefulStage):
     A stage that sends HTTP requests.
     """
 
-    fn: StatefulStageUDF = HttpRequestUDF
+    fn: Type[StatefulStageUDF] = HttpRequestUDF
     fn_constructor_kwargs: Dict[str, Any]
     map_batches_kwargs: Dict[str, Any] = dict(
         concurrency=1,

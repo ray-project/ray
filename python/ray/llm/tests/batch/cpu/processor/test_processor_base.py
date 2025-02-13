@@ -1,5 +1,5 @@
 import sys
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, AsyncIterator, Dict, List, Type
 
 import pytest
 
@@ -67,7 +67,7 @@ def test_processor_with_stages(has_extra: bool):
             return ["val"]
 
     class DummyStage(StatefulStage):
-        fn: StatefulStageUDF = DummyStatefulStageUDF
+        fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
         fn_constructor_kwargs: Dict[str, Any] = {}
         map_batches_kwargs: Dict[str, Any] = dict(concurrency=1)
 
@@ -125,7 +125,7 @@ def test_builder():
                 yield row
 
     class DummyStage(StatefulStage):
-        fn: StatefulStageUDF = DummyStatefulStageUDF
+        fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
         fn_constructor_kwargs: Dict[str, Any] = {}
         map_batches_kwargs: Dict[str, Any] = {}
 
