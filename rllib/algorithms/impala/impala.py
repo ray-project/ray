@@ -554,6 +554,7 @@ class IMPALA(Algorithm):
 
         # Queue of data to be sent to the Learner.
         self.data_to_place_on_learner = []
+        self.local_mixin_buffer = None  # @OldAPIStack
         self._batch_being_built = []  # @OldAPIStack
 
         # Create extra aggregation workers and assign each rollout worker to
@@ -563,17 +564,19 @@ class IMPALA(Algorithm):
             i: [] for i in range(self.config.num_learners or 1)
         }
 
-        # Create our local mixin buffer.
+        # Create local mixin buffer if on old API stack and replay
+        # proportion is set.
         if not self.config.enable_rl_module_and_learner:
-            self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
-                capacity=(
-                    self.config.replay_buffer_num_slots
-                    if self.config.replay_buffer_num_slots > 0
-                    else 1
-                ),
-                replay_ratio=self.config.replay_ratio,
-                replay_mode=ReplayMode.LOCKSTEP,
-            )
+            if self.config.replay_proportion > 0.0:
+                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
+                    capacity=(
+                        self.config.replay_buffer_num_slots
+                        if self.config.replay_buffer_num_slots > 0
+                        else 1
+                    ),
+                    replay_ratio=self.config.replay_ratio,
+                    replay_mode=ReplayMode.LOCKSTEP,
+                )
 
         # This variable is used to keep track of the statistics from the most recent
         # update of the learner group
@@ -691,14 +694,15 @@ class IMPALA(Algorithm):
             rl_module_state = None
             num_learner_group_results_received = 0
 
-            for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
-                return_state = (
-                    self.metrics.peek(
-                        NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-                        default=0,
-                    )
-                    >= self.config.broadcast_interval
+            return_state = (
+                self.metrics.peek(
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+                    default=0,
                 )
+                >= self.config.broadcast_interval
+            )
+
+            for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
                 timesteps = {
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
@@ -731,15 +735,12 @@ class IMPALA(Algorithm):
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
-                # TODO (sven): Rename this metric into a more fitting name: ex.
-                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`.
-                self.metrics.log_value(
-                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-                    1,
-                    reduce="sum",
-                )
+                # Only request weights from 1st Learner - at most - once per
+                # `training_step` call.
+                return_state = False
 
                 num_learner_group_results_received += len(learner_results)
+                # Extract the last (most recent) weights matrix, if available.
                 for result_from_1_learner in learner_results:
                     rl_module_state = result_from_1_learner.pop(
                         "_rl_module_state_after_update", rl_module_state
@@ -752,6 +753,10 @@ class IMPALA(Algorithm):
                 key=(LEARNER_GROUP, MEAN_NUM_LEARNER_RESULTS_RECEIVED),
                 value=num_learner_group_results_received,
             )
+
+        self.metrics.log_value(
+            NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
+        )
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
@@ -1011,8 +1016,14 @@ class IMPALA(Algorithm):
             batch = batch.decompress_if_needed()
             # Only make a pass through the buffer, if replay proportion is > 0.0 (and
             # we actually have one).
-            self.local_mixin_buffer.add(batch)
-            batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            if self.local_mixin_buffer:
+                self.local_mixin_buffer.add(batch)
+                batch = self.local_mixin_buffer.replay(_ALL_POLICIES)
+            else:
+                # TODO(jjyao) somehow deep copy the batch
+                # fix a memory leak issue. Need to investigate more
+                # to know why.
+                batch = batch.copy()
             if batch:
                 processed_batches.append(batch)
 
