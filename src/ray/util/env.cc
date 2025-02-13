@@ -42,7 +42,7 @@ void UnsetEnv(const std::string &name) {
   RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
 }
 
-bool IsEnvSet(const std::string &name) {
+bool IsEnvTrue(const std::string &name) {
   const char *val = ::getenv(name.data());
   if (val == nullptr) {
     return false;

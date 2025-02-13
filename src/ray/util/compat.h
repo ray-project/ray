@@ -101,6 +101,4 @@ Status Flush(MEMFD_TYPE_NON_UNIQUE fd);
 // Close the given file descriptor, if any error happens, IO error status will be
 // returned.
 Status Close(MEMFD_TYPE_NON_UNIQUE fd);
-// Get current process id.
-int64_t GetPid();
 }  // namespace ray

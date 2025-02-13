@@ -17,6 +17,7 @@
 #include "ray/util/compat.h"
 #include "ray/util/env.h"
 #include "ray/util/event.h"
+#include "ray/util/process.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/stream_redirection_utils.h"
 #include "ray/util/util.h"
@@ -51,9 +52,9 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
 
   if (!parsed_job_id.empty()) {
     return absl::StrFormat(
-        "%s-%s-%s-%d.%s", worker_name, worker_id, parsed_job_id, GetPid(), suffix);
+        "%s-%s-%s-%d.%s", worker_name, worker_id, parsed_job_id, GetPID(), suffix);
   }
-  return absl::StrFormat("%s-%s-%d.%s", worker_name, worker_id, GetPid(), suffix);
+  return absl::StrFormat("%s-%s-%d.%s", worker_name, worker_id, GetPID(), suffix);
 }
 
 }  // namespace
@@ -132,7 +133,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     }
 
     // Setup logging for worker application logging.
-    if (options_.worker_type == WorkerType::WORKER && !IsEnvSet("RAY_LOG_TO_STDERR")) {
+    if (options_.worker_type != WorkerType::DRIVER && !IsEnvTrue("RAY_LOG_TO_STDERR")) {
       // Setup redirection for stdout.
       {
         const std::string fname = GetWorkerOutputFilepath(
