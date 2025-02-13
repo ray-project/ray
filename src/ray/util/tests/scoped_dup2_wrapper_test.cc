@@ -27,6 +27,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #elif defined(_WIN32)
+#include <AclAPI.h>
+#include <Sddl.h>
 #include <windows.h>
 #endif
 
@@ -46,6 +48,39 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   int fd = open(path_string.data(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
   ASSERT_NE(fd, -1);
 #elif defined(_WIN32)
+  PSECURITY_DESCRIPTOR pSD = NULL;
+  PACL pOldACL = NULL, pNewACL = NULL;
+  PSID pEveryoneSID = NULL;
+  EXPLICIT_ACCESS ea;
+
+  // Initialize the SID for "Everyone"
+  if (!AllocateAndInitializeSid(&SECURITY_WORLD_SID_AUTHORITY,
+                                1,
+                                SECURITY_WORLD_RID,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                &pEveryoneSID)) {
+    return INVALID_HANDLE_VALUE;
+  }
+
+  // Initialize an EXPLICIT_ACCESS structure for the ACE.
+  ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS));
+  ea.grfAccessPermissions = GENERIC_READ | GENERIC_WRITE;  // Allow read and write
+  ea.grfAccessMode = GRANT_ACCESS;                         // Grant access
+  ea.grfInheritance = NO_INHERITANCE;
+  ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea.Trustee.ptstrName = (LPTSTR)pEveryoneSID;
+
+  // Create a new ACL that contains the new ACE.
+  SetEntriesInAcl(1, &ea, NULL, &pNewACL);
+  // Create a security descriptor with the ACL
+  SetSecurityDescriptorDacl(pSD, TRUE, pNewACL, FALSE);
+
   HANDLE fd = CreateFile(path_string.c_str(),           // File name
                          GENERIC_READ | GENERIC_WRITE,  // Access mode: read/write
                          0,                             // No sharing
@@ -56,6 +91,7 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
 
   // Check if the file was successfully opened or created
   ASSERT_NE(fd, INVALID_HANDLE_VALUE);
+  SetFileSecurity(path_string.c_str(), DACL_SECURITY_INFORMATION, pSD);
 #endif
 
   {
