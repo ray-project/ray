@@ -45,7 +45,6 @@ def create_mask_and_seq_lens(episode_len: int, T: int) -> Tuple[List, List]:
 
 
 @DeveloperAPI
-@DeveloperAPI
 def split_and_zero_pad(
     item_list: List[Union[BatchedNdArray, np.ndarray, float]],
     max_seq_len: int,
@@ -91,15 +90,10 @@ def split_and_zero_pad(
         return []
 
     # 1) Flatten everything into a single NumPy array.
-    flattened_values = []
-    for item in item_list:
-        if isinstance(item, BatchedNdArray):
-            # item is array-like with shape [B, ...]
-            flattened_values.extend(item)
-        else:
-            # item is scalar or a normal np.ndarray (assume shape [D...])
-            flattened_values.append(item)
-
+    # Use a list comprehension to iterate over each item:
+    # - If the item is a BatchedNdArray, extend the list with its elements.
+    # - Otherwise, append the item as a single element.
+    flattened_values = [x for item in item_list for x in (item if isinstance(item, BatchedNdArray) else [item])]
     # Convert the flattened Python list to a single NumPy array.
     flat_data = np.array(flattened_values)
     # flat_data.shape = [N, ...]  (N = total count)
@@ -107,20 +101,12 @@ def split_and_zero_pad(
     N = flat_data.shape[0]
     num_chunks = (N + max_seq_len - 1) // max_seq_len  # ceil(N / max_seq_len)
 
-    # 2) Create the output array with shape [num_chunks, max_seq_len, ...].
-    out_shape = (num_chunks, max_seq_len) + flat_data.shape[1:]
-    out = np.zeros(out_shape, dtype=flat_data.dtype)
+    # 2) Create a padded array with shape [num_chunks * max_seq_len, ...] and fill in flat_data.
+    padded = np.zeros((num_chunks * max_seq_len,) + flat_data.shape[1:], dtype=flat_data.dtype)
+    padded[:N] = flat_data
 
-    # 3) Fill the output array in a single pass, zero-padding where necessary.
-    start_idx = 0
-    for i in range(num_chunks):
-        end_idx = min(start_idx + max_seq_len, N)
-        length = end_idx - start_idx
-        out[i, :length] = flat_data[start_idx:end_idx]
-        start_idx += length
-
-    # 4) Return a list of the sub-arrays, each shape [max_seq_len, ...].
-    return [out[i] for i in range(num_chunks)]
+    # 3) Return a list of the sub-arrays, each with shape [max_seq_len, ...].
+    return [padded[i * max_seq_len:(i + 1) * max_seq_len] for i in range(num_chunks)]
 
 
 @DeveloperAPI
