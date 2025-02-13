@@ -414,11 +414,7 @@ class EnvRunnerGroup:
                         if env_steps_sampled is not None
                         else {}
                     ),
-                    **(
-                        {COMPONENT_RL_MODULE: rl_module_state}
-                        if rl_module_state is not None
-                        else {}
-                    ),
+                    **(rl_module_state or {}),
                 }
             )
             return
@@ -500,7 +496,7 @@ class EnvRunnerGroup:
 
         # Update the rl_module component of the EnvRunner states, if necessary:
         if rl_module_state:
-            env_runner_states.update({COMPONENT_RL_MODULE: rl_module_state})
+            env_runner_states.update(rl_module_state)
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components) and then remove
