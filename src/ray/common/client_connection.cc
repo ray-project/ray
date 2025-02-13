@@ -152,8 +152,11 @@ Status ServerConnection::WriteBuffer(
       position += bytes_written;
       bytes_remaining -= bytes_written;
       if (error.value() == EINTR) {
+        RAY_LOG(INFO) << "[myan] WriteBuffer interrupted by signal.";
         continue;
       } else if (error.value() != boost::system::errc::errc_t::success) {
+        RAY_LOG(INFO) << "[myan] WriteBuffer encounter error=" << error.value()
+                      << ", message=" << error.message();
         return boost_to_ray_status(error);
       }
     }
