@@ -901,6 +901,14 @@ class RayCgraphCapacityExceeded(RaySystemError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayAdagDeviceMismatchError(RaySystemError):
+    """Raised when an output (e.g., tensor) doesn't match a device it is
+    supposed to be created."""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -930,4 +938,5 @@ RAY_EXCEPTION_TYPES = [
     RayChannelTimeoutError,
     OufOfBandObjectRefSerializationException,
     RayCgraphCapacityExceeded,
+    RayAdagDeviceMismatchError,
 ]

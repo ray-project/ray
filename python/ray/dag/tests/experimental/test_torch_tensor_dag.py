@@ -409,7 +409,43 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
         match=(r"Driver cannot participate in the NCCL group\."),
     ):
         dag.experimental_compile()
+        
+#TODO(anm): Fix test
+def test_torch_tensor_as_dag_output(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("Only working with gpus")
 
+    @ray.remote(num_gpus=1)
+    class A:
+        def f(self, x: int):
+            return torch.tensor([x], device="cuda")
+
+    a = A.remote()
+
+    with InputNode() as inp:
+        out = a.f.bind(inp)
+        dag = out.with_type_hint(TorchTensorType(_device="cpu"))
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == i
+
+    compiled_dag.teardown()
+
+    # If we don't specify a conversion, it will raise an error.
+    with InputNode() as inp:
+        dag = a.f.bind(inp)
+        # When the device is not specified, it assumes it goes to the
+        # same device.
+        # dag = dag.with_type_hint(TorchTensorType())
+
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(1)
+    with pytest.raises(ray.exceptions.RayAdagDeviceMismatchError):
+        ray.get(ref)
+    breakpoint()
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_custom_comm(ray_start_regular):
@@ -1915,6 +1951,43 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
         ),
     ):
         dag.experimental_compile()
+        
+        
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_cpu_tensor_to_cpu(ray_start_regular):
+    """Verify TorchTensorType(transport="nccl") sends cpu tensor to cpu."""
+    if not USE_GPU:
+        pytest.skip("This test requires GPU.")
+    assert sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 0
+
+    @ray.remote(num_gpus=1)
+    class A:
+        def send(self, x):
+            return {
+                "cpu_tensor": torch.tensor([x], device="cpu"),
+                "gpu_tensor": torch.tensor([x], device="cuda"),
+            }
+
+        def recv(self, data):
+            assert data["gpu_tensor"].device.type == "cuda"
+            assert data["cpu_tensor"].device.type == "cpu"
+
+    sender = A.remote()
+    receiver = A.remote()
+
+    # Test torch.Tensor sent between actors.
+    with InputNode() as inp:
+        mixed_tensor = sender.send.bind(inp)
+        mixed_tensor = mixed_tensor.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = receiver.recv.bind(mixed_tensor)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(1):
+        ref = compiled_dag.execute(i)
+        ray.get(ref)
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
