@@ -65,16 +65,13 @@ class _SerializationContext:
         self.channel_id_to_num_readers.pop(channel_id, None)
 
     def set_gpu_future(self, fut_id: int, fut: "GPUFuture") -> None:
-        print(f"setting gpu future [{fut_id}]")
         assert (
             fut_id not in self.gpu_futures
         ), f"GPUFuture with id={fut_id} is already cached."
         self.gpu_futures[fut_id] = fut
 
     def reset_gpu_future(self, fut_id: int) -> None:
-        print(f"resetting gpu future [{fut_id}]")
         if fut_id in self.gpu_futures:
-            print(f"removing gpu future [{fut_id}]")
             self.gpu_futures.pop(fut_id).destroy_event()
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:

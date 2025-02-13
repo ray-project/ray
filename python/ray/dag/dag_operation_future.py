@@ -65,10 +65,6 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
-    # [HACK] This prevents CUDA events from being garbage collected.
-    id: int = 0
-    id_to_event: Dict[int, "cp.cuda.Event"] = {}
-
     def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
         """
         Initialize a GPU future on the given stream.
@@ -86,10 +82,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         self._buf = buf
         self._event = cp.cuda.Event()
         self._event.record(stream)
-        # [HACK]
-        self._id = GPUFuture.id
-        GPUFuture.id += 1
-        GPUFuture.id_to_event[self._id] = self._event
+        self._fut_id: Optional[int] = None
 
     def wait(self) -> Any:
         """
@@ -104,7 +97,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         from ray.experimental.channel.common import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        ctx.reset_gpu_future(self.fut_id)
+        ctx.reset_gpu_future(self._fut_id)
         return self._buf
 
     def cache(self, fut_id: int) -> None:
@@ -112,7 +105,7 @@ class GPUFuture(DAGOperationFuture[Any]):
 
         ctx = ChannelContext.get_current().serialization_context
         ctx.set_gpu_future(fut_id, self)
-        self.fut_id = fut_id
+        self._fut_id = fut_id
 
     def destroy_event(self) -> None:
         if self._event is None:
