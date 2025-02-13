@@ -5,7 +5,7 @@
 
 ## Prerequisites
 
-* Use RayService with KubeRay 1.0.0 or later.
+* Use RayService with KubeRay 1.3.0 or later.
 * Enable GCS fault tolerance in the RayService.
 
 ## Quickstart
