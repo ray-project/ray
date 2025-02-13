@@ -176,27 +176,6 @@ struct EnumClassHash {
 template <typename Key, typename T>
 using EnumUnorderedMap = absl::flat_hash_map<Key, T, EnumClassHash>;
 
-inline void setEnv(const std::string &name, const std::string &value) {
-#ifdef _WIN32
-  std::string env = name + "=" + value;
-  int ret = _putenv(env.c_str());
-#else
-  int ret = setenv(name.c_str(), value.c_str(), 1);
-#endif
-  RAY_CHECK_EQ(ret, 0) << "Failed to set env var " << name << " " << value;
-}
-
-inline void unsetEnv(const std::string &name) {
-#ifdef _WIN32
-  // Use _putenv on Windows with an empty value to unset
-  std::string env = name + "=";
-  int ret = _putenv(env.c_str());
-#else
-  int ret = unsetenv(name.c_str());
-#endif
-  RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
-}
-
 namespace ray {
 
 /// Return true if the raylet is failed. This util function is only meant to be used by

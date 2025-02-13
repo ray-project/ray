@@ -14,14 +14,17 @@ from ray.train.v2._internal.execution.checkpoint.report_handler import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
-    WorkerGroupStatus,
+    WorkerGroupPollStatus,
     WorkerStatus,
+)
+from ray.train.v2._internal.execution.worker_group.worker_group import (
+    WorkerGroupContext,
 )
 from ray.train.v2.tests.test_controller import DummyWorkerGroup
 
 
-def generate_worker_group_status(num_workers, num_ckpt, num_dummy, num_none):
-    """Generate a WorkerGroupStatus object with num_workers workers,
+def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none):
+    """Generate a WorkerGroupPollStatus object with num_workers workers,
     num_ckpt workers with checkpoint, num_dummy workers with dummy training result,
     and num_none workers with None training result.
     """
@@ -38,7 +41,7 @@ def generate_worker_group_status(num_workers, num_ckpt, num_dummy, num_none):
     )
     random.shuffle(worker_statuses)
 
-    return WorkerGroupStatus(num_workers, 0.0, dict(enumerate(worker_statuses)))
+    return WorkerGroupPollStatus(dict(enumerate(worker_statuses)))
 
 
 @pytest.mark.parametrize(
@@ -62,12 +65,13 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
     checkpoint_handler = ReportCallbackHandler(report_callbacks=[checkpoint_manager])
 
     worker_group = DummyWorkerGroup()
-    worker_group.start(
+    worker_group_context = WorkerGroupContext(
         train_fn=lambda: None, num_workers=10, resources_per_worker={"CPU": 1}
     )
+    worker_group._start(worker_group_context)
     checkpoint_handler.after_worker_group_start(worker_group)
 
-    worker_group_status = generate_worker_group_status(
+    worker_group_status = generate_worker_group_poll_status(
         num_workers, num_ckpt, num_dummy, num_none
     )
     with unittest.mock.patch.object(

@@ -385,18 +385,20 @@ class LearnerGroup(Checkpointable):
                     **_kwargs,
                 )
             if _return_state and result:
-                result["_rl_module_state_after_update"] = ray.put(
-                    _learner.get_state(
-                        # Only return the state of those RLModules that actually returned
-                        # results and thus got probably updated.
-                        components=[
-                            COMPONENT_RL_MODULE + "/" + mid
-                            for mid in result
-                            if mid != ALL_MODULES
-                        ],
-                        inference_only=True,
-                    )[COMPONENT_RL_MODULE]
+                learner_state = _learner.get_state(
+                    # Only return the state of those RLModules that actually
+                    # returned results and thus got probably updated.
+                    components=[
+                        COMPONENT_RL_MODULE + "/" + mid
+                        for mid in result
+                        if mid != ALL_MODULES
+                    ],
+                    inference_only=True,
                 )
+                learner_state[COMPONENT_RL_MODULE] = ray.put(
+                    learner_state[COMPONENT_RL_MODULE]
+                )
+                result["_rl_module_state_after_update"] = learner_state
 
             return result
 
@@ -824,7 +826,7 @@ class LearnerGroup(Checkpointable):
         mark_healthy: bool = False,
         **kwargs,
     ) -> RemoteCallResults:
-        """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
+        r"""Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
             func: The function to call on each Learner L with args: (L, \*\*kwargs).
