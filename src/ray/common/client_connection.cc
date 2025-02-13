@@ -575,6 +575,9 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
     read_message_ = error_data;
   }
 
+  RAY_LOG(INFO) << "[myan] ProcessMessageHeader. read_cookie_= " << read_cookie_
+                << ", read_type_=" << read_type_ << ", read_length=" << read_length_;
+
   int64_t start_ms = current_time_ms();
   message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_);
   int64_t interval = current_time_ms() - start_ms;
