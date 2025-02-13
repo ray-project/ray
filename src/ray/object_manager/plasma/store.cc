@@ -502,7 +502,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   default:
     RAY_LOG(INFO) << "[myan] Received request falls into default... "
                   << "MessageType=" << EnumNameMessageType(type)
-                  << "IntegerValue=" << static_cast<int>(type);
+                  << "IntegerValue=" << static_cast<long>(type);
     // This code should be unreachable.
     RAY_CHECK(0);
   }
