@@ -1,4 +1,28 @@
 load("//bazel:ray.bzl", "COPTS", "ray_cc_test", "ray_cc_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library")
+
+proto_library(
+    name = "test_proto",
+    srcs = ["test.proto"],
+)
+
+cc_proto_library(
+    name = "test_cc_proto",
+    deps = [":test_proto"],
+)
+
+ray_cc_test(
+    name = "pb_utils_test",
+    srcs = [
+        "pb_utils_test.cc",
+    ],
+    deps = [
+        ":test_cc_proto",
+        "//src/ray/util:pb_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
 
 ray_cc_test(
     name = "array_test",

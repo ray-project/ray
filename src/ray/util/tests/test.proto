@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package ray;
+
+message InnerMessage {
+    sint32 x = 1;
+}
+
+message MapMessage {
+    // Map with protobuf message as value.
+    map<string, InnerMessage> map_with_pb = 1;
+    // Map with primitive type as value.
+    map<string, sint64> map_with_primitive = 2;
+}

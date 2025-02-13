@@ -336,3 +336,11 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+ray_cc_library(
+    name = "pb_utils",
+    hdrs = ["pb_utils.h"],
+    deps = [
+        "@com_google_protobuf//:protobuf",
+    ],
+)
