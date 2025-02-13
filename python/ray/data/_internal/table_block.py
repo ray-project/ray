@@ -501,8 +501,11 @@ class TableBlockAccessor(BlockAccessor):
 
             seen_types[block_accessor.block_type()] += 1
 
-        # If there's just 1 block-type, short-circuit
-        if len(seen_types) <= 1:
+        # If there's just 1 block-type and it's matching target-type, short-circuit
+        if len(seen_types) == 1 and (
+            target_block_type is None or
+            [target_block_type] == list(seen_types.keys())
+        ):
             return blocks
 
         # Pick the most prevalent block-type
