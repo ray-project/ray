@@ -199,7 +199,19 @@ class GroupedData:
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
 
-            boundaries = _get_group_boundaries_sorted(block, self._key)
+            if self._key is None:
+                keys = []
+            elif isinstance(self._key, str):
+                keys = [self._key]
+            elif isinstance(self._key, List):
+                keys = self._key
+            else:
+                raise ValueError(
+                    f"Group-by keys are expected to either be a single column (str) "
+                    f"or a list of columns (got '{self._key}')"
+                )
+
+            boundaries = _get_group_boundaries_sorted(block, keys)
 
             for start, end in zip(boundaries[:-1], boundaries[1:]):
                 group_block = block_accessor.slice(start, end, copy=False)

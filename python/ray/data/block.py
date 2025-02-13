@@ -513,7 +513,7 @@ class BlockAccessor:
 
 
 def _get_group_boundaries_sorted(
-    block: Block, key: Union[str, List[str]]
+    block: Block, keys: List[str]
 ) -> np.ndarray:
     """
     NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
@@ -537,18 +537,14 @@ def _get_group_boundaries_sorted(
 
     block_accessor = BlockAccessor.for_block(block)
 
-    # Get the list of boundaries including first start and last end indices
-    if key:
-        projected_block = block_accessor.to_numpy(key)
+    if keys:
+        # Convert key columns to Numpy (to perform vectorized
+        # ops on them)
+        projected_block = block_accessor.to_numpy(keys)
 
-        if isinstance(key, str):
-            projected_block = [projected_block]
-        else:
-            # projected_block is a dict of arrays
-            projected_block = list(projected_block.values())
+        return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
 
-        return _get_group_boundaries_sorted_numpy(projected_block)
-
+    # If no keys are specified, whole block is considered a single group
     return np.array([0, block_accessor.num_rows()])
 
 
