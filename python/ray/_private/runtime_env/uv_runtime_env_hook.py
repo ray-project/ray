@@ -21,20 +21,27 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     # Parse known arguments of uv run that impact the runtime environment
     uv_run_parser = argparse.ArgumentParser()
-    uv_run_parser.add_argument("--directory", nargs="?")
     uv_run_parser.add_argument("--with-requirements", nargs="?")
     uv_run_parser.add_argument("--project", nargs="?")
     uv_run_parser.add_argument("--no-project", action="store_true")
-    known_args, unknown_args = uv_run_parser.parse_known_args(cmdline)
 
     # Extract the arguments of 'uv run' that are not arguments of the script
     uv_run_args = cmdline[: len(cmdline) - len(sys.argv)]
-    runtime_env["py_executable"] = " ".join(uv_run_args)
+    known_args, _ = uv_run_parser.parse_known_args(uv_run_args)
+    # Remove the "--directory" argument since it has already been taken into
+    # account when setting the current working directory of the current process
+    try:
+        dir_index = uv_run_args.index('--directory')
+        # Remove both --directory and its value
+        remaining_uv_run_args = uv_run_args[:dir_index] + uv_run_args[dir_index + 2:]
+    except ValueError:
+        remaining_uv_run_args = uv_run_args
+    runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
 
     # If the user specified a working_dir, we will always honor it, otherwise
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
-        runtime_env["working_dir"] = known_args.directory or os.getcwd()
+        runtime_env["working_dir"] = os.getcwd()
 
     working_dir = Path(runtime_env["working_dir"]).resolve()
 

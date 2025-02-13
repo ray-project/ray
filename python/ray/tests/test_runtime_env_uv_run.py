@@ -162,7 +162,6 @@ def test_uv_run_runtime_env_hook(with_uv):
             **(subprocess_kwargs if subprocess_kwargs else {}),
         )
         output = result.stdout.strip().decode()
-        print(output)
         if result.returncode != 0:
             assert expected_error
             assert expected_error in result.stderr.decode()
@@ -174,15 +173,15 @@ def test_uv_run_runtime_env_hook(with_uv):
         runtime_env={},
         expected_output={
             "py_executable": f"{uv} run --no-project",
-            "working_dir": f"{os.getcwd()}",
+            "working_dir": os.getcwd(),
         },
     )
     check_uv_run(
         cmd=[uv, "run", "--no-project", "--directory", "/tmp"],
         runtime_env={},
         expected_output={
-            "py_executable": f"{uv} run --no-project --directory /tmp",
-            "working_dir": "/tmp",
+            "py_executable": f"{uv} run --no-project",
+            "working_dir": os.path.realpath('/tmp'),
         },
     )
     check_uv_run(
