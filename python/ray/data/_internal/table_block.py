@@ -503,8 +503,7 @@ class TableBlockAccessor(BlockAccessor):
 
         # If there's just 1 block-type and it's matching target-type, short-circuit
         if len(seen_types) == 1 and (
-            target_block_type is None or
-            [target_block_type] == list(seen_types.keys())
+            target_block_type is None or [target_block_type] == list(seen_types.keys())
         ):
             return blocks
 
