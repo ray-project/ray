@@ -160,7 +160,7 @@ texts = [
 results = ray.get([send_query.remote(text) for text in texts])
 ```
 
-### 3. Direct Handle Queries
+### 3. Sending requests using DeploymentHandle
 For a more Pythonic way to query the model, you can use the deployment handle directly:
 
 ```python
