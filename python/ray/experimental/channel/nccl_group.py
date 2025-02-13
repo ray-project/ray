@@ -92,9 +92,9 @@ class _NcclGroup(Communicator):
             # Driver does not have a rank.
             self._comm = None
 
-        self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
-        self._send_stream: Optional["cp.cuda.ExternalStream"] = None
-        self._recv_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._send_stream: "cp.cuda.ExternalStream"
+        self._recv_stream: "cp.cuda.ExternalStream"
+        self._coll_stream: "cp.cuda.ExternalStream"
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
 
@@ -104,9 +104,6 @@ class _NcclGroup(Communicator):
 
             # TODO(swang): Allow default device to be overridden.
             device = torch_utils.get_devices()[0]
-            self._cuda_stream = cp.cuda.ExternalStream(
-                cuda_stream, device_id=device.index
-            )
 
             if use_communication_streams:
                 import torch
@@ -117,13 +114,14 @@ class _NcclGroup(Communicator):
                 self._recv_stream = cp.cuda.ExternalStream(
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
-                self._collective_stream = cp.cuda.ExternalStream(
+                self._coll_stream = cp.cuda.ExternalStream(
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
             else:
-                self._send_stream = self._cuda_stream
-                self._recv_stream = self._cuda_stream
-                self._collective_stream = self._cuda_stream
+                stream = cp.cuda.ExternalStream(cuda_stream, device_id=device.index)
+                self._send_stream = stream
+                self._recv_stream = stream
+                self._coll_stream = stream
 
         self._closed = False
 
@@ -187,6 +185,10 @@ class _NcclGroup(Communicator):
             # TODO(rui): find a better approach
             self._send_stream.synchronize()
 
+        import torch
+
+        buf.record_stream(torch.cuda.ExternalStream(self._send_stream.ptr))
+
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
         self._comm.send(
@@ -248,7 +250,7 @@ class _NcclGroup(Communicator):
             # need to synchronize here and check that the channel is still open to
             # ensure that the receive buffer is valid.
             # TODO(swang): Avoid CUDA synchronization.
-            self._cuda_stream.synchronize()
+            self._recv_stream.synchronize()
 
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
@@ -268,22 +270,29 @@ class _NcclGroup(Communicator):
             "so send_buf and recv_buf must have the same dtype. "
             "If you see this error, please file an issue at Ray repository."
         )
+
+        import torch
+
+        # Record send_buf is used by the collective stream
+        # so that torch's CudaCachingAllocator does not reuse the memory.
+        send_buf.record_stream(torch.cuda.ExternalStream(self._coll_stream.ptr))
+
         self._comm.allReduce(
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._collective_stream.ptr,
+            self._coll_stream.ptr,
         )
 
         # Buffer values are undefined if NCCL ops are aborted. Therefore, we
         # need to synchronize here and check that the channel is still open to
         # ensure that the receive buffer is valid.
         # TODO(swang): Avoid CUDA synchronization.
-        # TODO(wxdeng): Use check_async_error.
         if not self._use_communication_streams:
-            self._cuda_stream.synchronize()
+            self._coll_stream.synchronize()
+
         if self._closed:
             raise RayChannelError(
                 "NCCL group has been destroyed during allreduce operation. "
@@ -300,8 +309,8 @@ class _NcclGroup(Communicator):
         return self._send_stream
 
     @property
-    def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-        return self._collective_stream
+    def coll_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        return self._coll_stream
 
     def destroy(self) -> None:
         """

@@ -82,6 +82,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         self._buf = buf
         self._event = cp.cuda.Event()
         self._event.record(stream)
+        self._fut_id: Optional[int] = None
 
     def wait(self) -> Any:
         """
@@ -92,4 +93,26 @@ class GPUFuture(DAGOperationFuture[Any]):
 
         current_stream = cp.cuda.get_current_stream()
         current_stream.wait_event(self._event)
+
+        from ray.experimental.channel.common import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.reset_gpu_future(self._fut_id)
         return self._buf
+
+    def cache(self, fut_id: int) -> None:
+        from ray.experimental.channel.common import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.set_gpu_future(fut_id, self)
+        self._fut_id = fut_id
+
+    def destroy_event(self) -> None:
+        if self._event is None:
+            return
+
+        import cupy as cp
+
+        cp.cuda.runtime.eventDestroy(self._event.ptr)
+        self._event.ptr = 0
+        self._event = None
