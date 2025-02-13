@@ -223,7 +223,7 @@ table WaitRequest {
   // The RPC addresses of the workers that own the objects in object_ids.
   owner_addresses: [Address];
   // Number of objects expected to be returned, if available.
-  num_ready_objects: int;
+  num_required_objects: int;
   // timeout
   timeout: long;
   // The current task ID.

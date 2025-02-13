@@ -2081,12 +2081,13 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     // want to at least make the request to pull these objects if the user specified
     // fetch_local so the pulling can start.
     if (!plasma_object_ids.empty()) {
-      RAY_RETURN_NOT_OK(
-          plasma_store_provider_->Wait(plasma_object_ids,
-                                       num_objects - static_cast<int>(ready.size()),
-                                       timeout_ms,
-                                       worker_context_,
-                                       &ready));
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+          plasma_object_ids,
+          std::min(static_cast<int>(plasma_object_ids.size()),
+                   num_objects - static_cast<int>(ready.size())),
+          timeout_ms,
+          worker_context_,
+          &ready));
     }
   } else {
     for (const auto &object_id : plasma_object_ids) {
