@@ -137,7 +137,7 @@ For basic testing, use curl:
 $ curl "http://localhost:8000/?text=Once+upon+a+time"
 ```
 
-### 2. Parallel HTTP Queries with Ray
+### 2. Send HTTP requests in parallel with Ray
 For higher throughput, use [Ray remote tasks](ray-remote-functions) to send parallel requests:
 
 ```python
