@@ -95,7 +95,8 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
                           timeout_ms,
                           local_mode_ray_tuntime_.GetWorkerContext());
   if (!status_or_ready_and_plasma_object_ids.ok()) {
-    throw RayException("Wait object error: " + status.ToString());
+    throw RayException("Wait object error: " +
+                       status_or_ready_and_plasma_object_ids.status().ToString());
   }
   const auto &ready = status_or_ready_and_plasma_object_ids.value().first;
   std::vector<bool> result;
