@@ -70,7 +70,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if pyproject and not pyproject.resolve().is_relative_to(working_dir):
         raise RuntimeError(
             f"Your {pyproject.resolve()} is not in the working_dir {runtime_env['working_dir']}, "
-            "so the workers will not have access to the file. Please make sure "
+            "so the workers will not have access to the file. Make sure "
             "the pyproject.toml file is in the working directory. "
             "You can do so by specifying --directory in 'uv run', by changing the current "
             "working directory before running 'uv run', or by using the 'working_dir' "
