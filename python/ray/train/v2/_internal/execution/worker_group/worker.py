@@ -54,8 +54,6 @@ class ActorMetadata:
         non_empty_accelerator_ids = {k: v for k, v in self.accelerator_ids.items() if v}
         if non_empty_accelerator_ids:
             repr_lines.append(f"{indent}accelerator_ids={non_empty_accelerator_ids},")
-        if self.gpu_ids:
-            repr_lines.append(f"{indent}gpu_ids={self.gpu_ids},")
 
         repr_lines.append(")")
         return "\n".join(repr_lines)

@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 import ray
 from ray.train.base_trainer import GenDataset
@@ -116,10 +116,14 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         worker_group_context: WorkerGroupContext = (
             worker_group.get_worker_group_context()
         )
-        worker_group_poll_status: WorkerGroupPollStatus = (
-            worker_group.get_latest_poll_status()
-        )
-        if worker_group_poll_status.errors:
+        # TODO: Consider passing error reason directly to the callback.
+        # Something along the lines of:
+        #    WorkerGroup.shutdown(reason)
+        #    -> WorkerGroupCallback.before_worker_group_shutdown(reason)
+        worker_group_poll_status: Optional[
+            WorkerGroupPollStatus
+        ] = worker_group.get_latest_poll_status()
+        if worker_group_poll_status and worker_group_poll_status.errors:
             self._state_manager.update_train_run_attempt_errored(
                 run_id=self._run_id,
                 attempt_id=worker_group_context.run_attempt_id,
