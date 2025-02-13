@@ -40,6 +40,12 @@ repos:
       - id: ruff
         args: [ --fix, --exit-non-zero-on-fix ]
 
+  - repo: https://github.com/cpplint/cpplint
+    rev: 2.0.0
+    hooks:
+      - id: cpplint
+        args: ["--filter=-whitespace/line_length"]
+
   - repo: https://github.com/psf/black
     rev: 22.10.0
     hooks:
