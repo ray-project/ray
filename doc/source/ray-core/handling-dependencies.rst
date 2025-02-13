@@ -382,12 +382,18 @@ or use the `--with` flag to specify individual requirements.
   .. code-block:: sh
 
     export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
-    uv run my_script.py
 
-  It will set the `py_executable` to `uv run` with the same parameters as the driver
-  and will also set the `working_dir` to the same working directory that the driver
-  is using (either the current working directory or the `--directory` in `uv run`).
-  In the future we might make this behavior the default.
+  Run your driver via:
+
+  .. code-block:: sh
+
+    uv run <args> my_script.py
+
+  It will set the `py_executable` to `uv run <args>` and will also set the
+  `working_dir` to the same working directory that the driver is using (either
+  the current working directory or the `--directory` in `uv run`).
+  Note that this hook is currently experimental, in the future we might make
+  this behavior the default.
 
 
 Library Development
