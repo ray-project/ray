@@ -569,7 +569,7 @@ class JobHead(SubprocessModule):
             )
 
     @SubprocessRouteTable.get(
-        "/api/jobs/{job_or_submission_id}/logs/tail", streaming=True
+        "/api/jobs/{job_or_submission_id}/logs/tail", streaming=True, websocket=True
     )
     async def tail_job_logs(self, req: Request):
         job_or_submission_id = req.match_info["job_or_submission_id"]

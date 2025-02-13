@@ -1,11 +1,11 @@
 import asyncio
-import concurrent.futures
 import logging
 import multiprocessing
 import os
 import threading
 from dataclasses import dataclass
-from typing import Awaitable, Optional
+from typing import Awaitable, Optional, Union
+from concurrent.futures import Future
 
 from ray.dashboard.optional_deps import aiohttp
 from ray.dashboard.subprocesses.message import (
@@ -75,7 +75,9 @@ class SubprocessModuleHandle:
         request: aiohttp.web.Request
         # Future to a Response as the result of a aiohttp handler. It's can be a
         # Response for a unary request, or a StreamResponse for a streaming request.
-        response_fut: Awaitable[aiohttp.web.StreamResponse]
+        response_fut: Union[
+            Future[aiohttp.web.StreamResponse], Future[aiohttp.web.WebSocketResponse]
+        ]
         # Only exists when the module decides this is a streaming response.
         # To keep the data sent in order, we use future to synchronize. This assumes
         # the Messages received from the Queue are in order.
@@ -86,9 +88,12 @@ class SubprocessModuleHandle:
         # resolves the new future.
         # StreamResponseEndMessage expects a future. It resolves the future and sets
         # the stream_response to None.
-        stream_response: Optional[
-            concurrent.futures.Future[aiohttp.web.StreamResponse]
+        stream_response: Union[
+            Future[aiohttp.web.StreamResponse],
+            Future[aiohttp.web.WebSocketResponse],
+            None,
         ] = None
+        is_websocket: bool = False
 
     def __init__(
         self,
@@ -304,7 +309,7 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_stream_response_data(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse], data: bytes
+        prev_fut: Future[aiohttp.web.StreamResponse], data: bytes
     ) -> aiohttp.web.StreamResponse:
         # TODO: error handling
         response = await asyncio.wrap_future(prev_fut)
@@ -313,8 +318,8 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_stream_response_end(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse],
-        response_fut: Awaitable[aiohttp.web.StreamResponse],
+        prev_fut: Future[aiohttp.web.StreamResponse],
+        response_fut: Future[aiohttp.web.StreamResponse],
     ) -> None:
         try:
             response = await asyncio.wrap_future(prev_fut)
@@ -325,9 +330,9 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_stream_response_error(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse],
+        prev_fut: Future[aiohttp.web.StreamResponse],
         exception: Exception,
-        response_fut: Awaitable[aiohttp.web.StreamResponse],
+        response_fut: Future[aiohttp.web.StreamResponse],
     ) -> None:
         """
         When the async iterator in the module raises an error, we need to propagate it
@@ -342,6 +347,60 @@ class SubprocessModuleHandle:
             response = await asyncio.wrap_future(prev_fut)
             await response.write(str(exception).encode())
             await response.write_eof()
+            response_fut.set_result(response)
+        except Exception as e:
+            response_fut.set_exception(e)
+
+    @staticmethod
+    async def handle_websocket_response_start(
+        request: aiohttp.web.Request, first_data: bytes
+    ) -> aiohttp.web.WebSocketResponse:
+        # TODO: error handling
+        response = aiohttp.web.WebSocketResponse()
+        await response.prepare(request)
+        await response.send_str(first_data.decode())
+        return response
+
+    @staticmethod
+    async def handle_websocket_response_data(
+        prev_fut: Future[aiohttp.web.WebSocketResponse], data: bytes
+    ) -> aiohttp.web.WebSocketResponse:
+        # TODO: error handling
+        response = await asyncio.wrap_future(prev_fut)
+        await response.send_str(data.decode())
+        return response
+
+    @staticmethod
+    async def handle_websocket_response_end(
+        prev_fut: Future[aiohttp.web.WebSocketResponse],
+        response_fut: Future[aiohttp.web.WebSocketResponse],
+    ) -> None:
+        try:
+            response = await asyncio.wrap_future(prev_fut)
+            await response.close()
+            response_fut.set_result(response)
+        except Exception as e:
+            response_fut.set_exception(e)
+
+    @staticmethod
+    async def handle_websocket_response_error(
+        prev_fut: Future[aiohttp.web.WebSocketResponse],
+        exception: Exception,
+        response_fut: Future[aiohttp.web.WebSocketResponse],
+    ) -> None:
+        """
+        When the async iterator in the module raises an error, we need to propagate it
+        to the client and close the stream. However, we already sent a 200 OK to the
+        client and can't change that to a 500. We can't just raise an exception here to
+        aiohttp because that causes it to abruptly close the connection and the client
+        will raise a ClientPayloadError(TransferEncodingError).
+
+        Instead, we write exception to the stream and close the stream.
+        """
+        try:
+            response = await asyncio.wrap_future(prev_fut)
+            await response.send_str(str(exception))
+            await response.close()
             response_fut.set_result(response)
         except Exception as e:
             response_fut.set_exception(e)
@@ -366,43 +425,80 @@ class SubprocessModuleHandle:
             # This assignment is thread safe, because a next read will come from another
             # handle_parent_bound_message call for a Stream.*Message, which will run on
             # the same thread and hence will happen-after this assignment.
-            active_request.stream_response = asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_start(
-                    active_request.request, message.body
-                ),
-                loop,
-            )
+            if message.is_websocket:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_websocket_response_start(
+                        active_request.request, message.body
+                    ),
+                    loop,
+                )
+                active_request.is_websocket = True
+            else:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_stream_response_start(
+                        active_request.request, message.body
+                    ),
+                    loop,
+                )
+                active_request.is_websocket = False
         elif isinstance(message, StreamResponseDataMessage):
             active_request = self.active_requests.get_or_raise(message.request_id)
             assert active_request.stream_response is not None
-            active_request.stream_response = asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_data(
-                    active_request.stream_response, message.body
-                ),
-                loop,
-            )
+            if active_request.is_websocket:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_websocket_response_data(
+                        active_request.stream_response, message.body
+                    ),
+                    loop,
+                )
+            else:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_stream_response_data(
+                        active_request.stream_response, message.body
+                    ),
+                    loop,
+                )
         elif isinstance(message, StreamResponseEndMessage):
             active_request = self.active_requests.pop_or_raise(message.request_id)
             assert active_request.stream_response is not None
-            asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_end(
-                    active_request.stream_response,
-                    active_request.response_fut,
-                ),
-                loop,
-            )
-        elif isinstance(message, ErrorMessage):
-            # Propagate the error to aiohttp.
-            active_request = self.active_requests.pop_or_raise(message.request_id)
-            if active_request.stream_response is not None:
+            if active_request.is_websocket:
                 asyncio.run_coroutine_threadsafe(
-                    SubprocessModuleHandle.handle_stream_response_error(
+                    SubprocessModuleHandle.handle_websocket_response_end(
                         active_request.stream_response,
-                        message.error,
                         active_request.response_fut,
                     ),
                     loop,
                 )
+            else:
+                asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_stream_response_end(
+                        active_request.stream_response,
+                        active_request.response_fut,
+                    ),
+                    loop,
+                )
+        elif isinstance(message, ErrorMessage):
+            # Propagate the error to aiohttp.
+            active_request = self.active_requests.pop_or_raise(message.request_id)
+            if active_request.stream_response is not None:
+                if active_request.is_websocket:
+                    asyncio.run_coroutine_threadsafe(
+                        SubprocessModuleHandle.handle_websocket_response_error(
+                            active_request.stream_response,
+                            message.error,
+                            active_request.response_fut,
+                        ),
+                        loop,
+                    )
+                else:
+                    asyncio.run_coroutine_threadsafe(
+                        SubprocessModuleHandle.handle_stream_response_error(
+                            active_request.stream_response,
+                            message.error,
+                            active_request.response_fut,
+                        ),
+                        loop,
+                    )
             else:
                 loop.call_soon_threadsafe(
                     active_request.response_fut.set_exception, message.error

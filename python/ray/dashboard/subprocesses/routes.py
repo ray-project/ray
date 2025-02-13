@@ -2,7 +2,7 @@ import collections
 import functools
 import inspect
 import multiprocessing
-from typing import AsyncIterator, Awaitable, Callable
+from typing import AsyncIterator, Awaitable, Callable, Literal
 
 from ray.dashboard.optional_deps import aiohttp
 
@@ -90,7 +90,8 @@ class SubprocessRouteTable(BaseRouteTable):
     def _decorated_streaming_handler(
         handler: Callable[
             [SubprocessModule, SubprocessModuleRequest], AsyncIterator[bytes]
-        ]
+        ],
+        res_type: Literal["streaming", "websocket"],
     ) -> Callable[[RequestMessage, multiprocessing.Queue], Awaitable[None]]:
         """
         Requirements to and Behavior of the handler:
@@ -107,6 +108,11 @@ class SubprocessRouteTable(BaseRouteTable):
 
             After the AsyncIterator is exhausted, the server will close the connection.
         """
+        assert res_type in [
+            "streaming",
+            "websocket",
+        ], "Streaming response type can only be 'streaming' or 'websocket'."
+        is_websocket = res_type == "websocket"
 
         @functools.wraps(handler)
         async def _streaming_handler(
@@ -126,10 +132,14 @@ class SubprocessRouteTable(BaseRouteTable):
                 )
                 async_iter = handler(self, request)
                 async for chunk in async_iter:
+                    if isinstance(chunk, str):
+                        chunk = chunk.encode()
                     if not start_message_sent:
                         parent_bound_queue.put(
                             StreamResponseStartMessage(
-                                request_id=message.request_id, body=chunk
+                                request_id=message.request_id,
+                                body=chunk,
+                                is_websocket=is_websocket,
                             )
                         )
                         start_message_sent = True
@@ -237,7 +247,11 @@ class SubprocessRouteTable(BaseRouteTable):
             )
 
             if kwargs.get("streaming", False):
-                handler = cls._decorated_streaming_handler(handler)
+                is_websocket = kwargs.get("websocket", False)
+                res_type: Literal["streaming", "websocket"] = (
+                    "websocket" if is_websocket else "streaming"
+                )
+                handler = cls._decorated_streaming_handler(handler, res_type)
             else:
                 handler = cls._decorated_non_streaming_handler(handler)
 
