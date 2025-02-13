@@ -312,7 +312,7 @@ class ClusterStatusFormatter:
     @classmethod
     def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
         header = cls._header_info(data, verbose)
-        separator_len = min(len(header), header.index("\n"))
+        separator_len = max(0, min(len(header), header.index("\n")))
         separator = "-" * separator_len
 
         # Parse ClusterStatus information to output format
