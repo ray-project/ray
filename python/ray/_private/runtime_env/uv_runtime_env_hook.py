@@ -38,7 +38,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         remaining_uv_run_args = uv_run_args
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
 
-    # If the user specified a working_dir, we will always honor it, otherwise
+    # If the user specified a working_dir, we always honor it, otherwise
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
         runtime_env["working_dir"] = os.getcwd()
@@ -52,7 +52,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         raise RuntimeError(
             f"You specified --with-requirements={known_args.with_requirements} but "
             f"the requirements file is not in the working_dir {runtime_env['working_dir']}, "
-            "so the workers will not have access to the file. Please make sure "
+            "so the workers will not have access to the file. Make sure "
             "the requirements file is in the working directory. "
             "You can do so by specifying --directory in 'uv run', by changing the current "
             "working directory before running 'uv run', or by using the 'working_dir' "
@@ -77,7 +77,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if pyproject and not pyproject.resolve().is_relative_to(working_dir):
         raise RuntimeError(
             f"Your {pyproject.resolve()} is not in the working_dir {runtime_env['working_dir']}, "
-            "so the workers will not have access to the file. Please make sure "
+            "so the workers will not have access to the file. Make sure "
             "the pyproject.toml file is in the working directory. "
             "You can do so by specifying --directory in 'uv run', by changing the current "
             "working directory before running 'uv run', or by using the 'working_dir' "
