@@ -79,6 +79,8 @@ install_miniconda() {
     ${restore_shell_state}  # Restore set -x
   fi
 
+  conda config --set anaconda_anon_usage off
+
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
   if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
