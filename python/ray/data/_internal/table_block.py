@@ -472,7 +472,7 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        return ret, BlockAccessor.for_block(ret).get_metadata(exec_stats=stats.build())
 
     @classmethod
     def normalize_block_types(
