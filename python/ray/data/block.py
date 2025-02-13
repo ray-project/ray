@@ -512,7 +512,9 @@ class BlockAccessor:
         raise NotImplementedError
 
 
-def _get_group_boundaries_sorted(block: Block, key: Union[str, List[str]]) -> np.ndarray:
+def _get_group_boundaries_sorted(
+    block: Block, key: Union[str, List[str]]
+) -> np.ndarray:
     """
     NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
 
