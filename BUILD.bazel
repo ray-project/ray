@@ -494,6 +494,8 @@ ray_cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "//src/ray/util:cmd_line_utils",
+        "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:stream_redirection_utils",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -729,6 +731,8 @@ ray_cc_binary(
     deps = [
         ":gcs_server_lib",
         ":stats_lib",
+        "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:stream_redirection_utils",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -1706,6 +1710,18 @@ ray_cc_test(
     name = "local_task_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/local_task_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "node_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/test/node_manager_test.cc"],
     tags = ["team:core"],
     deps = [
         ":ray_mock",

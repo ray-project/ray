@@ -46,7 +46,7 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   int fd = open(path_string.data(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
   ASSERT_NE(fd, -1);
 #elif defined(_WIN32)
-  HANDLE fd = CreateFile(path_string,                   // File name
+  HANDLE fd = CreateFile(path_string.c_str(),           // File name
                          GENERIC_READ | GENERIC_WRITE,  // Access mode: read/write
                          0,                             // No sharing
                          NULL,                          // Default security attributes
