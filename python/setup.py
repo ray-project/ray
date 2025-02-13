@@ -621,14 +621,6 @@ def build(build_python, build_java, build_cpp):
         ]
     else:
         bazel_precmd_flags = []
-        # Using --incompatible_strict_action_env so that the build is more
-        # cache-able We cannot turn this on for Python tests yet, as Ray's
-        # Python bazel tests are not hermetic.
-        #
-        # And we put it here so that does not change behavior of
-        # conda-forge build.
-        if sys.platform != "darwin":  # TODO(aslonnie): does not work on macOS..
-            bazel_flags.append("--incompatible_strict_action_env")
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
