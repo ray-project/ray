@@ -274,7 +274,7 @@ class TableBlockAccessor(BlockAccessor):
         k = min(n_samples, self.num_rows())
         return self._sample(k, sort_key)
 
-    def _apply_aggregations(
+    def _aggregate(
         self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> Block:
         """Applies provided aggregations to groups of rows with the same key.

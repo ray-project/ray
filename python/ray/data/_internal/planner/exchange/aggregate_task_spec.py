@@ -55,7 +55,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         else:
             partitions = [block]
         parts = [
-            BlockAccessor.for_block(p)._apply_aggregations(sort_key, aggs)
+            BlockAccessor.for_block(p)._aggregate(sort_key, aggs)
             for p in partitions
         ]
         meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
