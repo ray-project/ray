@@ -489,7 +489,7 @@ class TableBlockAccessor(BlockAccessor):
         Returns:
             A list of blocks of the same type.
         """
-        seen_types: Dict[BlockType, int] = collections.defaultdict()
+        seen_types: Dict[BlockType, int] = collections.defaultdict(int)
 
         for block in blocks:
             block_accessor = BlockAccessor.for_block(block)
