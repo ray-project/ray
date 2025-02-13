@@ -1333,8 +1333,10 @@ TEST_F(ClusterTaskManagerTest, TaskCancelWithResourceShape) {
   callback_called_2 = false;
   reply1.Clear();
   reply2.Clear();
-  ASSERT_TRUE(task_manager_.CancelTasksWithResourceShapes(target_resource_shapes, 
-    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE, ""));
+  ASSERT_TRUE(task_manager_.CancelTasksWithResourceShapes(
+      target_resource_shapes,
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+      ""));
   ASSERT_FALSE(reply1.canceled());
   ASSERT_FALSE(callback_called_1);
   ASSERT_TRUE(reply2.canceled());
