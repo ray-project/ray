@@ -9,7 +9,6 @@ from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceState,
     GetClusterResourceStateReply,
     GetClusterStatusReply,
-    NodeState,
 )
 
 DEFAULT_RPC_TIMEOUT_S = 10
