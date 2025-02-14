@@ -234,9 +234,7 @@ class Mean(_AggregateOnKeyBase):
                 return None
             return [sum_, count]
 
-        merge = _null_safe_merge(
-            lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
-        )
+        merge = _null_safe_merge(lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]])
 
         super().__init__(
             init=None,
@@ -467,7 +465,7 @@ class Unique(_AggregateOnKeyBase):
         merge = _null_safe_merge(_merge)
 
         super().__init__(
-            init=lambda x: set(),
+            init=None,
             merge=merge,
             accumulate_block=lambda acc, block: merge(acc, block_row_unique(block)),
             finalize=lambda x: x,
@@ -479,18 +477,19 @@ def _is_null(a: Optional[AggType]) -> bool:
     return a is None or is_nan(a)
 
 
-def _null_safe_merge(merge: Callable[[AggType, AggType], AggType]) -> Callable[[Optional[AggType], Optional[AggType]], AggType]:
-    def _safe_merge(a: Optional[AggType], b: Optional[AggType]) -> AggType:
-        a_is_null = _is_null(a)
-        b_is_null = _is_null(b)
-
-        if a_is_null and b_is_null:
-            return None
-        elif a_is_null:
-            return b
-        elif b_is_null:
-            return a
+def _null_safe_merge(
+    merge: Callable[[AggType, AggType], AggType]
+) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
+    def _safe_merge(cur: Optional[AggType], new: Optional[AggType]) -> Optional[AggType]:
+        # Null-safe merge implements following semantic:
+        #   - If the null (NaN or None) has been produced by the aggregation, it's
+        #       prioritized and returned immediately
+        #   - If the current value is null, new value is prioritized and returned
+        #       (irrespective of whether it's null or not)
+        #   - Otherwise, values are merged (using provided merging util)
+        if _is_null(new) or _is_null(cur):
+            return new
         else:
-            return merge(a, b)
+            return merge(cur, new)
 
     return _safe_merge
