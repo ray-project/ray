@@ -21,8 +21,9 @@ class ChatTemplateUDF(StatefulStageUDF):
         Args:
             data_column: The data column name.
             model: The model to use for the chat template.
-            chat_template: The chat template to use. This is usually not needed
-            if the model checkpoint already contains the chat template.
+            chat_template: The chat template in Jinja template format. This is
+            usually not needed if the model checkpoint already contains the
+            chat template.
         """
         from transformers import AutoProcessor
 
@@ -45,12 +46,12 @@ class ChatTemplateUDF(StatefulStageUDF):
         Yields:
             A generator of rows with the chat template applied.
         """
-        messages = [
-            row["messages"].tolist()
-            if hasattr(row["messages"], "tolist")
-            else row["messages"]
-            for row in batch
-        ]
+        messages = []
+        for row in batch:
+            if hasattr(row["messages"], "tolist"):
+                messages.append(row["messages"].tolist())
+            else:
+                messages.append(row["messages"])
 
         prompts = self.processor.apply_chat_template(
             messages,

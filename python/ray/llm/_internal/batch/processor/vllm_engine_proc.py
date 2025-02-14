@@ -1,7 +1,7 @@
 """The vLLM engine processor."""
 from typing import Any, Dict, Optional
 
-from pydantic import ConfigDict, Field
+from pydantic import Field, root_validator
 
 from ray.data.block import UserDefinedFunction
 
@@ -24,31 +24,65 @@ from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 class vLLMEngineProcessorConfig(ProcessorConfig):
     """The configuration for the vLLM engine processor."""
 
-    model_config = ConfigDict(use_enum_values=True)
-
-    # The model name.
-    model: str
-    # The engine kwargs.
-    engine_kwargs: Dict[str, Any]
-    # The task type.
-    task_type: Optional[vLLMTaskType] = Field(
-        default=vLLMTaskType.GENERATE, validate_default=True
+    # vLLM stage configurations.
+    model: str = Field(
+        description="The model to use for the vLLM engine.",
     )
-    # The runtime environment.
-    runtime_env: Optional[Dict[str, Any]] = None
-    # The maximum number of pending requests.
-    max_pending_requests: Optional[int] = None
-    # Whether to apply chat template.
-    apply_chat_template: bool = True
-    # The chat template to use. This is usually not needed if the model
-    # checkpoint already contains the chat template.
-    chat_template: Optional[str] = None
-    # Whether to tokenize the input.
-    tokenize: bool = True
-    # Whether to detokenize the output.
-    detokenize: bool = True
-    # Whether the input messages have images.
-    has_image: bool = False
+    engine_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The kwargs to pass to the vLLM engine.",
+    )
+    task_type: vLLMTaskType = Field(
+        default=vLLMTaskType.GENERATE,
+        description="The task type to use. If not specified, will use "
+        "'generate' by default.",
+    )
+    runtime_env: Optional[Dict[str, Any]] = Field(
+        default_factory=None,
+        description="The runtime environment to use for the vLLM engine.",
+    )
+    max_pending_requests: Optional[int] = Field(
+        default=None,
+        description="The maximum number of pending requests. If not specified, "
+        "will use the default value from the vLLM engine.",
+    )
+    max_concurrent_batches: int = Field(
+        default=4,
+        description="The maximum number of concurrent batches in the engine. "
+        "This is to overlap the batch processing to avoid the tail latency of "
+        "each batch. The default value may not be optimal when the batch size "
+        "or the batch processing latency is too small, but it should be good "
+        "enough for batch size >= 64.",
+    )
+
+    # Processor stage configurations.
+    apply_chat_template: bool = Field(
+        default=True, description="Whether to apply chat template."
+    )
+    chat_template: Optional[str] = Field(
+        default=None,
+        description="The chat template to use. This is usually not needed if the "
+        "model checkpoint already contains the chat template.",
+    )
+    tokenize: bool = Field(
+        default=True,
+        description="Whether to tokenize the input before passing it to the "
+        "vLLM engine. If not, vLLM will tokenize the prompt in the engine.",
+    )
+    detokenize: bool = Field(
+        default=True,
+        description="Whether to detokenize the output.",
+    )
+    has_image: bool = Field(
+        default=False,
+        description="Whether the input messages have images.",
+    )
+
+    @root_validator(pre=True)
+    def validate_task_type(cls, values):
+        task_type_str = values.get("task_type", "generate")
+        values["task_type"] = vLLMTaskType(task_type_str)
+        return values
 
 
 def build_vllm_engine_processor(
@@ -129,10 +163,8 @@ def build_vllm_engine_processor(
                 concurrency=config.concurrency,
                 # The number of running batches "per actor" in Ray Core level.
                 # This is used to make sure we overlap batches to avoid the tail
-                # latency of each batch. This hardcoded value may not be optimal
-                # (too small) when the batch size or the batch processing latency
-                # is too small, but it should be good enough for batch size >= 64.
-                max_concurrency=4,
+                # latency of each batch.
+                max_concurrency=config.max_concurrent_batches,
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),

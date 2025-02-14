@@ -174,9 +174,9 @@ def test_embedding_model(model_opt_125m):
     assert all("prompt" in out for out in outs)
 
 
-def test_vision_model():
+def test_vision_model(model_llava_1_5_7b):
     processor_config = vLLMEngineProcessorConfig(
-        model="llava-hf/llava-1.5-7b-hf",
+        model=model_llava_1_5_7b,
         task_type="generate",
         engine_kwargs=dict(
             # Skip CUDA graph capturing to reduce startup time.
