@@ -71,4 +71,3 @@ class RuntimeEnvManager {
   absl::flat_hash_map<std::string, std::vector<std::string>> id_to_uris_;
 };
 }  // namespace ray
-

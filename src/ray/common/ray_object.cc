@@ -143,4 +143,3 @@ bool RayObject::IsInPlasmaError() const {
 }
 
 }  // namespace ray
-

@@ -53,4 +53,3 @@ TEST(EventStatsTest, TestRecordExecution) {
   ASSERT_GE(event_stats.cum_execution_time, 200000000);
   ASSERT_GE(event_stats.cum_queue_time, 100000000);
 }
-

@@ -212,4 +212,3 @@ struct hash<ray::ResourceSet> {
   }
 };
 }  // namespace std
-

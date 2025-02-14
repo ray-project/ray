@@ -87,4 +87,3 @@ TEST_F(NodeResourceSetTest, TestExplicitResourceIds) {
 }
 
 }  // namespace ray
-

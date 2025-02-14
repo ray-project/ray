@@ -535,4 +535,3 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env);
 
 }  // namespace ray
-

@@ -237,4 +237,3 @@ class MemoryMonitor {
 };
 
 }  // namespace ray
-

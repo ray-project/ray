@@ -30,4 +30,3 @@ using Language = rpc::Language;
 using TaskType = rpc::TaskType;
 
 }  // namespace ray
-

@@ -21,4 +21,3 @@
 
 // Macros which gets variable name with line number.
 #define RAY_UNIQUE_VARIABLE(base) RAY_CONCAT(base, __LINE__)
-

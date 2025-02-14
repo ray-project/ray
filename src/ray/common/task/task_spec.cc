@@ -632,4 +632,3 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
 }
 
 }  // namespace ray
-

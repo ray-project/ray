@@ -171,4 +171,3 @@ class Postable {
 };
 
 }  // namespace ray
-

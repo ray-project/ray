@@ -337,4 +337,3 @@ ID_OSTREAM_OPERATOR(PlacementGroupID);
 const NodeID kGCSNodeID = NodeID::FromBinary(std::string(kUniqueIDSize, 0));
 
 }  // namespace ray
-

@@ -159,4 +159,3 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
 std::string GetGroupIDFromResource(const std::string &resource);
 
 }  // namespace ray
-

@@ -26,4 +26,3 @@ std::ostream &operator<<(std::ostream &os, const SourceLocation &loc) {
 }
 
 }  // namespace ray
-

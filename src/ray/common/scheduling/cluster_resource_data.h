@@ -401,4 +401,3 @@ ResourceRequest ResourceMapToResourceRequest(
     bool requires_object_store_memory);
 
 }  // namespace ray
-

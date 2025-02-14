@@ -173,4 +173,3 @@ class NodeResourceInstanceSet {
 };
 
 }  // namespace ray
-

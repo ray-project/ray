@@ -298,4 +298,3 @@ class ClientConnection : public ServerConnection {
 };
 
 }  // namespace ray
-

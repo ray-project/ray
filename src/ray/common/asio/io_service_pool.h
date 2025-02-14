@@ -80,4 +80,3 @@ inline std::vector<instrumented_io_context *> IOServicePool::GetAll() {
 }
 
 }  // namespace ray
-

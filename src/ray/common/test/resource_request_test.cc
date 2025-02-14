@@ -200,4 +200,3 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
 }
 
 }  // namespace ray
-

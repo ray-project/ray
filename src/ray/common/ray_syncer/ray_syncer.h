@@ -206,4 +206,3 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
 };
 
 }  // namespace ray::syncer
-

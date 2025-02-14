@@ -43,4 +43,3 @@ std::ostream &operator<<(std::ostream &os, const SourceLocation &loc);
 
 #define RAY_LOC() \
   ray::SourceLocation { __FILE__, __LINE__ }
-

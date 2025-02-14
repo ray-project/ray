@@ -133,4 +133,3 @@ class PlacementGroupSpecBuilder {
 };
 
 }  // namespace ray
-

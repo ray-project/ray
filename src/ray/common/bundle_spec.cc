@@ -243,4 +243,3 @@ std::string GetGroupIDFromResource(const std::string &resource) {
 }
 
 }  // namespace ray
-

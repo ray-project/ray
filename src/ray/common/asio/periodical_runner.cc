@@ -134,4 +134,3 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
 }
 
 }  // namespace ray
-

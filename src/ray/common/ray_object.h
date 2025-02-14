@@ -169,4 +169,3 @@ class RayObject {
 };
 
 }  // namespace ray
-

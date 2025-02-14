@@ -266,4 +266,3 @@ std::string EventTracker::StatsString() const {
   stats_stream << event_stats_stream.rdbuf();
   return stats_stream.str();
 }
-

@@ -43,4 +43,3 @@ TEST(AsioChaosTest, WithGlobal) {
   ASSERT_TRUE(EnsureBelow("method2", 20, 30));
   ASSERT_TRUE(EnsureBelow("others", 100, 200));
 }
-

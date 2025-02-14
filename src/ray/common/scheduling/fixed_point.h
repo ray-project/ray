@@ -124,4 +124,3 @@ std::vector<double> FixedPointVectorToDouble(const std::vector<FixedPoint> &vect
 
 /// Convert a FixedPoint vector to string.
 std::string FixedPointVectorToString(const std::vector<FixedPoint> &vector);
-

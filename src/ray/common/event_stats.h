@@ -175,4 +175,3 @@ class EventTracker {
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
 };
-

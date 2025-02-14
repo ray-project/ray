@@ -59,4 +59,3 @@ class CgroupV2Setup {
 };
 
 }  // namespace ray
-

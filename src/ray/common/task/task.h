@@ -80,4 +80,3 @@ class RayTask {
 };
 
 }  // namespace ray
-

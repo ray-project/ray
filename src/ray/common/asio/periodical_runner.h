@@ -64,4 +64,3 @@ class PeriodicalRunner : public std::enable_shared_from_this<PeriodicalRunner> {
 };
 
 }  // namespace ray
-

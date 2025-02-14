@@ -256,4 +256,3 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
 }  // namespace raylet
 
 }  // namespace ray
-

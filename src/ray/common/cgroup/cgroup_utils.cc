@@ -172,4 +172,3 @@ CgroupV2Setup::~CgroupV2Setup() {
 }  // namespace ray
 
 #endif  // __linux__
-

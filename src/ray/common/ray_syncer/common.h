@@ -35,4 +35,3 @@ inline constexpr size_t kComponentArraySize =
 using RpcCompletionCallback = std::function<void(const NodeID &)>;
 
 }  // namespace ray::syncer
-

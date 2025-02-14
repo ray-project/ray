@@ -123,4 +123,3 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
 }
 
 }  // namespace ray
-

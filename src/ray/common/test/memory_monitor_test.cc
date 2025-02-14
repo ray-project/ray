@@ -479,4 +479,3 @@ TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
 }
 
 }  // namespace ray
-

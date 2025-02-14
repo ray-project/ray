@@ -91,4 +91,3 @@ TEST_F(BundleLocationIndexTest, BesicTest) {
 }
 
 }  // namespace ray
-

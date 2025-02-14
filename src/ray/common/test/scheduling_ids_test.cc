@@ -68,4 +68,3 @@ TEST_F(SchedulingIDsTest, UnitInstanceResourceTest) {
   ASSERT_FALSE(ResourceID("custom2").IsUnitInstanceResource());
 }
 }  // namespace ray
-

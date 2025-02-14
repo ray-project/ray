@@ -184,4 +184,3 @@ const std::string &GetCgroupV2SystemFolder() { return cgroup_v2_system_folder; }
 }  // namespace ray
 
 #endif  // __linux__
-

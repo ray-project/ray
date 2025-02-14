@@ -50,4 +50,3 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
 };
 
 }  // namespace ray::syncer
-

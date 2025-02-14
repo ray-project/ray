@@ -56,4 +56,3 @@ void RayClientBidiReactor::DoDisconnect() {
 }
 
 }  // namespace ray::syncer
-

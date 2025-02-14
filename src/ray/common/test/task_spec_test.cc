@@ -271,4 +271,3 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
                std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_5));
 }
 }  // namespace ray
-

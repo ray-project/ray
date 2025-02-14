@@ -40,4 +40,3 @@ struct PhysicalModeExecutionContext {
 };
 
 }  // namespace ray
-

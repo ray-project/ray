@@ -194,4 +194,3 @@ class IOContextProvider {
       dedicated_io_contexts_;
   instrumented_io_context &default_io_context_;
 };
-

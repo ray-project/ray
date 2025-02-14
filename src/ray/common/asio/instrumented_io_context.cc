@@ -122,4 +122,3 @@ void instrumented_io_context::dispatch(std::function<void()> handler,
         EventTracker::RecordExecution(handler, stats_handle);
       });
 }
-
