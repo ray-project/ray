@@ -24,8 +24,8 @@ class Operator:
         return self._name
 
     @property
-    def full_name(self) -> str:
-        """Full name including all input dependencies."""
+    def dag_string(self) -> str:
+        """String representation of the whole DAG."""
         if self.input_dependencies:
             out_str = ", ".join([str(x) for x in self.input_dependencies])
             out_str += " -> "
@@ -57,7 +57,7 @@ class Operator:
         yield self
 
     def __repr__(self) -> str:
-        return self.name
+        return f"{self.__class__.__name__}[{self._name}]"
 
     def __str__(self) -> str:
         return repr(self)

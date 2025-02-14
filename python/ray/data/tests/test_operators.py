@@ -77,9 +77,11 @@ def test_name_and_repr(ray_start_regular_shared):
         name="TestMapper",
     )
 
-    print(map_op.name)
-    print(map_op.full_name)
-    print(str(map_op))
+    assert map_op.name == "TestMapper"
+    assert (
+        map_op.dag_string == "InputDataBuffer[Input] -> TaskPoolMapOperator[TestMapper]"
+    )
+    assert str(map_op) == "TaskPoolMapOperator[TestMapper]"
 
 
 def test_input_data_buffer(ray_start_regular_shared):
