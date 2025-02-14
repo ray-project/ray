@@ -332,7 +332,9 @@ class TableBlockAccessor(BlockAccessor):
                 accessor = BlockAccessor.for_block(group_view)
                 # Skip empty blocks
                 if accessor.num_rows() > 0:
-                    accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
+                    accumulators[i] = aggs[i].accumulate_block(
+                        accumulators[i], group_view
+                    )
 
             # Build the row.
             row = {}

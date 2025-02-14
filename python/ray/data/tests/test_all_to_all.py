@@ -1,4 +1,3 @@
-import math
 import random
 import time
 from typing import Optional
@@ -12,7 +11,8 @@ import ray
 from packaging.version import parse as parse_version
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
-    combine_chunks, MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    combine_chunks,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data._internal.util import is_nan
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -680,7 +680,8 @@ def test_groupby_tabular_min(
 
     # Test built-in min aggregation with nans
     ds = ray.data.from_items(
-        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}, {"A": 3, "B": None}]
+        [{"A": (x % 3), "B": x} for x in xs]
+        + [{"A": 0, "B": None}, {"A": 3, "B": None}]
     ).repartition(num_parts)
 
     if ds_format == "pandas":
@@ -1110,8 +1111,8 @@ def test_groupby_arrow_multi_agg(
     ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method, ds_format
 ):
     if (
-        ds_format == "pyarrow" and
-        parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
+        ds_format == "pyarrow"
+        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
     ):
         pytest.skip(
             "Pyarrow < 14.0 doesn't support type promotions (hence fails "
@@ -1142,12 +1143,21 @@ def test_groupby_arrow_multi_agg(
 
     agg_df = agg_ds.to_pandas().sort_values(by="A").reset_index(drop=True)
 
-    grouped_df = df.groupby("A", as_index=False).agg({
-        "B": ["count", "sum", "min", "max", "mean", "std", "quantile"],
-    })
+    grouped_df = df.groupby("A", as_index=False).agg(
+        {
+            "B": ["count", "sum", "min", "max", "mean", "std", "quantile"],
+        }
+    )
 
     grouped_df.columns = [
-        "A", "count()", "sum(B)", "min(B)", "max(B)", "mean(B)", "std(B)", "quantile(B)",
+        "A",
+        "count()",
+        "sum(B)",
+        "min(B)",
+        "max(B)",
+        "mean(B)",
+        "std(B)",
+        "quantile(B)",
     ]
 
     expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)
@@ -1192,13 +1202,16 @@ def test_groupby_arrow_multi_agg(
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pandas", "pyarrow"])
-#@pytest.mark.parametrize("ignore_nulls", [True, False])
+# @pytest.mark.parametrize("ignore_nulls", [True, False])
 def test_groupby_arrow_multi_agg_with_nans(
-    ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method, ds_format,
+    ray_start_regular_shared_2_cpus,
+    num_parts,
+    configure_shuffle_method,
+    ds_format,
 ):
     if (
-        ds_format == "pyarrow" and
-        parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
+        ds_format == "pyarrow"
+        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
     ):
         pytest.skip(
             "Pyarrow < 14.0 doesn't support type promotions (hence fails "
@@ -1211,10 +1224,12 @@ def test_groupby_arrow_multi_agg_with_nans(
     xs = list(range(100))
     random.shuffle(xs)
 
-    df = pd.DataFrame({
-        "A": [x % 3 for x in xs] + [(np.nan if x % 2 == 0 else None) for x in xs],
-        "B": xs + [(x if x % 2 == 1 else np.nan) for x in xs]
-    })
+    df = pd.DataFrame(
+        {
+            "A": [x % 3 for x in xs] + [(np.nan if x % 2 == 0 else None) for x in xs],
+            "B": xs + [(x if x % 2 == 1 else np.nan) for x in xs],
+        }
+    )
 
     agg_ds = (
         ray.data.from_pandas(df)
@@ -1233,14 +1248,21 @@ def test_groupby_arrow_multi_agg_with_nans(
 
     agg_df = agg_ds.to_pandas().sort_values(by="A").reset_index(drop=True)
 
-    grouped_df = df.groupby("A", as_index=False, dropna=False).agg({
-        "B": ["sum", "min", "max", "mean", "std"],
-        # "B": ["sum", "min", "max", "mean", "std", "quantile"],
-    })
+    grouped_df = df.groupby("A", as_index=False, dropna=False).agg(
+        {
+            "B": ["sum", "min", "max", "mean", "std"],
+            # "B": ["sum", "min", "max", "mean", "std", "quantile"],
+        }
+    )
 
     grouped_df.columns = [
         # "A", "sum_b", "min_b", "max_b", "mean_b", "std_b", "quantile_b",
-        "A", "sum_b", "min_b", "max_b", "mean_b", "std_b",
+        "A",
+        "sum_b",
+        "min_b",
+        "max_b",
+        "mean_b",
+        "std_b",
     ]
 
     expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)

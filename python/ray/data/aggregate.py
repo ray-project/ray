@@ -1,7 +1,6 @@
 import math
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
-from bokeh.models.dom import TableRow
 
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
@@ -144,8 +143,9 @@ class Sum(_AggregateOnKeyBase):
             init=None,
             merge=merge,
             accumulate_block=(
-                lambda acc, block:
-                    merge(acc, BlockAccessor.for_block(block).sum(on, ignore_nulls))
+                lambda acc, block: merge(
+                    acc, BlockAccessor.for_block(block).sum(on, ignore_nulls)
+                )
             ),
             finalize=lambda a: a,
             name=(self._rs_name),
@@ -173,7 +173,9 @@ class Min(_AggregateOnKeyBase):
         super().__init__(
             init=None,
             merge=merge,
-            accumulate_block=lambda acc, block: merge(acc, BlockAccessor.for_block(block).min(on, ignore_nulls)),
+            accumulate_block=lambda acc, block: merge(
+                acc, BlockAccessor.for_block(block).min(on, ignore_nulls)
+            ),
             finalize=lambda a: a,
             name=(self._rs_name),
         )
@@ -200,7 +202,9 @@ class Max(_AggregateOnKeyBase):
         super().__init__(
             init=None,
             merge=merge,
-            accumulate_block=lambda acc, block: merge(acc, BlockAccessor.for_block(block).max(on, ignore_nulls)),
+            accumulate_block=lambda acc, block: merge(
+                acc, BlockAccessor.for_block(block).max(on, ignore_nulls)
+            ),
             finalize=lambda a: a,
             name=(self._rs_name),
         )
@@ -234,7 +238,9 @@ class Mean(_AggregateOnKeyBase):
                 return None
             return [sum_, count]
 
-        merge = _null_safe_merge(lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]], ignore_nulls)
+        merge = _null_safe_merge(
+            lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]], ignore_nulls
+        )
 
         super().__init__(
             init=None,
@@ -340,8 +346,8 @@ class AbsMax(_AggregateOnKeyBase):
         if on is None or not isinstance(on, str):
             raise ValueError(f"Column to aggregate on has to be provided (got {on})")
 
-        selector = lambda r: r[on]
-        _null_safe_abs = lambda v: v if not _is_null(v) else None
+        def _null_safe_abs(v):
+            return v if not _is_null(v) else None
 
         merge = _null_safe_merge(max, ignore_nulls)
 
@@ -349,7 +355,7 @@ class AbsMax(_AggregateOnKeyBase):
             init=None,
             merge=merge,
             # TODO rebase onto block based impl using min_max
-            accumulate_row=lambda a, r: merge(a, _null_safe_abs(selector(r))),
+            accumulate_row=lambda a, r: merge(a, _null_safe_abs(r[on])),
             finalize=lambda a: a,
             name=(self._rs_name),
         )
@@ -481,7 +487,9 @@ def _null_safe_merge(
     merge: Callable[[AggType, AggType], AggType],
     ignore_nulls: bool,
 ) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
-    def _safe_merge(cur: Optional[AggType], new: Optional[AggType]) -> Optional[AggType]:
+    def _safe_merge(
+        cur: Optional[AggType], new: Optional[AggType]
+    ) -> Optional[AggType]:
         # Null-safe merge implements following semantic (see in-line)
         if _is_null(cur):
             #   - If the current accumulated value is null (NaN or None), return
