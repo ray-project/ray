@@ -14,6 +14,8 @@
 
 #include "ray/util/env.h"
 
+#include <string>
+
 #include "ray/util/logging.h"
 
 namespace ray {

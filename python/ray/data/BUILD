@@ -578,6 +578,15 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+
+py_test(
+    name = "test_union",
+    size = "small",
+    srcs = ["tests/test_union.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test(
     name = "test_video",
     size = "small",
@@ -686,6 +695,22 @@ py_test(
     name = "test_block_boundaries",
     size = "small",
     srcs = ["tests/test_block_boundaries.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_telemetry",
+    size = "small",
+    srcs = ["tests/test_telemetry.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_import",
+    size = "small",
+    srcs = ["tests/test_import.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
