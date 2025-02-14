@@ -2077,9 +2077,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
   }
   if (fetch_local) {
-    // We make the request to the plasma store even if we have num_objects ready since we
-    // want to at least make the request to pull these objects if the user specified
-    // fetch_local so the pulling can start.
+    // With fetch_local we want to start fetching plasma_object_ids from other nodes'
+    // plasma stores. We make the request to the plasma store even if we have num_objects
+    // ready since we want to at least make the request to start pulling these objects.
     if (!plasma_object_ids.empty()) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
@@ -2090,6 +2090,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
           &ready));
     }
   } else {
+    // When we don't need to fetch_local, we can simply just add the object_ids that we
+    // know are ready in plasma until we have num_objects.
     for (const auto &object_id : plasma_object_ids) {
       if (ready.size() == static_cast<size_t>(num_objects)) {
         break;

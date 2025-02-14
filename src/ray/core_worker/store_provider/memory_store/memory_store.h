@@ -93,6 +93,9 @@ class CoreWorkerMemoryStore {
              bool *got_exception);
 
   /// Waits for a number of objects to be ready from the list of object_ids given.
+  /// \return A pair of sets of object IDs. The first set contains the object IDs that
+  /// are ready in the core worker memory store (capped to num_objects), and the second
+  /// set contains the object IDs are ready in the plasma object store (not capped).
   StatusOr<std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>> Wait(
       const absl::flat_hash_set<ObjectID> &object_ids,
       int num_objects,
@@ -175,8 +178,9 @@ class CoreWorkerMemoryStore {
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// resources. is an exception.
-  /// \param[in] abort_after_num_objects Whether we should abort the loop that fills
-  /// results after after we find num_objects. False only for Wait.
+  /// \param[in] at_most_num_objects Whether this function will return *at most*
+  /// num_objects even if more are ready. We will still stop waiting when we have
+  /// num_objects.
   Status GetImpl(const std::vector<ObjectID> &object_ids,
                  int num_objects,
                  int64_t timeout_ms,
@@ -184,7 +188,7 @@ class CoreWorkerMemoryStore {
                  bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception,
-                 bool abort_after_num_objects);
+                 bool at_most_num_objects);
 
   /// Called when an object is deleted from the store.
   void OnDelete(std::shared_ptr<RayObject> obj);

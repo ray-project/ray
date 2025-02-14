@@ -268,7 +268,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                  remove_after_get,
                  results,
                  /*abort_if_any_object_is_exception=*/true,
-                 /*abort_after_num_objects=*/true);
+                 /*at_most_num_objects=*/true);
 }
 
 Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
@@ -278,7 +278,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       bool remove_after_get,
                                       std::vector<std::shared_ptr<RayObject>> *results,
                                       bool abort_if_any_object_is_exception,
-                                      bool abort_after_num_objects) {
+                                      bool at_most_num_objects) {
   (*results).resize(object_ids.size(), nullptr);
 
   std::shared_ptr<GetRequest> get_request;
@@ -310,8 +310,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       } else {
         remaining_ids.insert(object_id);
       }
-      // Only wait sets abort_after_num_objects to false.
-      if (num_found >= num_objects && abort_after_num_objects) {
+      // Only wait sets at_most_num_objects to false.
+      if (num_found >= num_objects && at_most_num_objects) {
         break;
       }
     }
@@ -460,7 +460,7 @@ CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_ids,
                         false,
                         &result_objects,
                         /*abort_if_any_object_is_exception=*/false,
-                        /*abort_after_num_objects=*/false);
+                        /*at_most_num_objects=*/false);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);
