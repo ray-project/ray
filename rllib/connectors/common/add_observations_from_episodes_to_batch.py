@@ -169,8 +169,6 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
                     single_agent_episode=sa_episode,
                 )
             else:
-                if sa_episode.is_numpy:
-                    print("not numpy")
                 assert not sa_episode.is_numpy
                 self.add_batch_item(
                     batch,
