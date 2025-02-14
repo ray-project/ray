@@ -125,7 +125,9 @@ class AggregateFnV2(AggregateFn):
             name=name,
             init=lambda _: None,
             merge=_safe_merge,
-            accumulate_block=lambda acc, block: _safe_merge(acc, aggregate_block(block)),
+            accumulate_block=lambda acc, block: _safe_merge(
+                acc, aggregate_block(block)
+            ),
             finalize=_safe_finalize,
         )
 
@@ -227,7 +229,9 @@ class Max(_AggregateOnKeyBase):
             self._rs_name,
             ignore_nulls=ignore_nulls,
             merge=max,
-            aggregate_block=lambda block: BlockAccessor.for_block(block).max(on, ignore_nulls),
+            aggregate_block=lambda block: BlockAccessor.for_block(block).max(
+                on, ignore_nulls
+            ),
         )
 
 
@@ -366,16 +370,19 @@ class AbsMax(_AggregateOnKeyBase):
         def _null_safe_abs(v):
             return v if not _is_null(v) else None
 
-        merge = _null_safe_merge(max, ignore_nulls)
+        def _aggregate(block: Block):
+            block_accessor = BlockAccessor.for_block(block)
 
-        # TODO BROKEN, FIX!
+            max_ = block_accessor.max(on, ignore_nulls)
+            min_ = block_accessor.min(on, ignore_nulls)
+
+            return max(_null_safe_abs(max_), _null_safe_abs(min_))
 
         super().__init__(
-            merge=merge,
-            # TODO rebase onto block based impl using min_max
-            accumulate_row=lambda a, r: merge(a, _null_safe_abs(r[on])),
-            finalize=lambda a: a,
-            name=(self._rs_name),
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
+            merge=max,
+            aggregate_block=_aggregate,
         )
 
 
