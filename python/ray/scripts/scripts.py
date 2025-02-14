@@ -907,6 +907,10 @@ def start(
                     " flag of `ray start` command."
                 )
 
+        if ray_params.enable_head_ha:
+            # block to check leadership of this head
+            block = True
+
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
@@ -1104,6 +1108,11 @@ def start(
 
         while True:
             time.sleep(1)
+
+            # Head HA
+            if head and ray_params.enable_head_ha and node.check_leadership_downgrade():
+                raise RuntimeError("leadership downgrade")
+
             deceased = node.dead_processes()
 
             # Report unexpected exits of subprocesses with unexpected return codes.
