@@ -1,0 +1,59 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+import "google/protobuf/timestamp.proto";
+
+// Metadata for a Ray Train run, including its details and status
+message TrainRun {
+  // Enumeration of the possible statuses for a Train run
+  enum RunStatus {
+    // Default value required by proto3
+    UNSPECIFIED = 0;
+
+    // Active States
+    INITIALIZING = 1;
+    SCHEDULING = 2;
+    RUNNING = 3;
+    RESTARTING = 4;
+    RESIZING = 5;
+
+    // Terminal States
+    FINISHED = 6;
+    ERRORED = 7;
+    ABORTED = 8;
+  }
+
+  // Unique identifier for the Train run
+  string id = 1;
+  // Human-readable name assigned to the Train run
+  string name = 2;
+  // The Ray Job ID associated with this Train run
+  string job_id = 3;
+  // Unique ID of the actor managing the Train run
+  string controller_actor_id = 4;
+  // The current execution status of the Train run
+  RunStatus status = 5;
+  // Additional details about the current status, including error messages if applicable
+  optional string status_detail = 6;
+  // The timestamp when the Train run started
+  google.protobuf.Timestamp start_time = 7;
+  // The timestamp when the Train run ended. If not set, the run is still in progress
+  optional google.protobuf.Timestamp end_time = 8;
+}
