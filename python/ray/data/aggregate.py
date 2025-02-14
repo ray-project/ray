@@ -389,7 +389,7 @@ class AbsMax(_AggregateOnKeyBase):
             raise ValueError(f"Column to aggregate on has to be provided (got {on})")
 
         def _null_safe_abs(v):
-            return v if not _is_null(v) else None
+            return abs(v) if not _is_null(v) else None
 
         def _aggregate(block: Block):
             block_accessor = BlockAccessor.for_block(block)
