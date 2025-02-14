@@ -2,7 +2,7 @@ from collections import defaultdict, deque
 import copy
 import time
 import threading
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Deque, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -229,18 +229,19 @@ class Stats:
 
         self._throughput = throughput if throughput is not True else 0.0
         if self._throughput is not False:
-            assert self._reduce_method == "sum"
-            assert self._inf_window
+            if self._reduce_method != "sum" or not self._inf_window:
+                raise ValueError(
+                    "Can't track throughput for a Stats that a) doesn't have "
+                    "reduce='sum' and/or b) has a finite window! Set `Stats("
+                    "reduce='sum', window=None)`."
+                )
             self._throughput_last_time = -1
 
         self._thread_save = thread_save
-        if thread_save:
-            self._threading_lock = threading.RLock()
-        else:
-            self._threading_lock = _DummyRLock()
+        self._threading_lock = threading.RLock() if thread_save else _DummyRLock()
 
-        # The actual data in this Stats object.
-        self.values = None
+        # The actual, underlying data in this Stats object.
+        self.values: Union[List, Deque] = None
         self._set_values(force_list(init_value))
 
     def push(self, value) -> None:
@@ -295,6 +296,12 @@ class Stats:
             The result of reducing the internal values list (or the previously computed
             reduced result, if `previous` is True).
         """
+        if previous is not None and throughput:
+            raise ValueError(
+                "Can't use `previous` and `throughput` args in same `Stats.peek()` "
+                "call!"
+            )
+
         with self._threading_lock:
             # Return previously reduced value.
             if previous is not None:
@@ -342,12 +349,13 @@ class Stats:
             # Shift historic reduced valued by one in our hist-tuple.
             self._hist.append(reduced)
 
-            # `clear_on_reduce` -> Return an empty new Stats object with the same
-            # settings as `self`.
+            # `clear_on_reduce` -> Return a new Stats object, with the values of `self`
+            # (from after the reduction). Also, set `self`'s values to empty.
             if self._clear_on_reduce:
                 values = self.values
                 self._set_values([])
-            # No reset required upon `reduce()` -> Return deepcopy of `self`.
+            # No reset required upon `reduce()` -> Return deepcopy of `self` values in
+            # a new Stats object.
             else:
                 values = copy.deepcopy(self.values)
             return Stats.similar_to(self, init_value=values)

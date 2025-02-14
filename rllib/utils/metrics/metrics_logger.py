@@ -111,6 +111,8 @@ class MetricsLogger:
         self._tensor_mode = False
         self._tensor_keys = set()
         self._thread_save = False
+        # Lock that makes sure that structural changes to the self.stats
+        # nested dict are thread-save.
         self._struct_lock = threading.Lock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
@@ -921,7 +923,7 @@ class MetricsLogger:
         # Return (reduced) `Stats` objects as leafs.
         if return_stats_obj:
             return reduced_subset_to_return
-        # Return actual (reduced) values (not reduced `Stats` objects) as leafs.
+        # Return actual (reduced) values as leafs.
         else:
             return self.peek_results(reduced_subset_to_return)
 
