@@ -138,8 +138,8 @@ class AggregateFnV2(AggregateFn):
         name: str,
         *,
         ignore_nulls: bool,
-        merge: Callable[[AggType, AggType], AggType],
         aggregate_block: Callable[[Block], Optional[AggType]],
+        merge: Callable[[AggType, AggType], AggType],
         finalize: Optional[Callable[[AggType], U]] = None,
     ):
         if not name:
