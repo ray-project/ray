@@ -286,8 +286,12 @@ class AnyscaleJobRunner(JobRunner):
 
             with open(tmpfile, "rt") as f:
                 content = f.read()
-            logger.info(f"Result content = {content}")
-            data = json.loads(content)
+
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError as e:
+                logger.info(f"Result content = {content}")
+                raise e
 
             os.unlink(tmpfile)
             return data
