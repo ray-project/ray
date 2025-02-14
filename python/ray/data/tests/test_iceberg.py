@@ -28,6 +28,14 @@ _CATALOG_KWARGS = {
     "warehouse": f"file://{_WAREHOUSE_PATH}",
 }
 
+_SCHEMA = pa.schema(
+    [
+        pa.field("col_a", pa.int32()),
+        pa.field("col_b", pa.string()),
+        pa.field("col_c", pa.int16()),
+    ]
+)
+
 
 @pytest.fixture(autouse=True, scope="session")
 def pyiceberg_table():
@@ -43,20 +51,13 @@ def pyiceberg_table():
         },
     )
 
-    schema = pa.schema(
-        [
-            pa.field("col_a", pa.int32()),
-            pa.field("col_b", pa.string()),
-            pa.field("col_c", pa.int16()),
-        ]
-    )
     pya_table = pa.Table.from_pydict(
         mapping={
             "col_a": list(range(120)),
             "col_b": random.choices(["a", "b", "c", "d"], k=120),
             "col_c": random.choices(list(range(10)), k=120),
         },
-        schema=schema,
+        schema=_SCHEMA,
     )
 
     if (_DB_NAME,) not in dummy_catalog.list_namespaces():
