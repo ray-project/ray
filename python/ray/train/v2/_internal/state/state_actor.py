@@ -9,9 +9,13 @@ from ray.train.v2._internal.state.schema import TrainRun, TrainRunAttempt
 
 logger = logging.getLogger(__name__)
 
+# TODO: Add export API functionality.
+
 
 class TrainStateActor:
     def __init__(self):
+        # NOTE: All runs and attempts are stored in memory.
+        # This may be a memory issue for large runs.
         self._runs: Dict[str, TrainRun] = {}
         # {run_id: {attempt_id: TrainRunAttempt}}
         self._run_attempts: Dict[str, Dict[str, TrainRunAttempt]] = defaultdict(dict)
@@ -29,24 +33,6 @@ class TrainStateActor:
         return self._run_attempts
 
 
-class PrintTrainStateActor(TrainStateActor):
-    def create_or_update_train_run(self, run: TrainRun) -> None:
-        super().create_or_update_train_run(run)
-        print(f"[RUN] {run.id=} {run.status.name=} {run.status_detail=}")
-
-    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
-        super().create_or_update_train_run_attempt(run_attempt)
-        print(
-            f"[ATTEMPT] {run_attempt.run_id=} {run_attempt.attempt_id=} {run_attempt.status.name=} {run_attempt.status_detail=}"
-        )
-
-    def get_train_runs(self) -> Dict[str, TrainRun]:
-        return super().get_train_runs()
-
-    def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
-        return super().get_train_run_attempts()
-
-
 TRAIN_STATE_ACTOR_NAME = "train_v2_state_actor"
 TRAIN_STATE_ACTOR_NAMESPACE = "_train_state_actor"
 
@@ -58,7 +44,7 @@ def get_or_create_state_actor() -> ActorHandle:
 
     with _state_actor_lock:
         state_actor = (
-            ray.remote(PrintTrainStateActor)
+            ray.remote(TrainStateActor)
             .options(
                 num_cpus=0,
                 name=TRAIN_STATE_ACTOR_NAME,
@@ -68,12 +54,12 @@ def get_or_create_state_actor() -> ActorHandle:
                 resources={"node:__internal_head__": 0.001},
                 # Escape from the parent's placement group
                 scheduling_strategy="DEFAULT",
+                max_restarts=-1,
+                max_task_retries=-1,
             )
             .remote()
         )
 
-    # Ensure the state actor is ready
-    ray.get(state_actor.__ray_ready__.remote())
     return state_actor
 
 

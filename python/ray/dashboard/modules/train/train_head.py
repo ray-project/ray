@@ -74,13 +74,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                 decorated_train_runs = await self._decorate_train_runs(
                     train_runs.values()
                 )
-                # Sort train runs in reverse chronological order
-                sorted_train_runs = sorted(
-                    decorated_train_runs,
-                    key=lambda run: run.start_time_ms,
-                    reverse=True,
-                )
-                details = TrainRunsResponse(train_runs=sorted_train_runs)
+                details = TrainRunsResponse(train_runs=decorated_train_runs)
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time
@@ -101,6 +95,12 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     async def _decorate_train_runs(
         self, train_runs: List["TrainRun"]
     ) -> List["DecoratedTrainRun"]:
+        """Decorate the train runs with run attempts, job details, status, and status details.
+
+        Returns:
+            List[DecoratedTrainRun]: The decorated train runs in reverse chronological order.
+        """
+
         from ray.train.v2._internal.state.schema import DecoratedTrainRun
 
         decorated_train_runs: List[DecoratedTrainRun] = []
@@ -134,6 +134,12 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
             decorated_train_runs.append(decorated_train_run)
 
+        # Sort train runs in reverse chronological order
+        decorated_train_runs = sorted(
+            decorated_train_runs,
+            key=lambda run: run.start_time_ms,
+            reverse=True,
+        )
         return decorated_train_runs
 
     async def _get_jobs(self, job_ids: List[str]) -> Dict[str, "JobDetails"]:
@@ -254,6 +260,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         # Default to original.
         return (train_run.status, train_run.status_detail)
 
+    # TODO: In future iterations this should be "/api/train/v1/runs/vX".
+    # This API corresponds to the Train V1 API.
     @routes.get("/api/train/v2/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI

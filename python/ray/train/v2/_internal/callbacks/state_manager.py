@@ -1,8 +1,7 @@
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 import ray
-from ray.train.base_trainer import GenDataset
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
@@ -30,10 +29,10 @@ logger = logging.getLogger(__name__)
 
 class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
     def __init__(
-        self, train_run_context: TrainRunContext, datasets: Dict[str, GenDataset]
+        self,
+        train_run_context: TrainRunContext,
     ):
         self._state_manager = TrainStateManager()
-        self._datasets = datasets  # TODO: Currently not used.
         self._run_name = train_run_context.get_run_config().name
         self._run_id = train_run_context.run_id
 

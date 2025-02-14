@@ -39,7 +39,10 @@ class ActorMetadata:
     node_ip: str
     pid: int
     accelerator_ids: Dict[str, List[Union[int, str]]]
-    gpu_ids: Optional[Union[List[int], List[str]]] = None
+
+    @property
+    def gpu_ids(self) -> List[Union[int, str]]:
+        return self.accelerator_ids.get("GPU", [])
 
     @cached_property
     def _repr(self) -> str:
@@ -122,7 +125,6 @@ class RayTrainWorker:
             node_ip=ray.util.get_node_ip_address(),
             pid=os.getpid(),
             accelerator_ids=ray.get_runtime_context().get_accelerator_ids(),
-            gpu_ids=ray.get_gpu_ids(),
         )
 
     def poll_status(self) -> WorkerStatus:

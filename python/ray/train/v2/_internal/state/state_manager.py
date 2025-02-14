@@ -3,8 +3,6 @@ import time
 from collections import defaultdict
 from typing import Dict, List
 
-import ray
-from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, Worker
@@ -27,15 +25,12 @@ def _current_time_ms() -> int:
 
 
 class TrainStateManager:
-    """
-    Manages the state of a train run and run attempts.
-    """
-
-    # The timeout for the state actor to create or update a train run or run attempt.
-    CREATE_OR_UPDATE_TIMEOUT_S = 10
+    """Manages the state of a train run and run attempts."""
 
     def __init__(self) -> None:
         self._state_actor = get_or_create_state_actor()
+        # NOTE: All runs and attempts are stored in memory.
+        # This may be a memory issue for large runs.
         self._runs: Dict[str, TrainRun] = {}
         # {run_id: {attempt_id: TrainRunAttempt}}
         self._run_attempts: Dict[str, Dict[str, TrainRunAttempt]] = defaultdict(dict)
@@ -216,22 +211,8 @@ class TrainStateManager:
         run_attempt.end_time_ms = _current_time_ms()
         self._create_or_update_train_run_attempt(run_attempt)
 
-    # TODO: Add export API functionality to these. Or maybe in Actor.
-
     def _create_or_update_train_run(self, run: TrainRun) -> None:
-        object_ref = self._state_actor.create_or_update_train_run.remote(run)
-        self._safe_get(object_ref)
+        self._state_actor.create_or_update_train_run.remote(run)
 
     def _create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        object_ref = self._state_actor.create_or_update_train_run_attempt.remote(
-            run_attempt
-        )
-        self._safe_get(object_ref)
-
-    def _safe_get(self, object_ref: ObjectRef) -> None:
-        try:
-            ray.get(object_ref, timeout=self.CREATE_OR_UPDATE_TIMEOUT_S)
-        except Exception:
-            logger.warning(
-                "Failed to create or update train run or run attempt. ", exc_info=True
-            )
+        self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
