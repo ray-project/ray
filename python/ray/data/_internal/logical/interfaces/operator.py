@@ -27,7 +27,7 @@ class Operator:
     def dag_string(self) -> str:
         """String representation of the whole DAG."""
         if self.input_dependencies:
-            out_str = ", ".join([str(x) for x in self.input_dependencies])
+            out_str = ", ".join([x.dag_string for x in self.input_dependencies])
             out_str += " -> "
         else:
             out_str = ""
