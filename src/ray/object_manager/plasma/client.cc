@@ -245,7 +245,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
 PlasmaBuffer::~PlasmaBuffer() {
   RAY_LOG(INFO) << "[myan] PlasmaBuffer::~PlasmaBuffer(). object_id="
-                << (object_id_.IsNil() ? "Nil" : object_id_.Hex());
+                << (object_id_.IsNil() ? "Nil" : object_id_.Hex()) << ", pid=" << getpid()
+                << ", tid=" << std::this_thread::get_id();
   RAY_UNUSED(client_->Release(object_id_));
 }
 

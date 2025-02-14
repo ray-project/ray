@@ -34,35 +34,35 @@ enum MessageType:long {
   // Message that gets send when a client hangs up.
   PlasmaDisconnectClient = 0,
   // Create a new object.
-  PlasmaCreateRequest,
-  PlasmaCreateRetryRequest,
-  PlasmaCreateReply,
-  PlasmaAbortRequest,
-  PlasmaAbortReply,
+  PlasmaCreateRequest, // 1
+  PlasmaCreateRetryRequest, // 2
+  PlasmaCreateReply, // 3
+  PlasmaAbortRequest, // 4
+  PlasmaAbortReply, // 5
   // Seal an object.
-  PlasmaSealRequest,
-  PlasmaSealReply,
+  PlasmaSealRequest, // 6
+  PlasmaSealReply, // 7
   // Get an object that is stored on the local Plasma store.
-  PlasmaGetRequest,
-  PlasmaGetReply,
+  PlasmaGetRequest, // 8
+  PlasmaGetReply, // 9
   // Release an object.
-  PlasmaReleaseRequest,
-  PlasmaReleaseReply,
+  PlasmaReleaseRequest, // 10
+  PlasmaReleaseReply, // 11
   // Delete an object.
-  PlasmaDeleteRequest,
-  PlasmaDeleteReply,
+  PlasmaDeleteRequest, // 12  
+  PlasmaDeleteReply, // 13
   // See if the store contains an object (will be deprecated).
-  PlasmaContainsRequest,
-  PlasmaContainsReply,
+  PlasmaContainsRequest, // 14
+  PlasmaContainsReply, // 15
   // Get information for a newly connecting client.
-  PlasmaConnectRequest,
-  PlasmaConnectReply,
+  PlasmaConnectRequest, // 16
+  PlasmaConnectReply, // 17
   // Make room for new objects in the plasma store.
-  PlasmaEvictRequest,
-  PlasmaEvictReply,
+  PlasmaEvictRequest, // 18
+  PlasmaEvictReply, // 19
   // Get debugging information from the store.
-  PlasmaGetDebugStringRequest,
-  PlasmaGetDebugStringReply,
+  PlasmaGetDebugStringRequest, // 20
+  PlasmaGetDebugStringReply, // 21
 }
 
 enum PlasmaError:int {
