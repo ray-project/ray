@@ -1262,13 +1262,13 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
             GcsNodeInfo(
-                node_id="1",
+                node_id=b"1" * 28,
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 node_manager_address="192.168.1.1",
                 node_manager_port=10001,
             ),
             GcsNodeInfo(
-                node_id="2",
+                node_id=b"2" * 28,
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 node_manager_address="192.168.1.2",
                 node_manager_port=10002,
@@ -1383,19 +1383,19 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
             GcsNodeInfo(
-                node_id="1",
+                node_id=b"1" * 28,
                 node_manager_address="192.168.1.1",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10000,
             ),
             GcsNodeInfo(
-                node_id="2",
+                node_id=b"2" * 28,
                 node_manager_address="192.168.1.2",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10001,
             ),
             GcsNodeInfo(
-                node_id="3",
+                node_id=b"3" * 28,
                 node_manager_address="192.168.1.3",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10002,

@@ -200,8 +200,8 @@ async def test_api_manager_summary_objects(state_api_manager):
     data_source_client.get_all_node_info = MagicMock()
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
-            GcsNodeInfo(node_id="1", state=GcsNodeInfo.GcsNodeState.ALIVE),
-            GcsNodeInfo(node_id="2", state=GcsNodeInfo.GcsNodeState.ALIVE),
+            GcsNodeInfo(node_id=b"1" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE),
+            GcsNodeInfo(node_id=b"2" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE),
         ]
     )
     first_callsite = "first.py"
