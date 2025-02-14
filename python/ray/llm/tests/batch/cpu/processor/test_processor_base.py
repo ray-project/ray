@@ -1,5 +1,5 @@
 import sys
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, AsyncIterator, Dict, List, Type
 
 import pytest
 
@@ -36,6 +36,24 @@ def test_empty_processor():
         assert "result" in row
 
 
+def test_processor_with_no_preprocess_or_postprocess():
+    """Test processor with no preprocess or postprocess."""
+
+    processor = Processor(
+        config=ProcessorConfig(
+            batch_size=64,
+            accelerator_type=None,
+            concurrency=1,
+        ),
+        stages=[],
+    )
+
+    ds = ray.data.range(5)
+    ds = processor(ds).take_all()
+    for row in ds:
+        assert "id" in row
+
+
 @pytest.mark.parametrize("has_extra", [True, False])
 def test_processor_with_stages(has_extra: bool):
     """Test processor with multiple stages."""
@@ -67,7 +85,7 @@ def test_processor_with_stages(has_extra: bool):
             return ["val"]
 
     class DummyStage(StatefulStage):
-        fn: StatefulStageUDF = DummyStatefulStageUDF
+        fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
         fn_constructor_kwargs: Dict[str, Any] = {}
         map_batches_kwargs: Dict[str, Any] = dict(concurrency=1)
 
@@ -125,7 +143,7 @@ def test_builder():
                 yield row
 
     class DummyStage(StatefulStage):
-        fn: StatefulStageUDF = DummyStatefulStageUDF
+        fn: Type[StatefulStageUDF] = DummyStatefulStageUDF
         fn_constructor_kwargs: Dict[str, Any] = {}
         map_batches_kwargs: Dict[str, Any] = {}
 

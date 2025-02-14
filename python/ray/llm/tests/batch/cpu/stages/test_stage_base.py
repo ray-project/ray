@@ -4,7 +4,6 @@ from typing import List, Any, AsyncIterator, Dict
 from ray.llm._internal.batch.stages.base import (
     wrap_preprocess,
     wrap_postprocess,
-    StatefulStage,
     StatefulStageUDF,
 )
 
@@ -117,20 +116,6 @@ class TestStatefulStageUDF:
         with pytest.raises(ValueError):
             async for _ in udf(batch):
                 pass
-
-
-def test_stateful_stage():
-    udf = TestStatefulStageUDF.SimpleUDF(data_column="__data")
-
-    stage = StatefulStage(
-        fn=udf,
-        fn_constructor_kwargs={"data_column": "__data"},
-        map_batches_kwargs={"batch_size": 10},
-    )
-
-    assert stage.fn == udf
-    assert stage.fn_constructor_kwargs == {"data_column": "__data"}
-    assert stage.map_batches_kwargs == {"batch_size": 10}
 
 
 if __name__ == "__main__":

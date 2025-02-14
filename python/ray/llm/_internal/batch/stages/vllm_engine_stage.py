@@ -7,7 +7,7 @@ import time
 import uuid
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple
+from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -464,7 +464,7 @@ class vLLMEngineStage(StatefulStage):
     A stage that runs vLLM engine.
     """
 
-    fn: StatefulStageUDF = vLLMEngineStageUDF
+    fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
     fn_constructor_kwargs: Dict[str, Any]
     map_batches_kwargs: Dict[str, Any] = dict(
         concurrency=1,
