@@ -14,6 +14,7 @@ if client_test_enabled():
     from ray.util.client import ray
 else:
     import ray
+    import ray.util.state
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +79,16 @@ def test_wait_timing(ray_start_2_cpus):
     assert len(not_ready) == 1
 
 
-def test_wait_always_fetch_local(ray_start_cluster):
+@pytest.mark.skipif(client_test_enabled(), reason="util not available with ray client")
+def test_wait_always_fetch_local(monkeypatch, ray_start_cluster):
+    monkeypatch.setenv("RAY_scheduler_report_pinned_bytes_only", "false")
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0, object_store_memory=500e6)  # head node
+    head_node = cluster.add_node(num_cpus=0, object_store_memory=300e6)
     ray.init(address=cluster.address)
-    worker_node = cluster.add_node(num_cpus=1, object_store_memory=80e6)
+    worker_node = cluster.add_node(num_cpus=1, object_store_memory=300e6)
+
+    print("head node", head_node.node_id)
+    print("worker node", worker_node.node_id)
 
     @ray.remote(num_cpus=1)
     def return_large_object():
@@ -93,23 +99,42 @@ def test_wait_always_fetch_local(ray_start_cluster):
     def small_local_task():
         return 1
 
+    put_on_head = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+        head_node.node_id, soft=False
+    )
     put_on_worker = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
         worker_node.node_id, soft=False
     )
-    x = small_local_task.remote()
+    x = small_local_task.options(scheduling_strategy=put_on_head).remote()
     y = return_large_object.options(scheduling_strategy=put_on_worker).remote()
     z = return_large_object.options(scheduling_strategy=put_on_worker).remote()
-    # even though x will be found in local, requests should be made
-    # to start pulling y and z
-    ray.wait([x, y, z], num_returns=1, fetch_local=True)
-    time.sleep(3)
 
-    start_time = time.perf_counter()
-    ray.get([y, z])
-    # y and z should be immediately available as pull requests should've
-    # been made immediately on the ray.wait call
-    time_to_get = time.perf_counter() - start_time
-    assert time_to_get < 0.2
+    # will return when tasks are done
+    ray.wait([x, y, z], num_returns=3, fetch_local=False)
+    assert (
+        ray._private.state.available_resources_per_node()[head_node.node_id][
+            "object_store_memory"
+        ]
+        > 250e6
+    )
+
+    # x should be immediately available locally, start fetching y and z
+    ray.wait([x, y, z], num_returns=1, fetch_local=True)
+    assert (
+        ray._private.state.available_resources_per_node()[head_node.node_id][
+            "object_store_memory"
+        ]
+        > 250e6
+    )
+
+    time.sleep(5)
+    # y, z should be pulled here
+    assert (
+        ray._private.state.available_resources_per_node()[head_node.node_id][
+            "object_store_memory"
+        ]
+        < 150e6
+    )
 
 
 if __name__ == "__main__":
