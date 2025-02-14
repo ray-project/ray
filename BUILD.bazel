@@ -800,10 +800,10 @@ ray_cc_library(
     name = "stats_metric_exporter",
     deps = [
         ":stats_metric_defs",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
         "@io_opencensus_cpp//opencensus/stats",
         "@io_opencensus_cpp//opencensus/tags",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
         "@com_github_jupp0r_prometheus_cpp//pull",
     ],
 )
@@ -814,7 +814,6 @@ ray_cc_library(
         ":stats_metric_core",
         ":stats_metric_defs",
         ":stats_metric_exporter",
-        "@com_google_googletest//:gtest",
     ],
 )
 
