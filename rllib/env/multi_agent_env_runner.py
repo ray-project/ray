@@ -169,7 +169,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 (`num_episodes != None`), this is fixed to True.
 
         Returns:
-            A list of `SingleAgentEpisode` instances, carrying the sampled data.
+            A list of `MultiAgentEpisode` instances, carrying the sampled data.
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
@@ -299,7 +299,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 self._cached_to_module = None
 
                 if to_module:
-                    # RLModule forward pass: Explore or not.
+                    # MultiRLModule forward pass: Explore or not.
                     if explore:
                         # Global env steps sampled are (roughly) this EnvRunner's lifetime
                         # count times the number of env runners in the algo.

@@ -140,7 +140,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """Tries resetting the env and - if an error orrurs - handles it gracefully."""
         # Try to reset.
         try:
-            obs, infos = self.env.reset(seed=self.config.seed)
+            obs, infos = self.env.reset(
+                seed=self.config.seed + (self.worker_index or 0)
+            )
             # Everything ok -> return.
             return obs, infos
         # Error.
