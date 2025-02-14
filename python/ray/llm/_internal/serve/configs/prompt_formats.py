@@ -24,7 +24,6 @@ class PromptFormatDisabledError(ValueError):
     status_code = 404
 
 
-
 class TextContent(BaseModel):
     field: str = "text"
     type: str = "text"
@@ -40,7 +39,6 @@ class ContentContent(BaseModel):
     field: str = "text"
     type: str = "text"
     content: str
-
 
 
 class ImageContent(BaseModel):
@@ -80,7 +78,6 @@ class Message(BaseModel):
             if self.content is not None and not isinstance(self.content, str):
                 raise ValueError("content must be a string or None")
         return self
-
 
 
 class Prompt(BaseModel):

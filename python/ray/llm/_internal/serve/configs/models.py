@@ -48,6 +48,8 @@ from ray.llm._internal.serve.configs.prompt_formats import (
 )
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
 class BaseModelExtended(BaseModel):
     # NOTE(edoakes): Pydantic protects the namespace `model_` by default and prints
     # warnings if you define fields with that prefix. However, we added such fields
@@ -62,6 +64,7 @@ class BaseModelExtended(BaseModel):
         kwargs.setdefault("Loader", yaml.SafeLoader)
         dict_args = yaml.load(file, **kwargs)
         return cls.model_validate(dict_args)
+
 
 logger = get_logger(__name__)
 _DEFAULT_TARGET_ONGOING_REQUESTS = 16
@@ -196,6 +199,7 @@ class ServeMultiplexConfig(BaseModelExtended):
         DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
         description="The maximum number of download retries.",
     )
+
 
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
 class DeploymentConfig(BaseModelExtended):

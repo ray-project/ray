@@ -8,6 +8,7 @@ from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
 )
 
+
 @pytest.fixture
 def prompt_format(download_model_ckpt):
     hf_prompt_format = HuggingFacePromptFormat(use_hugging_face_chat_template=True)

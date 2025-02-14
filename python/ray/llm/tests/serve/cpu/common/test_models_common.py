@@ -1,6 +1,10 @@
 import pytest
 
-from ray.llm._internal.serve.configs.prompt_formats import ImageContent, Message, TextContent
+from ray.llm._internal.serve.configs.prompt_formats import (
+    ImageContent,
+    Message,
+    TextContent,
+)
 
 
 def test_validation_message():

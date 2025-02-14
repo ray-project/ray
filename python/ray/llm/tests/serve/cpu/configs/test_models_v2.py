@@ -5,6 +5,7 @@ import pydantic
 import pytest
 
 from pathlib import Path
+
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
 
 from ray.llm._internal.serve.configs.models import LLMConfig

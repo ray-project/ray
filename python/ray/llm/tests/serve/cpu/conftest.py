@@ -3,6 +3,7 @@ import tempfile
 import requests
 import pytest
 
+
 @pytest.fixture(scope="module")
 def download_model_ckpt():
     """
@@ -12,7 +13,9 @@ def download_model_ckpt():
     limit and HF hub downtime.
     """
 
-    REMOTE_URL = "https://air-example-data.s3.amazonaws.com/mistral-community-pixtral-12b/"
+    REMOTE_URL = (
+        "https://air-example-data.s3.amazonaws.com/mistral-community-pixtral-12b/"
+    )
     FILE_LIST = [
         "chat_template.json",
         "preprocessor_config.json",
@@ -20,7 +23,6 @@ def download_model_ckpt():
         "special_tokens_map.json",
         "tokenizer_config.json",
         "tokenizer.json",
-
         # Below are files in opt-125m
         # "config.json",
         # "flax_model.msgpack",
