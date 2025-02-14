@@ -5,12 +5,44 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 
 if TYPE_CHECKING:
     import pyarrow as pa
 
 
+@PublicAPI(stability="beta")
+class AggregateFnV2("AggregateFn"):
+    """TODO elaborate"""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        ignore_nulls: bool,
+        merge: Callable[[AggType, AggType], AggType],
+        aggregate_block: Callable[[Block], Optional[AggType]],
+        finalize: Optional[Callable[[AggType], U]] = None,
+    ):
+        assert name, f"Non-empty string has to be provided as name (got {name})"
+
+        if finalize is None:
+            _safe_finalize = lambda a: a  # noqa: E731
+        else:
+            _safe_finalize = lambda a: finalize(a) if not _is_null(a) else None
+
+        _safe_merge = _null_safe_merge(merge, ignore_nulls)
+
+        super().__init__(
+            name=name,
+            init=lambda _: None,
+            merge=_safe_merge,
+            accumulate_block=lambda acc, block: _safe_merge(acc, aggregate_block(block)),
+            finalize=_safe_finalize,
+        )
+
+
+@Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
     """Defines how to perform a custom aggregation in Ray Data.
