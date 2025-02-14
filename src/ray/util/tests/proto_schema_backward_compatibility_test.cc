@@ -15,6 +15,8 @@
 #include "gtest/gtest.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+#include <string>
+
 namespace ray {
 
 class ProtoSchemaTest : public ::testing::Test {

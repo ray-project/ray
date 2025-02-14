@@ -18,6 +18,9 @@
 #include <google/protobuf/util/json_util.h>
 
 #include <filesystem>
+#include <algorithm>
+#include <string>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/time/time.h"

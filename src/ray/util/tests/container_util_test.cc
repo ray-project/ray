@@ -18,6 +18,10 @@
 
 #include <optional>
 #include <sstream>
+#include <utility>
+#include <map>
+#include <list>
+#include <deque>
 #include <string>
 #include <tuple>
 
