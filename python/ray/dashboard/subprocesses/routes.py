@@ -130,6 +130,12 @@ class SubprocessRouteTable(BaseRouteTable):
                     body=message.body,
                     match_info=message.match_info,
                 )
+                async_iter = handler(self, request)
+                first_chunk = None
+                try:
+                    first_chunk = await async_iter.__anext__()
+                except StopAsyncIteration:
+                    pass
                 parent_bound_queue.put(
                     StreamResponseStartMessage(
                         request_id=message.request_id,
@@ -137,7 +143,15 @@ class SubprocessRouteTable(BaseRouteTable):
                     )
                 )
                 start_message_sent = True
-                async for chunk in handler(self, request):
+                if first_chunk is not None:
+                    if isinstance(first_chunk, str):
+                        first_chunk = first_chunk.encode()
+                    parent_bound_queue.put(
+                        StreamResponseDataMessage(
+                            request_id=message.request_id, body=first_chunk
+                        )
+                    )
+                async for chunk in async_iter:
                     if isinstance(chunk, str):
                         chunk = chunk.encode()
                     parent_bound_queue.put(
@@ -154,7 +168,7 @@ class SubprocessRouteTable(BaseRouteTable):
                         UnaryResponseMessage(
                             request_id=message.request_id,
                             status=e.status,
-                            body=e.text,
+                            body=e.text.encode() if e.text else b"",
                         )
                     )
                 else:
