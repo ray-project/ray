@@ -43,11 +43,13 @@ class ChatTemplateUDF(StatefulStageUDF):
             # Add generation prompt only if the last message is 'user'.
             # This is useful in cases where the user provides an assistant prefill message.
             add_generation_prompt = conversation[-1]["role"] == "user"
+            continue_final_message = not add_generation_prompt
             prompts.append(
                 self.tokenizer.apply_chat_template(
                     conversation,
                     tokenize=False,
                     add_generation_prompt=add_generation_prompt,
+                    continue_final_message=continue_final_message,
                 )
             )
         assert len(batch) == len(prompts)
