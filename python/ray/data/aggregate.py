@@ -192,12 +192,10 @@ class Sum(_AggregateOnKeyBase):
         else:
             self._rs_name = f"sum({str(on)})"
 
-        merge = _null_safe_merge(lambda a1, a2: a1 + a2, ignore_nulls)
-
         super().__init__(
             self._rs_name,
             ignore_nulls=ignore_nulls,
-            merge=merge,
+            merge=lambda a1, a2: a1 + a2,
             aggregate_block=(
                 lambda block: BlockAccessor.for_block(block).sum(on, ignore_nulls)
             ),
@@ -319,7 +317,7 @@ class Std(_AggregateOnKeyBase):
         else:
             self._rs_name = f"std({str(on)})"
 
-        def _merge(a: List[float], b: List[float]):
+        def merge(a: List[float], b: List[float]):
             # Merges two accumulations into one.
             # See
             # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
@@ -357,8 +355,6 @@ class Std(_AggregateOnKeyBase):
             if count < 2:
                 return 0.0
             return math.sqrt(M2 / (count - ddof))
-
-        merge = _null_safe_merge(_merge, ignore_nulls)
 
         super().__init__(
             self._rs_name,
