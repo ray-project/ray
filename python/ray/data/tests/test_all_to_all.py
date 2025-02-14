@@ -1202,12 +1202,13 @@ def test_groupby_arrow_multi_agg(
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pandas", "pyarrow"])
-# @pytest.mark.parametrize("ignore_nulls", [True, False])
+@pytest.mark.parametrize("ignore_nulls", [True, False])
 def test_groupby_arrow_multi_agg_with_nans(
     ray_start_regular_shared_2_cpus,
     num_parts,
     configure_shuffle_method,
     ds_format,
+    ignore_nulls
 ):
     if (
         ds_format == "pyarrow"
@@ -1237,12 +1238,12 @@ def test_groupby_arrow_multi_agg_with_nans(
         .repartition(num_parts)
         .groupby("A")
         .aggregate(
-            Sum("B", alias_name="sum_b"),
-            Min("B", alias_name="min_b"),
-            Max("B", alias_name="max_b"),
-            Mean("B", alias_name="mean_b"),
-            Std("B", alias_name="std_b"),
-            # Quantile("B", alias_name="quantile_b"),
+            Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
+            Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
+            Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
+            Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
+            Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
+            Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
         )
     )
 
@@ -1250,19 +1251,19 @@ def test_groupby_arrow_multi_agg_with_nans(
 
     grouped_df = df.groupby("A", as_index=False, dropna=False).agg(
         {
-            "B": ["sum", "min", "max", "mean", "std"],
-            # "B": ["sum", "min", "max", "mean", "std", "quantile"],
-        }
+            "B": [
+                ("sum", lambda s: s.sum(skipna=ignore_nulls)),
+                ("min", lambda s: s.min(skipna=ignore_nulls)),
+                ("max", lambda s: s.max(skipna=ignore_nulls)),
+                ("mean", lambda s: s.mean(skipna=ignore_nulls)),
+                ("std", lambda s: s.std(skipna=ignore_nulls)),
+                ("quantile", lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan),
+            ]
+        },
     )
 
     grouped_df.columns = [
-        # "A", "sum_b", "min_b", "max_b", "mean_b", "std_b", "quantile_b",
-        "A",
-        "sum_b",
-        "min_b",
-        "max_b",
-        "mean_b",
-        "std_b",
+        "A", "sum_b", "min_b", "max_b", "mean_b", "std_b", "quantile_b",
     ]
 
     expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)
@@ -1280,19 +1281,18 @@ def test_groupby_arrow_multi_agg_with_nans(
         .map_batches(lambda df: df, batch_size=None, batch_format=ds_format)
         .repartition(num_parts)
         .aggregate(
-            Sum("A", alias_name="sum_a"),
-            Min("A", alias_name="min_a"),
-            Max("A", alias_name="max_a"),
-            Mean("A", alias_name="mean_a"),
-            Std("A", alias_name="std_a"),
-            # Quantile("A", alias_name="quantile_a"),
+            Sum("A", alias_name="sum_a", ignore_nulls=ignore_nulls),
+            Min("A", alias_name="min_a", ignore_nulls=ignore_nulls),
+            Max("A", alias_name="max_a", ignore_nulls=ignore_nulls),
+            Mean("A", alias_name="mean_a", ignore_nulls=ignore_nulls),
+            Std("A", alias_name="std_a", ignore_nulls=ignore_nulls),
+            Quantile("A", alias_name="quantile_a", ignore_nulls=ignore_nulls),
         )
     )
 
     expected_row = {
         f"{agg}_a": getattr(df["A"], agg)()
-        for agg in ["sum", "min", "max", "mean", "std"]
-        # for agg in ["sum", "min", "max", "mean", "std", "quantile"]
+        for agg in ["sum", "min", "max", "mean", "std", "quantile"]
     }
 
     def _round_to_14_digits(row):
