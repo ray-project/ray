@@ -162,17 +162,29 @@ class _AggregateOnKeyBase(AggregateFnV2):
 
 
 @PublicAPI
-class Count(AggregateFn):
+class Count(_AggregateOnKeyBase):
     """Defines count aggregation."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        ignore_nulls: bool = False,
+        alias_name: Optional[str] = None,
+    ):
+        self._set_key_fn(on)
+
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"count({str(on)})"
+
         super().__init__(
-            init=lambda k: 0,
-            accumulate_block=(
-                lambda a, block: a + BlockAccessor.for_block(block).num_rows()
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
+            aggregate_block=(
+                lambda block: BlockAccessor.for_block(block).num_rows()
             ),
-            merge=lambda a1, a2: a1 + a2,
-            name="count()",
+            merge=lambda a1, a2: a1 + a2
         )
 
 
