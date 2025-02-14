@@ -101,7 +101,7 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray:{sha}-{pv}-cu121 "
                 f"ray:{sha}-{pv}-cu121_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
@@ -127,7 +127,7 @@ class TestRayDockerContainer(RayCITestBase):
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
-            assert self.cmds[1] == "pip install -q aws_requests_auth boto3"
+            assert self.cmds[1] == "pip install -q aws_requests_auth requests"
             assert (
                 self.cmds[2]
                 == "python .buildkite/copy_files.py --destination docker_login"
@@ -323,6 +323,9 @@ class TestRayDockerContainer(RayCITestBase):
 
         container = RayDockerContainer(v, "cu12.4.1-cudnn", "ray")
         assert container.get_platform_tag() == "-cu124"
+
+        container = RayDockerContainer(v, "cu12.5.1-cudnn", "ray")
+        assert container.get_platform_tag() == "-cu125"
 
     def test_should_upload(self) -> None:
         v = DEFAULT_PYTHON_VERSION

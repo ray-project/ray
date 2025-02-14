@@ -1,11 +1,17 @@
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_bool
+from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
+from ray.train.base_trainer import (
+    _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
+    _TRAINER_RESTORE_DEPRECATION_WARNING,
+)
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
@@ -24,6 +30,7 @@ from ray.train.v2._internal.constants import (
     RUN_CONTROLLER_AS_ACTOR_ENV_VAR,
     get_env_vars_to_propagate,
 )
+from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
@@ -38,22 +45,15 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-_TRAINER_RESTORE_DEPRECATION_WARNING = (
-    "The `restore` and `can_restore` APIs are deprecated and "
-    "will be removed in a future release. "
-    "See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
-)
-
-_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
-    "`resume_from_checkpoint` is deprecated and will be removed in an upcoming "
-    "release. See this issue for more context: "
-    "https://github.com/ray-project/ray/issues/49454"
-)
-
-
 @DeveloperAPI
 class DataParallelTrainer:
+    """Base class for distributed data parallel training on Ray.
+
+    This class supports the SPMD parallelization pattern, where a single
+    training function is executed in parallel across multiple workers,
+    and different shards of data are processed by each worker.
+    """
+
     def __init__(
         self,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
@@ -81,11 +81,21 @@ class DataParallelTrainer:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
 
         if metadata is not None:
-            from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
-
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
+        tag_train_v2_trainer(self)
+
     def fit(self) -> Result:
+        """Launches the Ray Train controller to run training on workers.
+
+        Returns:
+            A Result object containing the training result.
+
+        Raises:
+            TrainingFailedError: If any failures occur during training
+                and the number of retries configured in `FailureConfig`
+                is exhausted.
+        """
         train_fn = construct_train_func(
             self.train_loop_per_worker,
             config=self.train_loop_config,
@@ -93,6 +103,25 @@ class DataParallelTrainer:
             fn_arg_name="train_loop_per_worker",
         )
 
+        result = self._initialize_and_run_controller(
+            train_fn=train_fn,
+            scaling_policy=create_scaling_policy(self.scaling_config),
+            failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
+            train_run_context=self.train_run_context,
+            callbacks=self._create_default_callbacks(),
+        )
+
+        if result.error:
+            # NOTE: If the training run errored out, raise an error back to the
+            # user's driver script.
+            # For example, if the Train `FailurePolicy` runs out of retries,
+            # and one of the workers errors. The controller will exit, and
+            # the error will be raised here.
+            raise result.error
+
+        return result
+
+    def _create_default_callbacks(self) -> List[RayTrainCallback]:
         accelerator_setup_callback = AcceleratorSetupCallback(
             self.backend_config, self.scaling_config
         )
@@ -130,24 +159,7 @@ class DataParallelTrainer:
         callbacks.extend(
             [cb for cb in self.run_config.callbacks if not isinstance(cb, UserCallback)]
         )
-
-        result = self._initialize_and_run_controller(
-            train_fn=train_fn,
-            scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
-            train_run_context=self.train_run_context,
-            callbacks=callbacks,
-        )
-
-        if result.error:
-            # NOTE: If the training run errored out, raise an error back to the
-            # user's driver script.
-            # For example, if the Train `FailurePolicy` runs out of retries,
-            # and one of the workers errors. The controller will exit, and
-            # the error will be raised here.
-            raise result.error
-
-        return result
+        return callbacks
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
         run_controller_as_actor = env_bool(
@@ -171,12 +183,21 @@ class DataParallelTrainer:
             controller.run()
             return controller.get_result()
 
-    @Deprecated
     @classmethod
+    @Deprecated
     def restore(cls, *args, **kwargs):
+        """Restores a Train experiment from a previously interrupted/failed run.
+
+        This method is deprecated and will be removed in a future release.
+        """
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
 
-    @Deprecated
     @classmethod
+    @Deprecated
     def can_restore(cls, *args, **kwargs):
+        """Checks if a Train experiment can be restored from a previously
+        interrupted/failed run.
+
+        This method is deprecated and will be removed in a future release.
+        """
         raise DeprecationWarning(_TRAINER_RESTORE_DEPRECATION_WARNING)
