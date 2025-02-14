@@ -1,7 +1,8 @@
+import abc
 import math
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
-
+from ray.data import Schema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
@@ -125,9 +126,9 @@ class AggregateFnV2(AggregateFn):
 
         - `aggregate_block` is applied to individual blocks, producing partial
             aggregations.
-        - `merge` combines multiple partially aggregated values (previously returned
+        - `combine` combines new partially aggregated value (previously returned
             from `aggregate_block` partial aggregations into a singular partial
-            aggregation.
+            aggregation) with the previously stored accumulator.
         - `finalize` transforms partial aggregation into its final state (for
             some aggregations this is an identity transformation, ie no-op)
 
@@ -137,45 +138,56 @@ class AggregateFnV2(AggregateFn):
         self,
         name: str,
         *,
+        on: Optional[str],
         ignore_nulls: bool,
-        aggregate_block: Callable[[Block], Optional[AggType]],
-        merge: Callable[[AggType, AggType], AggType],
-        finalize: Optional[Callable[[AggType], U]] = None,
     ):
         if not name:
             raise ValueError(
                 f"Non-empty string has to be provided as name (got {name})"
             )
 
-        if finalize is None:
-            _safe_finalize = lambda a: a  # noqa: E731
-        else:
+        self._target_col_name = on
+        self._ignore_nulls = ignore_nulls
 
-            def _safe_finalize(acc):
-                if _is_null(acc):
-                    return None
+        def _safe_finalize(acc):
+            if _is_null(acc):
+                return None
 
-                return finalize(acc)
+            return self.finalize(acc)
 
-        _safe_merge = _null_safe_merge(merge, ignore_nulls)
+        _safe_combine = _null_safe_merge(self.combine, ignore_nulls)
 
         super().__init__(
             name=name,
             init=lambda _: None,
-            merge=_safe_merge,
-            accumulate_block=lambda acc, block: _safe_merge(
-                acc, aggregate_block(block)
+            merge=_safe_combine,
+            accumulate_block=lambda acc, block: _safe_combine(
+                acc, self.aggregate_block(block)
             ),
             finalize=_safe_finalize,
         )
 
+    @abc.abstractmethod
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        """Combines new partially aggregated value (previously returned
+        from `aggregate_block` partial aggregations into a singular partial
+        aggregation) with the previously stored accumulator"""
+        ...
 
-class _AggregateOnKeyBase(AggregateFnV2):
-    def _set_key_fn(self, on: str):
-        self._key_fn = on
+    @abc.abstractmethod
+    def aggregate_block(self, block: Block) -> AggType:
+        """Applies aggregations to individual block (producing
+        partial aggregation results)"""
+        ...
 
-    def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
-        SortKey(self._key_fn).validate_schema(schema)
+    def finalize(self, accumulator: AggType) -> Optional[U]:
+        """Transforms partial aggregation into its final state (by default
+        this is an identity transformation, ie no-op)"""
+        return accumulator
+
+    def _validate(self, schema: Optional[Schema]) -> None:
+        if self._target_col_name:
+            SortKey(self._target_col_name).validate_schema(schema)
 
 
 @PublicAPI
