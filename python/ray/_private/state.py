@@ -894,7 +894,9 @@ def nodes(virtual_cluster_id=None):
         Information about the Ray clients in the cluster.
     """
     if not virtual_cluster_id:
-        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+        virtual_cluster_id = (
+            ray._private.worker.global_worker.current_virtual_cluster_id
+        )
     elif type(virtual_cluster_id) is not str:
         raise TypeError(
             f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
@@ -1024,7 +1026,9 @@ def cluster_resources(virtual_cluster_id=None):
             resource in the cluster.
     """
     if not virtual_cluster_id:
-        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+        virtual_cluster_id = (
+            ray._private.worker.global_worker.current_virtual_cluster_id
+        )
     elif type(virtual_cluster_id) is not str:
         raise TypeError(
             f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
@@ -1049,7 +1053,9 @@ def available_resources(virtual_cluster_id=None):
             be included in this dictionary.
     """
     if not virtual_cluster_id:
-        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+        virtual_cluster_id = (
+            ray._private.worker.global_worker.current_virtual_cluster_id
+        )
     elif type(virtual_cluster_id) is not str:
         raise TypeError(
             f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
@@ -1081,7 +1087,9 @@ def total_resources_per_node(virtual_cluster_id=None):
     """
 
     if not virtual_cluster_id:
-        virtual_cluster_id = ray.get_runtime_context().virtual_cluster_id
+        virtual_cluster_id = (
+            ray._private.worker.global_worker.current_virtual_cluster_id
+        )
     elif type(virtual_cluster_id) is not str:
         raise TypeError(
             f"virtual_cluster_id must be a string, got {type(virtual_cluster_id)}"
