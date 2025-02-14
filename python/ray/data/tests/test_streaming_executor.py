@@ -46,8 +46,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 def mock_resource_manager(
     global_limits=None,
     global_usage=None,
-    downstream_fraction=0.0,
-    downstream_object_store_memory=0,
 ):
     empty_resource = ExecutionResources(0, 0, 0)
     global_limits = global_limits or empty_resource
@@ -55,7 +53,7 @@ def mock_resource_manager(
     return MagicMock(
         get_global_limits=MagicMock(return_value=global_limits),
         get_global_usage=MagicMock(return_value=global_usage),
-        op_resource_allocator_enabled=MagicMock(return_value=False),
+        op_resource_allocator_enabled=MagicMock(return_value=True),
     )
 
 
