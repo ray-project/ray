@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.llm import (
+from ray.llm._internal.serve.configs import (
     LLMConfig,
     ModelLoadingConfig
 )
