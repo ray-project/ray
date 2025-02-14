@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
@@ -232,7 +232,9 @@ class Sum(AggregateFnV2):
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        return BlockAccessor.for_block(block).sum(self._target_col_name, self._ignore_nulls)
+        return BlockAccessor.for_block(block).sum(
+            self._target_col_name, self._ignore_nulls
+        )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return current_accumulator + new
@@ -255,7 +257,9 @@ class Min(AggregateFnV2):
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        return BlockAccessor.for_block(block).min(self._target_col_name, self._ignore_nulls)
+        return BlockAccessor.for_block(block).min(
+            self._target_col_name, self._ignore_nulls
+        )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return min(current_accumulator, new)
@@ -279,7 +283,9 @@ class Max(AggregateFnV2):
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        return BlockAccessor.for_block(block).max(self._target_col_name, self._ignore_nulls)
+        return BlockAccessor.for_block(block).max(
+            self._target_col_name, self._ignore_nulls
+        )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return max(current_accumulator, new)
@@ -364,9 +370,7 @@ class Std(AggregateFnV2):
             return None
         mean = sum_ / count
         M2 = block_acc.sum_of_squared_diffs_from_mean(
-            self._target_col_name,
-            self._ignore_nulls,
-            mean
+            self._target_col_name, self._ignore_nulls, mean
         )
         return [M2, mean, count]
 
@@ -558,7 +562,6 @@ class Unique(AggregateFnV2):
             return set(x)
         else:
             return {x}
-
 
 
 def _is_null(a: Optional[AggType]) -> bool:
