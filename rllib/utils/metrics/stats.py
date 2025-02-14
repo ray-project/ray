@@ -252,7 +252,12 @@ class Stats:
                 (`self.values`).
         """
         with self._threading_lock:
-            self.values.append(value)
+            # For inf-windows EMA, always reduce right away, b/c it's cheap and avoids
+            # long lists, which would be expensive to reduce.
+            if self._ema_coeff is not None and self._inf_window:
+                self._set_values(self._reduced_values()[1])
+            else:
+                self.values.append(value)
 
     def __enter__(self) -> "Stats":
         """Called when entering a context (with which users can measure a time delta).
@@ -707,25 +712,12 @@ class Stats:
         # Do EMA (always a "mean" reduction; possibly using a window).
         elif self._ema_coeff is not None:
             # Perform EMA reduction over all values in internal values list.
-            mean_value = values[0]
+            reduced = values[0]
             for v in values[1:]:
-                mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
-            if self._inf_window:
-                return mean_value, [mean_value]
-            else:
-                return mean_value, values
-
+                reduced = self._ema_coeff * v + (1.0 - self._ema_coeff) * reduced
         # Do non-EMA reduction (possibly using a window).
         else:
-            # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
-            if torch and torch.is_tensor(values[0]):
-                reduce_meth = getattr(torch, "nan" + self._reduce_method)
-                reduce_in = torch.stack(list(values))
-                if self._reduce_method == "mean":
-                    reduce_in = reduce_in.float()
-                reduced = reduce_meth(reduce_in)
-
-            elif tf and tf.is_tensor(values[0]):
+            if tf and tf.is_tensor(values[0]):
                 # TODO (sven): Currently, tensor metrics only work with window=1.
                 #  We might want o enforce it more formally, b/c it's probably not a
                 #  good idea to have MetricsLogger or Stats tinker with the actual
@@ -740,7 +732,7 @@ class Stats:
                 else:
                     reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
                     reduced = reduce_meth(values)
-
+            # Use the numpy "nan"-prefix to ignore NaN's in our value lists.
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 reduced = reduce_meth(values)
@@ -753,14 +745,16 @@ class Stats:
                 else:
                     reduced = float(reduced)
 
-            # For window=None|inf (infinite window) and reduce != mean, we don't have to
-            # keep any values, except the last (reduced) one.
-            if self._inf_window and self._reduce_method != "mean":
-                return reduced, [reduced]
-            # In all other cases, keep the values that were also used for the reduce
-            # operation.
-            else:
-                return reduced, values
+        # For window=None|inf (infinite window) and reduce != mean OR EMA, we don't
+        # have to keep any values, except the last (reduced) one.
+        if self._inf_window and (
+            self._ema_coeff is not None or self._reduce_method != "mean"
+        ):
+            return reduced, [reduced]
+        # In all other cases, keep the values that were also used for the reduce
+        # operation.
+        else:
+            return reduced, values
 
 
 class _DummyRLock:
