@@ -130,25 +130,21 @@ class SubprocessRouteTable(BaseRouteTable):
                     body=message.body,
                     match_info=message.match_info,
                 )
-                async_iter = handler(self, request)
-                async for chunk in async_iter:
+                parent_bound_queue.put(
+                    StreamResponseStartMessage(
+                        request_id=message.request_id,
+                        is_websocket=is_websocket,
+                    )
+                )
+                start_message_sent = True
+                async for chunk in handler(self, request):
                     if isinstance(chunk, str):
                         chunk = chunk.encode()
-                    if not start_message_sent:
-                        parent_bound_queue.put(
-                            StreamResponseStartMessage(
-                                request_id=message.request_id,
-                                body=chunk,
-                                is_websocket=is_websocket,
-                            )
+                    parent_bound_queue.put(
+                        StreamResponseDataMessage(
+                            request_id=message.request_id, body=chunk
                         )
-                        start_message_sent = True
-                    else:
-                        parent_bound_queue.put(
-                            StreamResponseDataMessage(
-                                request_id=message.request_id, body=chunk
-                            )
-                        )
+                    )
                 parent_bound_queue.put(
                     StreamResponseEndMessage(request_id=message.request_id)
                 )

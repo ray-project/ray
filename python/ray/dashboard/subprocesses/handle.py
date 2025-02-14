@@ -298,13 +298,12 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_stream_response_start(
-        request: aiohttp.web.Request, first_data: bytes
+        request: aiohttp.web.Request,
     ) -> aiohttp.web.StreamResponse:
         # TODO: error handling
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
         await response.prepare(request)
-        await response.write(first_data)
         return response
 
     @staticmethod
@@ -353,12 +352,11 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_websocket_response_start(
-        request: aiohttp.web.Request, first_data: bytes
+        request: aiohttp.web.Request,
     ) -> aiohttp.web.WebSocketResponse:
         # TODO: error handling
         response = aiohttp.web.WebSocketResponse()
         await response.prepare(request)
-        await response.send_str(first_data.decode())
         return response
 
     @staticmethod
@@ -420,6 +418,7 @@ class SubprocessModuleHandle:
                 ),
             )
         elif isinstance(message, StreamResponseStartMessage):
+            logger.info("ABC: StreamResponseStartMessage")
             active_request = self.active_requests.get_or_raise(message.request_id)
             assert active_request.stream_response is None
             # This assignment is thread safe, because a next read will come from another
@@ -428,7 +427,7 @@ class SubprocessModuleHandle:
             if message.is_websocket:
                 active_request.stream_response = asyncio.run_coroutine_threadsafe(
                     SubprocessModuleHandle.handle_websocket_response_start(
-                        active_request.request, message.body
+                        active_request.request
                     ),
                     loop,
                 )
@@ -436,12 +435,13 @@ class SubprocessModuleHandle:
             else:
                 active_request.stream_response = asyncio.run_coroutine_threadsafe(
                     SubprocessModuleHandle.handle_stream_response_start(
-                        active_request.request, message.body
+                        active_request.request
                     ),
                     loop,
                 )
                 active_request.is_websocket = False
         elif isinstance(message, StreamResponseDataMessage):
+            logger.info("ABC: StreamResponseDataMessage")
             active_request = self.active_requests.get_or_raise(message.request_id)
             assert active_request.stream_response is not None
             if active_request.is_websocket:
@@ -459,6 +459,7 @@ class SubprocessModuleHandle:
                     loop,
                 )
         elif isinstance(message, StreamResponseEndMessage):
+            logger.info("ABC: StreamResponseEndMessage")
             active_request = self.active_requests.pop_or_raise(message.request_id)
             assert active_request.stream_response is not None
             if active_request.is_websocket:
@@ -478,6 +479,7 @@ class SubprocessModuleHandle:
                     loop,
                 )
         elif isinstance(message, ErrorMessage):
+            logger.info("ABC: ErrorMessage")
             # Propagate the error to aiohttp.
             active_request = self.active_requests.pop_or_raise(message.request_id)
             if active_request.stream_response is not None:

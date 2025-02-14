@@ -43,7 +43,6 @@ class UnaryResponseMessage:
 class StreamResponseStartMessage:
     # TODO(ryw): if needed, add header: Dict[str, str]
     request_id: int
-    body: bytes
     is_websocket: bool
 
 

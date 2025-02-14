@@ -599,9 +599,7 @@ class JobHead(SubprocessModule):
             status = job.status
             if status.is_terminal() and driver_agent_http_address is None:
                 # Job exited before supervisor actor started.
-                raise aiohttp.web.HTTPNotFound(
-                    text="Job exited before supervisor actor started.",
-                )
+                return
 
             await asyncio.sleep(self.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S)
 
