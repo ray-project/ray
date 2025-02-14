@@ -191,7 +191,7 @@ class AggregateFnV2(AggregateFn):
 
 
 @PublicAPI
-class Count(_AggregateOnKeyBase):
+class Count(AggregateFnV2):
     """Defines count aggregation."""
 
     def __init__(
@@ -200,23 +200,21 @@ class Count(_AggregateOnKeyBase):
         ignore_nulls: bool = False,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"count({on or ''})"
-
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"count({on or ''})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            aggregate_block=(lambda block: BlockAccessor.for_block(block).num_rows()),
-            merge=lambda a1, a2: a1 + a2,
         )
+
+    def aggregate_block(self, block: Block) -> AggType:
+        return BlockAccessor.for_block(block).num_rows()
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return current_accumulator + new
 
 
 @PublicAPI
-class Sum(_AggregateOnKeyBase):
+class Sum(AggregateFnV2):
     """Defines sum aggregation."""
 
     def __init__(
@@ -225,24 +223,21 @@ class Sum(_AggregateOnKeyBase):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"sum({str(on)})"
-
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"sum({str(on)})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            merge=lambda a1, a2: a1 + a2,
-            aggregate_block=(
-                lambda block: BlockAccessor.for_block(block).sum(on, ignore_nulls)
-            ),
         )
+
+    def aggregate_block(self, block: Block) -> AggType:
+        return BlockAccessor.for_block(block).sum(self._target_col_name, self._ignore_nulls)
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return current_accumulator + new
 
 
 @PublicAPI
-class Min(_AggregateOnKeyBase):
+class Min(AggregateFnV2):
     """Defines min aggregation."""
 
     def __init__(
@@ -251,24 +246,21 @@ class Min(_AggregateOnKeyBase):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"min({str(on)})"
-
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"min({str(on)})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            merge=min,
-            aggregate_block=(
-                lambda block: BlockAccessor.for_block(block).min(on, ignore_nulls)
-            ),
         )
+
+    def aggregate_block(self, block: Block) -> AggType:
+        return BlockAccessor.for_block(block).min(self._target_col_name, self._ignore_nulls)
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return min(current_accumulator, new)
 
 
 @PublicAPI
-class Max(_AggregateOnKeyBase):
+class Max(AggregateFnV2):
     """Defines max aggregation."""
 
     def __init__(
@@ -277,24 +269,22 @@ class Max(_AggregateOnKeyBase):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"max({str(on)})"
 
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"max({str(on)})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            merge=max,
-            aggregate_block=lambda block: BlockAccessor.for_block(block).max(
-                on, ignore_nulls
-            ),
         )
+
+    def aggregate_block(self, block: Block) -> AggType:
+        return BlockAccessor.for_block(block).max(self._target_col_name, self._ignore_nulls)
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return max(current_accumulator, new)
 
 
 @PublicAPI
-class Mean(_AggregateOnKeyBase):
+class Mean(AggregateFnV2):
     """Defines mean aggregation."""
 
     def __init__(
@@ -303,35 +293,37 @@ class Mean(_AggregateOnKeyBase):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"mean({str(on)})"
-
-        def vectorized_mean(block: Block) -> AggType:
-            block_acc = BlockAccessor.for_block(block)
-            count = block_acc.count(on)
-            if count == 0 or count is None:
-                # Empty or all null.
-                return None
-            sum_ = block_acc.sum(on, ignore_nulls)
-            if sum_ is None:
-                # ignore_nulls=False and at least one null.
-                return None
-            return [sum_, count]
-
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"mean({str(on)})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
-            aggregate_block=vectorized_mean,
-            finalize=lambda a: a[0] / a[1],
         )
+
+    def aggregate_block(self, block: Block) -> AggType:
+        block_acc = BlockAccessor.for_block(block)
+        count = block_acc.count(self._target_col_name)
+
+        if count == 0 or count is None:
+            # Empty or all null.
+            return None
+
+        sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
+
+        if sum_ is None:
+            # ignore_nulls=False and at least one null.
+            return None
+
+        return [sum_, count]
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
+
+    def finalize(self, accumulator: AggType) -> Optional[U]:
+        return accumulator[0] / accumulator[1]
 
 
 @PublicAPI
-class Std(_AggregateOnKeyBase):
+class Std(AggregateFnV2):
     """Defines standard deviation aggregation.
 
     Uses Welford's online method for an accumulator-style computation of the
@@ -350,62 +342,60 @@ class Std(_AggregateOnKeyBase):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"std({str(on)})"
-
-        def merge(a: List[float], b: List[float]):
-            # Merges two accumulations into one.
-            # See
-            # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
-            M2_a, mean_a, count_a = a
-            M2_b, mean_b, count_b = b
-            delta = mean_b - mean_a
-            count = count_a + count_b
-            # NOTE: We use this mean calculation since it's more numerically
-            # stable than mean_a + delta * count_b / count, which actually
-            # deviates from Pandas in the ~15th decimal place and causes our
-            # exact comparison tests to fail.
-            mean = (mean_a * count_a + mean_b * count_b) / count
-            # Update the sum of squared differences.
-            M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
-            return [M2, mean, count]
-
-        def vectorized_std(block: Block) -> AggType:
-            block_acc = BlockAccessor.for_block(block)
-            count = block_acc.count(on)
-            if count == 0 or count is None:
-                # Empty or all null.
-                return None
-            sum_ = block_acc.sum(on, ignore_nulls)
-            if sum_ is None:
-                # ignore_nulls=False and at least one null.
-                return None
-            mean = sum_ / count
-            M2 = block_acc.sum_of_squared_diffs_from_mean(on, ignore_nulls, mean)
-            return [M2, mean, count]
-
-        def finalize(a: List[float]):
-            # Compute the final standard deviation from the accumulated
-            # sum of squared differences from current mean and the count.
-            M2, mean, count = a
-            if count < 2:
-                return 0.0
-            return math.sqrt(M2 / (count - ddof))
-
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"std({str(on)})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            merge=merge,
-            aggregate_block=vectorized_std,
-            finalize=finalize,
         )
+
+        self._ddof = ddof
+
+    def aggregate_block(self, block: Block) -> AggType:
+        block_acc = BlockAccessor.for_block(block)
+        count = block_acc.count(self._target_col_name)
+        if count == 0 or count is None:
+            # Empty or all null.
+            return None
+        sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
+        if sum_ is None:
+            # ignore_nulls=False and at least one null.
+            return None
+        mean = sum_ / count
+        M2 = block_acc.sum_of_squared_diffs_from_mean(
+            self._target_col_name,
+            self._ignore_nulls,
+            mean
+        )
+        return [M2, mean, count]
+
+    def combine(self, current_accumulator: List[float], new: List[float]) -> AggType:
+        # Merges two accumulations into one.
+        # See
+        # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+        M2_a, mean_a, count_a = current_accumulator
+        M2_b, mean_b, count_b = new
+        delta = mean_b - mean_a
+        count = count_a + count_b
+        # NOTE: We use this mean calculation since it's more numerically
+        # stable than mean_a + delta * count_b / count, which actually
+        # deviates from Pandas in the ~15th decimal place and causes our
+        # exact comparison tests to fail.
+        mean = (mean_a * count_a + mean_b * count_b) / count
+        # Update the sum of squared differences.
+        M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
+        return [M2, mean, count]
+
+    def finalize(self, accumulator: List[float]) -> Optional[U]:
+        # Compute the final standard deviation from the accumulated
+        # sum of squared differences from current mean and the count.
+        M2, mean, count = accumulator
+        if count < 2:
+            return 0.0
+        return math.sqrt(M2 / (count - self._ddof))
 
 
 @PublicAPI
-class AbsMax(_AggregateOnKeyBase):
+class AbsMax(AggregateFnV2):
     """Defines absolute max aggregation."""
 
     def __init__(
@@ -414,36 +404,36 @@ class AbsMax(_AggregateOnKeyBase):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"abs_max({str(on)})"
-
         if on is None or not isinstance(on, str):
             raise ValueError(f"Column to aggregate on has to be provided (got {on})")
 
-        def _null_safe_abs(v):
-            return abs(v) if not _is_null(v) else None
-
-        def _aggregate(block: Block):
-            block_accessor = BlockAccessor.for_block(block)
-
-            max_ = block_accessor.max(on, ignore_nulls)
-            min_ = block_accessor.min(on, ignore_nulls)
-
-            return max(_null_safe_abs(max_), _null_safe_abs(min_))
-
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"abs_max({str(on)})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            merge=max,
-            aggregate_block=_aggregate,
         )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return max(current_accumulator, new)
+
+    def aggregate_block(self, block: Block) -> AggType:
+        block_accessor = BlockAccessor.for_block(block)
+
+        max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
+        min_ = block_accessor.min(self._target_col_name, self._ignore_nulls)
+
+        return max(
+            self._null_safe_abs(max_),
+            self._null_safe_abs(min_),
+        )
+
+    @staticmethod
+    def _null_safe_abs(v):
+        return abs(v) if not _is_null(v) else None
 
 
 @PublicAPI
-class Quantile(_AggregateOnKeyBase):
+class Quantile(AggregateFnV2):
     """Defines Quantile aggregation."""
 
     def __init__(
@@ -453,39 +443,7 @@ class Quantile(_AggregateOnKeyBase):
         ignore_nulls: bool = True,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
         self._q = q
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"quantile({str(on)})"
-
-        def merge(a: List[int], b: List[int]):
-            if isinstance(a, List) and isinstance(b, List):
-                a.extend(b)
-                return a
-            if isinstance(a, List) and (not isinstance(b, List)):
-                if b is not None and b != "":
-                    a.append(b)
-                return a
-            if isinstance(b, List) and (not isinstance(a, List)):
-                if a is not None and a != "":
-                    b.append(a)
-                return b
-
-            ls = []
-            if a is not None and a != "":
-                ls.append(a)
-            if b is not None and b != "":
-                ls.append(b)
-            return ls
-
-        def _list_column(block: Block) -> AggType:
-            block_acc = BlockAccessor.for_block(block)
-            ls = []
-            for row in block_acc.iter_rows(public_row_format=False):
-                ls.append(row.get(on))
-            return ls
 
         import math
 
@@ -507,16 +465,67 @@ class Quantile(_AggregateOnKeyBase):
             return round(d0 + d1, 5)
 
         super().__init__(
-            self._rs_name,
+            alias_name if alias_name else f"quantile({str(on)})",
+            on=on,
             ignore_nulls=ignore_nulls,
-            merge=merge,
-            aggregate_block=_list_column,
-            finalize=percentile,
         )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        if isinstance(current_accumulator, List) and isinstance(new, List):
+            current_accumulator.extend(new)
+            return current_accumulator
+
+        if isinstance(current_accumulator, List) and (not isinstance(new, List)):
+            if new is not None and new != "":
+                current_accumulator.append(new)
+            return current_accumulator
+
+        if isinstance(new, List) and (not isinstance(current_accumulator, List)):
+            if current_accumulator is not None and current_accumulator != "":
+                new.append(current_accumulator)
+            return new
+
+        ls = []
+
+        if current_accumulator is not None and current_accumulator != "":
+            ls.append(current_accumulator)
+
+        if new is not None and new != "":
+            ls.append(new)
+
+        return ls
+
+    def aggregate_block(self, block: Block) -> AggType:
+        block_acc = BlockAccessor.for_block(block)
+        ls = []
+
+        for row in block_acc.iter_rows(public_row_format=False):
+            ls.append(row.get(self._target_col_name))
+
+        return ls
+
+    def finalize(self, accumulator: AggType) -> Optional[U]:
+        if not accumulator:
+            return None
+
+        key = lambda x: x  # noqa: E731
+
+        input_values = sorted(accumulator)
+        k = (len(input_values) - 1) * self._q
+        f = math.floor(k)
+        c = math.ceil(k)
+
+        if f == c:
+            return key(input_values[int(k)])
+
+        d0 = key(input_values[int(f)]) * (c - k)
+        d1 = key(input_values[int(c)]) * (k - f)
+
+        return round(d0 + d1, 5)
 
 
 @PublicAPI
-class Unique(_AggregateOnKeyBase):
+class Unique(AggregateFnV2):
     """Defines unique aggregation."""
 
     def __init__(
@@ -524,35 +533,30 @@ class Unique(_AggregateOnKeyBase):
         on: Optional[str] = None,
         alias_name: Optional[str] = None,
     ):
-        self._set_key_fn(on)
-        if alias_name:
-            self._rs_name = alias_name
-        else:
-            self._rs_name = f"unique({str(on)})"
-
-        def to_set(x):
-            if isinstance(x, set):
-                return x
-            elif isinstance(x, list):
-                return set(x)
-            else:
-                return {x}
-
-        def block_row_unique(block: Block) -> AggType:
-            import pyarrow.compute as pac
-
-            col = BlockAccessor.for_block(block).to_arrow().column(on)
-            return pac.unique(col).to_pylist()
-
-        def merge(a, b):
-            return to_set(a) | to_set(b)
-
         super().__init__(
-            name=(self._rs_name),
+            alias_name if alias_name else f"unique({str(on)})",
+            on=on,
             ignore_nulls=False,
-            merge=merge,
-            aggregate_block=block_row_unique,
         )
+
+    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+        return self._to_set(current_accumulator) | self._to_set(new)
+
+    def aggregate_block(self, block: Block) -> AggType:
+        import pyarrow.compute as pac
+
+        col = BlockAccessor.for_block(block).to_arrow().column(self._target_col_name)
+        return pac.unique(col).to_pylist()
+
+    @staticmethod
+    def _to_set(x):
+        if isinstance(x, set):
+            return x
+        elif isinstance(x, list):
+            return set(x)
+        else:
+            return {x}
+
 
 
 def _is_null(a: Optional[AggType]) -> bool:
