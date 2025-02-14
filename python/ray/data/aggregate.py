@@ -142,7 +142,10 @@ class AggregateFnV2(AggregateFn):
         aggregate_block: Callable[[Block], Optional[AggType]],
         finalize: Optional[Callable[[AggType], U]] = None,
     ):
-        assert name, f"Non-empty string has to be provided as name (got {name})"
+        if not name:
+            raise ValueError(
+                f"Non-empty string has to be provided as name (got {name})"
+            )
 
         if finalize is None:
             _safe_finalize = lambda a: a  # noqa: E731
