@@ -36,7 +36,10 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/util/cmd_line_utils.h"
@@ -89,7 +92,7 @@ class ProcessFD {
  public:
   ~ProcessFD();
   ProcessFD();
-  ProcessFD(pid_t pid, intptr_t fd = -1);
+  explicit ProcessFD(pid_t pid, intptr_t fd = -1);
   ProcessFD(ProcessFD &&other);
   ProcessFD &operator=(ProcessFD &&other);
 

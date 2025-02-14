@@ -35,8 +35,8 @@ void TestSendSignal(const std::string &test_name, int signal) {
   if (pid == 0) {
     while (true) {
       int n = 1000;
-      while (n--)
-        ;
+      while (n--) {
+      }
     }
   } else {
     Sleep();

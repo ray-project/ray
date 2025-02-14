@@ -17,9 +17,12 @@
 #include <gtest/gtest.h>
 
 #include <future>
+#include <memory>
 #include <string>
 #include <thread>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace ray::utils::container {
 
