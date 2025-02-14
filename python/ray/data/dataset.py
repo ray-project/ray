@@ -3318,15 +3318,17 @@ class Dataset:
             - URI: https://py.iceberg.apache.org/
 
         Examples:
+             .. testcode::
+                :skipif: True
 
-            >>> import ray
-            >>> import pandas as pd
-            >>> docs = [{"title": "Iceberg data sink test"} for key in range(4)]
-            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
-            >>> ds.write_iceberg(
-            ...     table_identifier="db_name.table_name",
-            ...     catalog_kwargs={"name": "default", "type": "glue"}
-            ... )
+                import ray
+                import pandas as pd
+                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"}
+                )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)

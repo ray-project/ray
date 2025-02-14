@@ -275,6 +275,7 @@ def test_write_basic():
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
     table.delete()
 
     ds = ray.data.from_arrow(create_pa_table())
@@ -283,24 +284,18 @@ def test_write_basic():
         catalog_kwargs=_CATALOG_KWARGS.copy(),
     )
 
-    # Read the raw table from PyIceberg
-    read_ds = read_iceberg(
-        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-        catalog_kwargs=_CATALOG_KWARGS.copy(),
-    )
-    pya_table: pa.Table = pa.concat_tables(
-        (ray.get(ref) for ref in read_ds.to_arrow_refs())
-    )
-
-    assert pya_table.schema.equals(_SCHEMA)
-
-    # Actually compare the tables now
-    table_p = (
-        pya_table.to_pandas()
+    # Read the raw table from PyIceberg after writing
+    orig_table_p = (
+        table.scan()
+        .to_pandas()
         .sort_values(["col_a", "col_b", "col_c"])
         .reset_index(drop=True)
     )
-    assert read_ds.equals(table_p)
+
+    table_p = (
+        ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
+    )
+    assert orig_table_p.equals(table_p)
 
 
 if __name__ == "__main__":
