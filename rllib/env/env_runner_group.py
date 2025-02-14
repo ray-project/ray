@@ -642,6 +642,396 @@ class EnvRunnerGroup:
             if global_vars is not None:
                 self.local_env_runner.set_global_vars(global_vars)
 
+    def add_workers(self, num_workers: int, validate: bool = False) -> None:
+        """Creates and adds a number of remote workers to this worker set.
+
+        Can be called several times on the same EnvRunnerGroup to add more
+        EnvRunners to the set.
+
+        Args:
+            num_workers: The number of remote Workers to add to this
+                EnvRunnerGroup.
+            validate: Whether to validate remote workers after their construction
+                process.
+
+        Raises:
+            RayError: If any of the constructed remote workers is not up and running
+                properly.
+        """
+        old_num_workers = self._worker_manager.num_actors()
+        new_workers = [
+            self._make_worker(
+                env_creator=self._env_creator,
+                validate_env=None,
+                worker_index=old_num_workers + i + 1,
+                num_workers=old_num_workers + num_workers,
+                config=self._remote_config,
+            )
+            for i in range(num_workers)
+        ]
+        self._worker_manager.add_actors(new_workers)
+
+        # Validate here, whether all remote workers have been constructed properly
+        # and are "up and running". Establish initial states.
+        if validate:
+            for result in self._worker_manager.foreach_actor(
+                lambda w: w.assert_healthy()
+            ):
+                # Simiply raise the error, which will get handled by the try-except
+                # clause around the _setup().
+                if not result.ok:
+                    e = result.get()
+                    if self._ignore_ray_errors_on_env_runners:
+                        logger.error(f"Validation of EnvRunner failed! Error={str(e)}")
+                    else:
+                        raise e
+
+    def reset(self, new_remote_workers: List[ActorHandle]) -> None:
+        """Hard overrides the remote EnvRunners in this set with the provided ones.
+
+        Args:
+            new_remote_workers: A list of new EnvRunners (as `ActorHandles`) to use as
+                new remote workers.
+        """
+        self._worker_manager.clear()
+        self._worker_manager.add_actors(new_remote_workers)
+
+    def stop(self) -> None:
+        """Calls `stop` on all EnvRunners (including the local one)."""
+        try:
+            # Make sure we stop all EnvRunners, include the ones that were just
+            # restarted / recovered or that are tagged unhealthy (at least, we should
+            # try).
+            self.foreach_env_runner(
+                lambda w: w.stop(), healthy_only=False, local_env_runner=True
+            )
+        except Exception:
+            logger.exception("Failed to stop workers!")
+        finally:
+            self._worker_manager.clear()
+
+    def foreach_env_runner(
+        self,
+        func: Callable[[EnvRunner], T],
+        *,
+        local_env_runner: bool = True,
+        healthy_only: bool = True,
+        remote_worker_ids: List[int] = None,
+        timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+    ) -> List[T]:
+        """Calls the given function with each EnvRunner as its argument.
+
+        Args:
+            func: The function to call for each EnvRunners. The only call argument is
+                the respective EnvRunner instance.
+            local_env_runner: Whether to apply `func` to local EnvRunner, too.
+                Default is True.
+            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
+            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
+                Use None (default) for all remote EnvRunners.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
+            mark_healthy: Whether to mark all those EnvRunners healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that EnvRunners are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects EnvRunners that are currently tagged as
+                unhealthy).
+
+        Returns:
+             The list of return values of all calls to `func([worker])`.
+        """
+        assert (
+            not return_obj_refs or not local_env_runner
+        ), "Can not return ObjectRef from local worker."
+
+        local_result = []
+        if local_env_runner and self.local_env_runner is not None:
+            local_result = [func(self.local_env_runner)]
+
+        if not self._worker_manager.actor_ids():
+            return local_result
+
+        remote_results = self._worker_manager.foreach_actor(
+            func,
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_worker_ids,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results, ignore_ray_errors=self._ignore_ray_errors_on_env_runners
+        )
+
+        # With application errors handled, return good results.
+        remote_results = [r.get() for r in remote_results.ignore_errors()]
+
+        return local_result + remote_results
+
+    def foreach_env_runner_with_id(
+        self,
+        func: Callable[[int, EnvRunner], T],
+        *,
+        local_env_runner: bool = True,
+        healthy_only: bool = True,
+        remote_worker_ids: List[int] = None,
+        timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        # Deprecated args.
+        local_worker=DEPRECATED_VALUE,
+    ) -> List[T]:
+        """Calls the given function with each EnvRunner and its ID as its arguments.
+
+        Args:
+            func: The function to call for each EnvRunners. The call arguments are
+                the EnvRunner's index (int) and the respective EnvRunner instance
+                itself.
+            local_env_runner: Whether to apply `func` to the local EnvRunner, too.
+                Default is True.
+            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
+            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
+            timeout_seconds: Time to wait for results. Default is None.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
+            mark_healthy: Whether to mark all those EnvRunners healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects EnvRunners that are currently tagged as
+                unhealthy).
+
+        Returns:
+             The list of return values of all calls to `func([worker, id])`.
+        """
+        local_result = []
+        if local_env_runner and self.local_env_runner is not None:
+            local_result = [func(0, self.local_env_runner)]
+
+        if not remote_worker_ids:
+            remote_worker_ids = self._worker_manager.actor_ids()
+
+        funcs = [functools.partial(func, i) for i in remote_worker_ids]
+
+        remote_results = self._worker_manager.foreach_actor(
+            funcs,
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_worker_ids,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
+        )
+
+        remote_results = [r.get() for r in remote_results.ignore_errors()]
+
+        return local_result + remote_results
+
+    def foreach_env_runner_async(
+        self,
+        func: Union[Callable[[EnvRunner], T], str],
+        *,
+        healthy_only: bool = True,
+        remote_worker_ids: List[int] = None,
+    ) -> int:
+        """Calls the given function asynchronously with each EnvRunner as the argument.
+
+        Does not return results directly. Instead, `fetch_ready_async_reqs()` can be
+        used to pull results in an async manner whenever they are available.
+
+        Args:
+            func: The function to call for each EnvRunners. The only call argument is
+                the respective EnvRunner instance.
+            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
+            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
+
+        Returns:
+             The number of async requests that have actually been made. This is the
+             length of `remote_worker_ids` (or self.num_remote_workers()` if
+             `remote_worker_ids` is None) minus the number of requests that were NOT
+             made b/c a remote EnvRunner already had its
+             `max_remote_requests_in_flight_per_actor` counter reached.
+        """
+        return self._worker_manager.foreach_actor_async(
+            func,
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_worker_ids,
+        )
+
+    def fetch_ready_async_reqs(
+        self,
+        *,
+        timeout_seconds: Optional[float] = 0.0,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+    ) -> List[Tuple[int, T]]:
+        """Get esults from outstanding asynchronous requests that are ready.
+
+        Args:
+            timeout_seconds: Time to wait for results. Default is 0, meaning
+                those requests that are already ready.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
+            mark_healthy: Whether to mark all those workers healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
+
+        Returns:
+            A list of results successfully returned from outstanding remote calls,
+            paired with the indices of the callee workers.
+        """
+        remote_results = self._worker_manager.fetch_ready_async_reqs(
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
+        )
+
+        return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
+
+    def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
+        """Calls `func` with all workers' sub-environments as args.
+
+        An "underlying sub environment" is a single clone of an env within
+        a vectorized environment.
+        `func` takes a single underlying sub environment as arg, e.g. a
+        gym.Env object.
+
+        Args:
+            func: A function - taking an EnvType (normally a gym.Env object)
+                as arg and returning a list of lists of return values, one
+                value per underlying sub-environment per each worker.
+
+        Returns:
+            The list (workers) of lists (sub environments) of results.
+        """
+        return list(
+            self.foreach_env_runner(
+                lambda w: w.foreach_env(func),
+                local_env_runner=True,
+            )
+        )
+
+    def foreach_env_with_context(
+        self, func: Callable[[BaseEnv, EnvContext], List[T]]
+    ) -> List[List[T]]:
+        """Calls `func` with all workers' sub-environments and env_ctx as args.
+
+        An "underlying sub environment" is a single clone of an env within
+        a vectorized environment.
+        `func` takes a single underlying sub environment and the env_context
+        as args.
+
+        Args:
+            func: A function - taking a BaseEnv object and an EnvContext as
+                arg - and returning a list of lists of return values over envs
+                of the worker.
+
+        Returns:
+            The list (1 item per workers) of lists (1 item per sub-environment)
+                of results.
+        """
+        return list(
+            self.foreach_env_runner(
+                lambda w: w.foreach_env_with_context(func),
+                local_env_runner=True,
+            )
+        )
+
+    def probe_unhealthy_env_runners(self) -> List[int]:
+        """Checks for unhealthy workers and tries restoring their states.
+
+        Returns:
+            List of IDs of the workers that were restored.
+        """
+        return self._worker_manager.probe_unhealthy_actors(
+            timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
+            mark_healthy=True,
+        )
+
+    @OldAPIStack
+    def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+        """Calls `func` with each worker's (policy, PolicyID) tuple.
+
+        Note that in the multi-agent case, each worker may have more than one
+        policy.
+
+        Args:
+            func: A function - taking a Policy and its ID - that is
+                called on all workers' Policies.
+
+        Returns:
+            The list of return values of func over all workers' policies. The
+                length of this list is:
+                (num_workers + 1 (local-worker)) *
+                [num policies in the multi-agent config dict].
+                The local workers' results are first, followed by all remote
+                workers' results
+        """
+        results = []
+        for r in self.foreach_env_runner(
+            lambda w: w.foreach_policy(func), local_env_runner=True
+        ):
+            results.extend(r)
+        return results
+
+    @OldAPIStack
+    def foreach_policy_to_train(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
+        """Apply `func` to all workers' Policies iff in `policies_to_train`.
+
+        Args:
+            func: A function - taking a Policy and its ID - that is
+                called on all workers' Policies, for which
+                `worker.is_policy_to_train()` returns True.
+
+        Returns:
+            List[any]: The list of n return values of all
+                `func([trainable policy], [ID])`-calls.
+        """
+        results = []
+        for r in self.foreach_env_runner(
+            lambda w: w.foreach_policy_to_train(func), local_env_runner=True
+        ):
+            results.extend(r)
+        return results
+
+    @OldAPIStack
+    def is_policy_to_train(
+        self, policy_id: PolicyID, batch: Optional[SampleBatchType] = None
+    ) -> bool:
+        """Whether given PolicyID (optionally inside some batch) is trainable."""
+        if self.local_env_runner:
+            if self.local_env_runner.is_policy_to_train is None:
+                return True
+            return self.local_env_runner.is_policy_to_train(policy_id, batch)
+        else:
+            raise NotImplementedError
+
     @OldAPIStack
     def add_policy(
         self,
@@ -781,393 +1171,6 @@ class EnvRunnerGroup:
 
         # Add the policy to all remote workers.
         self.foreach_env_runner(_create_new_policy_fn, local_env_runner=False)
-
-    def add_workers(self, num_workers: int, validate: bool = False) -> None:
-        """Creates and adds a number of remote workers to this worker set.
-
-        Can be called several times on the same EnvRunnerGroup to add more
-        EnvRunners to the set.
-
-        Args:
-            num_workers: The number of remote Workers to add to this
-                EnvRunnerGroup.
-            validate: Whether to validate remote workers after their construction
-                process.
-
-        Raises:
-            RayError: If any of the constructed remote workers is not up and running
-                properly.
-        """
-        old_num_workers = self._worker_manager.num_actors()
-        new_workers = [
-            self._make_worker(
-                env_creator=self._env_creator,
-                validate_env=None,
-                worker_index=old_num_workers + i + 1,
-                num_workers=old_num_workers + num_workers,
-                config=self._remote_config,
-            )
-            for i in range(num_workers)
-        ]
-        self._worker_manager.add_actors(new_workers)
-
-        # Validate here, whether all remote workers have been constructed properly
-        # and are "up and running". Establish initial states.
-        if validate:
-            for result in self._worker_manager.foreach_actor(
-                lambda w: w.assert_healthy()
-            ):
-                # Simiply raise the error, which will get handled by the try-except
-                # clause around the _setup().
-                if not result.ok:
-                    e = result.get()
-                    if self._ignore_ray_errors_on_env_runners:
-                        logger.error(f"Validation of EnvRunner failed! Error={str(e)}")
-                    else:
-                        raise e
-
-    def reset(self, new_remote_workers: List[ActorHandle]) -> None:
-        """Hard overrides the remote EnvRunners in this set with the provided ones.
-
-        Args:
-            new_remote_workers: A list of new EnvRunners (as `ActorHandles`) to use as
-                new remote workers.
-        """
-        self._worker_manager.clear()
-        self._worker_manager.add_actors(new_remote_workers)
-
-    def stop(self) -> None:
-        """Calls `stop` on all EnvRunners (including the local one)."""
-        try:
-            # Make sure we stop all EnvRunners, include the ones that were just
-            # restarted / recovered or that are tagged unhealthy (at least, we should
-            # try).
-            self.foreach_env_runner(
-                lambda w: w.stop(), healthy_only=False, local_env_runner=True
-            )
-        except Exception:
-            logger.exception("Failed to stop workers!")
-        finally:
-            self._worker_manager.clear()
-
-    def is_policy_to_train(
-        self, policy_id: PolicyID, batch: Optional[SampleBatchType] = None
-    ) -> bool:
-        """Whether given PolicyID (optionally inside some batch) is trainable."""
-        if self.local_env_runner:
-            if self.local_env_runner.is_policy_to_train is None:
-                return True
-            return self.local_env_runner.is_policy_to_train(policy_id, batch)
-        else:
-            raise NotImplementedError
-
-    def foreach_env_runner(
-        self,
-        func: Callable[[EnvRunner], T],
-        *,
-        local_env_runner: bool = True,
-        healthy_only: bool = True,
-        remote_worker_ids: List[int] = None,
-        timeout_seconds: Optional[float] = None,
-        return_obj_refs: bool = False,
-        mark_healthy: bool = False,
-    ) -> List[T]:
-        """Calls the given function with each EnvRunner as its argument.
-
-        Args:
-            func: The function to call for each EnvRunners. The only call argument is
-                the respective EnvRunner instance.
-            local_env_runner: Whether to apply `func` to local EnvRunner, too.
-                Default is True.
-            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
-            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
-                Use None (default) for all remote EnvRunners.
-            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
-                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
-                synchronous execution).
-            return_obj_refs: Whether to return ObjectRef instead of actual results.
-                Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this EnvRunnerGroup.
-            mark_healthy: Whether to mark all those EnvRunners healthy again that are
-                currently marked unhealthy AND that returned results from the remote
-                call (within the given `timeout_seconds`).
-                Note that EnvRunners are NOT set unhealthy, if they simply time out
-                (only if they return a RayActorError).
-                Also note that this setting is ignored if `healthy_only=True` (b/c
-                `mark_healthy` only affects EnvRunners that are currently tagged as
-                unhealthy).
-
-        Returns:
-             The list of return values of all calls to `func([worker])`.
-        """
-        assert (
-            not return_obj_refs or not local_env_runner
-        ), "Can not return ObjectRef from local worker."
-
-        local_result = []
-        if local_env_runner and self.local_env_runner is not None:
-            local_result = [func(self.local_env_runner)]
-
-        if not self._worker_manager.actor_ids():
-            return local_result
-
-        remote_results = self._worker_manager.foreach_actor(
-            func,
-            healthy_only=healthy_only,
-            remote_actor_ids=remote_worker_ids,
-            timeout_seconds=timeout_seconds,
-            return_obj_refs=return_obj_refs,
-            mark_healthy=mark_healthy,
-        )
-
-        FaultTolerantActorManager.handle_remote_call_result_errors(
-            remote_results, ignore_ray_errors=self._ignore_ray_errors_on_env_runners
-        )
-
-        # With application errors handled, return good results.
-        remote_results = [r.get() for r in remote_results.ignore_errors()]
-
-        return local_result + remote_results
-
-    def foreach_env_runner_with_id(
-        self,
-        func: Callable[[int, EnvRunner], T],
-        *,
-        local_env_runner: bool = True,
-        healthy_only: bool = True,
-        remote_worker_ids: List[int] = None,
-        timeout_seconds: Optional[float] = None,
-        return_obj_refs: bool = False,
-        mark_healthy: bool = False,
-        # Deprecated args.
-        local_worker=DEPRECATED_VALUE,
-    ) -> List[T]:
-        """Calls the given function with each EnvRunner and its ID as its arguments.
-
-        Args:
-            func: The function to call for each EnvRunners. The call arguments are
-                the EnvRunner's index (int) and the respective EnvRunner instance
-                itself.
-            local_env_runner: Whether to apply `func` to the local EnvRunner, too.
-                Default is True.
-            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
-            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
-            timeout_seconds: Time to wait for results. Default is None.
-            return_obj_refs: Whether to return ObjectRef instead of actual results.
-                Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this EnvRunnerGroup.
-            mark_healthy: Whether to mark all those EnvRunners healthy again that are
-                currently marked unhealthy AND that returned results from the remote
-                call (within the given `timeout_seconds`).
-                Note that workers are NOT set unhealthy, if they simply time out
-                (only if they return a RayActorError).
-                Also note that this setting is ignored if `healthy_only=True` (b/c
-                `mark_healthy` only affects EnvRunners that are currently tagged as
-                unhealthy).
-
-        Returns:
-             The list of return values of all calls to `func([worker, id])`.
-        """
-        local_result = []
-        if local_env_runner and self.local_env_runner is not None:
-            local_result = [func(0, self.local_env_runner)]
-
-        if not remote_worker_ids:
-            remote_worker_ids = self._worker_manager.actor_ids()
-
-        funcs = [functools.partial(func, i) for i in remote_worker_ids]
-
-        remote_results = self._worker_manager.foreach_actor(
-            funcs,
-            healthy_only=healthy_only,
-            remote_actor_ids=remote_worker_ids,
-            timeout_seconds=timeout_seconds,
-            return_obj_refs=return_obj_refs,
-            mark_healthy=mark_healthy,
-        )
-
-        FaultTolerantActorManager.handle_remote_call_result_errors(
-            remote_results,
-            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
-        )
-
-        remote_results = [r.get() for r in remote_results.ignore_errors()]
-
-        return local_result + remote_results
-
-    def foreach_env_runner_async(
-        self,
-        func: Callable[[EnvRunner], T],
-        *,
-        healthy_only: bool = True,
-        remote_worker_ids: List[int] = None,
-    ) -> int:
-        """Calls the given function asynchronously with each EnvRunner as the argument.
-
-        Does not return results directly. Instead, `fetch_ready_async_reqs()` can be
-        used to pull results in an async manner whenever they are available.
-
-        Args:
-            func: The function to call for each EnvRunners. The only call argument is
-                the respective EnvRunner instance.
-            healthy_only: Apply `func` on known-to-be healthy EnvRunners only.
-            remote_worker_ids: Apply `func` on a selected set of remote EnvRunners.
-
-        Returns:
-             The number of async requests that have actually been made. This is the
-             length of `remote_worker_ids` (or self.num_remote_workers()` if
-             `remote_worker_ids` is None) minus the number of requests that were NOT
-             made b/c a remote EnvRunner already had its
-             `max_remote_requests_in_flight_per_actor` counter reached.
-        """
-        return self._worker_manager.foreach_actor_async(
-            func,
-            healthy_only=healthy_only,
-            remote_actor_ids=remote_worker_ids,
-        )
-
-    def fetch_ready_async_reqs(
-        self,
-        *,
-        timeout_seconds: Optional[float] = 0.0,
-        return_obj_refs: bool = False,
-        mark_healthy: bool = False,
-    ) -> List[Tuple[int, T]]:
-        """Get esults from outstanding asynchronous requests that are ready.
-
-        Args:
-            timeout_seconds: Time to wait for results. Default is 0, meaning
-                those requests that are already ready.
-            return_obj_refs: Whether to return ObjectRef instead of actual results.
-            mark_healthy: Whether to mark all those workers healthy again that are
-                currently marked unhealthy AND that returned results from the remote
-                call (within the given `timeout_seconds`).
-                Note that workers are NOT set unhealthy, if they simply time out
-                (only if they return a RayActorError).
-                Also note that this setting is ignored if `healthy_only=True` (b/c
-                `mark_healthy` only affects workers that are currently tagged as
-                unhealthy).
-
-        Returns:
-            A list of results successfully returned from outstanding remote calls,
-            paired with the indices of the callee workers.
-        """
-        remote_results = self._worker_manager.fetch_ready_async_reqs(
-            timeout_seconds=timeout_seconds,
-            return_obj_refs=return_obj_refs,
-            mark_healthy=mark_healthy,
-        )
-
-        FaultTolerantActorManager.handle_remote_call_result_errors(
-            remote_results,
-            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
-        )
-
-        return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
-
-    def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
-        """Calls `func` with each worker's (policy, PolicyID) tuple.
-
-        Note that in the multi-agent case, each worker may have more than one
-        policy.
-
-        Args:
-            func: A function - taking a Policy and its ID - that is
-                called on all workers' Policies.
-
-        Returns:
-            The list of return values of func over all workers' policies. The
-                length of this list is:
-                (num_workers + 1 (local-worker)) *
-                [num policies in the multi-agent config dict].
-                The local workers' results are first, followed by all remote
-                workers' results
-        """
-        results = []
-        for r in self.foreach_env_runner(
-            lambda w: w.foreach_policy(func), local_env_runner=True
-        ):
-            results.extend(r)
-        return results
-
-    def foreach_policy_to_train(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
-        """Apply `func` to all workers' Policies iff in `policies_to_train`.
-
-        Args:
-            func: A function - taking a Policy and its ID - that is
-                called on all workers' Policies, for which
-                `worker.is_policy_to_train()` returns True.
-
-        Returns:
-            List[any]: The list of n return values of all
-                `func([trainable policy], [ID])`-calls.
-        """
-        results = []
-        for r in self.foreach_env_runner(
-            lambda w: w.foreach_policy_to_train(func), local_env_runner=True
-        ):
-            results.extend(r)
-        return results
-
-    def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
-        """Calls `func` with all workers' sub-environments as args.
-
-        An "underlying sub environment" is a single clone of an env within
-        a vectorized environment.
-        `func` takes a single underlying sub environment as arg, e.g. a
-        gym.Env object.
-
-        Args:
-            func: A function - taking an EnvType (normally a gym.Env object)
-                as arg and returning a list of lists of return values, one
-                value per underlying sub-environment per each worker.
-
-        Returns:
-            The list (workers) of lists (sub environments) of results.
-        """
-        return list(
-            self.foreach_env_runner(
-                lambda w: w.foreach_env(func),
-                local_env_runner=True,
-            )
-        )
-
-    def foreach_env_with_context(
-        self, func: Callable[[BaseEnv, EnvContext], List[T]]
-    ) -> List[List[T]]:
-        """Calls `func` with all workers' sub-environments and env_ctx as args.
-
-        An "underlying sub environment" is a single clone of an env within
-        a vectorized environment.
-        `func` takes a single underlying sub environment and the env_context
-        as args.
-
-        Args:
-            func: A function - taking a BaseEnv object and an EnvContext as
-                arg - and returning a list of lists of return values over envs
-                of the worker.
-
-        Returns:
-            The list (1 item per workers) of lists (1 item per sub-environment)
-                of results.
-        """
-        return list(
-            self.foreach_env_runner(
-                lambda w: w.foreach_env_with_context(func),
-                local_env_runner=True,
-            )
-        )
-
-    def probe_unhealthy_env_runners(self) -> List[int]:
-        """Checks for unhealthy workers and tries restoring their states.
-
-        Returns:
-            List of IDs of the workers that were restored.
-        """
-        return self._worker_manager.probe_unhealthy_actors(
-            timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
-            mark_healthy=True,
-        )
 
     def _make_worker(
         self,
