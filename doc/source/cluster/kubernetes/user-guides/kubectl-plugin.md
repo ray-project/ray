@@ -45,16 +45,16 @@ Assume that you have installed the KubeRay operator. If not, follow the [RayClus
 
 The `kubectl ray create cluster` command allows you to create a valid RayCluster without an existing YAML file. The default values are follows:
 
-| Parameter | Default                        |
-| -------- |--------------------------------|
-| ray version | 2.41.0                         |
-| ray image | rayproject/ray:\<ray version\> |
-| head cpu | 2                              |
-| head memory | 4Gi                            |
+| Parameter       | Default                        |
+|-----------------|--------------------------------|
+| ray version     | 2.41.0                         |
+| ray image       | rayproject/ray:\<ray version\> |
+| head CPU        | 2                              |
+| head memory     | 4Gi                            |
 | worker replicas | 1                              |
-| worker cpu | 2                              |
-| worker memory | 4Gi                            |
-| worker gpu | 0                              |
+| worker CPU      | 2                              |
+| worker memory   | 4Gi                            |
+| worker GPU      | 0                              |
 
 ```text
 $ kubectl ray create cluster raycluster-sample
@@ -68,7 +68,7 @@ $ kubectl ray create cluster raycluster-sample-2 --worker-replicas 2
 Created Ray Cluster: raycluster-sample-2
 ```
 
-By default only one worker group is created. You can use `kubectl ray create workergroup` to add additional worker groups to existing RayClusters.
+By default it only creates one worker group. You can use `kubectl ray create workergroup` to add additional worker groups to existing RayClusters.
 
 ```text
 $ kubectl ray create workergroup example-group --ray-cluster raycluster-sample --worker-memory 5Gi
@@ -89,7 +89,7 @@ example-group   1/1        2      0      0      5Gi      raycluster-sample
 default-group   2/2        4      0      0      8Gi      raycluster-sample-2
 ```
 
-The `kubectl ray session` command can forward local ports to Ray resources, allowing users to avoid remembering which ports are exposed.
+The `kubectl ray session` command can forward local ports to Ray resources, allowing users to avoid remembering which ports Ray resources exposes.
 
 ```text
 $ kubectl ray session raycluster-sample
@@ -111,7 +111,7 @@ Downloading log for Ray Node raycluster-sample-example-group-worker-sfdp7
 Downloading log for Ray Node raycluster-sample-head-k5pj8
 ```
 
-A folder named `raycluster-sample` will be created in the current directory containing the logs of the RayCluster.
+It creates a folder named `raycluster-sample` in the current directory containing the logs of the RayCluster.
 
 Use `kubectl ray delete` command to clean up the resources.
 
@@ -122,7 +122,7 @@ $ kubectl ray delete raycluster-sample-2
 
 ### Example 2: RayJob Submission
 
-`kubectl ray job submit` is a wrapper around the `ray job submit` command. It can automatically forward the ports to the Ray cluster and submit the job. This command can also provision a ephemeral cluster needed to execute the job if no RayJob is provided.
+`kubectl ray job submit` is a wrapper around the `ray job submit` command. It can automatically forward the ports to the Ray cluster and submit the job. This command can also provision an ephemeral cluster if the user doesn't provide a RayJob.
 
 Assume that under the current directory, you have a file named `sample_code.py`.
 
@@ -142,16 +142,16 @@ print(ray.get(futures)) # [0, 1, 4, 9]
 
 You can submit a RayJob without specifying a YAML file. The command generates a RayJob based on the following:
 
-| Parameter | Default                        |
-| -------- |--------------------------------|
-| ray version | 2.41.0                         |
-| ray image | rayproject/ray:\<ray version\> |
-| head cpu | 2                              |
-| head memory | 4Gi                            |
+| Parameter       | Default                        |
+|-----------------|--------------------------------|
+| ray version     | 2.41.0                         |
+| ray image       | rayproject/ray:\<ray version\> |
+| head CPU        | 2                              |
+| head memory     | 4Gi                            |
 | worker replicas | 1                              |
-| worker cpu | 2                              |
-| worker memory | 4Gi                            |
-| worker gpu | 0                              |
+| worker CPU      | 2                              |
+| worker memory   | 4Gi                            |
+| worker GPU      | 0                              |
 
 ```text
 $ kubectl ray job submit --name rayjob-sample --working-dir . -- python sample_code.py
@@ -172,7 +172,7 @@ You can also designate a specific RayJob YAML to submit a Ray job.
 $ wget https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-job.interactive-mode.yaml
 ```
 
-Note that in the RayJob spec, `submissionMode` is set to `InteractiveMode`.
+Note that in the RayJob spec, `submissionMode` is `InteractiveMode`.
 
 ```text
 $ kubectl ray job submit -f ray-job.interactive-mode.yaml --working-dir . -- python sample_code.py
