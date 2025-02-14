@@ -11,6 +11,7 @@ from ray.train.v2._internal.execution.context import DistributedContext, TrainRu
 from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
     FinishedState,
+    InitializingState,
     ReschedulingState,
     RestartingState,
     ResizingState,
@@ -291,7 +292,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
     states = [
-        # InitializingState(),
+        InitializingState(),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
@@ -315,6 +316,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
         FinishedState(),
     ]
     expected_statuses = [
+        RunStatus.INITIALIZING,
         RunStatus.SCHEDULING,
         RunStatus.RUNNING,
         RunStatus.RESTARTING,
@@ -333,7 +335,7 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
     for i in range(len(states) - 1):
         callback.after_controller_state_update(states[i], states[i + 1])
         runs = ray.get(state_actor.get_train_runs.remote())
-        run = list(runs.values())[0]
+        run = runs[callback._run_id]
         assert run.status == expected_statuses[i + 1]
 
 
