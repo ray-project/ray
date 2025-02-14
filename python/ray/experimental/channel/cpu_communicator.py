@@ -107,8 +107,8 @@ class CPUCommunicator(Communicator):
         self._rank = None
 
     def send(self, tensor: "torch.Tensor", peer_rank: int):
-        # p2p operations are done via a shared memory channel, initialized in
-        # `create_channel` of `TorchTensorType`
+        # P2P operations are done via a shared memory channel, initialized in
+        # `create_channel` of `TorchTensorType`.
         pass
 
     def recv(
@@ -118,7 +118,7 @@ class CPUCommunicator(Communicator):
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
     ):
-        # See the comment on `send`
+        # See the comment on `send`.
         pass
 
     def allreduce(
@@ -185,5 +185,5 @@ class CPUCommunicator(Communicator):
     def send_stream(self):
         raise NotImplementedError
 
-    def collective_stream(self):
+    def coll_stream(self):
         raise NotImplementedError
