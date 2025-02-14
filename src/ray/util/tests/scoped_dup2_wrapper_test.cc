@@ -54,19 +54,17 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   EXPLICIT_ACCESS ea;
 
   // Initialize the SID for "Everyone"
-  if (!AllocateAndInitializeSid(&SECURITY_WORLD_SID_AUTHORITY,
-                                1,
-                                SECURITY_WORLD_RID,
-                                0,
-                                0,
-                                0,
-                                0,
-                                0,
-                                0,
-                                0,
-                                &pEveryoneSID)) {
-    return INVALID_HANDLE_VALUE;
-  }
+  ASSERT_TRUE(&SECURITY_WORLD_SID_AUTHORITY,
+              1,
+              SECURITY_WORLD_RID,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              &pEveryoneSID);
 
   // Initialize an EXPLICIT_ACCESS structure for the ACE.
   ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS));
