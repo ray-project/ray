@@ -382,8 +382,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             )
 
         # Override the task if it is different from the stage.
-        task = engine_kwargs.get("task", task_type)
-        task = vLLMTaskType(task) if isinstance(task, str) else task
+        task = vLLMTaskType(engine_kwargs.get("task", task_type))
         if task != task_type:
             logger.warning(
                 "The task set in engine kwargs (%s) is different from the "
