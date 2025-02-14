@@ -445,6 +445,12 @@ class Channel(ChannelInterface):
         # -1 means no timeout (block indefinitely)
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
 
+        from ray.dag.dag_operation_future import GPUFuture
+
+        # [TODO] We do not send a GPU future across actors.
+        if isinstance(value, GPUFuture):
+            value = value.wait()
+
         if not isinstance(value, SerializedObject):
             try:
                 serialized_value = self._worker.get_serialization_context().serialize(
