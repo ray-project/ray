@@ -31,6 +31,9 @@ fi
 
 if [[ "$RAY_INSTALL_MASK" != "" ]]; then
   echo "--- Apply mask: $RAY_INSTALL_MASK"
+  if [[ "$RAY_INSTALL_MASK" =~ rllib ]]; then
+    rm -rf python/ray/rllib
+  fi
   if [[ "$RAY_INSTALL_MASK" =~ serve ]]; then
     rm -rf python/ray/serve
   fi
