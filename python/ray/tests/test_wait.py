@@ -87,9 +87,6 @@ def test_wait_always_fetch_local(monkeypatch, ray_start_cluster):
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(num_cpus=1, object_store_memory=300e6)
 
-    print("head node", head_node.node_id)
-    print("worker node", worker_node.node_id)
-
     @ray.remote(num_cpus=1)
     def return_large_object():
         # 100mb so will spill on worker, but not once on head
