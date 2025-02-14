@@ -1,7 +1,10 @@
 import math
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
+from bokeh.models.dom import TableRow
+
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.util import is_nan
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import PublicAPI
 
@@ -135,10 +138,15 @@ class Sum(_AggregateOnKeyBase):
         else:
             self._rs_name = f"sum({str(on)})"
 
+        merge = _null_safe_merge(lambda a1, a2: a1 + a2)
+
         super().__init__(
-            init=lambda k: 0,
-            merge=lambda a1, a2: a1 + a2,
-            accumulate_block=lambda acc, block: acc + BlockAccessor.for_block(block).sum(on, ignore_nulls),
+            init=None,
+            merge=merge,
+            accumulate_block=(
+                lambda acc, block:
+                    merge(acc, BlockAccessor.for_block(block).sum(on, ignore_nulls))
+            ),
             finalize=lambda a: a,
             name=(self._rs_name),
         )
@@ -160,10 +168,12 @@ class Min(_AggregateOnKeyBase):
         else:
             self._rs_name = f"min({str(on)})"
 
+        merge = _null_safe_merge(min)
+
         super().__init__(
-            init=lambda k: float("inf"),
-            merge=min,
-            accumulate_block=lambda acc, block: min(acc, BlockAccessor.for_block(block).min(on, ignore_nulls)),
+            init=None,
+            merge=merge,
+            accumulate_block=lambda acc, block: merge(acc, BlockAccessor.for_block(block).min(on, ignore_nulls)),
             finalize=lambda a: a,
             name=(self._rs_name),
         )
@@ -185,10 +195,12 @@ class Max(_AggregateOnKeyBase):
         else:
             self._rs_name = f"max({str(on)})"
 
+        merge = _null_safe_merge(max)
+
         super().__init__(
-            init=lambda k: float("-inf"),
-            merge=max,
-            accumulate_block=lambda acc, block: max(acc, BlockAccessor.for_block(block).max(on, ignore_nulls)),
+            init=None,
+            merge=merge,
+            accumulate_block=lambda acc, block: merge(acc, BlockAccessor.for_block(block).max(on, ignore_nulls)),
             finalize=lambda a: a,
             name=(self._rs_name),
         )
@@ -222,10 +234,12 @@ class Mean(_AggregateOnKeyBase):
                 return None
             return [sum_, count]
 
-        merge = lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
+        merge = _null_safe_merge(
+            lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+        )
 
         super().__init__(
-            init=lambda k: [0, 0],
+            init=None,
             merge=merge,
             accumulate_block=lambda acc, block: merge(acc, vectorized_mean(block)),
             finalize=lambda a: a[0] / a[1],
@@ -259,7 +273,7 @@ class Std(_AggregateOnKeyBase):
         else:
             self._rs_name = f"std({str(on)})"
 
-        def merge(a: List[float], b: List[float]):
+        def _merge(a: List[float], b: List[float]):
             # Merges two accumulations into one.
             # See
             # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
@@ -298,8 +312,10 @@ class Std(_AggregateOnKeyBase):
                 return 0.0
             return math.sqrt(M2 / (count - ddof))
 
+        merge = _null_safe_merge(_merge)
+
         super().__init__(
-            init=lambda k: [0.0, 0.0, 0.0],
+            init=None,
             merge=merge,
             accumulate_block=lambda acc, block: merge(acc, vectorized_std(block)),
             finalize=finalize,
@@ -323,17 +339,19 @@ class AbsMax(_AggregateOnKeyBase):
         else:
             self._rs_name = f"abs_max({str(on)})"
 
-        if on is None:
-            selector = lambda r: r
-        elif isinstance(on, str):
-            selector = lambda r: r[on]
-        else:
-            raise ValueError(f"On value expected to be either str or None (got {on})")
+        if on is None or not isinstance(on, str):
+            raise ValueError(f"Column to aggregate on has to be provided (got {on})")
+
+        selector = lambda r: r[on]
+        _null_safe_abs = lambda v: v if not _is_null(v) else None
+
+        merge = _null_safe_merge(max)
 
         super().__init__(
-            init=lambda k: 0,
-            merge=max,
-            accumulate_row=lambda a, r: max(a, abs(selector(r))),
+            init=None,
+            merge=merge,
+            # TODO rebase onto block based impl using min_max
+            accumulate_row=lambda a, r: merge(a, _null_safe_abs(selector(r))),
             finalize=lambda a: a,
             name=(self._rs_name),
         )
@@ -357,7 +375,7 @@ class Quantile(_AggregateOnKeyBase):
         else:
             self._rs_name = f"quantile({str(on)})"
 
-        def merge(a: List[int], b: List[int]):
+        def _merge(a: List[int], b: List[int]):
             if isinstance(a, List) and isinstance(b, List):
                 a.extend(b)
                 return a
@@ -403,8 +421,10 @@ class Quantile(_AggregateOnKeyBase):
             d1 = key(input_values[int(c)]) * (k - f)
             return round(d0 + d1, 5)
 
+        merge = _null_safe_merge(_merge)
+
         super().__init__(
-            init=lambda k: [0],
+            init=None,
             merge=merge,
             accumulate_block=lambda acc, block: merge(acc, block_row_ls(block)),
             finalize=percentile,
@@ -441,8 +461,10 @@ class Unique(_AggregateOnKeyBase):
             col = BlockAccessor.for_block(block).to_arrow().column(on)
             return pac.unique(col).to_pylist()
 
-        def merge(a, b):
+        def _merge(a, b):
             return to_set(a) | to_set(b)
+
+        merge = _null_safe_merge(_merge)
 
         super().__init__(
             init=lambda x: set(),
@@ -451,3 +473,24 @@ class Unique(_AggregateOnKeyBase):
             finalize=lambda x: x,
             name=(self._rs_name),
         )
+
+
+def _is_null(a: Optional[AggType]) -> bool:
+    return a is None or is_nan(a)
+
+
+def _null_safe_merge(merge: Callable[[AggType, AggType], AggType]) -> Callable[[Optional[AggType], Optional[AggType]], AggType]:
+    def _safe_merge(a: Optional[AggType], b: Optional[AggType]) -> AggType:
+        a_is_null = _is_null(a)
+        b_is_null = _is_null(b)
+
+        if a_is_null and b_is_null:
+            return None
+        elif a_is_null:
+            return b
+        elif b_is_null:
+            return a
+        else:
+            return merge(a, b)
+
+    return _safe_merge

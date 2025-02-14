@@ -327,7 +327,7 @@ class TableBlockAccessor(BlockAccessor):
             if len(group_keys) == 1:
                 init_vals = group_keys[0]
 
-            accumulators = [agg.init(init_vals) for agg in aggs]
+            accumulators = [(agg.init(init_vals) if agg.init else None) for agg in aggs]
             for i in range(len(aggs)):
                 accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
 
