@@ -66,10 +66,10 @@ class AggregateFn:
         init: Callable[[KeyType], AggType],
         merge: Callable[[AggType, AggType], AggType],
         name: str,
-        _merge_batch: Callable[[List[AggType]], AggType] = None,
         accumulate_row: Callable[[AggType, T], AggType] = None,
         accumulate_block: Callable[[AggType, Block], AggType] = None,
         finalize: Optional[Callable[[AggType], U]] = None,
+        _merge_batch: Callable[[List[AggType]], AggType] = None,
     ):
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
