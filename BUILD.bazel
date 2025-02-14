@@ -831,6 +831,8 @@ ray_cc_library(
         ":stats_metric",
         ":reporter_rpc",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
     ],
 )
 
