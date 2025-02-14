@@ -17,7 +17,7 @@ if [[ "${PYTHON_CODE}" != "py311" ]]; then
     exit 1
 fi
 
-pip install --no-deps -r "requirements_compiled_rayllm_py${PYTHON_CODE}.txt"
+pip install --no-deps -r "requirements_compiled_rayllm_${PYTHON_CODE}.txt"
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
