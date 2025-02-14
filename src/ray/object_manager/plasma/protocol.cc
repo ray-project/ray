@@ -402,11 +402,19 @@ Status ReadReleaseRequest(uint8_t *data,
                           size_t size,
                           ObjectID *object_id,
                           bool *may_unmap) {
+  RAY_LOG(INFO) << "[myan] Reading release request...";
   RAY_DCHECK(data);
+  RAY_LOG(INFO) << "[myan] Passed DCHECK(data)";
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseRequest>(data);
+  RAY_LOG(INFO) << "[myan] Successfully read the message...";
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
+  RAY_LOG(INFO) << "[myan] Successfully verified the flatbuffer...";
+  RAY_DCHECK(message->object_id() != nullptr);
+  RAY_LOG(INFO) << "[myan] Successfully verified the message->object_id() != null...";
   *object_id = ObjectID::FromBinary(message->object_id()->str());
+  RAY_LOG(INFO) << "[myan] Successfully read the object_id...";
   *may_unmap = message->may_unmap();
+  RAY_LOG(INFO) << "[myan] Read the may_unmap...";
   return Status::OK();
 }
 

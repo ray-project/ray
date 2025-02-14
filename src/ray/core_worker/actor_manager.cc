@@ -216,7 +216,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts()
                 << ", death context type="
-                << gcs::GetActorDeathCauseString(actor_data.death_cause());
+                << gcs::GetActorDeathCauseString(actor_data.death_cause())
+                << ", pid=" << getpid() << ", tid=" << std::this_thread::get_id();
   if (actor_data.preempted()) {
     actor_task_submitter_.SetPreempted(actor_id);
   }

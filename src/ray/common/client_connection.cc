@@ -22,6 +22,7 @@
 #include <boost/bind/bind.hpp>
 #include <chrono>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 
 #include "ray/common/event_stats.h"
@@ -149,11 +150,25 @@ Status ServerConnection::WriteBuffer(
     while (bytes_remaining != 0) {
       size_t bytes_written =
           socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), error);
+
+      std::ostringstream byte_stream;
+      for (size_t i = 0; i < bytes_written; ++i) {
+        byte_stream << static_cast<int>(
+                           *(boost::asio::buffer_cast<const uint8_t *>(b) + position + i))
+                    << " ";
+      }
+      RAY_LOG(INFO) << "[myan] WriteBuffer bytes_written=" << bytes_written
+                    << ", Bytes: " << byte_stream.str() << ", pid=" << getpid()
+                    << ", tid=" << std::this_thread::get_id();
+
       position += bytes_written;
       bytes_remaining -= bytes_written;
       if (error.value() == EINTR) {
+        RAY_LOG(INFO) << "[myan] WriteBuffer interrupted by signal.";
         continue;
       } else if (error.value() != boost::system::errc::errc_t::success) {
+        RAY_LOG(INFO) << "[myan] WriteBuffer encounter error=" << error.value()
+                      << ", message=" << error.message();
         return boost_to_ray_status(error);
       }
     }
@@ -250,6 +265,13 @@ ray::Status ServerConnection::WriteMessage(int64_t type,
   bytes_written_ += length;
 
   auto write_cookie = RayConfig::instance().ray_cookie();
+
+  std::ostringstream message_stream;
+  for (int i = 0; i < length; ++i) {
+    message_stream << static_cast<int>(message[i]) << ",";
+  }
+  RAY_LOG(INFO) << "[myan] WriteMessage cookie=" << write_cookie << ", type=" << type
+                << ", length=" << length << ", message=" << message_stream.str();
   return WriteBuffer({
       boost::asio::buffer(&write_cookie, sizeof(write_cookie)),
       boost::asio::buffer(&type, sizeof(type)),
@@ -574,6 +596,9 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
     read_type_ = error_message_type_;
     read_message_ = error_data;
   }
+
+  RAY_LOG(INFO) << "[myan] ProcessMessageHeader. read_cookie_= " << read_cookie_
+                << ", read_type_=" << read_type_ << ", read_length=" << read_length_;
 
   int64_t start_ms = current_time_ms();
   message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_);
