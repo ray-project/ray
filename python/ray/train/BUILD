@@ -158,15 +158,6 @@ py_test(
 )
 
 py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "small",
-    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "manual"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "horovod_pytorch_example",
     size = "small",
     srcs = ["examples/horovod/horovod_pytorch_example.py"],
