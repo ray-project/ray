@@ -2,7 +2,7 @@ import time
 import json
 import pytest
 import ray
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock
 import random
 import sys
 from dataclasses import asdict
@@ -197,7 +197,7 @@ async def test_api_manager_summary_actors(state_api_manager):
 async def test_api_manager_summary_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     object_ids = [ObjectID((f"{i}" * 28).encode()) for i in range(9)]
-    data_source_client.get_all_node_info = MagicMock()
+    data_source_client.get_all_node_info = AsyncMock()
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
             GcsNodeInfo(node_id=b"1" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE),

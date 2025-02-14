@@ -1258,7 +1258,7 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     obj_1_id = b"1" * 28
     obj_2_id = b"2" * 28
-    data_source_client.get_all_node_info = MagicMock()
+    data_source_client.get_all_node_info = AsyncMock()
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
             GcsNodeInfo(
@@ -1379,7 +1379,7 @@ async def test_api_manager_list_objects(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_node_info = MagicMock()
+    data_source_client.get_all_node_info = AsyncMock()
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
             GcsNodeInfo(
