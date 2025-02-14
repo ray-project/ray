@@ -1,42 +1,42 @@
 import pytest
 import ray
+from ray.actor import ActorHandle
 from unittest.mock import MagicMock
 
+from ray.train.v2.api.config import RunConfig
+
+from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.exceptions import TrainingFailedError
-
-
+from ray.train.v2._internal.execution.context import DistributedContext, TrainRunContext
+from ray.train.v2._internal.execution.controller.state import (
+    ErroredState,
+    FinishedState,
+    ReschedulingState,
+    RestartingState,
+    ResizingState,
+    RunningState,
+    SchedulingState,
+)
+from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
+from ray.train.v2._internal.execution.worker_group import (
+    ActorMetadata,
+    Worker,
+    WorkerGroup,
+    WorkerGroupContext,
+)
 from ray.train.v2._internal.state.schema import (
-    RunStatus,
-    RunAttemptStatus,
     ActorStatus,
+    RunAttemptStatus,
+    RunStatus,
+    TrainResources,
     TrainRun,
     TrainRunAttempt,
-    TrainResources,
 )
-
-from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
-
 from ray.train.v2._internal.state.state_actor import (
     TrainStateActor,
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
-from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
-from ray.train.v2._internal.execution.context import TrainRunContext
-from ray.train.v2._internal.execution.controller.state import (
-    SchedulingState,
-    RunningState,
-    RestartingState,
-    ResizingState,
-    ErroredState,
-    FinishedState,
-)
-from ray.train.v2._internal.execution.worker_group import (
-    Worker,
-    WorkerGroup,
-    WorkerGroupContext,
-)
-from ray.train.v2.api.config import RunConfig
 
 
 @pytest.fixture(scope="function")
@@ -61,18 +61,23 @@ def mock_worker_group_context():
     return context
 
 
+def get_mock_actor(actor_id: str):
+    actor = MagicMock(spec=ActorHandle)
+    actor._actor_id.hex.return_value = actor_id
+    return actor
+
+
 @pytest.fixture
 def mock_worker():
-    actor = MagicMock()
-    actor._actor_id.hex.return_value = "actor_1"
+    actor = get_mock_actor("actor_1")
 
-    metadata = MagicMock()
+    metadata = MagicMock(spec=ActorMetadata)
     metadata.node_id = "node_1"
     metadata.node_ip = "127.0.0.1"
     metadata.pid = 1000
     metadata.gpu_ids = []
 
-    distributed_context = MagicMock()
+    distributed_context = MagicMock(spec=DistributedContext)
     distributed_context.world_rank = 0
     distributed_context.local_rank = 0
     distributed_context.node_rank = 0
@@ -250,7 +255,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     # Test running state with workers
     workers = [
         Worker(
-            actor=MagicMock(_actor_id=MagicMock(hex=lambda: f"actor_{i}")),
+            actor=get_mock_actor(f"actor_{i}"),
             metadata=MagicMock(
                 node_id="node_1", node_ip="127.0.0.1", pid=1000 + i, gpu_ids=[]
             ),
@@ -286,21 +291,40 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
     states = [
+        # InitializingState(),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
         RunningState(),
         RestartingState(training_failed_error=TrainingFailedError(worker_failures={})),
-        ResizingState(
+        SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
+        RunningState(),
+        ResizingState(
+            scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
+        ),
+        SchedulingState(
+            scaling_decision=ResizeDecision(num_workers=4, resources_per_worker={})
+        ),
+        ReschedulingState(),
+        SchedulingState(
+            scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
+        ),
+        RunningState(),
         FinishedState(),
     ]
     expected_statuses = [
         RunStatus.SCHEDULING,
         RunStatus.RUNNING,
         RunStatus.RESTARTING,
+        RunStatus.SCHEDULING,
+        RunStatus.RUNNING,
         RunStatus.RESIZING,
+        RunStatus.SCHEDULING,
+        RunStatus.SCHEDULING,  # Rescheduling
+        RunStatus.SCHEDULING,
+        RunStatus.RUNNING,
         RunStatus.FINISHED,
     ]
 

@@ -1,6 +1,6 @@
 import random
 import unittest.mock
-
+from unittest.mock import MagicMock
 import pytest
 
 from ray.air.config import CheckpointConfig
@@ -12,6 +12,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.checkpoint.report_handler import (
     ReportCallbackHandler,
 )
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
@@ -70,7 +71,10 @@ def test_report_handler(tmp_path, num_workers, num_ckpt, num_dummy, num_none, ex
         num_workers=10,
         resources_per_worker={"CPU": 1},
     )
-    worker_group = DummyWorkerGroup(worker_group_context)
+    worker_group = DummyWorkerGroup(
+        train_run_context=MagicMock(spec=TrainRunContext),
+        worker_group_context=worker_group_context,
+    )
     worker_group._start()
     checkpoint_handler.after_worker_group_start(worker_group)
 

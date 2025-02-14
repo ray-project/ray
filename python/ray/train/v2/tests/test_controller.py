@@ -48,9 +48,12 @@ class DummyWorkerGroup(WorkerGroup):
 
     _start_failure = None
 
+    # TODO: Clean this up and use Mocks instead.
     def __init__(
         self,
+        train_run_context: TrainRunContext,
         worker_group_context: WorkerGroupContext,
+        callbacks=None,
     ):
         self._num_workers = worker_group_context.num_workers
         self._worker_group_state = None

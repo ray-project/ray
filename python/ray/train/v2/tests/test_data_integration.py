@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 
 import ray.data
 import ray.train
@@ -6,6 +7,7 @@ from ray.data import DataContext, ExecutionResources
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks import DatasetsSetupCallback
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
 )
@@ -73,7 +75,10 @@ def test_dataset_setup_callback(ray_start_4_cpus):
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config.resources_per_worker,
     )
-    worker_group = DummyWorkerGroup(worker_group_context)
+    worker_group = DummyWorkerGroup(
+        train_run_context=MagicMock(spec=TrainRunContext),
+        worker_group_context=worker_group_context,
+    )
     worker_group._start()
 
     callback = DatasetsSetupCallback(
