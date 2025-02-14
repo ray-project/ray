@@ -231,6 +231,7 @@ if setup_spec.type == SetupType.RAY:
         "pyarrow >= 9.0.0",
         "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -259,7 +260,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+            pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -319,7 +320,7 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"]
+    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
