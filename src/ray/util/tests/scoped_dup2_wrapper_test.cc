@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <iostream>
+#include <string>
 #include <string_view>
 
 #include "ray/common/test/testing.h"
