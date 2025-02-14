@@ -1596,6 +1596,23 @@ def test_asyncio_multi_output(ray_start_regular, gather_futs):
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
+def test_asyncio_capacity(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+    async def main(i):
+        futs = await compiled_dag.execute_async(i)
+        assert len(futs) == 2
+        result = await futs[0]
+        assert result == i
+
+    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(12)]))
+
 def test_asyncio_exceptions(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
