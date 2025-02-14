@@ -260,8 +260,9 @@ class MetricsLogger:
             check(logger.peek("loss"), 0.05)
 
             # Internals check (note that users should not be concerned with accessing
-            # these).
-            check(len(logger.stats["loss"].values), 13)
+            # these). Len should always be 10, since the underlying struct is a
+            # `deque(max_len=10)`.
+            check(len(logger.stats["loss"].values), 10)
 
             # Only, when we call `reduce` does the underlying structure get "cleaned
             # up". In this case, the list is shortened to 10 items (window size).
@@ -537,17 +538,18 @@ class MetricsLogger:
             )
             # The expected procedure is as follows:
             # The individual internal values lists of the two loggers are as follows:
-            # env runner 1: [100, 200, 300, 400]
-            # env runner 2: [150, 250, 350, 450]
+            # env runner 1: [200, 300, 400]
+            # env runner 2: [250, 350, 450]
             # Move backwards from index=-1 (each time, loop through both env runners)
-            # index=-1 -> [400, 450] -> reduce-mean -> [425] -> repeat 2 times (number
+            # index=-1 -> [400, 450] -> mean -> [425] -> repeat 2 times (number
             #   of env runners) -> [425, 425]
-            # index=-2 -> [300, 350] -> reduce-mean -> [325] -> repeat 2 times
+            # index=-2 -> [300, 350] -> mean -> [325] -> repeat 2 times
             #   -> append -> [425, 425, 325, 325] -> STOP b/c we have reached >= window.
             # reverse the list -> [325, 325, 425, 425]
+            # deque(max_len=3) -> [325, 425, 425]
             check(
                 main_logger.stats["env_runners"]["mean_ret"].values,
-                [325, 325, 425, 425],
+                [325, 425, 425],
             )
             check(main_logger.peek(("env_runners", "mean_ret")), (325 + 425 + 425) / 3)
 
@@ -707,12 +709,11 @@ class MetricsLogger:
 
             import time
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-            from ray.rllib.utils.test_utils import check
 
             logger = MetricsLogger()
 
             # First delta measurement:
-            with logger.log_time("my_block_to_be_timed", reduce="mean", ema_coeff=0.1):
+            with logger.log_time("my_block_to_be_timed", ema_coeff=0.1):
                 time.sleep(1.0)
 
             # EMA should be ~1sec.
@@ -727,10 +728,8 @@ class MetricsLogger:
             # EMA should be ~1.1sec.
             assert 1.15 > logger.peek("my_block_to_be_timed") > 1.05
 
-            # When calling `reduce()`, the internal values list gets cleaned up.
-            check(len(logger.stats["my_block_to_be_timed"].values), 2)  # still 2 deltas
+            # When calling `reduce()`, the latest, reduced value is returned.
             results = logger.reduce()
-            check(len(logger.stats["my_block_to_be_timed"].values), 1)  # reduced to 1
             # EMA should be ~1.1sec.
             assert 1.15 > results["my_block_to_be_timed"] > 1.05
 

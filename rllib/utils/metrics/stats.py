@@ -252,12 +252,11 @@ class Stats:
                 (`self.values`).
         """
         with self._threading_lock:
+            self.values.append(value)
             # For inf-windows EMA, always reduce right away, b/c it's cheap and avoids
             # long lists, which would be expensive to reduce.
             if self._ema_coeff is not None and self._inf_window:
                 self._set_values(self._reduced_values()[1])
-            else:
-                self.values.append(value)
 
     def __enter__(self) -> "Stats":
         """Called when entering a context (with which users can measure a time delta).
@@ -410,8 +409,8 @@ class Stats:
             stats2.push(6)
             stats.merge_in_parallel(stats1, stats2)
             # Fill new merged-values list:
-            # - Start with index -1, moving to the start.
-            # - Thereby always reducing across the different Stats objects' at the
+            # - Start with index -1, move towards the start.
+            # - Thereby always reduce across the different Stats objects' at the
             #   current index.
             # - The resulting reduced value (across Stats at current index) is then
             #   repeated AND added to the new merged-values list n times (where n is
@@ -422,8 +421,9 @@ class Stats:
             # index -2: [2, 5] -> [4.5, 4.5, 3.5, 3.5]
             # STOP after merged list contains >= 3 items (window size)
             # reverse: [3.5, 3.5, 4.5, 4.5]
-            check(stats.values, [3.5, 3.5, 4.5, 4.5])
-            check(stats.peek(), (3.5 + 4.5 + 4.5) / 3)  # mean last 3 items (window)
+            # deque w/ maxlen=3: [3.5, 4.5, 4.5]
+            check(stats.values, [3.5, 4.5, 4.5])
+            check(stats.peek(), (3.5 + 4.5 + 4.5) / 3)  # mean the 3 items (window)
 
             # Parallel-merge two (reduce=max) stats with window=3.
             stats = Stats(reduce="max", window=3)
@@ -449,7 +449,8 @@ class Stats:
             # index -2: [2, 5] -> [6, 6, 5, 5]
             # STOP after merged list contains >= 3 items (window size)
             # reverse: [5, 5, 6, 6]
-            check(stats.values, [5, 5, 6, 6])
+            # deque w/ maxlen=3: [5, 6, 6]
+            check(stats.values, [5, 6, 6])
             check(stats.peek(), 6)  # max is 6
 
             # Parallel-merge two (reduce=min) stats with window=4.
@@ -678,8 +679,11 @@ class Stats:
 
     def _set_values(self, new_values):
         with self._threading_lock:
+            # For stats with window, use a deque with maxlen=window.
+            # This way, we never store more values than absolutely necessary.
             if not self._inf_window:
                 self.values = deque(new_values, maxlen=self._window)
+            # For infinite windows, use `new_values` as-is (a list).
             else:
                 self.values = new_values
 
