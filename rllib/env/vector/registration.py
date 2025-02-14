@@ -2,7 +2,6 @@ import copy
 import gymnasium as gym
 import logging
 
-from enum import Enum
 from gymnasium.envs.registration import VectorizeMode
 from typing import Any, Dict, Optional
 
