@@ -69,7 +69,6 @@ class AggregateFn:
         accumulate_row: Callable[[AggType, T], AggType] = None,
         accumulate_block: Callable[[AggType, Block], AggType] = None,
         finalize: Optional[Callable[[AggType], U]] = None,
-        _merge_batch: Callable[[List[AggType]], AggType] = None,
     ):
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
@@ -86,18 +85,6 @@ class AggregateFn:
                     a = accumulate_row(a, r)
                 return a
 
-        if _merge_batch is None:
-
-            def _merge_batch(partially_agg_vals: List[AggType]) -> AggType:
-                if len(partially_agg_vals) == 0:
-                    return None
-
-                cur_acc = partially_agg_vals[0]
-                for v in partially_agg_vals[1:]:
-                    cur_acc = merge(cur_acc, v)
-
-                return cur_acc
-
         if not isinstance(name, str):
             raise TypeError("`name` must be provided.")
 
@@ -106,7 +93,7 @@ class AggregateFn:
 
         self.name = name
         self.init = init
-        self._merge_batch = _merge_batch
+        self.merge = merge
         self.accumulate_block = accumulate_block
         self.finalize = finalize
 
