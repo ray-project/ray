@@ -24,6 +24,17 @@ class Operator:
         return self._name
 
     @property
+    def full_name(self) -> str:
+        """Full name including all input dependencies."""
+        if self.input_dependencies:
+            out_str = ", ".join([str(x) for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    @property
     def input_dependencies(self) -> List["Operator"]:
         """List of operators that provide inputs for this operator."""
         assert hasattr(
@@ -46,13 +57,7 @@ class Operator:
         yield self
 
     def __repr__(self) -> str:
-        if self.input_dependencies:
-            out_str = ", ".join([str(x) for x in self.input_dependencies])
-            out_str += " -> "
-        else:
-            out_str = ""
-        out_str += f"{self.__class__.__name__}[{self._name}]"
-        return out_str
+        return self.name
 
     def __str__(self) -> str:
         return repr(self)

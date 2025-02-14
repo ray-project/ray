@@ -67,6 +67,21 @@ def _take_outputs(op: PhysicalOperator) -> List[Any]:
     return output
 
 
+def test_name_and_repr(ray_start_regular_shared):
+    inputs = make_ref_bundles([[1, 2], [3], [4, 5]])
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+    map_op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op,
+        DataContext.get_current(),
+        name="TestMapper",
+    )
+
+    print(map_op.name)
+    print(map_op.full_name)
+    print(str(map_op))
+
+
 def test_input_data_buffer(ray_start_regular_shared):
     # Create with bundles.
     inputs = make_ref_bundles([[1, 2], [3], [4, 5]])
