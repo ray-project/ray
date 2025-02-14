@@ -1,4 +1,4 @@
-&CORE_INSTALL_MASK "'^(data|serve)$'"
+&CORE_INSTALL_MASK "'^(rllib|serve)$'"
 group: core tests
 depends_on:
   - forge
