@@ -390,24 +390,6 @@ class IMPALAConfig(AlgorithmConfig):
                 setting_name="entropy_coeff",
                 description="entropy coefficient",
             )
-            # Learner API specific checks.
-            # GPU-bound single Learner must be local (faster than remote Learner,
-            # b/c GPU can update in parallel through the learner thread).
-            if self.num_gpus_per_learner > 0 and self.num_learners == 1:
-                self._value_error(
-                    "When running with 1 GPU Learner, this Learner should be local! "
-                    "Set `config.learners(num_learners=0)` to configure a local "
-                    "Learner instance."
-                )
-            # CPU-bound single Learner must be remote (faster than local Learner,
-            # b/c learner thread would compete with main thread for resources).
-            elif self.num_gpus_per_learner == 0 and self.num_learners == 0:
-                self._value_error(
-                    "When running with a CPU Learner, this Learner should be remote! "
-                    "Set `config.learners(num_learners=1)` to configure a single "
-                    "remote Learner instance."
-                )
-
             if self.minibatch_size is not None and not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.total_train_batch_size
@@ -860,7 +842,7 @@ class IMPALA(Algorithm):
             learner_actor_id = self._aggregator_actor_to_learner[agg_actor_id]
             self._ma_batches_being_built[learner_actor_id].append(ma_batch_ref)
 
-        # Construct a n-group of batches (n=num_learners) as long as we still have
+        # Construct an n-group of batches (n=num_learners) as long as we still have
         # at least one batch per learner in our queue.
         batch_refs_for_learner_group: List[List[ObjectRef]] = []
         while all(
