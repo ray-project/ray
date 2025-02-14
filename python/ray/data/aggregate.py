@@ -66,7 +66,7 @@ class AggregateFn:
         init: Callable[[KeyType], AggType],
         merge: Callable[[AggType, AggType], AggType],
         name: str,
-        _merge_batch: Callable[[AggType, Collection[AggType]], AggType] = None,
+        _merge_batch: Callable[[List[AggType]], AggType] = None,
         accumulate_row: Callable[[AggType, T], AggType] = None,
         accumulate_block: Callable[[AggType, Block], AggType] = None,
         finalize: Optional[Callable[[AggType], U]] = None,
@@ -87,9 +87,13 @@ class AggregateFn:
                 return a
 
         if _merge_batch is None:
-            def _merge_batch(acc: AggType, partially_agg_vals: Collection[AggType]) -> AggType:
-                cur_acc = acc
-                for v in partially_agg_vals:
+
+            def _merge_batch(partially_agg_vals: List[AggType]) -> AggType:
+                if len(partially_agg_vals) == 0:
+                    return None
+
+                cur_acc = partially_agg_vals[0]
+                for v in partially_agg_vals[1:]:
                     cur_acc = merge(cur_acc, v)
 
                 return cur_acc
@@ -191,10 +195,8 @@ class Count(_AggregateOnKeyBase):
         super().__init__(
             self._rs_name,
             ignore_nulls=ignore_nulls,
-            aggregate_block=(
-                lambda block: BlockAccessor.for_block(block).num_rows()
-            ),
-            merge=lambda a1, a2: a1 + a2
+            aggregate_block=(lambda block: BlockAccessor.for_block(block).num_rows()),
+            merge=lambda a1, a2: a1 + a2,
         )
 
 
