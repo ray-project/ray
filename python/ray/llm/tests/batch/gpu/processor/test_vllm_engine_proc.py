@@ -192,7 +192,7 @@ def test_vision_model(model_llava_1_5_7b):
         tokenize=False,
         detokenize=False,
         batch_size=16,
-        accelerator_type="L40S",
+        accelerator_type=ACCELERATOR_TYPE,
         concurrency=1,
     )
 

@@ -38,7 +38,7 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
         "'generate' by default.",
     )
     runtime_env: Optional[Dict[str, Any]] = Field(
-        default_factory=None,
+        default=None,
         description="The runtime environment to use for the vLLM engine.",
     )
     max_pending_requests: Optional[int] = Field(
