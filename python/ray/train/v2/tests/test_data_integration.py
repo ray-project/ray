@@ -66,14 +66,14 @@ def test_dataset_setup_callback(ray_start_4_cpus):
     scaling_config = ray.train.ScalingConfig(
         num_workers=NUM_WORKERS, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
     )
-    worker_group = DummyWorkerGroup()
 
     worker_group_context = WorkerGroupContext(
         train_fn=lambda: None,
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config.resources_per_worker,
     )
-    worker_group._start(worker_group_context)
+    worker_group = DummyWorkerGroup(worker_group_context)
+    worker_group._start()
 
     callback = DatasetsSetupCallback(
         datasets={"train": train_ds, "valid": valid_ds},
