@@ -14,7 +14,9 @@ if TYPE_CHECKING:
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
-    """Defines how to perform a custom aggregation in Ray Data.
+    """NOTE: THIS IS DEPRECATED, PLEASE USE AggregateFnV2 INSTEAD
+
+    Defines how to perform a custom aggregation in Ray Data.
 
     `AggregateFn` instances are passed to a Dataset's ``.aggregate(...)`` method to
     specify the steps required to transform and combine rows sharing the same key.
@@ -101,7 +103,21 @@ class AggregateFn:
 
 @PublicAPI(stability="beta")
 class AggregateFnV2(AggregateFn):
-    """TODO elaborate"""
+    """Provides an interface to implement efficient aggregations to be applied
+    to the dataset.
+
+    `AggregateFnV2` instances are passed to a Dataset's ``.aggregate(...)`` method to
+    perform aggregations by applying distributed aggregation algorithm:
+
+        - `aggregate_block` is applied to individual blocks, producing partial
+            aggregations.
+        - `merge` combines multiple partially aggregated values (previously returned
+            from `aggregate_block` partial aggregations into a singular partial
+            aggregation.
+        - `finalize` transforms partial aggregation into its final state (for
+            some aggregations this is an identity transformation, ie no-op)
+
+    """
 
     def __init__(
         self,
