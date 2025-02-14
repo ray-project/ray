@@ -34,6 +34,25 @@ def test_empty_processor():
         assert "val" not in row
         assert "id" in row
         assert "result" in row
+        
+        
+def test_processor_with_no_preprocess_or_postprocess():
+    """Test processor with no preprocess or postprocess."""
+    
+    processor = Processor(
+        config=ProcessorConfig(
+            batch_size=64,
+            accelerator_type=None,
+            concurrency=1,
+        ),
+        stages=[],
+    )
+
+    ds = ray.data.range(5)
+    ds = processor(ds).take_all()
+    for row in ds: 
+        assert "id" in row
+
 
 
 @pytest.mark.parametrize("has_extra", [True, False])

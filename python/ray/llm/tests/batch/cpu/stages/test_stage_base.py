@@ -120,15 +120,13 @@ class TestStatefulStageUDF:
 
 
 def test_stateful_stage():
-    udf = TestStatefulStageUDF.SimpleUDF(data_column="__data")
-
     stage = StatefulStage(
-        fn=udf,
+        fn=TestStatefulStageUDF.SimpleUDF,
         fn_constructor_kwargs={"data_column": "__data"},
         map_batches_kwargs={"batch_size": 10},
     )
 
-    assert stage.fn == udf
+    assert stage.fn == TestStatefulStageUDF.SimpleUDF
     assert stage.fn_constructor_kwargs == {"data_column": "__data"}
     assert stage.map_batches_kwargs == {"batch_size": 10}
 

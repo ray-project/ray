@@ -74,12 +74,9 @@ class Processor:
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column 
         # gets inserted/removed via wrap_preprocess/wrap_postprocess.
-        if preprocess is None:
-            preprocess = lambda row: row
-        if postprocess is None:
-            postprocess = lambda row: row
+        preprocess = preprocess or (lambda row: row)
+        postprocess = postprocess or (lambda row: row)
         
-            
         self.preprocess = wrap_preprocess(
             preprocess,
             self.data_column,
