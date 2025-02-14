@@ -501,6 +501,11 @@ class Quantile(AggregateFnV2):
         if not accumulator:
             return None
 
+        if self._ignore_nulls:
+            accumulator = [v for v in accumulator if not _is_null(v)]
+        elif any([_is_null(v) for v in accumulator]):
+            return None
+
         key = lambda x: x  # noqa: E731
 
         input_values = sorted(accumulator)
