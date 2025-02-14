@@ -49,18 +49,15 @@ def model_opt_125m():
 
 
 @pytest.fixture(scope="session")
-def model_llava_1_5_7b():
+def model_llava_354m():
     """The vision language model for testing."""
-    REMOTE_URL = f"{S3_ARTIFACT_URL}llava-hf-llava-1.5-7b-hf/"
+    REMOTE_URL = f"{S3_ARTIFACT_URL}llava-354M/"
     FILE_LIST = [
-        "config.json",
-        "chat_template.json",
         "added_tokens.json",
+        "chat_template.json",
+        "config.json",
         "generation_config.json",
-        "model-00001-of-00003.safetensors",
-        "model-00002-of-00003.safetensors",
-        "model-00003-of-00003.safetensors",
-        "model.safetensors.index.json",
+        "model.safetensors",
         "preprocessor_config.json",
         "processor_config.json",
         "special_tokens_map.json",

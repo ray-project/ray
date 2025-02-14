@@ -48,6 +48,10 @@ class ChatTemplateUDF(StatefulStageUDF):
         """
         messages = []
         for row in batch:
+            # PyArrow cannot handle the messages with images, so Ray Data
+            # will fallback to use pickle for serialization. In this case,
+            # the "messages" column is already a list of dicts and does not
+            # have .tolist() method.
             if hasattr(row["messages"], "tolist"):
                 messages.append(row["messages"].tolist())
             else:

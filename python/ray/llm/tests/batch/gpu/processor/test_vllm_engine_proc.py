@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 import ray
 from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.vllm_engine_proc import (
@@ -174,9 +178,9 @@ def test_embedding_model(model_opt_125m):
     assert all("prompt" in out for out in outs)
 
 
-def test_vision_model(model_llava_1_5_7b):
+def test_vision_model(model_llava_354m):
     processor_config = vLLMEngineProcessorConfig(
-        model=model_llava_1_5_7b,
+        model=model_llava_354m,
         task_type="generate",
         engine_kwargs=dict(
             # Skip CUDA graph capturing to reduce startup time.
@@ -232,3 +236,7 @@ def test_vision_model(model_llava_1_5_7b):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

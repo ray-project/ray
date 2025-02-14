@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from unittest.mock import patch, MagicMock
 from ray.llm._internal.batch.stages.chat_template_stage import ChatTemplateUDF
@@ -90,3 +92,7 @@ def test_chat_template_udf_expected_input_keys(mock_tokenizer_setup):
         model="test-model",
     )
     assert udf.expected_input_keys == ["messages"]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import pytest
 import math
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -291,3 +292,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     for resp in asyncio.as_completed(tasks):
         _, output = await resp
         assert output["embeddings"].shape == (768,)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
