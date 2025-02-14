@@ -1,6 +1,6 @@
 import abc
 import math
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Generic
 
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
@@ -103,7 +103,7 @@ class AggregateFn:
 
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn):
+class AggregateFnV2(AggregateFn, Generic[AggType]):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
@@ -463,7 +463,7 @@ class Quantile(AggregateFnV2):
             ignore_nulls=ignore_nulls,
         )
 
-    def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
+    def combine(self, current_accumulator: List[Any], new: List[Any]) -> List[Any]:
         if isinstance(current_accumulator, List) and isinstance(new, List):
             current_accumulator.extend(new)
             return current_accumulator
@@ -497,7 +497,7 @@ class Quantile(AggregateFnV2):
 
         return ls
 
-    def _finalize(self, accumulator: AggType) -> Optional[U]:
+    def _finalize(self, accumulator: List[Any]) -> Optional[U]:
         if not accumulator:
             return None
 
