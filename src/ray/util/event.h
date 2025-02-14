@@ -81,6 +81,8 @@ namespace ray {
 // interface of event reporter
 class BaseEventReporter {
  public:
+  virtual ~BaseEventReporter() = default;
+
   virtual void Init() = 0;
 
   virtual void Report(const rpc::Event &event, const nlohmann::json &custom_fields) = 0;
