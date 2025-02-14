@@ -281,7 +281,7 @@ def test_random_shuffle(ray_start_regular_shared):
     block_accessor = ArrowBlockAccessor(table)
 
     # Perform the random shuffle
-    shuffled_table = block_accessor.random_shuffle()
+    shuffled_table = block_accessor.random_shuffle(random_seed=None)
     assert shuffled_table.num_rows == TOTAL_ROWS
 
     # Access the shuffled data
