@@ -201,34 +201,28 @@ def test_process_completed_tasks():
 
 def test_select_operator_to_run():
     opt = ExecutionOptions()
-    inputs = make_ref_bundles([[x] for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(1)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o1, DataContext.get_current()
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o2, DataContext.get_current()
     )
     topo, _ = build_streaming_topology(o3, opt)
+
     resource_manager = mock_resource_manager(
         global_limits=ExecutionResources.for_limits(1, 1, 1),
     )
-    memory_usage = {
-        o1: 0,
-        o2: 0,
-        o3: 0,
-    }
+    memory_usage = {o1: 0, o2: 0, o3: 0}
     resource_manager.get_op_usage = MagicMock(
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
     )
+    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+        return_value=True
+    )
 
     def _select_op_to_run():
-        nonlocal topo, resource_manager
-
         return select_operator_to_run(
             topo, resource_manager, [], mock_autoscaler(), True
         )
@@ -236,15 +230,17 @@ def test_select_operator_to_run():
     # Test empty.
     assert _select_op_to_run() is None
 
-    # Test backpressure based on memory_usage of each operator.
+    # `o2` is the only operator with at least one input.
     topo[o1].outqueue.append(make_ref_bundle("dummy1"))
     memory_usage[o1] += 1
     assert _select_op_to_run() == o2
 
+    # `o2` is still the only operator with at least one input.
     topo[o1].outqueue.append(make_ref_bundle("dummy2"))
     memory_usage[o1] += 1
     assert _select_op_to_run() == o2
 
+    # Both `o2` and `o3` have at least one input, but `o3` has less memory usage.
     topo[o2].outqueue.append(make_ref_bundle("dummy3"))
     memory_usage[o2] += 1
     assert _select_op_to_run() == o3
@@ -330,36 +326,40 @@ def test_validate_dag():
 
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
-    inputs = make_ref_bundles([[x] for x in range(20)])
+    inputs = make_ref_bundles([[x] for x in range(1)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o1, DataContext.get_current()
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
+        make_map_transformer(lambda block: block), o2, DataContext.get_current()
     )
     topo, _ = build_streaming_topology(o3, opt)
-    topo[o2].outqueue.append(make_ref_bundle("dummy1"))
-    o1.num_active_tasks = MagicMock(return_value=2)
     resource_manager = mock_resource_manager(
         global_usage=ExecutionResources(cpu=1),
         global_limits=ExecutionResources.for_limits(cpu=1),
     )
+    resource_manager.get_op_usage = MagicMock(return_value=ExecutionResources(0, 0, 0))
 
     def _select_op_to_run(ensure_at_least_one_running):
-        nonlocal topo, resource_manager
-
         return select_operator_to_run(
             topo, resource_manager, [], mock_autoscaler(), ensure_at_least_one_running
         )
 
+    topo[o2].outqueue.append(make_ref_bundle("dummy1"))
+    resource_manager.op_resource_allocator.can_submit_new_task = MagicMock(
+        return_value=False
+    )
+
+    # Because `o1` has an active task, `select_operator_to_run` returns `None`.
+    o1.num_active_tasks = MagicMock(return_value=1)
     assert _select_op_to_run(True) is None
+
+    # No operator can submit a new task, but because there are no active tasks, select
+    # from the operators that have at least one input.
     o1.num_active_tasks = MagicMock(return_value=0)
     assert _select_op_to_run(True) is o3
+
     assert _select_op_to_run(False) is None
 
 
