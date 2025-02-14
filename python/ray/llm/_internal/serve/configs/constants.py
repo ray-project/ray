@@ -1,5 +1,4 @@
 import os
-import tempfile
 
 ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT = int(
     os.getenv("RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT", "1")
