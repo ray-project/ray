@@ -777,13 +777,13 @@ class TestCompactScheduling:
                 "head_resources": {"CPU": 0},
                 "worker_node_types": {
                     "cpu_node1": {
-                        "resources": {"CPU": 4},
+                        "resources": {"CPU": 3},
                         "node_config": {},
                         "min_workers": 0,
                         "max_workers": 1,
                     },
                     "cpu_node2": {
-                        "resources": {"CPU": 5},
+                        "resources": {"CPU": 4},
                         "node_config": {},
                         "min_workers": 0,
                         "max_workers": 1,
@@ -821,11 +821,14 @@ class TestCompactScheduling:
             ]
         }
 
-        # Make sure A(1CPU) + B(2CPU) is scheduled on worker node #1
+        # Make sure A(1.5CPU) + B(2.5CPU) is scheduled on worker node #2.
+        # After both apps are running, wait for them to compact onto one node.
         client.deploy_apps(ServeDeploySchema(**config))
+        client._wait_for_application_running("A")
+        client._wait_for_application_running("B")
         wait_for_condition(check_num_alive_nodes, target=2)  # 1 head + 1 worker node
 
-        # THen second A(1CPU) is scheduled by itself on worker node #2
+        # Then second A(1.5CPU) is scheduled by itself on worker node #1
         config["applications"][0]["deployments"][0]["num_replicas"] = 2
         client.deploy_apps(ServeDeploySchema(**config))
         wait_for_condition(check_num_alive_nodes, target=3)  # 1 head + 2 worker nodes
@@ -840,14 +843,14 @@ class TestCompactScheduling:
         client.deploy_apps(ServeDeploySchema(**config))
         wait_for_condition(check_num_alive_nodes, target=2)  # 1 head + 1 worker nodes
 
-        # The node that was compacted should have been of type cpu_node2 (5CPUs)
-        # So the remaining node should be of type cpu_node1 (4CPUs)
+        # The node that was compacted should have been of type cpu_node2 (4CPUs)
+        # So the remaining node should be of type cpu_node1 (3CPUs)
         worker_node = [
             node
             for node in ray.nodes()
             if not node["Resources"].get("node:__internal_head__")
-        ][0]
-        assert worker_node["Resources"]["CPU"] == 4.0
+        ]
+        assert worker_node[0]["Resources"]["CPU"] == 3.0
 
 
 if __name__ == "__main__":
