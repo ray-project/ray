@@ -68,6 +68,7 @@ def test_dataset_setup_callback(ray_start_4_cpus):
     )
 
     worker_group_context = WorkerGroupContext(
+        run_attempt_id="attempt_1",
         train_fn=lambda: None,
         num_workers=scaling_config.num_workers,
         resources_per_worker=scaling_config.resources_per_worker,
