@@ -3311,7 +3311,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
-        """Write the dataset to an Iceberg table specified using a fully qualified ``table_identifier``.
+        """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
 
         .. tip::
             For more details on PyIceberg, see
