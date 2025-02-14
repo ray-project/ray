@@ -4,6 +4,8 @@ set -exuo pipefail
 PYTHON="$1"
 TRAVIS_COMMIT="${TRAVIS_COMMIT:-$BUILDKITE_COMMIT}"
 
+export RAY_BUILD_ENV="manylinux_py${PYTHON}"
+
 mkdir -p .whl
 cd python
 /opt/python/"${PYTHON}"/bin/pip install -q cython==0.29.37
