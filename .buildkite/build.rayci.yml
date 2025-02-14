@@ -82,8 +82,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
         --platform cu12.4.1-cudnn
-        --image-type ray-llm
-        # --upload # TODO(aslonnie): publish this image
+        --image-type ray-llm --upload
     depends_on:
       - manylinux
       - forge
