@@ -134,6 +134,11 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
               (override));
   MOCK_METHOD(void,
+              CancelTaskWithResourceShapes,
+              (const std::vector<ResourceSet> &target_resource_shapes,
+               const rpc::ClientCallback<rpc::CancelTaskReply> &callback),
+              (override));
+  MOCK_METHOD(void,
               IsLocalWorkerDead,
               (const WorkerID &worker_id,
                const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback),
