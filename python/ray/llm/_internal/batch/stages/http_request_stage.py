@@ -94,6 +94,7 @@ class HttpRequestUDF(StatefulStageUDF):
     def expected_input_keys(self) -> List[str]:
         return ["payload"]
 
+
 class HttpRequestStage(StatefulStage):
     """
     A stage that sends HTTP requests.

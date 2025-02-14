@@ -72,11 +72,11 @@ class Processor:
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
 
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
-        # Wrapping is required even if they are identity functions, b/c data_column 
+        # Wrapping is required even if they are identity functions, b/c data_column
         # gets inserted/removed via wrap_preprocess/wrap_postprocess.
         preprocess = preprocess or (lambda row: row)
         postprocess = postprocess or (lambda row: row)
-        
+
         self.preprocess = wrap_preprocess(
             preprocess,
             self.data_column,

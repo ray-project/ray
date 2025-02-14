@@ -62,7 +62,9 @@ async def test_http_request_udf_with_qps():
         qps=2,
     )
 
-    batch = {"__data": [{"payload": {"text": "hello1"}}, {"payload": {"text": "hello2"}}]}
+    batch = {
+        "__data": [{"payload": {"text": "hello1"}}, {"payload": {"text": "hello2"}}]
+    }
 
     with patch("aiohttp.ClientSession") as mock_session_cls, patch(
         "time.time"
