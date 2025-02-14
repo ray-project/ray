@@ -12,6 +12,8 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     runtime_env = runtime_env or {}
 
+    # uv spawns the python process as a child process, so to determine if
+    # we are running under 'uv run', we check the parent process commandline.
     parent = psutil.Process().parent()
     cmdline = parent.cmdline()
     if os.path.basename(cmdline[0]) != "uv" or cmdline[1] != "run":
@@ -19,8 +21,11 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         # we leave the runtime environment unchanged
         return runtime_env
 
-    # Extract the arguments of 'uv run' that are not arguments of the script
-    uv_run_args = cmdline[: len(cmdline) - len(sys.argv)]
+    # Extract the arguments of 'uv run' that are not arguments of the script.
+    # First we get the arguments of this script (without the executable):
+    script_args = psutil.Process().cmdline()[1:]
+    # Then, we remove those arguments from the parent process commandline:
+    uv_run_args = cmdline[: len(cmdline) - len(script_args)]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process
@@ -90,10 +95,16 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return runtime_env
 
 
+# This __main__ is used for unit testing if the runtime_env_hook picks up the
+# right settings.
 if __name__ == "__main__":
     import json
 
-    # This is used for unit testing if the runtime_env_hook picks up the
-    # right settings.
-    runtime_env = json.loads(sys.argv[1])
+    test_parser = argparse.ArgumentParser()
+    test_parser.add_argument("runtime_env")
+    args = test_parser.parse_args()
+    # We purposefully modify sys.argv here to make sure the hook is robust
+    # against such modification.
+    sys.argv.pop(1)
+    runtime_env = json.loads(args.runtime_env)
     print(json.dumps(hook(runtime_env)))
