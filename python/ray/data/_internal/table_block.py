@@ -454,7 +454,7 @@ class TableBlockAccessor(BlockAccessor):
                     else:
                         for i in range(len(aggs)):
                             accumulators[i] = aggs[i]._merge_batch(
-                                accumulators[i], [r[resolved_agg_names[i]]]
+                                [accumulators[i], r[resolved_agg_names[i]]]
                             )
                 # Build the row.
                 row = {}
