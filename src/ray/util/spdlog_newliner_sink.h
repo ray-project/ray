@@ -17,7 +17,10 @@
 #include <spdlog/sinks/base_sink.h>
 
 #include <iostream>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "ray/util/compat.h"

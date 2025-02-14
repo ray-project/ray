@@ -16,7 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include "ray/util/compat.h"
 #include "ray/util/spdlog_fd_sink.h"
