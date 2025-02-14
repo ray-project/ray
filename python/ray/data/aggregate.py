@@ -117,7 +117,11 @@ class AggregateFnV2(AggregateFn):
         if finalize is None:
             _safe_finalize = lambda a: a  # noqa: E731
         else:
-            _safe_finalize = lambda a: finalize(a) if not _is_null(a) else None
+            def _safe_finalize(acc):
+                if _is_null(acc):
+                    return None
+
+                return finalize(acc)
 
         _safe_merge = _null_safe_merge(merge, ignore_nulls)
 
