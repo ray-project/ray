@@ -37,7 +37,18 @@ _SCHEMA = pa.schema(
 )
 
 
-@pytest.fixture(autouse=True, scope="session")
+def create_pa_table():
+    return pa.Table.from_pydict(
+        mapping={
+            "col_a": list(range(120)),
+            "col_b": random.choices(["a", "b", "c", "d"], k=120),
+            "col_c": random.choices(list(range(10)), k=120),
+        },
+        schema=_SCHEMA,
+    )
+
+
+@pytest.fixture(autouse=True, scope="function")
 def pyiceberg_table():
     from pyiceberg.catalog.sql import SqlCatalog
 
@@ -51,14 +62,7 @@ def pyiceberg_table():
         },
     )
 
-    pya_table = pa.Table.from_pydict(
-        mapping={
-            "col_a": list(range(120)),
-            "col_b": random.choices(["a", "b", "c", "d"], k=120),
-            "col_c": random.choices(list(range(10)), k=120),
-        },
-        schema=_SCHEMA,
-    )
+    pya_table = create_pa_table()
 
     if (_DB_NAME,) not in dummy_catalog.list_namespaces():
         dummy_catalog.create_namespace(_DB_NAME)
@@ -255,6 +259,56 @@ def test_read_basic():
     # Actually compare the tables now
     table_p = ray_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
     assert orig_table_p.equals(table_p)
+
+
+@pytest.mark.skipif(
+    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_write_basic():
+    # NOTE: Iceberg only works with PyArrow 9 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        return
+
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    table.delete()
+
+    ds = create_pa_table().to_ray()
+    ds.write_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+
+    # Read the raw table from PyIceberg
+    read_ds = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    pya_table: pa.Table = pa.concat_tables(
+        (ray.get(ref) for ref in read_ds.to_arrow_refs())
+    )
+
+    # string -> large_string because pyiceberg by default chooses large_string
+    expected_schema = pa.schema(
+        [
+            pa.field("col_a", pa.int32()),
+            pa.field("col_b", pa.large_string()),
+            pa.field("col_b", pa.int16()),
+        ]
+    )
+    assert pya_table.schema.equals(expected_schema)
+
+    # Actually compare the tables now
+    table_p = (
+        pya_table.to_pandas()
+        .sort_values(["col_a", "col_b", "col_c"])
+        .reset_index(drop=True)
+    )
+    assert read_ds.equals(table_p)
 
 
 if __name__ == "__main__":
