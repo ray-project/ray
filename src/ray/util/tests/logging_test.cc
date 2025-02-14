@@ -29,7 +29,7 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
-using namespace testing;
+using namespace testing;  // NOLINT
 using json = nlohmann::json;
 
 namespace ray {

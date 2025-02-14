@@ -754,7 +754,7 @@ namespace std {
 
 bool equal_to<ray::Process>::operator()(const ray::Process &x,
                                         const ray::Process &y) const {
-  using namespace ray;
+  using namespace ray;  // NOLINT
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
@@ -766,7 +766,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
 }
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
-  using namespace ray;
+  using namespace ray;  // NOLINT
   return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
                                            : hash<void const *>()(value.Get())
                          : size_t();
