@@ -1,6 +1,7 @@
 import logging
 import threading
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -27,6 +28,9 @@ class TrainRunContext:
     """Holds the metadata and context for the current training run."""
 
     # TODO: Make this dataclass immutable after refactoring the train context.
+
+    # The unique ID of the training run.
+    run_id: str = field(init=False, default_factory=lambda: uuid.uuid4().hex)
 
     # The run configuration for the current training run.
     run_config: RunConfig
