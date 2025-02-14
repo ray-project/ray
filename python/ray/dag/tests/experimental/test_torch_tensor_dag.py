@@ -449,9 +449,7 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
     with InputNode() as inp:
         coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
         sends = [
-            worker.send.bind(send_shape, dtype, inp).with_type_hint(
-                TorchTensorType(transport="nccl")
-            )
+            worker.send.bind(send_shape, dtype, inp).with_tensor_transport("nccl")
             for worker in workers
         ]
         recvs = [workers[0].recv.bind(sends[1]), workers[1].recv.bind(sends[0])]
