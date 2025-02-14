@@ -28,6 +28,14 @@
 
 namespace ray {
 
+template <typename, typename = void>
+struct has_equal_operator : std::false_type {};
+
+template <typename T>
+struct has_equal_operator<T,
+                          std::void_t<decltype(std::declval<T>() == std::declval<T>())>>
+    : std::true_type {};
+
 /// Wrap a protobuf message.
 template <class Message>
 class MessageWrapper {
@@ -148,13 +156,17 @@ inline std::vector<ID> IdVectorFromProtobuf(
   return ret;
 }
 
-/// Converts a Protobuf map to a cpp map
+/// Converts a Protobuf map to a cpp map.
 template <class K, class V>
 inline absl::flat_hash_map<K, V> MapFromProtobuf(
     const ::google::protobuf::Map<K, V> &pb_map) {
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
+/// Check whether 2 google::protobuf::Map are equal. This function assumes that the
+/// value of the map is either a simple type that supports operator== or a protobuf
+/// message that can be compared using
+// google::protobuf::util::MessageDifferencer::Equivalent.
 template <class K, class V>
 bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
               const ::google::protobuf::Map<K, V> &rhs) {
@@ -164,8 +176,18 @@ bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
 
   for (const auto &pair : lhs) {
     auto it = rhs.find(pair.first);
-    if (it == rhs.end() || it->second != pair.second) {
+    if (it == rhs.end()) {
       return false;
+    }
+    if constexpr (has_equal_operator<V>::value) {
+      if (it->second != pair.second) {
+        return false;
+      }
+    } else {
+      if (!google::protobuf::util::MessageDifferencer::Equivalent(it->second,
+                                                                  pair.second)) {
+        return false;
+      }
     }
   }
 
