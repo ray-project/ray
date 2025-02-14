@@ -15,7 +15,6 @@ from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 
 
@@ -323,8 +322,8 @@ class TestActorPoolAutoscaling:
         op_scheduling_status = MagicMock(under_resource_limits=True)
         op_state._scheduling_status = op_scheduling_status
 
-        resource_manager = MagicMock(spec=ResourceManager)
-        resource_manager.op_resource_allocator.get_budget = MagicMock(
+        resource_manager = MagicMock()
+        resource_manager._op_resource_allocator.get_budget = MagicMock(
             return_value=ExecutionResources.for_limits()
         )
         autoscaler = AnyscaleAutoscaler(
@@ -459,8 +458,8 @@ class TestActorPoolAutoscaling:
         op_scheduling_status = MagicMock(under_resource_limits=True)
         op_state._scheduling_status = op_scheduling_status
 
-        resource_manager = MagicMock(spec=ResourceManager)
-        resource_manager.op_resource_allocator.get_budget = MagicMock(
+        resource_manager = MagicMock()
+        resource_manager._op_resource_allocator.get_budget = MagicMock(
             return_value=budget
         )
         scaling_up_threadhold = 0.8

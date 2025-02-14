@@ -328,10 +328,13 @@ class AnyscaleAutoscaler(Autoscaler):
                     # the budgets before scaling up, we might launch more actors than
                     # the cluster can handle.
                     self._resource_manager.update_usages()
-                    budget = self._resource_manager.op_resource_allocator.get_budget(op)
-                    max_num_to_scale_up = self._get_max_scale_up(actor_pool, budget)
-                    if max_num_to_scale_up is not None:
-                        num_to_scale_up = min(num_to_scale_up, max_num_to_scale_up)
+                    if self._resource_manager._op_resource_allocator is not None:
+                        budget = (
+                            self._resource_manager._op_resource_allocator.get_budget(op)
+                        )
+                        max_num_to_scale_up = self._get_max_scale_up(actor_pool, budget)
+                        if max_num_to_scale_up is not None:
+                            num_to_scale_up = min(num_to_scale_up, max_num_to_scale_up)
 
                     new_size = actor_pool.scale_up(num_to_scale_up) + current_size
                     logger.debug(
