@@ -59,15 +59,12 @@ class TestAnyscaleDockerContainer(RayCITestBase):
         container = AnyscaleDockerContainer("3.9", "cu12.1.1-cudnn8", "ray-ml")
         assert container._get_requirement_file() == "requirements_ml_byod_3.9.txt"
 
-        v = "3.11"
         container = AnyscaleDockerContainer("3.11", "cu12.4.1-cudnn", "ray-llm")
         assert container._get_requirement_file() == "requirements_llm_byod_3.11.txt"
 
-        v = "3.9"
         container = AnyscaleDockerContainer("3.9", "cpu", "ray")
         assert container._get_requirement_file() == "requirements_byod_3.9.txt"
 
-        v = "3.12"
         container = AnyscaleDockerContainer("3.12", "cpu", "ray")
         assert container._get_requirement_file() == "requirements_byod_3.12.txt"
 
