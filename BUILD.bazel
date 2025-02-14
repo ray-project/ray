@@ -765,6 +765,9 @@ ray_cc_library(
     hdrs = [
         "src/ray/stats/metric.h",
     ],
+    includes = [
+        "@io_opencensus_cpp//opencensus",
+    ],
     deps = [
         "//src/ray/util",
         "//src/ray/util:logging",
@@ -773,6 +776,7 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@io_opencensus_cpp//opencensus/stats",
     ],
 )
 
