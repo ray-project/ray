@@ -234,3 +234,4 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 };
 
 }  // namespace ray::syncer
+

@@ -51,3 +51,4 @@ std::string RayTask::DebugString() const {
 }
 
 }  // namespace ray
+

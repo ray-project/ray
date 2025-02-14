@@ -49,3 +49,4 @@ double PlacementGroupSpecification::GetMaxCpuFractionPerNode() const {
   return message_->max_cpu_fraction_per_node();
 }
 }  // namespace ray
+

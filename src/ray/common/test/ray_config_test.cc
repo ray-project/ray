@@ -29,3 +29,4 @@ TEST_F(RayConfigTest, ConvertValueTrimsVectorElements) {
 }
 
 }  // namespace ray
+

@@ -305,3 +305,4 @@ class TaskSpecBuilder {
 };
 
 }  // namespace ray
+

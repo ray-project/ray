@@ -204,3 +204,4 @@ void BundleLocationIndex::EraseBundleInNodeMap(const NodeID &node_id,
 }
 
 }  // namespace ray
+

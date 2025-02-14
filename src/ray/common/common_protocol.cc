@@ -19,3 +19,4 @@
 std::string string_from_flatbuf(const flatbuffers::String &string) {
   return std::string(string.data(), string.size());
 }
+

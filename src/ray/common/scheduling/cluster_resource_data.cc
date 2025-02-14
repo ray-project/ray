@@ -156,3 +156,4 @@ const NodeResourceInstanceSet &NodeResourceInstances::GetTotalResourceInstances(
 };
 
 }  // namespace ray
+

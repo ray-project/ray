@@ -109,3 +109,4 @@ FunctionDescriptor FunctionDescriptorBuilder::Deserialize(
   return FunctionDescriptorBuilder::FromProto(std::move(descriptor));
 }
 }  // namespace ray
+

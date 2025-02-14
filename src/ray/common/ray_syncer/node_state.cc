@@ -77,3 +77,4 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
 }
 
 }  // namespace ray::syncer
+

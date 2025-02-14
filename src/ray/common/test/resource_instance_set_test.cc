@@ -982,3 +982,4 @@ TEST_F(NodeResourceInstanceSetTest, TestToNodeResourceSet) {
 }
 
 }  // namespace ray
+

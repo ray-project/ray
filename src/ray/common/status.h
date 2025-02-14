@@ -380,3 +380,4 @@ inline Status &Status::operator=(Status &&rhs) {
 Status boost_to_ray_status(const boost::system::error_code &error);
 
 }  // namespace ray
+

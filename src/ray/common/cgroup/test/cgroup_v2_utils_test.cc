@@ -38,3 +38,4 @@ TEST(CgroupV2UtilsTest, CgroupV2Permission) {
 }  // namespace
 
 }  // namespace ray::internal
+

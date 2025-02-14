@@ -175,3 +175,4 @@ TEST(PlacementGroupIDTest, TestPlacementGroup) {
 }
 
 }  // namespace ray
+

@@ -105,3 +105,4 @@ class BundleLocationIndex {
 };
 
 }  // namespace ray
+

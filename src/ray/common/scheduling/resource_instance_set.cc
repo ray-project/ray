@@ -458,3 +458,4 @@ NodeResourceSet NodeResourceInstanceSet::ToNodeResourceSet() const {
 }
 
 }  // namespace ray
+

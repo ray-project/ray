@@ -76,3 +76,4 @@ void RayConfig::initialize(const std::string &config_list) {
                    << " The config string is: " << config_list;
   }
 }
+

@@ -271,3 +271,4 @@ TEST(StatusOrTest, MoveAssignment) {
 }
 
 }  // namespace ray
+

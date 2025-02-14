@@ -174,3 +174,4 @@ class SharedMemoryBuffer : public Buffer {
 };
 
 }  // namespace ray
+

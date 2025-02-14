@@ -42,3 +42,4 @@ TEST(SourceLocationTest, StringifyTest) {
 }  // namespace
 
 }  // namespace ray
+

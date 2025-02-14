@@ -44,3 +44,4 @@ std::string FixedPointVectorToString(const std::vector<FixedPoint> &vector) {
   buffer << "]";
   return buffer.str();
 }
+

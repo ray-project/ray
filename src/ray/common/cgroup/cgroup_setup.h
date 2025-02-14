@@ -44,3 +44,4 @@ const std::string &GetCgroupV2AppFolder();
 const std::string &GetCgroupV2SystemFolder();
 
 }  // namespace ray
+

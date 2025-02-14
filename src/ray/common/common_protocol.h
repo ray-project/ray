@@ -171,3 +171,4 @@ static inline ray::rpc::ActorTableData::ActorState StringToActorState(
     return {};
   }
 }
+

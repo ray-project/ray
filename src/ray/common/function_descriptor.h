@@ -356,3 +356,4 @@ class FunctionDescriptorBuilder {
   static FunctionDescriptor Deserialize(const std::string &serialized_binary);
 };
 }  // namespace ray
+
