@@ -275,7 +275,7 @@ def test_append_column(ray_start_regular_shared):
     assert actual_block.equals(expected_block)
 
 
-def test_random_shuffle(ray_start_regular_shared_2_cpus):
+def test_random_shuffle(ray_start_regular_shared):
     TOTAL_ROWS = 10000
     table = pa.table({"id": pa.array(range(TOTAL_ROWS))})
     block_accessor = ArrowBlockAccessor(table)
