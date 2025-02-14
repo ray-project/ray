@@ -51,4 +51,3 @@ class Throttler {
 };
 
 }  // namespace ray
-

@@ -779,4 +779,3 @@ int main(int argc, char **argv) {
   ray::RayLog::StartRayLog(app_name, ray::RayLogLevel::INFO, log_filepath);
   return RUN_ALL_TESTS();
 }
-

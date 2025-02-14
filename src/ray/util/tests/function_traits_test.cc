@@ -147,4 +147,3 @@ static_assert(
     "int(int)");
 
 }  // namespace ray
-

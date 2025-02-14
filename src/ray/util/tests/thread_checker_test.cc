@@ -32,4 +32,3 @@ TEST(ThreadCheckerTest, BasicTest) {
 }
 
 }  // namespace ray
-

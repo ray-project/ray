@@ -39,4 +39,3 @@ TEST(ScopedEnvSetter, BasicTest) {
 }  // namespace
 
 }  // namespace ray
-

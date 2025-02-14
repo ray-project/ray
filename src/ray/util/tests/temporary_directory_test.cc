@@ -48,4 +48,3 @@ TEST(TemporaryDirectoryTest, CreationAndDestruction) {
 }
 
 }  // namespace ray
-

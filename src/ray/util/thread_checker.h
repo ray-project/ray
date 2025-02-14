@@ -41,4 +41,3 @@ class ThreadChecker {
 };
 
 }  // namespace ray
-

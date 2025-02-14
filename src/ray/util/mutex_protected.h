@@ -67,4 +67,3 @@ class MutexProtected {
 };
 
 }  // namespace ray
-

@@ -47,4 +47,3 @@ std::string JoinPaths(std::string base, const Paths &...components) {
 }
 
 }  // namespace ray
-

@@ -155,4 +155,3 @@ TEST(NewlinerSinkTest, AppendAndFlushTest) {
 }  // namespace
 
 }  // namespace ray
-

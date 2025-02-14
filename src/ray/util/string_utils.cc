@@ -42,4 +42,3 @@ std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
 }
 
 }  // namespace ray
-

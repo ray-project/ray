@@ -87,4 +87,3 @@ struct function_traits<T &&> : function_traits<T> {};
 template <typename NewR, typename T>
 using rebind_result_t = typename ::ray::internal::rebind_result<NewR, T>::type;
 }  // namespace ray
-

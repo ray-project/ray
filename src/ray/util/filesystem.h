@@ -49,4 +49,3 @@ static inline bool IsDirSep(char ch) {
 StatusOr<std::string> ReadEntireFile(const std::string &fname);
 
 }  // namespace ray
-

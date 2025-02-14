@@ -622,4 +622,3 @@ RayLog &RayLog::WithFieldJsonFormat<int>(std::string_view key, const int &value)
 }
 
 }  // namespace ray
-

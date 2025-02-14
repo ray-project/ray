@@ -299,4 +299,3 @@ RedirectionFileHandle CreateRedirectionFileHandle(
 }
 
 }  // namespace ray
-

@@ -86,4 +86,3 @@ using spdlog_newliner_sink_mt = spdlog_newliner_sink<std::mutex>;
 using spdlog_newliner_sink_st = spdlog_newliner_sink<spdlog::details::null_mutex>;
 
 }  // namespace ray
-

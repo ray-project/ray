@@ -40,4 +40,3 @@ void FlushOnRedirectedStdout();
 void FlushOnRedirectedStderr();
 
 }  // namespace ray
-

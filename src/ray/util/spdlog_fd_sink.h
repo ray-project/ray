@@ -45,4 +45,3 @@ using non_owned_fd_sink_mt = non_owned_fd_sink<std::mutex>;
 using non_owned_fd_sink_st = non_owned_fd_sink<spdlog::details::null_mutex>;
 
 }  // namespace ray
-

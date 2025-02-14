@@ -58,4 +58,3 @@ TEST(SpdlogFdSinkTest, SinkWithFd) {
 }  // namespace
 
 }  // namespace ray
-

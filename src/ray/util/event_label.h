@@ -31,4 +31,3 @@ namespace ray {
 #define EL_RAY_CPP_TASK_FAILED "RAY_CPP_TASK_FAILED"
 
 }  // namespace ray
-

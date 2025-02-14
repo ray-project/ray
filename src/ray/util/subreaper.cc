@@ -181,4 +181,3 @@ void SetSigchldIgnore() { signal(SIGCHLD, SIG_IGN); }
 #endif
 
 }  // namespace ray
-

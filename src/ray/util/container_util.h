@@ -218,4 +218,3 @@ auto move_mapped(std::vector<T> &&vec, F transform) {
 }
 
 }  // namespace ray
-

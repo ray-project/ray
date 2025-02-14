@@ -65,4 +65,3 @@ void parallel_memcopy(uint8_t *dst,
 }
 
 }  // namespace ray
-

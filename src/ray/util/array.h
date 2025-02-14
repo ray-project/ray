@@ -47,4 +47,3 @@ constexpr size_t IndexOf(const std::array<T, N> &arr, const T &value) {
 }
 
 }  // namespace ray
-

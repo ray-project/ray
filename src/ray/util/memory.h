@@ -27,4 +27,3 @@ void parallel_memcopy(uint8_t *dst,
                       int num_threads);
 
 }  // namespace ray
-

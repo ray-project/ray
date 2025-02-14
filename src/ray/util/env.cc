@@ -42,4 +42,3 @@ void UnsetEnv(const std::string &name) {
 }
 
 }  // namespace ray
-

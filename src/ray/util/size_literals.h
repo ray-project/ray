@@ -93,4 +93,3 @@ constexpr unsigned long long operator""_PB(long double sz) {
 }
 
 }  // namespace ray::literals
-

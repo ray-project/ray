@@ -230,4 +230,3 @@ std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t time
 }
 
 }  // namespace ray
-

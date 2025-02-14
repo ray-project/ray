@@ -24,4 +24,3 @@ bool ThreadChecker::IsOnSameThread() const {
 }
 
 }  // namespace ray
-

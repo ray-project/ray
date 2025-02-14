@@ -232,4 +232,3 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
   }
   return result;
 }
-

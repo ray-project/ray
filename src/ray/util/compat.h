@@ -102,4 +102,3 @@ Status Flush(MEMFD_TYPE_NON_UNIQUE fd);
 // returned.
 Status Close(MEMFD_TYPE_NON_UNIQUE fd);
 }  // namespace ray
-

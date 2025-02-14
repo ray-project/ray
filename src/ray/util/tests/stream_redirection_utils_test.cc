@@ -90,4 +90,3 @@ TEST(LoggingUtilTest, RedirectStderr) {
 }
 
 }  // namespace ray
-

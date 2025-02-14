@@ -112,4 +112,3 @@ class ThreadPrivate {
   mutable ThreadChecker thread_checker_;
 };
 }  // namespace ray
-
