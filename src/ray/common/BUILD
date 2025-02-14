@@ -182,6 +182,7 @@ ray_cc_library(
         ":runtime_env",
         "//:node_manager_fbs",
         "//src/ray/util",
+        "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
