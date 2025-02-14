@@ -190,7 +190,7 @@ class Count(_AggregateOnKeyBase):
         if alias_name:
             self._rs_name = alias_name
         else:
-            self._rs_name = f"count({str(on)})"
+            self._rs_name = f"count({on or ''})"
 
         super().__init__(
             self._rs_name,
