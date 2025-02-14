@@ -36,16 +36,14 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
   std::string parsed_job_id = "";
   if (job_id.IsNil()) {
     char *job_id_env = ::getenv("RAY_JOB_ID");
-    parsed_job_id = job_id_env;
-  } else {
-    parsed_job_id = job_id.Hex();
+    if (job_id_env != nullptr) {
+      parsed_job_id = job_id_env;
+    }
   }
-
   std::string worker_name;
   if (worker_type == WorkerType::WORKER) {
     worker_name = "worker";
-  } else if (worker_type == WorkerType::SPILL_WORKER ||
-             worker_type == WorkerType::RESTORE_WORKER) {
+  } else {
     parsed_job_id = "";
     worker_name = "io_worker";
   }
