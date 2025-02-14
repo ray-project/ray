@@ -22,9 +22,11 @@
 
 #include <algorithm>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>

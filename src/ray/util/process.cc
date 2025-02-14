@@ -36,7 +36,10 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ray/util/cmd_line_utils.h"
@@ -89,7 +92,7 @@ class ProcessFD {
  public:
   ~ProcessFD();
   ProcessFD();
-  ProcessFD(pid_t pid, intptr_t fd = -1);
+  explicit ProcessFD(pid_t pid, intptr_t fd = -1);
   ProcessFD(ProcessFD &&other);
   ProcessFD &operator=(ProcessFD &&other);
 
@@ -751,7 +754,7 @@ namespace std {
 
 bool equal_to<ray::Process>::operator()(const ray::Process &x,
                                         const ray::Process &y) const {
-  using namespace ray;
+  using namespace ray;  // NOLINT
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
@@ -763,7 +766,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
 }
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
-  using namespace ray;
+  using namespace ray;  // NOLINT
   return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
                                            : hash<void const *>()(value.Get())
                          : size_t();

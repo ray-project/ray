@@ -17,7 +17,11 @@
 #include <google/protobuf/struct.pb.h>
 #include <google/protobuf/util/json_util.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/time/time.h"

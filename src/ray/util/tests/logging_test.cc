@@ -18,6 +18,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
@@ -29,7 +31,7 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
-using namespace testing;
+using namespace testing;  // NOLINT
 using json = nlohmann::json;
 
 namespace ray {
