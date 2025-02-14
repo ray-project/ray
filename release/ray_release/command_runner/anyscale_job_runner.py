@@ -285,16 +285,14 @@ class AnyscaleJobRunner(JobRunner):
             )
 
             with open(tmpfile, "rt") as f:
-                data = json.load(f)
+                content = f.read()
+            logger.info(f"Result content = {content}")
+            data = json.loads(content)
 
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            with open(tmpfile, "rt") as f:
-                content = f.read()
-            raise FetchResultError(
-                f"Could not fetch results from session: {e} with full content {content}"
-            ) from e
+            raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
         if not self._results_uploaded:
