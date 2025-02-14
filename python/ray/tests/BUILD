@@ -105,7 +105,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client_proxy.py",
-    "test_client_compat.py",
     "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
@@ -226,15 +225,6 @@ py_test_module_list(
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "no_windows", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
-    "test_serve_ray_minimal.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "minimal", "team:serve"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
