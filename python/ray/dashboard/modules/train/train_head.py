@@ -38,6 +38,9 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         self._job_info_client = None
         self._gcs_actor_info_stub = None
 
+    # TODO: The next iteration of this should be "/api/train/v2/runs/v2".
+    # This follows the naming convention of "/api/train/{train_version}/runs/{api_version}".
+    # This API corresponds to the Train V2 API.
     @routes.get("/api/train/v2/runs/v1")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
@@ -105,7 +108,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
         decorated_train_runs: List[DecoratedTrainRun] = []
 
-        state_actor = await self.get_train_state_actor()
+        state_actor = await self.get_train_v2_state_actor()
         all_train_run_attempts = await state_actor.get_train_run_attempts.remote()
 
         jobs = await self._get_jobs([train_run.job_id for train_run in train_runs])
@@ -260,7 +263,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         # Default to original.
         return (train_run.status, train_run.status_detail)
 
-    # TODO: In future iterations this should be "/api/train/v1/runs/vX".
+    # TODO: The next iteration of this should be "/api/train/v1/runs/v3".
+    # This follows the naming convention of "/api/train/{train_version}/runs/{api_version}".
     # This API corresponds to the Train V1 API.
     @routes.get("/api/train/v2/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()

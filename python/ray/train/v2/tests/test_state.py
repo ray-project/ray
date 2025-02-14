@@ -387,3 +387,9 @@ def test_callback_worker_group_error(
     assert attempt.status == RunAttemptStatus.ERRORED
     assert attempt.status_detail == error_msg
     assert attempt.end_time_ms is not None
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
