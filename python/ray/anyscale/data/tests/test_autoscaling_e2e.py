@@ -95,20 +95,20 @@ def test_nested_datasets(cluster):
         "object_store_memory": 500 * 1024**2,
     }
     batch_size = 10
-    validate_per_batch = 1000
+    validate_per_batch = 100
 
     for _ in range(num_nodes):
         cluster.add_node(**resources_per_node)
     cluster.wait_for_nodes()
 
     train_ds = gen_dataset(
-        300,
+        3000,
         resources_per_node["num_cpus"] * 3,
         resources_per_node["num_gpus"] * 3,
         resources_per_node["object_store_memory"] * 3,
     )
     val_ds = gen_dataset(
-        100,
+        1000,
         resources_per_node["num_cpus"],
         resources_per_node["num_gpus"],
         resources_per_node["object_store_memory"],
