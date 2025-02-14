@@ -342,7 +342,7 @@ class MetricsLogger:
         if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
-        self._check_tensor(key, value)
+        value = self._check_tensor(key, value)
 
         # `key` doesn't exist -> Automatically create it.
         if not self._key_in_stats(key):
@@ -647,7 +647,7 @@ class MetricsLogger:
             for i, stat_or_value in enumerate(available_stats):
                 # Value is NOT a Stats object -> Convert it to one.
                 if not isinstance(stat_or_value, Stats):
-                    self._check_tensor(extended_key, stat_or_value)
+                    stat_or_value = self._check_tensor(extended_key, stat_or_value)
                     available_stats[i] = stat_or_value = Stats(
                         stat_or_value,
                         reduce=reduce,
@@ -1091,10 +1091,13 @@ class MetricsLogger:
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.
-        if self.tensor_mode and (
-            (torch and torch.is_tensor(value)) or (tf and tf.is_tensor(value))
-        ):
+        if torch and torch.is_tensor(value):
+            return value.detach().cpu()
+
+        if self.tensor_mode and (tf and tf.is_tensor(value)):
             self._tensor_keys.add(key)
+
+        return value
 
     def _key_in_stats(self, flat_key, *, stats=None):
         flat_key = force_tuple(tree.flatten(flat_key))

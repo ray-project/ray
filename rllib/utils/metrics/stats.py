@@ -714,22 +714,17 @@ class Stats:
                 return mean_value, [mean_value]
             else:
                 return mean_value, values
+
         # Do non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
-                assert all(torch.is_tensor(v) for v in values), values
-                # TODO (sven) If the shape is (), do NOT even use the reduce method.
-                #  Using `tf.reduce_mean()` here actually lead to a completely broken
-                #  DreamerV3 (for a still unknown exact reason).
-                if len(values[0].shape) == 0:
-                    reduced = values[0]
-                else:
-                    reduce_meth = getattr(torch, "nan" + self._reduce_method)
-                    reduce_in = torch.stack(values)
-                    if self._reduce_method == "mean":
-                        reduce_in = reduce_in.float()
-                    reduced = reduce_meth(reduce_in)
+                reduce_meth = getattr(torch, "nan" + self._reduce_method)
+                reduce_in = torch.stack(list(values))
+                if self._reduce_method == "mean":
+                    reduce_in = reduce_in.float()
+                reduced = reduce_meth(reduce_in)
+
             elif tf and tf.is_tensor(values[0]):
                 # TODO (sven): Currently, tensor metrics only work with window=1.
                 #  We might want o enforce it more formally, b/c it's probably not a
@@ -761,10 +756,6 @@ class Stats:
             # For window=None|inf (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.
             if self._inf_window and self._reduce_method != "mean":
-                # TODO (sven): What if values are torch tensors? In this case, we
-                #  would have to do reduction using `torch` above (not numpy) and only
-                #  then return the python primitive AND put the reduced new torch
-                #  tensor in the new `self.values`.
                 return reduced, [reduced]
             # In all other cases, keep the values that were also used for the reduce
             # operation.

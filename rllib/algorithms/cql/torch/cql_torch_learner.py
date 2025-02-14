@@ -208,19 +208,21 @@ class CQLTorchLearner(SACTorchLearner):
         # in order to keep them history free).
         self.metrics.log_dict(
             {
-                POLICY_LOSS_KEY: actor_loss.item(),
-                QF_LOSS_KEY: critic_loss.item(),
+                POLICY_LOSS_KEY: actor_loss,
+                QF_LOSS_KEY: critic_loss,
                 # TODO (simon): Add these keys to SAC Learner.
-                "cql_loss": cql_loss.item(),
-                "alpha_loss": alpha_loss.item(),
-                "alpha_value": alpha.item(),
-                "log_alpha_value": torch.log(alpha).item(),
+                "cql_loss": cql_loss,
+                "alpha_loss": alpha_loss,
+                "alpha_value": alpha,
+                "log_alpha_value": torch.log(alpha),
                 "target_entropy": self.target_entropy[module_id],
-                LOGPS_KEY: torch.mean(fwd_out["logp_resampled"]).item(),
-                QF_MEAN_KEY: torch.mean(fwd_out["q_curr_repeat"]).item(),
-                QF_MAX_KEY: torch.max(fwd_out["q_curr_repeat"]).item(),
-                QF_MIN_KEY: torch.min(fwd_out["q_curr_repeat"]).item(),
-                TD_ERROR_MEAN_KEY: torch.mean(td_error).item(),
+                LOGPS_KEY: torch.mean(
+                    fwd_out["logp_resampled"]
+                ),  # torch.mean(logps_curr),
+                QF_MEAN_KEY: torch.mean(fwd_out["q_curr_repeat"]),
+                QF_MAX_KEY: torch.max(fwd_out["q_curr_repeat"]),
+                QF_MIN_KEY: torch.min(fwd_out["q_curr_repeat"]),
+                TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
@@ -230,7 +232,7 @@ class CQLTorchLearner(SACTorchLearner):
         if config.twin_q:
             self.metrics.log_value(
                 key=(module_id, QF_TWIN_LOSS_KEY),
-                value=critic_twin_loss.item(),
+                value=critic_twin_loss,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
