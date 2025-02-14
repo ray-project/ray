@@ -21,7 +21,7 @@ from typing import (
 
 import ray
 from ray.exceptions import RpcError
-from ray.train import CheckpointConfig, SyncConfig
+from ray.tune import CheckpointConfig, SyncConfig
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.error import TuneError
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_log_to_file(log_to_file):
-    """Validate ``train.RunConfig``'s ``log_to_file`` parameter. Return
+    """Validate ``tune.RunConfig``'s ``log_to_file`` parameter. Return
     validated relative stdout and stderr filenames."""
     if not log_to_file:
         stdout_file = stderr_file = None
@@ -134,7 +134,7 @@ class Experiment:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a function trainable. "
                     "You should include one last call to "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
@@ -142,7 +142,7 @@ class Experiment:
                     "'checkpoint_frequency' cannot be set for a function trainable. "
                     "You will need to report a checkpoint every "
                     "`checkpoint_frequency` iterations within your training loop using "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
         try:
@@ -189,7 +189,7 @@ class Experiment:
                 stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
-                    "`train.RunConfig()`, each element must be an instance of "
+                    "`tune.RunConfig()`, each element must be an instance of "
                     f"`tune.stopper.Stopper`. Got {stopper_types}."
                 )
             self._stopper = CombinedStopper(*stop)

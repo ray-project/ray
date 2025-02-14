@@ -8,7 +8,7 @@ import uuid
 from enum import Enum
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple
+from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -478,7 +478,7 @@ class vLLMEngineStage(StatefulStage):
     A stage that runs vLLM engine.
     """
 
-    fn: StatefulStageUDF = vLLMEngineStageUDF
+    fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
 
     @root_validator(pre=True)
     def post_init(cls, values):

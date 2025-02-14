@@ -1,6 +1,6 @@
 """Apply chat template stage"""
 
-from typing import Any, Dict, AsyncIterator, List, Optional
+from typing import Any, Dict, AsyncIterator, List, Optional, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -82,4 +82,4 @@ class ChatTemplateStage(StatefulStage):
     A stage that applies chat template.
     """
 
-    fn: StatefulStageUDF = ChatTemplateUDF
+    fn: Type[StatefulStageUDF] = ChatTemplateUDF

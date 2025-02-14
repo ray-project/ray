@@ -1,6 +1,6 @@
 """The base class for all stages."""
 import logging
-from typing import Any, Dict, AsyncIterator, List, Callable
+from typing import Any, Dict, AsyncIterator, List, Callable, Type
 
 import pyarrow
 from pydantic import BaseModel, Field
@@ -235,7 +235,7 @@ class StatefulStage(BaseModel):
     A basic building block to compose a Processor.
     """
 
-    fn: StatefulStageUDF = Field(
+    fn: Type[StatefulStageUDF] = Field(
         description="The well-optimized stateful UDF for this stage."
     )
     fn_constructor_kwargs: Dict[str, Any] = Field(

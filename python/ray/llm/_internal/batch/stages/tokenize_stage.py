@@ -1,6 +1,6 @@
 """Tokenize and detokenize stage"""
 
-from typing import Any, Dict, AsyncIterator, List
+from typing import Any, Dict, AsyncIterator, List, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -62,7 +62,7 @@ class TokenizeStage(StatefulStage):
     A stage that tokenizes the input.
     """
 
-    fn: StatefulStageUDF = TokenizeUDF
+    fn: Type[StatefulStageUDF] = TokenizeUDF
 
 
 class DetokenizeUDF(StatefulStageUDF):
@@ -121,4 +121,4 @@ class DetokenizeStage(StatefulStage):
     A stage that detokenizes the input.
     """
 
-    fn: StatefulStageUDF = DetokenizeUDF
+    fn: Type[StatefulStageUDF] = DetokenizeUDF
