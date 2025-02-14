@@ -477,7 +477,7 @@ class ExecutableTask:
         from ray.experimental.channel.common import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        ctx.reset_gpu_future(self.task_idx)
+        ctx.pop_gpu_future(self.task_idx, destroy_event=True)
 
     def prepare(self, overlap_gpu_communication: bool = False):
         """
