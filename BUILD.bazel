@@ -735,7 +735,6 @@ ray_cc_library(
     hdrs = ["src/ray/pubsub/publisher.h"],
     deps = [
         ":pubsub_rpc",
-        "@boost//:any",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
@@ -756,13 +755,12 @@ ray_cc_library(
     ],
 )
 
-# PubSub RPC module
 ray_cc_library(
     name = "pubsub_rpc",
+    # TODO(core): Revisit this dependency after grpc_common_lib is broken down into smaller targets.
     deps = [
         ":pubsub_cc_grpc",
-        ":grpc_common_lib",
-        ":ray_common",
+        ":grpc_common_lib",  # This is a large dependency, should be refined in the future.
     ],
 )
 
@@ -772,7 +770,6 @@ ray_cc_library(
     deps = [
         ":publisher_lib",
         ":subscriber_lib",
-        ":pubsub_rpc",
     ],
 )
 
