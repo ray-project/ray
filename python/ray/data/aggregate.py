@@ -130,7 +130,7 @@ class AggregateFn:
         pass
 
 
-class _AggregateOnKeyBase(AggregateFn):
+class _AggregateOnKeyBase(AggregateFnV2):
     def _set_key_fn(self, on: str):
         self._key_fn = on
 
@@ -172,15 +172,12 @@ class Sum(_AggregateOnKeyBase):
         merge = _null_safe_merge(lambda a1, a2: a1 + a2, ignore_nulls)
 
         super().__init__(
-            init=None,
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
             merge=merge,
-            accumulate_block=(
-                lambda acc, block: merge(
-                    acc, BlockAccessor.for_block(block).sum(on, ignore_nulls)
-                )
+            aggregate_block=(
+                lambda block: BlockAccessor.for_block(block).sum(on, ignore_nulls)
             ),
-            finalize=lambda a: a,
-            name=(self._rs_name),
         )
 
 
@@ -200,16 +197,13 @@ class Min(_AggregateOnKeyBase):
         else:
             self._rs_name = f"min({str(on)})"
 
-        merge = _null_safe_merge(min, ignore_nulls)
-
         super().__init__(
-            init=None,
-            merge=merge,
-            accumulate_block=lambda acc, block: merge(
-                acc, BlockAccessor.for_block(block).min(on, ignore_nulls)
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
+            merge=min,
+            aggregate_block=(
+                lambda block: BlockAccessor.for_block(block).min(on, ignore_nulls)
             ),
-            finalize=lambda a: a,
-            name=(self._rs_name),
         )
 
 
@@ -229,16 +223,11 @@ class Max(_AggregateOnKeyBase):
         else:
             self._rs_name = f"max({str(on)})"
 
-        merge = _null_safe_merge(max, ignore_nulls)
-
         super().__init__(
-            init=None,
-            merge=merge,
-            accumulate_block=lambda acc, block: merge(
-                acc, BlockAccessor.for_block(block).max(on, ignore_nulls)
-            ),
-            finalize=lambda a: a,
-            name=(self._rs_name),
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
+            merge=max,
+            aggregate_block=lambda block: BlockAccessor.for_block(block).max(on, ignore_nulls),
         )
 
 
@@ -270,16 +259,12 @@ class Mean(_AggregateOnKeyBase):
                 return None
             return [sum_, count]
 
-        merge = _null_safe_merge(
-            lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]], ignore_nulls
-        )
-
         super().__init__(
-            init=None,
-            merge=merge,
-            accumulate_block=lambda acc, block: merge(acc, vectorized_mean(block)),
-            finalize=lambda a: a[0] / a[1] if not _is_null(a) else None,
-            name=(self._rs_name),
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            aggregate_block=vectorized_mean,
+            finalize=lambda a: a[0] / a[1],
         )
 
 
@@ -351,11 +336,11 @@ class Std(_AggregateOnKeyBase):
         merge = _null_safe_merge(_merge, ignore_nulls)
 
         super().__init__(
-            init=None,
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
             merge=merge,
-            accumulate_block=lambda acc, block: merge(acc, vectorized_std(block)),
-            finalize=lambda acc: finalize(acc) if not _is_null(acc) else None,
-            name=(self._rs_name),
+            aggregate_block=vectorized_std,
+            finalize=finalize,
         )
 
 
@@ -383,8 +368,9 @@ class AbsMax(_AggregateOnKeyBase):
 
         merge = _null_safe_merge(max, ignore_nulls)
 
+        # TODO BROKEN, FIX!
+
         super().__init__(
-            init=None,
             merge=merge,
             # TODO rebase onto block based impl using min_max
             accumulate_row=lambda a, r: merge(a, _null_safe_abs(r[on])),
@@ -411,7 +397,7 @@ class Quantile(_AggregateOnKeyBase):
         else:
             self._rs_name = f"quantile({str(on)})"
 
-        def _merge(a: List[int], b: List[int]):
+        def merge(a: List[int], b: List[int]):
             if isinstance(a, List) and isinstance(b, List):
                 a.extend(b)
                 return a
@@ -431,7 +417,7 @@ class Quantile(_AggregateOnKeyBase):
                 ls.append(b)
             return ls
 
-        def block_row_ls(block: Block) -> AggType:
+        def _list_column(block: Block) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             ls = []
             for row in block_acc.iter_rows(public_row_format=False):
@@ -457,14 +443,12 @@ class Quantile(_AggregateOnKeyBase):
             d1 = key(input_values[int(c)]) * (k - f)
             return round(d0 + d1, 5)
 
-        merge = _null_safe_merge(_merge, ignore_nulls)
-
         super().__init__(
-            init=None,
+            self._rs_name,
+            ignore_nulls=ignore_nulls,
             merge=merge,
-            accumulate_block=lambda acc, block: merge(acc, block_row_ls(block)),
+            aggregate_block=_list_column,
             finalize=percentile,
-            name=(self._rs_name),
         )
 
 
@@ -497,17 +481,14 @@ class Unique(_AggregateOnKeyBase):
             col = BlockAccessor.for_block(block).to_arrow().column(on)
             return pac.unique(col).to_pylist()
 
-        def _merge(a, b):
+        def merge(a, b):
             return to_set(a) | to_set(b)
 
-        merge = _null_safe_merge(_merge, ignore_nulls=False)
-
         super().__init__(
-            init=None,
-            merge=merge,
-            accumulate_block=lambda acc, block: merge(acc, block_row_unique(block)),
-            finalize=lambda x: x,
             name=(self._rs_name),
+            ignore_nulls=False,
+            merge=merge,
+            aggregate_block=block_row_unique,
         )
 
 
