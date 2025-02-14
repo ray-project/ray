@@ -62,8 +62,7 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
             seed = [seed + i for i in range(self.num_envs)]
         # If `seed` is a sequence, check if length is correct.
         else:
-            assert (
-                len(seed) == self.num_envs,
+            assert len(seed) == self.num_envs, (
                 f"If seeds are passed as a list the length must match num_envs={self.num_envs} "
                 f"but got length={len(seed)}.",
             )

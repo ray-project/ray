@@ -152,16 +152,13 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 + [bool(sa_episode.is_terminated)]
                 + [True]  # extra timestep
             )
-            try:
-                self.add_n_batch_items(
-                    batch,
-                    Columns.TERMINATEDS,
-                    terminateds,
-                    len_ + 1,
-                    sa_episode,
-                )
-            except:
-                print("Something went wrong in the Learner connector.")
+            self.add_n_batch_items(
+                batch,
+                Columns.TERMINATEDS,
+                terminateds,
+                len_ + 1,
+                sa_episode,
+            )
 
         # Signal to following connector pieces that the loss-mask which masks out
         # invalid episode ts (for the extra added ts at the end) has already been
