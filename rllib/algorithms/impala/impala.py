@@ -557,8 +557,8 @@ class IMPALA(Algorithm):
         self.local_mixin_buffer = None  # @OldAPIStack
         self._batch_being_built = []  # @OldAPIStack
 
-        # Create extra aggregation workers and assign each rollout worker to
-        # one of them.
+        # Create extra aggregation workers and assign each rollout worker to one of
+        # them.
         self._episode_packs_being_built = []
         self._ma_batches_being_built: Dict[int, list] = {
             i: [] for i in range(self.config.num_learners or 1)
@@ -777,20 +777,6 @@ class IMPALA(Algorithm):
                 )
 
     def _sample_and_get_connector_states(self):
-        def _remote_sample_get_state_and_metrics(_worker):
-            _episodes = _worker.sample()
-            # Get the EnvRunner's connector states.
-            _connector_states = _worker.get_state(
-                components=[
-                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                ]
-            )
-            _metrics = _worker.get_metrics()
-            # Return episode lists by reference so we don't have to send them to the
-            # main algo process, but to the Learner workers directly.
-            return ray.put(_episodes), _connector_states, _metrics
-
         env_runner_indices_to_update = set()
         episode_refs = []
         connector_states = []
@@ -806,7 +792,7 @@ class IMPALA(Algorithm):
                 return_obj_refs=False,
             )
             self.env_runner_group.foreach_env_runner_async(
-                _remote_sample_get_state_and_metrics
+                "sample_get_state_and_metrics"
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.
