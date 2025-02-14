@@ -16,14 +16,14 @@
 
 #include <gtest/gtest.h>
 
+#include <deque>
+#include <list>
+#include <map>
 #include <optional>
 #include <sstream>
-#include <utility>
-#include <map>
-#include <list>
-#include <deque>
 #include <string>
 #include <tuple>
+#include <utility>
 
 namespace ray {
 

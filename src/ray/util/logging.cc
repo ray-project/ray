@@ -27,17 +27,17 @@
 #endif
 
 #include <algorithm>
-#include <limits>
 #include <array>
-#include <utility>
-#include <vector>
-#include <string>
-#include <memory>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
@@ -62,10 +62,10 @@ constexpr char kLogFormatJsonPattern[] =
     "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\",\"levelname\":\"%L\"%v}";
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
-std::string RayLog::app_name_ = ""; // NOLINT
-std::string RayLog::component_name_ = ""; // NOLINT
+std::string RayLog::app_name_ = "";        // NOLINT
+std::string RayLog::component_name_ = "";  // NOLINT
 bool RayLog::log_format_json_ = false;
-std::string RayLog::log_format_pattern_ = kLogFormatTextPattern; // NOLINT
+std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;  // NOLINT
 
 std::string RayLog::logger_name_ = "ray_log_sink";  // NOLINT
 bool RayLog::is_failure_signal_handler_installed_ = false;
