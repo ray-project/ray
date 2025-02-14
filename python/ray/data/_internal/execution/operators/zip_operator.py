@@ -84,10 +84,10 @@ class ZipOperator(PhysicalOperator):
             self._left_buffer, self._right_buffer
         )
 
-        while self._left_buffer():
+        while self._left_buffer:
             refs = self._left_buffer.pop()
             self._metrics.on_input_dequeued(refs)
-        while self._right_buffer():
+        while self._right_buffer:
             refs = self._right_buffer.pop()
             self._metrics.on_input_dequeued(refs)
         for ref in self._output_buffer:

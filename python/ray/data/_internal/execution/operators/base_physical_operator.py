@@ -106,7 +106,7 @@ class AllToAllOperator(PhysicalOperator):
         # outputs (e.g., map outputs for map-reduce).
         self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
 
-        while self._input_buffer():
+        while self._input_buffer:
             refs = self._input_buffer.pop()
             self._metrics.on_input_dequeued(refs)
 
