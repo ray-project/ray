@@ -3,6 +3,7 @@ import gymnasium as gym
 import logging
 
 from enum import Enum
+from gymnasium.envs.registration import VectorizeMode
 from typing import Any, Dict, Optional
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -10,16 +11,6 @@ from ray.rllib.env.vector.sync_vector_multi_agent_env import SyncVectorMultiAgen
 from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
 
 logger = logging.getLogger(__file__)
-
-
-class VectorizeMode(Enum):
-    """All possible vectorization modes used in make_vec.
-
-    Note, RLlib does not implement a custom entry point.
-    """
-
-    ASYNC = "async"
-    SYNC = "sync"
 
 
 def make_vec(

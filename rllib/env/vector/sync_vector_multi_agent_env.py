@@ -30,7 +30,6 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self.envs = [env_fn() for env_fn in self.env_fns]
 
         self.num_envs = len(self.envs)
-        assert self.num_envs == len(self.env_fns)
         self.metadata = self.envs[0].metadata
         self.metadata["autoreset_mode"] = self.autoreset_mode
         self.render_mode = self.envs[0].render_mode
@@ -47,10 +46,10 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
             self.single_observation_spaces,
             n=self.num_envs,
         )
-        self._rewards = [{}] * self.num_envs
-        self._terminations = [{}] * self.num_envs
-        self._truncations = [{}] * self.num_envs
-        self._infos = [{}] * self.num_envs
+        self._rewards = [{} for _ in range(self.num_envs)]
+        self._terminations = [{} for _ in range(self.num_envs)]
+        self._truncations = [{} for _ in range(self.num_envs)]
+        self._infos = [{} for _ in range(self.num_envs)]
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
@@ -61,6 +60,7 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
             seed = [None for _ in range(self.num_envs)]
         elif isinstance(seed, int):
             seed = [seed + i for i in range(self.num_envs)]
+        # If `seed` is a sequence, check if length is correct.
         else:
             assert (
                 len(seed) == self.num_envs,
@@ -88,7 +88,7 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
     ) -> Tuple[ArrayType, ArrayType, ArrayType, ArrayType, ArrayType]:
 
         for i, action in enumerate(actions):
-            # Note, this will be afeature coming in `gymnasium`s next release.
+            # Note, this will be a feature coming in `gymnasium`s next release.
             if self.autoreset_mode == "next_step":
                 # Auto-reset environments that terminated or truncated.
                 if self._autoreset_envs[i]:

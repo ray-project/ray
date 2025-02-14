@@ -47,7 +47,7 @@ class UnBatchToIndividualItems(ConnectorV2):
         **kwargs,
     ) -> Any:
         memorized_map_structure = shared_data.get("memorized_map_structure")
-
+        episode_map_structure = shared_data.get("vector_env_episodes_map", {})
         # Simple case (no structure stored): Just unbatch.
         if memorized_map_structure is None:
             return tree.map_structure(lambda s: unbatch_fn(s), batch)
@@ -83,12 +83,25 @@ class UnBatchToIndividualItems(ConnectorV2):
                         # Check, if an agent episode is already done. For this we need
                         # to get the corresponding episode in the `EnvRunner`s list of
                         # episodes.
+                        eps_id = episode_map_structure.get(eps_id, eps_id)
                         episode = next(
                             (eps for eps in episodes if eps.id_ == eps_id), None
                         )
+
+                        if episode is None:
+                            raise ValueError(
+                                f"No episode found that matches the ID={eps_id}. Check "
+                                "shared_data['vector_env_episodes_map'] for a missing ",
+                                "mapping.",
+                            )
                         # If an episode has not just started and the agent's episode
                         # is done do not return data.
-                        if episode and episode.agent_episodes[agent_id].is_done:
+                        # This should not be `True` for new `MultiAgentEpisode`s.
+                        if (
+                            episode.agent_episodes
+                            and episode.agent_episodes[agent_id].is_done
+                            and not episode.is_done
+                        ):
                             continue
 
                         new_column_data[key].append(column_data[i])
