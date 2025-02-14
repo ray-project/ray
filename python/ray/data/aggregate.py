@@ -2,14 +2,13 @@ import abc
 import math
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
-from ray.data import Schema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import PublicAPI, Deprecated
 
 if TYPE_CHECKING:
-    import pyarrow as pa
+    from ray.data import Schema
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -111,7 +110,7 @@ class AggregateFn:
         self.accumulate_block = accumulate_block
         self.finalize = finalize
 
-    def _validate(self, schema: Optional[Union[type, "pa.lib.Schema"]]) -> None:
+    def _validate(self, schema: Optional["Schema"]) -> None:
         """Raise an error if this cannot be applied to the given schema."""
         pass
 
@@ -167,6 +166,9 @@ class AggregateFnV2(AggregateFn):
             finalize=_safe_finalize,
         )
 
+    def get_target_column(self) -> Optional[str]:
+        return self._target_col_name
+
     @abc.abstractmethod
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         """Combines new partially aggregated value (previously returned
@@ -185,7 +187,7 @@ class AggregateFnV2(AggregateFn):
         this is an identity transformation, ie no-op)"""
         return accumulator
 
-    def _validate(self, schema: Optional[Schema]) -> None:
+    def _validate(self, schema: Optional["Schema"]) -> None:
         if self._target_col_name:
             SortKey(self._target_col_name).validate_schema(schema)
 
