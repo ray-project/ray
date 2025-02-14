@@ -5,6 +5,10 @@ from ray.air.config import FailureConfig as FailureConfigV1
 from ray.air.config import RunConfig as RunConfigV1
 from ray.air.config import ScalingConfig as ScalingConfigV1
 from ray.train.v2._internal.constants import _DEPRECATED
+from ray.train.v2._internal.migration_utils import (
+    FAIL_FAST_DEPRECATION_MESSAGE,
+    TRAINER_RESOURCES_DEPRECATION_MESSAGE,
+)
 from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
@@ -65,17 +69,7 @@ class ScalingConfig(ScalingConfigV1):
 
     def __post_init__(self):
         if self.trainer_resources is not None:
-            raise DeprecationWarning(
-                "`ScalingConfig(trainer_resources)` is deprecated. "
-                "This parameter was an advanced configuration that specified "
-                "resources for the Ray Train driver actor, which doesn't "
-                "need to reserve logical resources because it doesn't perform "
-                "any heavy computation. "
-                "Only the `resources_per_worker` parameter is useful "
-                "to specify resources for the training workers. "
-                "See this issue for more context: "
-                "https://github.com/ray-project/ray/issues/49454"
-            )
+            raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
         super().__post_init__()
 
@@ -100,12 +94,7 @@ class FailureConfig(FailureConfigV1):
     def __post_init__(self):
         # TODO(justinvyu): Add link to migration guide.
         if self.fail_fast != _DEPRECATED:
-            raise DeprecationWarning(
-                "`ray.train.FailureConfig(fail_fast)` is deprecated since it is "
-                "only relevant in the context of Ray Tune. "
-                "See this issue for more context: "
-                "https://github.com/ray-project/ray/issues/49454"
-            )
+            raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
 
 
 @dataclass

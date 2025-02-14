@@ -400,6 +400,7 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+
     import uuid
 
     stats = DatasetStats(
@@ -2268,6 +2269,8 @@ def read_sql(
     sql: str,
     connection_factory: Callable[[], Connection],
     *,
+    shard_keys: Optional[list[str]] = None,
+    shard_hash_fn: str = "MD5",
     parallelism: int = -1,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
@@ -2278,14 +2281,16 @@ def read_sql(
 
     .. note::
 
-        By default, ``read_sql`` launches multiple read tasks, and each task executes a
-        ``LIMIT`` and ``OFFSET`` to fetch a subset of the rows. However, for many
-        databases, ``OFFSET`` is slow.
+        Parallelism is supported by databases that support sharding. This means
+        that the database needs to support all of the following operations:
+        ``MOD``, ``ABS``, and ``CONCAT``.
 
-        As a workaround, set ``override_num_blocks=1`` to directly fetch all rows in a
-        single task. Note that this approach requires all result rows to fit in the
-        memory of single task. If the rows don't fit, your program may raise an out of
-        memory error.
+        You can use ``shard_hash_fn`` to specify the hash function to use for sharding.
+        The default is ``MD5``, but other common alternatives include ``hash``,
+        ``unicode``, and ``SHA``.
+
+        If the database does not support sharding, the read operation will be
+        executed in a single task.
 
     Examples:
 
@@ -2338,6 +2343,10 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
+        shard_keys: The keys to shard the data by.
+        shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
+            For other databases, common alternatives include "hash" and "SHA".
+            This is applied to the shard keys.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -2345,6 +2354,7 @@ def read_sql(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         override_num_blocks: Override the number of output blocks from all read tasks.
+            This is used for sharding when shard_keys is provided.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
@@ -2352,13 +2362,21 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    if parallelism != -1 and parallelism != 1:
-        raise ValueError(
-            "To ensure correctness, 'read_sql' always launches one task. The "
-            "'parallelism' argument you specified can't be used."
-        )
+    datasource = SQLDatasource(
+        sql=sql,
+        shard_keys=shard_keys,
+        shard_hash_fn=shard_hash_fn,
+        connection_factory=connection_factory,
+    )
+    if override_num_blocks and override_num_blocks > 1:
+        if shard_keys is None:
+            raise ValueError("shard_keys must be provided when override_num_blocks > 1")
 
-    datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
+        if not datasource.supports_sharding(override_num_blocks):
+            raise ValueError(
+                "Database does not support sharding. Please set override_num_blocks to 1."
+            )
+
     return read_datasource(
         datasource,
         parallelism=parallelism,

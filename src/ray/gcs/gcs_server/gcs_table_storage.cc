@@ -195,16 +195,16 @@ Status GcsTableWithJobId<Key, Data>::AsyncRebuildIndexAndGetAll(
       }));
 }
 
-template class GcsTable<JobID, JobTableData>;
-template class GcsTable<NodeID, GcsNodeInfo>;
-template class GcsTable<NodeID, ResourceUsageBatchData>;
-template class GcsTable<JobID, ErrorTableData>;
-template class GcsTable<WorkerID, WorkerTableData>;
-template class GcsTable<ActorID, ActorTableData>;
-template class GcsTable<ActorID, TaskSpec>;
-template class GcsTableWithJobId<ActorID, ActorTableData>;
-template class GcsTableWithJobId<ActorID, TaskSpec>;
-template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
+template class GcsTable<JobID, rpc::JobTableData>;
+template class GcsTable<NodeID, rpc::GcsNodeInfo>;
+template class GcsTable<NodeID, rpc::ResourceUsageBatchData>;
+template class GcsTable<JobID, rpc::ErrorTableData>;
+template class GcsTable<WorkerID, rpc::WorkerTableData>;
+template class GcsTable<ActorID, rpc::ActorTableData>;
+template class GcsTable<ActorID, rpc::TaskSpec>;
+template class GcsTableWithJobId<ActorID, rpc::ActorTableData>;
+template class GcsTableWithJobId<ActorID, rpc::TaskSpec>;
+template class GcsTable<PlacementGroupID, rpc::PlacementGroupTableData>;
 
 }  // namespace gcs
 }  // namespace ray

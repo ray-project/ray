@@ -26,9 +26,6 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = MutableNotificationDict()
-    # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
-    # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
-    agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
     # {node id hex(str): worker list}

@@ -897,7 +897,7 @@ class Learner(Checkpointable):
         use the `forward_train()` outputs of the RLModule(s) to compute the required
         loss tensors.
         See here for a custom loss function example script:
-        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py  # noqa
+        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py  # noqa
 
         Args:
             fwd_out: Output from a call to the `forward_train()` method of the
@@ -1246,6 +1246,7 @@ class Learner(Checkpointable):
 
         state = {
             "should_module_be_updated": self.config.policies_to_train,
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
         }
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
@@ -1256,7 +1257,6 @@ class Learner(Checkpointable):
                 ),
                 **kwargs,
             )
-            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
 
