@@ -704,7 +704,7 @@ def test_groupby_tabular_min(
         pd.DataFrame(
             {
                 "A": [0, 1, 2, 3],
-                "min(B)": [0, 1, 2, None],
+                "min(B)": [None, 1, 2, None],
             }
         ),
         check_dtype=False,
