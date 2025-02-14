@@ -40,7 +40,7 @@ from ray.llm._internal.serve.configs.constants import (
 )
 
 
-from ray.llm._internal.serve.configs.rayllm_models import (
+from ray.llm._internal.serve.configs.prompt_formats import (
     DisabledPromptFormat,
     HuggingFacePromptFormat,
     PromptFormat,

@@ -4,10 +4,8 @@ from typing import Dict, List
 import pydantic
 import pytest
 
-# Replace this line with code below: from server_test_utils import CONFIG_DIRS_PATH
 from pathlib import Path
 CONFIG_DIRS_PATH = str(Path(__file__).parent / "configs")
-print(f"CONFIG_DIRS_PATH: {CONFIG_DIRS_PATH}")
 
 from ray.llm._internal.serve.configs.models import LLMConfig
 

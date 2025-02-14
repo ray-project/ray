@@ -1,16 +1,12 @@
 import pytest
 
-from ray.llm._internal.serve.configs.rayllm_models import (
+from ray.llm._internal.serve.configs.prompt_formats import (
     ContentContent,
     HuggingFacePromptFormat,
     ImageContent,
     Message,
     Prompt,
 )
-
-# TODO: Load this from S3
-# PROMPT_TEMPLATE_SOURCE = "/home/ray/tests/rayllm/backend/server/configs/cached_model_processors/mistral-community--pixtral-12b"
-
 
 @pytest.fixture
 def prompt_format(download_model_ckpt):

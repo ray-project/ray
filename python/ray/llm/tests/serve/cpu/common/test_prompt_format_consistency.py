@@ -1,7 +1,7 @@
 # This file asserts the consistency between ray-llm and llm-forge.
 import pytest
 
-from ray.llm._internal.serve.configs.rayllm_models import Message, PromptFormat
+from ray.llm._internal.serve.configs.prompt_formats import Message, PromptFormat
 
 # These are copied from the asserted outputs from `llm-forge/tests/core/data/test_prompt_format_consistency.py`.
 llama2_prompt = "[INST] <<SYS>>\nhello1\n<</SYS>>\n\nhello2 [/INST] hello3 </s><s>[INST] hello4 [/INST] hello5 </s><s>"

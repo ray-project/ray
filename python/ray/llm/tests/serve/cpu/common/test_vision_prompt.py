@@ -1,6 +1,6 @@
 import pytest
 
-from ray.llm._internal.serve.configs.rayllm_models import (
+from ray.llm._internal.serve.configs.prompt_formats import (
     HTTPException,
     ImageContent,
     Message,
