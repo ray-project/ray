@@ -17,7 +17,7 @@ Note that the YAML file in this example uses `serveConfigV2`. This feature requi
 ## Step 3: Install a RayService
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-service.stable-diffusion.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.stable-diffusion.yaml
 ```
 
 This RayService configuration contains some important settings:
