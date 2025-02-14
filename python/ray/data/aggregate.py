@@ -138,7 +138,7 @@ class Sum(_AggregateOnKeyBase):
         else:
             self._rs_name = f"sum({str(on)})"
 
-        merge = _null_safe_merge(lambda a1, a2: a1 + a2)
+        merge = _null_safe_merge(lambda a1, a2: a1 + a2, ignore_nulls)
 
         super().__init__(
             init=None,
@@ -168,7 +168,7 @@ class Min(_AggregateOnKeyBase):
         else:
             self._rs_name = f"min({str(on)})"
 
-        merge = _null_safe_merge(min)
+        merge = _null_safe_merge(min, ignore_nulls)
 
         super().__init__(
             init=None,
@@ -195,7 +195,7 @@ class Max(_AggregateOnKeyBase):
         else:
             self._rs_name = f"max({str(on)})"
 
-        merge = _null_safe_merge(max)
+        merge = _null_safe_merge(max, ignore_nulls)
 
         super().__init__(
             init=None,
@@ -234,13 +234,13 @@ class Mean(_AggregateOnKeyBase):
                 return None
             return [sum_, count]
 
-        merge = _null_safe_merge(lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]])
+        merge = _null_safe_merge(lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]], ignore_nulls)
 
         super().__init__(
             init=None,
             merge=merge,
             accumulate_block=lambda acc, block: merge(acc, vectorized_mean(block)),
-            finalize=lambda a: a[0] / a[1],
+            finalize=lambda a: a[0] / a[1] if not _is_null(a) else None,
             name=(self._rs_name),
         )
 
@@ -310,13 +310,13 @@ class Std(_AggregateOnKeyBase):
                 return 0.0
             return math.sqrt(M2 / (count - ddof))
 
-        merge = _null_safe_merge(_merge)
+        merge = _null_safe_merge(_merge, ignore_nulls)
 
         super().__init__(
             init=None,
             merge=merge,
             accumulate_block=lambda acc, block: merge(acc, vectorized_std(block)),
-            finalize=finalize,
+            finalize=lambda acc: finalize(acc) if not _is_null(acc) else None,
             name=(self._rs_name),
         )
 
@@ -343,7 +343,7 @@ class AbsMax(_AggregateOnKeyBase):
         selector = lambda r: r[on]
         _null_safe_abs = lambda v: v if not _is_null(v) else None
 
-        merge = _null_safe_merge(max)
+        merge = _null_safe_merge(max, ignore_nulls)
 
         super().__init__(
             init=None,
@@ -419,7 +419,7 @@ class Quantile(_AggregateOnKeyBase):
             d1 = key(input_values[int(c)]) * (k - f)
             return round(d0 + d1, 5)
 
-        merge = _null_safe_merge(_merge)
+        merge = _null_safe_merge(_merge, ignore_nulls)
 
         super().__init__(
             init=None,
@@ -462,7 +462,7 @@ class Unique(_AggregateOnKeyBase):
         def _merge(a, b):
             return to_set(a) | to_set(b)
 
-        merge = _null_safe_merge(_merge)
+        merge = _null_safe_merge(_merge, ignore_nulls=False)
 
         super().__init__(
             init=None,
@@ -478,18 +478,24 @@ def _is_null(a: Optional[AggType]) -> bool:
 
 
 def _null_safe_merge(
-    merge: Callable[[AggType, AggType], AggType]
+    merge: Callable[[AggType, AggType], AggType],
+    ignore_nulls: bool,
 ) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
     def _safe_merge(cur: Optional[AggType], new: Optional[AggType]) -> Optional[AggType]:
-        # Null-safe merge implements following semantic:
-        #   - If the null (NaN or None) has been produced by the aggregation, it's
-        #       prioritized and returned immediately
-        #   - If the current value is null, new value is prioritized and returned
-        #       (irrespective of whether it's null or not)
-        #   - Otherwise, values are merged (using provided merging util)
-        if _is_null(new) or _is_null(cur):
+        # Null-safe merge implements following semantic (see in-line)
+        if _is_null(cur):
+            #   - If the current accumulated value is null (NaN or None), return
+            #       newly aggregated value (from new block)
             return new
+        elif _is_null(new):
+            #   - If the null (NaN or None) has been produced by the aggregation AND
+            #       ignore_nulls=False, returned value is prioritized and returned immediately
+            #   - If ignore_nulls=True, aggregation could only produce nulls if the block
+            #       holds only null values. In that case we consider this case same as block
+            #       being empty and return currently accumulated value
+            return new if not ignore_nulls else cur
         else:
+            #   - Otherwise, values are merged (using provided merging util)
             return merge(cur, new)
 
     return _safe_merge
