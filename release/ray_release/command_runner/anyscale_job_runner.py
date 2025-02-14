@@ -285,7 +285,11 @@ class AnyscaleJobRunner(JobRunner):
             )
 
             with open(tmpfile, "rt") as f:
-                data = json.load(f)
+                raw_data = f.read()
+
+            logger.info(f"raw data fetched from s3: {raw_data}")
+
+            data = json.loads(raw_data)
 
             os.unlink(tmpfile)
             return data
