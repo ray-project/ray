@@ -23,3 +23,5 @@ Alibaba
 LSH
 BTS
 [Mm]ultimodal
+[Gg]rafana
+CLI
