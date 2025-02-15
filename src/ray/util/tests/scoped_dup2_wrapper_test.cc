@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/iostreams/device/file_descriptor.hpp>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -24,16 +25,6 @@
 #include "ray/util/compat.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/temporary_directory.h"
-
-#if defined(__APPLE__) || defined(__linux__)
-#include <fcntl.h>
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <AclAPI.h>
-#include <Sddl.h>
-#include <accctrl.h>
-#include <windows.h>
-#endif
 
 namespace ray {
 
@@ -46,25 +37,11 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   const auto dir = temp_dir.GetDirectory();
   const auto path = dir / "test_file";
   const std::string path_string = path.string();
-
-#if defined(__APPLE__) || defined(__linux__)
-  int fd = open(path_string.data(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-  ASSERT_NE(fd, -1);
-#elif defined(_WIN32)
-  HANDLE fd = CreateFile(path_string.c_str(),           // File name
-                         GENERIC_READ | GENERIC_WRITE,  // Access mode: read/write
-                         0,                             // No sharing
-                         NULL,                          // Default security attributes
-                         OPEN_ALWAYS,  // Open file if it exists, create if it doesn't
-                         FILE_ATTRIBUTE_NORMAL,  // File attributes
-                         NULL);                  // No template file
-
-  // Check if the file was successfully opened or created
-  ASSERT_NE(fd, INVALID_HANDLE_VALUE);
-#endif
+  boost::iostreams::file_descriptor_sink fd_sink{path_string, std::ios_base::out};
 
   {
-    auto dup2_wrapper = ScopedDup2Wrapper::New(/*oldfd=*/fd, /*newfd=*/GetStderrHandle());
+    auto dup2_wrapper =
+        ScopedDup2Wrapper::New(/*oldfd=*/fd_sink.handle(), /*newfd=*/GetStderrHandle());
 
     // Write to stdout should appear in file.
     std::cerr << kContent << std::flush;

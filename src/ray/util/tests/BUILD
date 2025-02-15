@@ -355,6 +355,7 @@ ray_cc_test(
         "//src/ray/util:filesystem",
         "//src/ray/util:scoped_dup2_wrapper",
         "//src/ray/util:temporary_directory",
+        "@boost//:iostreams",
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
