@@ -443,25 +443,6 @@ class Quantile(AggregateFnV2):
     ):
         self._q = q
 
-        import math
-
-        def percentile(input_values, key: Optional[Callable[[Any], Any]] = None):
-            if not input_values:
-                return None
-
-            if key is None:
-                key = lambda x: x  # noqa: E731
-
-            input_values = sorted(input_values)
-            k = (len(input_values) - 1) * self._q
-            f = math.floor(k)
-            c = math.ceil(k)
-            if f == c:
-                return key(input_values[int(k)])
-            d0 = key(input_values[int(f)]) * (c - k)
-            d1 = key(input_values[int(c)]) * (k - f)
-            return round(d0 + d1, 5)
-
         super().__init__(
             alias_name if alias_name else f"quantile({str(on)})",
             on=on,
