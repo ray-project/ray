@@ -469,9 +469,7 @@ class LLMConfig(BaseModelExtended):
                     "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
                     "if this is not intended."
                 )
-            # pg = (
-            #     self._air_scaling_config.as_placement_group_factory().to_placement_group()
-            # )
+
             pg = placement_group(
                 self.placement_bundles, strategy=self.placement_strategy
             )
