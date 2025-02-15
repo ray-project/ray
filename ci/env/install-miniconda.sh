@@ -82,13 +82,19 @@ install_miniconda() {
 
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
-  if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
+  if ["${PYTHON}" = "3.13"]; then
+    (
+      set +x
+      echo "Creating Anaconda Python environment for ${PYTHON}..."
+      "${WORKSPACE_DIR}"/ci/suppress_output conda create -n py python="${PYTHON}" -c conda-forge -q -y
+      "${WORKSPACE_DIR}"/ci/suppress_output conda init bash
+      "${WORKSPACE_DIR}"/ci/suppress_output conda activate py
+    )
+  elif [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda create -n py python="${PYTHON}" -c conda-forge -q -y
-      "${WORKSPACE_DIR}"/ci/suppress_output conda init --all
-      "${WORKSPACE_DIR}"/ci/suppress_output conda activate py
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (
