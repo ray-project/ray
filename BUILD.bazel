@@ -298,15 +298,6 @@ cc_grpc_library(
     ],
 )
 
-ray_cc_library(
-    name = "pubsub_rpc",
-    deps = [
-        "pubsub_cc_grpc",
-        ":grpc_common_lib",
-        ":ray_common",
-    ],
-)
-
 cc_grpc_library(
     name = "autoscaler_cc_grpc",
     srcs = ["//src/ray/protobuf:autoscaler_proto"],
@@ -739,21 +730,45 @@ ray_cc_binary(
 
 # Ray native pubsub module.
 ray_cc_library(
-    name = "pubsub_lib",
-    srcs = [
-        "src/ray/pubsub/publisher.cc",
-        "src/ray/pubsub/subscriber.cc",
-    ],
-    hdrs = [
-        "src/ray/pubsub/publisher.h",
-        "src/ray/pubsub/subscriber.h",
-    ],
+    name = "publisher_lib",
+    srcs = ["src/ray/pubsub/publisher.cc"],
+    hdrs = ["src/ray/pubsub/publisher.h"],
     deps = [
         ":pubsub_rpc",
-        "@boost//:any",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+# Subscriber module
+ray_cc_library(
+    name = "subscriber_lib",
+    srcs = ["src/ray/pubsub/subscriber.cc"],
+    hdrs = ["src/ray/pubsub/subscriber.h"],
+    deps = [
+        ":pubsub_rpc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "pubsub_rpc",
+    # TODO(core): Revisit this dependency after grpc_common_lib is broken down into smaller targets.
+    deps = [
+        ":pubsub_cc_grpc",
+        ":grpc_common_lib",  # This is a large dependency, should be refined in the future.
+    ],
+)
+
+# Combined PubSub Library
+ray_cc_library(
+    name = "pubsub_lib",
+    deps = [
+        ":publisher_lib",
+        ":subscriber_lib",
     ],
 )
 
