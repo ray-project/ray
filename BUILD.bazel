@@ -766,18 +766,12 @@ ray_cc_library(
         "src/ray/stats/metric.h",
         "src/ray/stats/tag_defs.h",
     ],
-    includes = [
-        "@io_opencensus_cpp//opencensus",
-    ],
     deps = [
         "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/stats:stats",
     ],
 )
 
