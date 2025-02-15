@@ -24,10 +24,10 @@ class Operator:
         return self._name
 
     @property
-    def dag_string(self) -> str:
+    def dag_str(self) -> str:
         """String representation of the whole DAG."""
         if self.input_dependencies:
-            out_str = ", ".join([x.dag_string for x in self.input_dependencies])
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
             out_str += " -> "
         else:
             out_str = ""
