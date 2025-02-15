@@ -409,8 +409,9 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
         match=(r"Driver cannot participate in the NCCL group\."),
     ):
         dag.experimental_compile()
-        
-#TODO(anm): Fix test
+
+
+# TODO(anm): Fix test
 def test_torch_tensor_as_dag_output(ray_start_regular):
     if not USE_GPU:
         pytest.skip("Only working with gpus")
@@ -446,6 +447,7 @@ def test_torch_tensor_as_dag_output(ray_start_regular):
     with pytest.raises(ray.exceptions.RayAdagDeviceMismatchError):
         ray.get(ref)
     breakpoint()
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_custom_comm(ray_start_regular):
@@ -1951,8 +1953,8 @@ def test_torch_nccl_channel_with_all_local_readers(ray_start_regular):
         ),
     ):
         dag.experimental_compile()
-        
-        
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_cpu_tensor_to_cpu(ray_start_regular):
     """Verify TorchTensorType(transport="nccl") sends cpu tensor to cpu."""
