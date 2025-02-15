@@ -771,7 +771,7 @@ ray_cc_library(
         "//src/ray/util:size_literals",
         "@com_google_absl//absl/base:core_headers",
         "@io_opencensus_cpp//opencensus/stats:stats",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_prod",
     ],
 )
 
@@ -786,8 +786,8 @@ ray_cc_library(
     ],
     deps = [
         ":stats_metric_core",
-        "@io_opencensus_cpp//opencensus/stats:stats",
         "//src/ray/util:size_literals",
+        "@io_opencensus_cpp//opencensus/stats:stats",
     ],
 )
 
