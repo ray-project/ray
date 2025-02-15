@@ -137,7 +137,7 @@ class AggregateFnV2(AggregateFn, Generic[AggType]):
 
         def _safe_finalize(acc):
             if _is_null(acc):
-                return None
+                return acc
 
             return self._finalize(acc)
 
@@ -172,6 +172,9 @@ class AggregateFnV2(AggregateFn, Generic[AggType]):
     def _finalize(self, accumulator: AggType) -> Optional[U]:
         """Transforms partial aggregation into its final state (by default
         this is an identity transformation, ie no-op)"""
+
+        print(f">>> [DBG] {self.__class__}._finalize: {accumulator}, {type(accumulator)}")
+
         return accumulator
 
     def _validate(self, schema: Optional["Schema"]) -> None:
@@ -219,9 +222,11 @@ class Sum(AggregateFnV2):
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        return BlockAccessor.for_block(block).sum(
-            self._target_col_name, self._ignore_nulls
-        )
+        res = BlockAccessor.for_block(block).sum(self._target_col_name, self._ignore_nulls)
+
+        print(f">>> DBG Sum.aggregate_block: {res} ({type(block)})")
+
+        return res
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return current_accumulator + new
