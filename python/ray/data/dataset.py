@@ -112,6 +112,7 @@ from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
+    import daft
     import dask
     import mars
     import modin
