@@ -28,9 +28,11 @@ fi
 OSS_WHEEL_URL_PREFIX="https://ray-wheels.s3.us-west-2.amazonaws.com/${UPSTREAM_BRANCH}/${UPSTREAM_COMMIT}/"
 
 if [[ "${BASE_TYPE}" == "ray" ]]; then
-    RUNTIME_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime"
+    RAYTURBO_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime"
+elif [[ "${BASE_TYPE}" == "ray-llm" ]]; then
+    RAYTURBO_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-llm"
 elif [[ "${BASE_TYPE}" == "ray-ml" ]]; then
-    RUNTIME_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ml"
+    RAYTURBO_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ml"
 else
     echo "Unknown base type: ${BASE_TYPE}" >/dev/stderr
     exit 1
@@ -189,8 +191,8 @@ else
     BUILD_TAG="${IMAGE_PREFIX}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
     SITEPKG_TGZ="${BASE_TYPE}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}.tar.gz"
 fi
-RAY_IMG="${RUNTIME_REPO}:${BUILD_TAG}"
-ANYSCALE_IMG="${RUNTIME_REPO}:${BUILD_TAG}-as"
+RAY_IMG="${RAYTURBO_REPO}:${BUILD_TAG}"
+ANYSCALE_IMG="${RAYTURBO_REPO}:${BUILD_TAG}-as"
 
 
 ####
@@ -343,12 +345,12 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
         COMMIT_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-${IMG_TYPE_CODE}${IMG_SUFFIX}"
     fi
 
-    docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}"
-    IMG_ANNOTATE=true docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}-as"
+    docker_push_as "${RAY_IMG}" "${RAYTURBO_REPO}:${COMMIT_TAG}"
+    IMG_ANNOTATE=true docker_push_as "${ANYSCALE_IMG}" "${RAYTURBO_REPO}:${COMMIT_TAG}-as"
 
     if [[ "${IMG_TYPE_CODE}" == "${ML_CUDA_VERSION}" ]]; then
         COMMIT_GPU_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-gpu${IMG_SUFFIX}"
-        docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}"
-        IMG_ANNOTATE=true docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}-as"
+        docker_push_as "${RAY_IMG}" "${RAYTURBO_REPO}:${COMMIT_GPU_TAG}"
+        IMG_ANNOTATE=true docker_push_as "${ANYSCALE_IMG}" "${RAYTURBO_REPO}:${COMMIT_GPU_TAG}-as"
     fi
 fi
