@@ -399,7 +399,7 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def foreach_actor(
         self,
-        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
         *,
         healthy_only: bool = True,
         remote_actor_ids: Optional[List[int]] = None,
@@ -412,8 +412,11 @@ class FaultTolerantActorManager:
         Automatically marks actors unhealthy if they crash during the remote call.
 
         Args:
-            func: A single, or a list of Callables, that get applied on the list
-                of specified remote actors.
+            func: A single Callable applied to all specified remote actors or a list
+                of Callables, that get applied on the list of specified remote actors.
+                In the latter case, both list of Callables and list of specified actors
+                must have the same length. Alternatively, you can use the name of the
+                remote method to be called, instead, or a list of remote method names.
             healthy_only: If True, applies `func` only to actors currently tagged
                 "healthy", otherwise to all actors. If `healthy_only=False` and
                 `mark_healthy=True`, will send `func` to all actors and mark those
@@ -467,7 +470,7 @@ class FaultTolerantActorManager:
     @DeveloperAPI
     def foreach_actor_async(
         self,
-        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
         tag: str = None,
         *,
         healthy_only: bool = True,
@@ -479,7 +482,8 @@ class FaultTolerantActorManager:
             func: A single Callable applied to all specified remote actors or a list
                 of Callables, that get applied on the list of specified remote actors.
                 In the latter case, both list of Callables and list of specified actors
-                must have the same length.
+                must have the same length. Alternatively, you can use the name of the
+                remote method to be called, instead, or a list of remote method names.
             tag: A tag to identify the results from this async call.
             healthy_only: If True, applies `func` only to actors currently tagged
                 "healthy", otherwise to all actors. If `healthy_only=False` and
@@ -515,7 +519,8 @@ class FaultTolerantActorManager:
                 for i in range(len(func))
             ]
             # Update our round-robin pointer.
-            self._current_actor_id += len(func) % self.num_actors()
+            self._current_actor_id += len(func)
+            self._current_actor_id %= self.num_actors()
 
         if healthy_only:
             func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
@@ -677,45 +682,51 @@ class FaultTolerantActorManager:
         """
         # Collect recently restored actors (from `self._fetch_result` calls other than
         # the one triggered here via the `ping`).
-        restored_actors = list(self._restored_actors)
-        self._restored_actors.clear()
+        already_restored_actors = list(self._restored_actors)
 
-        # Probe all unhealthy actors via a simple `ping()`.
+        # Which actors are currently marked unhealthy?
         unhealthy_actor_ids = [
             actor_id
             for actor_id in self.actor_ids()
             if not self.is_actor_healthy(actor_id)
         ]
-        # No unhealthy actors currently -> Return recently restored ones.
-        if not unhealthy_actor_ids:
-            return restored_actors
-
         # Some unhealthy actors -> `ping()` all of them to trigger a new fetch and
-        # capture all restored ones.
-        remote_results = self.foreach_actor(
-            func=lambda actor: actor.ping(),
-            remote_actor_ids=unhealthy_actor_ids,
-            healthy_only=False,  # We specifically want to ping unhealthy actors.
-            timeout_seconds=timeout_seconds,
-            mark_healthy=mark_healthy,
-        )
+        # gather the just restored ones (b/c of a successful `ping` response).
+        just_restored_actors = []
+        if unhealthy_actor_ids:
+            remote_results = self.foreach_actor(
+                func=lambda actor: actor.ping(),
+                remote_actor_ids=unhealthy_actor_ids,
+                healthy_only=False,  # We specifically want to ping unhealthy actors.
+                timeout_seconds=timeout_seconds,
+                return_obj_refs=False,
+                mark_healthy=mark_healthy,
+            )
+            just_restored_actors = [
+                result.actor_id for result in remote_results if result.ok
+            ]
 
-        # Return previously restored actors AND actors restored via the `ping()` call.
-        return restored_actors + [
-            result.actor_id for result in remote_results if result.ok
-        ]
+        # Clear out previously restored actors (b/c of other successful request
+        # responses, outside of this method).
+        self._restored_actors.clear()
+
+        # Return all restored actors (previously and just).
+        return already_restored_actors + just_restored_actors
 
     def _call_actors(
         self,
-        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
         *,
         remote_actor_ids: List[int] = None,
     ) -> List[ray.ObjectRef]:
         """Apply functions on a list of remote actors.
 
         Args:
-            func: A single, or a list of Callables, that get applied on the list
-                of specified remote actors.
+            func: A single Callable applied to all specified remote actors or a list
+                of Callables, that get applied on the list of specified remote actors.
+                In the latter case, both list of Callables and list of specified actors
+                must have the same length. Alternatively, you can use the name of the
+                remote method to be called, instead, or a list of remote method names.
             remote_actor_ids: Apply func on this selected set of remote actors.
 
         Returns:
@@ -729,12 +740,19 @@ class FaultTolerantActorManager:
         if remote_actor_ids is None:
             remote_actor_ids = self.actor_ids()
 
+        calls = []
         if isinstance(func, list):
-            calls = [
-                self._actors[i].apply.remote(f) for i, f in zip(remote_actor_ids, func)
-            ]
+            for i, f in zip(remote_actor_ids, func):
+                if isinstance(f, str):
+                    calls.append(getattr(self._actors[i], f).remote())
+                else:
+                    calls.append(self._actors[i].apply.remote(f))
+        elif isinstance(func, str):
+            for i in remote_actor_ids:
+                calls.append(getattr(self._actors[i], func).remote())
         else:
-            calls = [self._actors[i].apply.remote(func) for i in remote_actor_ids]
+            for i in remote_actor_ids:
+                calls.append(self._actors[i].apply.remote(func))
 
         return calls
 

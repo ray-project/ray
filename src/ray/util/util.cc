@@ -22,9 +22,11 @@
 
 #include <algorithm>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
@@ -34,7 +36,7 @@
 #include "absl/strings/match.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
-#include "ray/util/string_utils.h"
+#include "ray/util/process.h"
 
 std::string EndpointToUrl(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
