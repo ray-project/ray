@@ -16,7 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include "ray/util/compat.h"
 #include "ray/util/spdlog_fd_sink.h"
@@ -39,6 +42,27 @@ std::shared_ptr<spdlog::logger> CreateLogger() {
   auto logger = std::make_shared<spdlog::logger>(/*name=*/"logger", std::move(sink));
   logger->set_formatter(std::move(logger_formatter));
   return logger;
+}
+
+// Testing scenario: Keep writing to spdlog after flush, and check whether all written
+// content is correctly reflected.
+TEST(NewlinerSinkTest, WriteAfterFlush) {
+  auto logger = CreateLogger();
+  constexpr std::string_view kContent = "hello";
+
+  // First time write and flush.
+  testing::internal::CaptureStdout();
+  logger->log(spdlog::level::info, kContent);
+  logger->flush();
+  std::string stdout_content = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(stdout_content, kContent);
+
+  // Write after flush.
+  testing::internal::CaptureStdout();
+  logger->log(spdlog::level::info, kContent);
+  logger->flush();
+  stdout_content = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(stdout_content, kContent);
 }
 
 TEST(NewlinerSinkTest, AppendAndFlushTest) {
