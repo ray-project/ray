@@ -647,6 +647,8 @@ def combine_chunked_array(
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
+    elif len(array.chunks) == 1:
+        return array
     else:
         return _try_combine_chunks_safe(array)
 
