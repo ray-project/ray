@@ -84,8 +84,8 @@ class Stats:
         # out of scope:
         stats.push(-1)
         check(stats.peek(), 1)  # now, 1 is the max
-        # So far, we have stored all values (2, 3, 1, and -1).
-        check(stats.values, [2, 3, 1, -1])
+        # So far, we have stored the most recent 2 values (1 and -1).
+        check(stats.values, [1, -1])
         # Let's call the `reduce()` method to actually reduce these values
         # to a list of the most recent 2 (window size) values:
         stats = stats.reduce()
@@ -102,8 +102,8 @@ class Stats:
         stats.push(-3)
         stats.push(-2)
         check(stats.peek(), [-4, -3, -2])  # `window` (3) most recent values
-        # We have not reduced yet (all values are still stored):
-        check(stats.values, [-5, -4, -3, -2])
+        # We have not reduced yet (3 values are stored):
+        check(stats.values, [-4, -3, -2])
         # Let's reduce:
         stats = stats.reduce()
         check(stats.peek(), [-4, -3, -2])
