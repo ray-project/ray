@@ -60,7 +60,7 @@ class TestModelConfig:
         with pytest.raises(
             pydantic.ValidationError,
         ):
-            llm_config = LLMConfig(
+            LLMConfig(
                 accelerator_type="L4",
             )
 

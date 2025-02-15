@@ -36,5 +36,3 @@ deployment_config:
   autoscaling_config:
     target_ongoing_requests: 32
   max_ongoing_requests: 1
-
-
