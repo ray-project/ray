@@ -31,6 +31,7 @@
 #elif defined(_WIN32)
 #include <AclAPI.h>
 #include <Sddl.h>
+#include <accctrl.h>
 #include <windows.h>
 #endif
 
@@ -56,17 +57,33 @@ TEST(ScopedDup2WrapperTest, BasicTest) {
   EXPLICIT_ACCESS ea;
 
   // Initialize the SID for "Everyone"
-  ASSERT_TRUE(AllocateAndInitializeSid(&SECURITY_WORLD_SID_AUTHORITY,
-                                       1,
-                                       SECURITY_WORLD_RID,
-                                       0,
-                                       0,
-                                       0,
-                                       0,
-                                       0,
-                                       0,
-                                       0,
-                                       &pEveryoneSID));
+  BOOL result = AllocateAndInitializeSid(&SECURITY_WORLD_SID_AUTHORITY,
+                                         1,
+                                         SECURITY_WORLD_RID,
+                                         0,
+                                         0,
+                                         0,
+                                         0,
+                                         0,
+                                         0,
+                                         0,
+                                         &pEveryoneSID);
+  ASSERT_TRUE(result);  // Ensure SID allocation succeeded
+
+  // Initialize an EXPLICIT_ACCESS structure for the ACE
+  ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS));
+  ea.grfAccessPermissions = GENERIC_READ | GENERIC_WRITE;  // Allow read and write
+  ea.grfAccessMode = GRANT_ACCESS;                         // Grant access
+  ea.grfInheritance = NO_INHERITANCE;
+  ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+  ea.Trustee.ptstrName = (LPTSTR)pEveryoneSID;
+
+  // Further code to modify ACL would go here
+
+  // Clean up
+  if (pEveryoneSID != NULL) {
+    FreeSid(pEveryoneSID);
+  }
 
   // Initialize an EXPLICIT_ACCESS structure for the ACE.
   ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS));
