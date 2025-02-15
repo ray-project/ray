@@ -29,9 +29,12 @@ namespace {
 std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 
 // Get out and error filepath for worker.
+// It's worth noticing that filepath format should be kept in sync with function
+// `get_worker_log_file_name` under file
+// "ray/python/ray/_private/ray_logging/__init__.py".
 std::string GetWorkerOutputFilepath(WorkerType worker_type,
                                     const JobID &job_id,
-                                    const std::string &worker_id,
+                                    const WorkerID &worker_id,
                                     const std::string &suffix) {
   std::string parsed_job_id = "";
   if (job_id.IsNil()) {
@@ -50,9 +53,9 @@ std::string GetWorkerOutputFilepath(WorkerType worker_type,
 
   if (!parsed_job_id.empty()) {
     return absl::StrFormat(
-        "%s-%s-%s-%d.%s", worker_name, worker_id, parsed_job_id, GetPID(), suffix);
+        "%s-%s-%s-%d.%s", worker_name, worker_id.Hex(), parsed_job_id, GetPID(), suffix);
   }
-  return absl::StrFormat("%s-%s-%d.%s", worker_name, worker_id, GetPID(), suffix);
+  return absl::StrFormat("%s-%s-%d.%s", worker_name, worker_id.Hex(), GetPID(), suffix);
 }
 
 }  // namespace
@@ -135,7 +138,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       // Setup redirection for stdout.
       {
         const std::string fname = GetWorkerOutputFilepath(
-            options_.worker_type, options_.job_id, worker_id_.Hex(), /*suffix=*/"out");
+            options_.worker_type, options_.job_id, worker_id_, /*suffix=*/"out");
         const std::string worker_output_filepath = JoinPaths(options_.log_dir, fname);
 
         ray::StreamRedirectionOption stdout_redirection_options;
@@ -150,7 +153,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       // Setup redirection for stderr.
       {
         const std::string fname = GetWorkerOutputFilepath(
-            options_.worker_type, options_.job_id, worker_id_.Hex(), /*suffix=*/"err");
+            options_.worker_type, options_.job_id, worker_id_, /*suffix=*/"err");
         const std::string worker_error_filepath = JoinPaths(options_.log_dir, fname);
 
         ray::StreamRedirectionOption stderr_redirection_options;
