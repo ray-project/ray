@@ -1208,7 +1208,7 @@ def test_groupby_arrow_multi_agg_with_nans(
     num_parts,
     configure_shuffle_method,
     ds_format,
-    ignore_nulls
+    ignore_nulls,
 ):
     if (
         ds_format == "pyarrow"
@@ -1257,13 +1257,22 @@ def test_groupby_arrow_multi_agg_with_nans(
                 ("max", lambda s: s.max(skipna=ignore_nulls)),
                 ("mean", lambda s: s.mean(skipna=ignore_nulls)),
                 ("std", lambda s: s.std(skipna=ignore_nulls)),
-                ("quantile", lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan),
+                (
+                    "quantile",
+                    lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
+                ),
             ]
         },
     )
 
     grouped_df.columns = [
-        "A", "sum_b", "min_b", "max_b", "mean_b", "std_b", "quantile_b",
+        "A",
+        "sum_b",
+        "min_b",
+        "max_b",
+        "mean_b",
+        "std_b",
+        "quantile_b",
     ]
 
     expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)

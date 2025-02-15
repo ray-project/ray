@@ -219,7 +219,9 @@ class Sum(AggregateFnV2):
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        res = BlockAccessor.for_block(block).sum(self._target_col_name, self._ignore_nulls)
+        res = BlockAccessor.for_block(block).sum(
+            self._target_col_name, self._ignore_nulls
+        )
 
         print(f">>> DBG Sum.aggregate_block: {res} ({type(block)})")
 
