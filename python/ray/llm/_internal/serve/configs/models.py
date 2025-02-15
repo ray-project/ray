@@ -24,19 +24,21 @@ from ray.air import ScalingConfig as AIRScalingConfig
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,
+    placement_group,
     placement_group_table,
 )
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from transformers import PretrainedConfig
 
 from ray.llm._internal.serve.observability.logging import get_logger
-
+import ray.util.accelerators.accelerators as accelerators
 
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
+    DEFAULT_TARGET_ONGOING_REQUESTS,
+    FALLBACK_MAX_ONGOING_REQUESTS,
 )
 
 
@@ -47,6 +49,7 @@ from ray.llm._internal.serve.configs.prompt_formats import (
     VisionPromptFormat,
 )
 
+GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
@@ -67,9 +70,6 @@ class BaseModelExtended(BaseModel):
 
 
 logger = get_logger(__name__)
-_DEFAULT_TARGET_ONGOING_REQUESTS = 16
-
-_FALLBACK_MAX_ONGOING_REQUESTS = 64
 
 
 class ExtraFiles(BaseModelExtended):
@@ -99,15 +99,15 @@ class GCSMirrorConfig(MirrorConfig):
         return value
 
 
-class AnytensorConfig(BaseModelExtended):
-    model_path: str
+# class AnytensorConfig(BaseModelExtended):
+#     model_path: str
 
-    @field_validator("model_path")
-    @classmethod
-    def model_path_strip_trailing_slash(cls, value):
-        if value and value.endswith("/"):
-            return value[:-1]
-        return value
+#     @field_validator("model_path")
+#     @classmethod
+#     def model_path_strip_trailing_slash(cls, value):
+#         if value and value.endswith("/"):
+#             return value[:-1]
+#         return value
 
 
 class S3MirrorConfig(MirrorConfig):
@@ -124,7 +124,7 @@ class S3MirrorConfig(MirrorConfig):
             )
         return value
 
-
+# TODO: Replace this class with ray.serve.config.AutoscalingConfig
 class AutoscalingConfig(BaseModel, extra="allow"):
     """
     The model here provides reasonable defaults for llm model serving.
@@ -152,7 +152,7 @@ class AutoscalingConfig(BaseModel, extra="allow"):
         None,
         description="target_num_ongoing_requests_per_replica is the deprecated field."
         "If it is set, the model will set target_ongoing_requests to that value too."
-        "If neither field is set, _DEFAULT_TARGET_ONGOING_REQUESTS will be used.",
+        "If neither field is set, DEFAULT_TARGET_ONGOING_REQUESTS will be used.",
         exclude=True,
     )
 
@@ -179,7 +179,7 @@ class AutoscalingConfig(BaseModel, extra="allow"):
         final_val = (
             target_ongoing_requests
             or target_num_ongoing_requests_per_replica
-            or _DEFAULT_TARGET_ONGOING_REQUESTS
+            or DEFAULT_TARGET_ONGOING_REQUESTS
         )
         values["target_ongoing_requests"] = final_val
         values["target_num_ongoing_requests_per_replica"] = final_val
@@ -200,7 +200,7 @@ class ServeMultiplexConfig(BaseModelExtended):
         description="The maximum number of download retries.",
     )
 
-
+# TODO: Replace with ray.serve._private.config.DeploymentConfig
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
 class DeploymentConfig(BaseModelExtended):
     autoscaling_config: Optional[AutoscalingConfig] = Field(
@@ -235,7 +235,7 @@ class DeploymentConfig(BaseModelExtended):
         final_value = (
             max_ongoing_requests
             or max_concurrent_queries
-            or _FALLBACK_MAX_ONGOING_REQUESTS
+            or FALLBACK_MAX_ONGOING_REQUESTS
         )
         values["max_ongoing_requests"] = final_value
         values["max_concurrent_queries"] = final_value
@@ -282,29 +282,28 @@ class InputModality(str, Enum):
     image = "image"
 
 
-class GPUType(str, Enum):
-    A10 = "A10"
-    A10G = "A10G"
-    L4 = "L4"
-    L40S = "L40S"
-    A100_40G = "A100_40G"
-    A100_80G = "A100_80G"
-    H100 = "H100"
-
-
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
     VLLMEngine = "VLLMEngine"
 
-
-class TensorParallelismConfig(BaseModelExtended):
+class ParallelismConfig(BaseModelExtended):
     degree: int = Field(
         default=1,
         description=(
             "The degree of tensor parallelism. Must be greater than or equal "
             "to 1. When set to 1, the model does not use tensor parallelism."
         ),
+    )
+
+
+class JSONModeOptions(BaseModelExtended):
+    num_processes: int = Field(
+        default=8,
+        description="The number of background processes for each replica.",
+    )
+    recreate_failed_actors: bool = Field(
+        default=True, description="Whether to restart failed JSON mode actors."
     )
 
 
@@ -364,15 +363,15 @@ class ModelLoadingConfig(BaseModelExtended):
             "supported for now."
         ),
     )
-    anytensor_config: Optional[AnytensorConfig] = Field(
-        None,
-        description=(
-            "Configuration to use Anytensor for improved model loading speed. "
-            "Only the model weights will be loaded using Anytensor; the "
-            "tokenizer and extra files will still be pulled from HuggingFace "
-            "or the S3/GCS mirror."
-        ),
-    )
+    # anytensor_config: Optional[AnytensorConfig] = Field(
+    #     None,
+    #     description=(
+    #         "Configuration to use Anytensor for improved model loading speed. "
+    #         "Only the model weights will be loaded using Anytensor; the "
+    #         "tokenizer and extra files will still be pulled from HuggingFace "
+    #         "or the S3/GCS mirror."
+    #     ),
+    # )
 
 
 class LLMConfig(BaseModelExtended):
@@ -395,10 +394,10 @@ class LLMConfig(BaseModelExtended):
         description="The settings for how to download and expose the model."
     )
 
-    generation_config: GenerationConfig = Field(
-        default_factory=GenerationConfig,
-        description="The settings for how to adjust the prompt and interpret tokens.",
-    )
+    # generation_config: GenerationConfig = Field(
+    #     default_factory=GenerationConfig,
+    #     description="The settings for how to adjust the prompt and interpret tokens.",
+    # )
 
     llm_engine: LLMEngine = Field(
         default=LLMEngine.VLLMEngine,
@@ -419,10 +418,16 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
-    tensor_parallelism: TensorParallelismConfig = Field(
-        default_factory=TensorParallelismConfig,
+    tensor_parallelism: ParallelismConfig = Field(
+        default_factory=ParallelismConfig,
         description="The tensor parallelism settings for the model.",
     )
+
+    pipeline_parallelism: ParallelismConfig = Field(
+        default_factory=ParallelismConfig,
+        description="The pipeline parallelism settings for the model.",
+    )
+
 
     lora_config: Optional[LoraConfig] = Field(
         default=None, description="Settings for LoRA adapter."
@@ -495,31 +500,45 @@ class LLMConfig(BaseModelExtended):
             )
         return multiplex_config
 
+    # @property
+    # def placement_strategy(self) -> str:
+    #     return "STRICT_PACK"
+
+    # @property
+    # def _air_scaling_config(self) -> AIRScalingConfig:
+    #     return AIRScalingConfig(
+    #         use_gpu=True,
+    #         num_workers=self.tensor_parallelism.degree,
+    #         trainer_resources={"CPU": 0},
+    #         resources_per_worker={
+    #             "CPU": 1,
+    #             "GPU": 1,
+    #             self.ray_accelerator_type(): 0.001,
+    #         },
+    #         placement_strategy=self.placement_strategy,
+    #     )
     @property
     def placement_strategy(self) -> str:
+        # If pp <= 1, it's TP so we should make sure all replicas are on the same node.
+        if self.pipeline_parallelism.degree > 1:
+            return "PACK"
         return "STRICT_PACK"
 
-    @property
-    def _air_scaling_config(self) -> AIRScalingConfig:
-        return AIRScalingConfig(
-            use_gpu=True,
-            num_workers=self.tensor_parallelism.degree,
-            trainer_resources={"CPU": 0},
-            resources_per_worker={
-                "CPU": 1,
-                "GPU": 1,
-                self.ray_accelerator_type(): 0.001,
-            },
-            placement_strategy=self.placement_strategy,
-        )
-
+    # @property
+    # def placement_bundles(self) -> List[Dict[str, float]]:
+    #     return self._air_scaling_config.as_placement_group_factory().bundles
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        return self._air_scaling_config.as_placement_group_factory().bundles
+        num_workers = self.tensor_parallelism.degree * self.pipeline_parallelism.degree
+        bundles = [
+            {"GPU": 1, self.ray_accelerator_type(): 0.001} for _ in range(num_workers)
+        ]
 
-    @property
-    def use_anytensor(self) -> bool:
-        return bool(self.model_loading_config.anytensor_config)
+        return bundles
+
+    # @property
+    # def use_anytensor(self) -> bool:
+    #     return bool(self.model_loading_config.anytensor_config)
 
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
@@ -541,20 +560,11 @@ class LLMConfig(BaseModelExtended):
                     "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
                     "if this is not intended."
                 )
-            pg = (
-                self._air_scaling_config.as_placement_group_factory().to_placement_group()
+            # pg = (
+            #     self._air_scaling_config.as_placement_group_factory().to_placement_group()
+            # )
+            pg = placement_group(
+                self.placement_bundles, strategy=self.placement_strategy
             )
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
-
-    def get_scaling_options(self, pg: PlacementGroup) -> Dict[str, Any]:
-        """Get AIR scaling configs"""
-        scaling_config = self._air_scaling_config
-        return dict(
-            num_cpus=scaling_config.num_cpus_per_worker,
-            num_gpus=scaling_config.num_gpus_per_worker,
-            resources=scaling_config.additional_resources_per_worker,
-            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                placement_group=pg, placement_group_capture_child_tasks=True
-            ),
-        )

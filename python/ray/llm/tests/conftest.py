@@ -23,15 +23,6 @@ def download_model_ckpt():
         "special_tokens_map.json",
         "tokenizer_config.json",
         "tokenizer.json",
-        # Below are files in opt-125m
-        # "config.json",
-        # "flax_model.msgpack",
-        # "generation_config.json",
-        # "merges.txt",
-        # "pytorch_model.bin",
-        # "special_tokens_map.json",
-        # "tokenizer_config.json",
-        # "vocab.json",
     ]
 
     # Create a temporary directory and save the model and tokenizer.
