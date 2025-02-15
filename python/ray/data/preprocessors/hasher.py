@@ -1,5 +1,5 @@
 import collections
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
@@ -75,11 +75,22 @@ class FeatureHasher(Preprocessor):
 
     _is_fittable = False
 
-    def __init__(self, columns: List[str], num_features: int):
+    def __init__(
+        self,
+        columns: List[str],
+        num_features: int,
+        output_columns: Optional[List[str]] = None,
+    ):
         self.columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
         self.num_features = num_features
+        if output_columns and len(output_columns) != num_features:
+            raise ValueError(
+                "Invalid output_columns: Got num_features != len(output_columns)."
+                "The number of features and output_columns must match."
+            )
+        self.output_columns = output_columns
 
     def _transform_pandas(self, df: pd.DataFrame):
         # TODO(matt): Use sparse matrix for efficiency.
@@ -88,19 +99,24 @@ class FeatureHasher(Preprocessor):
             for column in self.columns:
                 hashed_value = simple_hash(column, self.num_features)
                 hash_counts[hashed_value] += row[column]
-            return {f"hash_{i}": hash_counts[i] for i in range(self.num_features)}
+            return {
+                f"hash_{output_column}": hash_counts[i]
+                for output_column in self.output_columns
+            }
 
         feature_columns = df.loc[:, self.columns].apply(
             row_feature_hasher, axis=1, result_type="expand"
         )
         df = df.join(feature_columns)
 
-        # Drop original unhashed columns.
-        df.drop(columns=self.columns, inplace=True)
+        # Drop original unhashed columns if output_columns is None.
+        if not self.output_columns:
+            df.drop(columns=self.columns, inplace=True)
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"num_features={self.num_features!r})"
+            f"num_features={self.num_features!r}, "
+            f"output_columns={self.output_columns!r})"
         )

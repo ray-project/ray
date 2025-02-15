@@ -31,6 +31,28 @@ def test_feature_hasher():
     assert document_term_matrix.iloc[1].sum() == 3
     assert all(document_term_matrix.iloc[1] <= 1)
 
+    # Test append mode
+    with pytest.raises(ValueError):
+        FeatureHasher(
+            columns=["I", "like", "dislike", "Python"],
+            num_features=256,
+            output_columns=["B_encoded"],
+        )
+
+    hasher_append = FeatureHasher(
+        ["I", "like", "dislike", "Python"],
+        num_features=256,
+        output_columns=[f"hash_{i}" for i in range(256)],
+    )
+    document_term_matrix_append = hasher_append.fit_transform(
+        ray.data.from_pandas(token_counts)
+    ).to_pandas()
+
+    assert document_term_matrix_append.shape == (
+        2,
+        256 + 4,
+    )  # original columns + hashed columns
+
 
 def test_hashing_vectorizer():
     """Tests basic HashingVectorizer functionality."""
@@ -40,7 +62,18 @@ def test_hashing_vectorizer():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
     ds = ray.data.from_pandas(in_df)
 
-    vectorizer = HashingVectorizer(["A", "B"], num_features=3)
+    vectorizer = HashingVectorizer(
+        ["A", "B"],
+        num_features=3,
+        output_columns=[
+            "hash_A_0",
+            "hash_A_1",
+            "hash_A_2",
+            "hash_B_0",
+            "hash_B_1",
+            "hash_B_2",
+        ],
+    )
 
     transformed = vectorizer.transform(ds)
     out_df = transformed.to_pandas()
