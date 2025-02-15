@@ -640,13 +640,13 @@ def test_global_tabular_sum(
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.sum("A") == 4950
     # Test ignore_nulls=False
-    assert nan_ds.sum("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.sum("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.sum("A") is None
-    assert nan_ds.sum("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.sum("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -690,12 +690,15 @@ def test_groupby_tabular_min(
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.min("B")
 
-    assert list(nan_agg_ds.sort("A").iter_rows()) == [
-        {"A": 0, "min(B)": 0},
-        {"A": 1, "min(B)": 1},
-        {"A": 2, "min(B)": 2},
-        {"A": 3, "min(B)": None},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2, 3],
+                "min(B)": [0, 1, 2, np.nan],
+            }
+        ),
+    )
 
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.min("B", ignore_nulls=False)
@@ -705,7 +708,7 @@ def test_groupby_tabular_min(
         pd.DataFrame(
             {
                 "A": [0, 1, 2, 3],
-                "min(B)": [None, 1, 2, None],
+                "min(B)": [np.nan, 1, 2, np.nan],
             }
         ),
         check_dtype=False,
