@@ -73,7 +73,7 @@ class TestModelConfig:
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
                 accelerator_type="INVALID_GPU",  # Should raise error
             )
-        
+
     def test_invalid_generation_config(self):
         """Test that passing an invalid generation_config raises an error."""
         with pytest.raises(

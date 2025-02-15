@@ -1,7 +1,4 @@
 import asyncio
-import os
-import tempfile
-import requests
 import pytest
 import math
 from unittest.mock import MagicMock, AsyncMock, patch

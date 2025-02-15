@@ -8,8 +8,9 @@ from ray.llm._internal.serve.configs.prompt_formats import (
     ImageContent,
     TextContent,
     Message,
-    Prompt
+    Prompt,
 )
+
 
 @pytest.fixture
 def hf_prompt_format(download_model_ckpt):
@@ -139,6 +140,7 @@ message_data = {
 
 message = Message(**message_data)
 
+
 @pytest.fixture
 def vision_prompt_format():
     """Fixture for VisionPromptFormat."""
@@ -150,6 +152,7 @@ def vision_prompt_format():
         "vision": True,
     }
     return VisionPromptFormat(**prompt_format_data)
+
 
 def test_text_content():
     data = {
@@ -273,7 +276,9 @@ def test_vision_prompt_format_multiple_message(vision_prompt_format):
         ],
     }
     with pytest.raises(HTTPException) as e:
-        vision_prompt_format.generate_prompt(Prompt(prompt=[Message(**msg1), Message(**msg1)]))
+        vision_prompt_format.generate_prompt(
+            Prompt(prompt=[Message(**msg1), Message(**msg1)])
+        )
 
     assert e.value.status_code == 400
     assert "There are 2 messages." in str(e)
@@ -334,6 +339,7 @@ def test_vision_prompt_format_no_text_content(vision_prompt_format):
 ###############
 # Common Test #
 ###############
+
 
 def test_validation_message():
     # check that message with assistant role can have content that

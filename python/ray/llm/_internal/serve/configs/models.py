@@ -20,7 +20,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from ray.air import ScalingConfig as AIRScalingConfig
 from ray.util.placement_group import (
     PlacementGroup,
     get_current_placement_group,
@@ -124,6 +123,7 @@ class S3MirrorConfig(MirrorConfig):
             )
         return value
 
+
 # TODO: Replace this class with ray.serve.config.AutoscalingConfig
 class AutoscalingConfig(BaseModel, extra="allow"):
     """
@@ -199,6 +199,7 @@ class ServeMultiplexConfig(BaseModelExtended):
         DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
         description="The maximum number of download retries.",
     )
+
 
 # TODO: Replace with ray.serve._private.config.DeploymentConfig
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
@@ -286,6 +287,7 @@ class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
     VLLMEngine = "VLLMEngine"
+
 
 class ParallelismConfig(BaseModelExtended):
     degree: int = Field(
@@ -427,7 +429,6 @@ class LLMConfig(BaseModelExtended):
         default_factory=ParallelismConfig,
         description="The pipeline parallelism settings for the model.",
     )
-
 
     lora_config: Optional[LoraConfig] = Field(
         default=None, description="Settings for LoRA adapter."
