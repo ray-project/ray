@@ -87,8 +87,8 @@ bool ClusterResourceManager::UpdateNode(
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = node_resources.total;
-  local_view.available = node_resources.available;
+  local_view.total = std::move(node_resources.total);
+  local_view.available = std::move(node_resources.available);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
