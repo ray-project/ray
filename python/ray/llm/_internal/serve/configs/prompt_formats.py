@@ -20,10 +20,6 @@ from pydantic import (
 from transformers import AutoProcessor
 
 
-class PromptFormatDisabledError(ValueError):
-    status_code = 404
-
-
 class TextContent(BaseModel):
     field: str = "text"
     type: str = "text"
@@ -343,127 +339,6 @@ class PromptFormat(AbstractPromptFormat):
         prompt.append(self.trailing_assistant)
         text = self.bos + "".join(prompt)
         return EngineInput(text=text)
-
-
-class VisionPromptFormat(PromptFormat):
-    vision: bool = True
-
-    # TODO(xwjiang): Extend vision language model's capability to include
-    # system prompt, json mode and fn calling. Until then, keep it simple.
-    def _generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        if isinstance(messages, Prompt):
-            messages = messages.prompt
-        # `messages` could be either a pure string (use without image prompting), or a list of `Message`.
-        if isinstance(messages, str):
-            return EngineInput(text=self.bos + messages)
-        assert isinstance(messages, list)
-        if len(messages) != 1:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                # TODO(xwjiang): Link to doc.
-                f"There are {len(messages)} messages. However, there should be only one message when using vision language models.",
-            )
-        message = messages[0]
-        if message.role != "user":
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                # TODO(xwjiang): Link to doc.
-                f"The message has a role of {message.role}. However, the message's role should be 'user' when using vision language models.",
-            )
-
-        content = message.content
-        if isinstance(message.content, str):
-            return EngineInput(text=self.bos + content)
-        text_content = None
-        image_content = []
-
-        for c in content:
-            if isinstance(c, TextContent):
-                if text_content:
-                    raise HTTPException(
-                        status.HTTP_400_BAD_REQUEST,
-                        # TODO(xwjiang): Link to doc.
-                        "The message contains more than one text type content.",
-                    )
-                text_content = c
-            elif isinstance(c, ImageContent):
-                image_content.append(c)
-            else:
-                raise AssertionError(
-                    "New content types added. You should modify the logic here to handle those!"
-                )
-        if text_content is None:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                # TODO(xwjiang): Link to doc.
-                "The message contains zero text type content.",
-            )
-        if not image_content:
-            # TODO(xwjiang): Figure out if we should support such input.
-            return EngineInput(text=self.bos + text_content.text)
-
-        return EngineInput(
-            text=self.user.format(
-                instruction=self.bos + text_content.text,
-            ),
-            image=[ImageInput(image_url=c.image_url["url"]) for c in image_content],
-        )
-
-    # TODO(xwjiang): More modularization if needed. Until then, keep it simple.
-    @staticmethod
-    def _validate_single_image(engine_input: EngineInput):
-        if isinstance(engine_input.image, list) and len(engine_input.image) > 1:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                # TODO(xwjiang): Link to doc.
-                f"The message contains {len(engine_input.image)} image contents. However, Llava model can only support one image content.",
-            )
-
-    @staticmethod
-    def _use_visino_prompt(messages: Union[Prompt, List[Message]]) -> bool:
-        """Check if the messages contain image content and should use vision prompt."""
-        if isinstance(messages, Prompt):
-            messages = messages.prompt
-
-        if isinstance(messages, str):
-            return True
-
-        if len(messages) == 1:
-            return True
-
-        for message in messages:
-            contents = message.content
-            for content in contents:
-                if isinstance(content, ImageContent):
-                    return True
-
-        return False
-
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        # If the messages contain image content, we will use single message to generate
-        # prompt.
-        if self._use_visino_prompt(messages):
-            res = self._generate_prompt(messages)
-            self._validate_single_image(res)
-            return res
-
-        # If the messages do not contain image contents, we will use the original logic
-        # to generate text only prompt.
-        return super().generate_prompt(messages)
-
-
-class DisabledPromptFormat(AbstractPromptFormat):
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        if (
-            isinstance(messages, Prompt)
-            and isinstance(messages.prompt, str)
-            and not messages.use_prompt_format
-        ):
-            return EngineInput(text=messages.prompt)
-        raise PromptFormatDisabledError(
-            "This model doesn't support chat completions. Please use the completions "
-            "endpoint instead."
-        )
 
 
 class HuggingFacePromptFormat(AbstractPromptFormat):

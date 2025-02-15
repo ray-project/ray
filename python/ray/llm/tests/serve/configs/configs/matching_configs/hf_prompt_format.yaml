@@ -6,12 +6,6 @@ model_loading_config:
   model_id: mistral-community/pixtral-12b
   model_source: "/home/ray/tests/rayllm/backend/server/configs/cached_model_processors/mistral-community--pixtral-12b"
 
-# generation_config:
-#   prompt_format:
-#     use_hugging_face_chat_template: true
-#   stopping_sequences: []
-#   stopping_tokens: [128001, 128009]  # <|end_of_text|>, <|eot_id|>
-
 llm_engine: VLLMEngine
 
 engine_kwargs:

@@ -41,13 +41,6 @@ from ray.llm._internal.serve.configs.constants import (
 )
 
 
-from ray.llm._internal.serve.configs.prompt_formats import (
-    DisabledPromptFormat,
-    HuggingFacePromptFormat,
-    PromptFormat,
-    VisionPromptFormat,
-)
-
 GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -98,17 +91,6 @@ class GCSMirrorConfig(MirrorConfig):
         return value
 
 
-# class AnytensorConfig(BaseModelExtended):
-#     model_path: str
-
-#     @field_validator("model_path")
-#     @classmethod
-#     def model_path_strip_trailing_slash(cls, value):
-#         if value and value.endswith("/"):
-#             return value[:-1]
-#         return value
-
-
 class S3MirrorConfig(MirrorConfig):
     s3_sync_args: Optional[List[str]] = None
     s3_aws_credentials: Optional[S3AWSCredentials] = None
@@ -124,7 +106,6 @@ class S3MirrorConfig(MirrorConfig):
         return value
 
 
-# TODO: Replace this class with ray.serve.config.AutoscalingConfig
 class AutoscalingConfig(BaseModel, extra="allow"):
     """
     The model here provides reasonable defaults for llm model serving.
@@ -201,7 +182,6 @@ class ServeMultiplexConfig(BaseModelExtended):
     )
 
 
-# TODO: Replace with ray.serve._private.config.DeploymentConfig
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
 class DeploymentConfig(BaseModelExtended):
     autoscaling_config: Optional[AutoscalingConfig] = Field(
@@ -242,40 +222,6 @@ class DeploymentConfig(BaseModelExtended):
         values["max_concurrent_queries"] = final_value
 
         return values
-
-
-class GenerationConfig(BaseModelExtended):
-    prompt_format: Optional[
-        Union[PromptFormat, VisionPromptFormat, HuggingFacePromptFormat]
-    ] = Field(
-        default=HuggingFacePromptFormat(use_hugging_face_chat_template=True),
-        description="Handles chat template formatting and tokenization. If None, prompt formatting will be disabled and the model can be only queried in the completion mode.",
-    )
-    generate_kwargs: Dict[str, Any] = Field(
-        default={},
-        description="Extra generation kwargs that needs to be passed into the sampling stage for the deployment (this includes things like temperature, etc.)",
-    )
-    stopping_sequences: Optional[List[str]] = Field(
-        default=None,
-        description="Stopping sequences (applied after detokenization) to propagate for inference.",
-    )
-    stopping_tokens: Optional[List[int]] = Field(
-        default=[],
-        description="Stopping tokens (applied before detokenization) to propagate for inference. By default, we use EOS/UNK tokens at inference.",
-    )
-
-    @field_validator("prompt_format")
-    @classmethod
-    def default_prompt_format(cls, prompt_format):
-        return prompt_format if prompt_format is not None else DisabledPromptFormat()
-
-    @property
-    def all_generate_kwargs(self) -> Dict[str, Any]:
-        return {
-            "stopping_sequences": self.stopping_sequences,
-            "stopping_tokens": self.stopping_tokens,
-            **self.generate_kwargs,
-        }
 
 
 class InputModality(str, Enum):
@@ -365,15 +311,6 @@ class ModelLoadingConfig(BaseModelExtended):
             "supported for now."
         ),
     )
-    # anytensor_config: Optional[AnytensorConfig] = Field(
-    #     None,
-    #     description=(
-    #         "Configuration to use Anytensor for improved model loading speed. "
-    #         "Only the model weights will be loaded using Anytensor; the "
-    #         "tokenizer and extra files will still be pulled from HuggingFace "
-    #         "or the S3/GCS mirror."
-    #     ),
-    # )
 
 
 class LLMConfig(BaseModelExtended):
@@ -395,11 +332,6 @@ class LLMConfig(BaseModelExtended):
     model_loading_config: ModelLoadingConfig = Field(
         description="The settings for how to download and expose the model."
     )
-
-    # generation_config: GenerationConfig = Field(
-    #     default_factory=GenerationConfig,
-    #     description="The settings for how to adjust the prompt and interpret tokens.",
-    # )
 
     llm_engine: LLMEngine = Field(
         default=LLMEngine.VLLMEngine,
@@ -501,23 +433,6 @@ class LLMConfig(BaseModelExtended):
             )
         return multiplex_config
 
-    # @property
-    # def placement_strategy(self) -> str:
-    #     return "STRICT_PACK"
-
-    # @property
-    # def _air_scaling_config(self) -> AIRScalingConfig:
-    #     return AIRScalingConfig(
-    #         use_gpu=True,
-    #         num_workers=self.tensor_parallelism.degree,
-    #         trainer_resources={"CPU": 0},
-    #         resources_per_worker={
-    #             "CPU": 1,
-    #             "GPU": 1,
-    #             self.ray_accelerator_type(): 0.001,
-    #         },
-    #         placement_strategy=self.placement_strategy,
-    #     )
     @property
     def placement_strategy(self) -> str:
         # If pp <= 1, it's TP so we should make sure all replicas are on the same node.
@@ -525,9 +440,6 @@ class LLMConfig(BaseModelExtended):
             return "PACK"
         return "STRICT_PACK"
 
-    # @property
-    # def placement_bundles(self) -> List[Dict[str, float]]:
-    #     return self._air_scaling_config.as_placement_group_factory().bundles
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
         num_workers = self.tensor_parallelism.degree * self.pipeline_parallelism.degree
@@ -536,10 +448,6 @@ class LLMConfig(BaseModelExtended):
         ]
 
         return bundles
-
-    # @property
-    # def use_anytensor(self) -> bool:
-    #     return bool(self.model_loading_config.anytensor_config)
 
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
