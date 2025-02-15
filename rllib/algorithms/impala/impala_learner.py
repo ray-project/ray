@@ -133,8 +133,8 @@ class IMPALALearner(Learner):
                 )
 
         try:
-            results = self._learner_thread_out_queue.get(block=False)
-        except queue.Empty:
+            results = self._learner_thread_out_queue.pop()
+        except IndexError:
             results = {}
         return results
 
