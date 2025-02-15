@@ -417,7 +417,7 @@ class Trainable:
 
         This is to get class trainables to work with storage backend used by
         function trainables.
-        This basically re-implements `train.report` for class trainables,
+        This basically re-implements `tune.report` for class trainables,
         making sure to persist the checkpoint to storage.
         """
         if isinstance(checkpoint_dict_or_path, dict):
