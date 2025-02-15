@@ -366,9 +366,13 @@ class Stats:
 
     def merge_on_time_axis(self, other: "Stats") -> None:
         # Make sure `others` have same reduction settings.
-        assert self._reduce_method == other._reduce_method
-        assert self._window == other._window
-        assert self._ema_coeff == other._ema_coeff
+        assert self._reduce_method == other._reduce_method, (
+            self._reduce_method,
+            other._reduce_method,
+        )
+        assert self._ema_coeff == other._ema_coeff, (self._ema_coeff, other._ema_coeff)
+        if self._window != other._window:
+            self._window = other._window
 
         with self._threading_lock:
             # Extend `self`'s values by `other`'s.

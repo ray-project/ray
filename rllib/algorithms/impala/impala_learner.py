@@ -49,8 +49,6 @@ class IMPALALearner(Learner):
 
         # Make the MetricsLogger of this Learner thread-save.
         self.metrics.thread_save(True)
-        self._num_updates = 0
-        self._num_updates_lock = threading.Lock()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -74,6 +72,7 @@ class IMPALALearner(Learner):
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
+        self._learner_thread_out_queue = deque(maxlen=1)
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
@@ -93,6 +92,7 @@ class IMPALALearner(Learner):
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
+            out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
             learner=self,
         )
@@ -132,13 +132,11 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
-        with self._num_updates_lock:
-            count = self._num_updates
-        if count >= 100:
-            with self._num_updates_lock:
-                self._num_updates = 0
-            return self.metrics.reduce()
-        return {}
+        try:
+            results = self._learner_thread_out_queue.get(block=False)
+        except queue.Empty:
+            results = {}
+        return results
 
     @override(Learner)
     def update_from_episodes(
@@ -272,6 +270,7 @@ class _LearnerThread(threading.Thread):
         *,
         update_method,
         in_queue: deque,
+        out_queue: deque,
         metrics_logger,
         learner,
     ):
@@ -283,6 +282,8 @@ class _LearnerThread(threading.Thread):
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
+        self._out_queue: deque = out_queue
+        self._updates = 0
 
     def run(self) -> None:
         while not self.stopped:
@@ -316,8 +317,11 @@ class _LearnerThread(threading.Thread):
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
-            with self.learner._num_updates_lock:
-                self.learner._num_updates += 1
+            # Only reduce the metrics every nth time.
+            self._updates += 1
+            if self._updates >= 10:
+                self._updates = 0
+                self._out_queue.append(self.metrics.reduce())
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):
