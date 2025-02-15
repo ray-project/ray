@@ -508,8 +508,11 @@ class Quantile(AggregateFnV2):
 
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not _is_null(v)]
-        elif any([_is_null(v) for v in accumulator]):
-            return None
+        else:
+            nulls = [v for v in accumulator if _is_null(v)]
+            if len(nulls) > 0:
+                # NOTE: We return the null itself to preserve column type
+                return nulls[0]
 
         key = lambda x: x  # noqa: E731
 
