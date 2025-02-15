@@ -172,9 +172,6 @@ class AggregateFnV2(AggregateFn, Generic[AggType]):
     def _finalize(self, accumulator: AggType) -> Optional[U]:
         """Transforms partial aggregation into its final state (by default
         this is an identity transformation, ie no-op)"""
-
-        print(f">>> [DBG] {self.__class__}._finalize: {accumulator}, {type(accumulator)}")
-
         return accumulator
 
     def _validate(self, schema: Optional["Schema"]) -> None:
