@@ -1,5 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+    name = "gpu_conftest",
+    srcs = ["gpu/conftest.py"]
+)
+
 py_test_module_list(
   files = glob(["cpu/**/test_*.py"]),
   size = "small",
@@ -11,5 +16,5 @@ py_test_module_list(
   files = glob(["gpu/**/test_*.py"]),
   size = "large",
   tags = ["exclusive", "gpu", "team:llm"],
-  deps = ["//:ray_lib"],
+  deps = ["//:ray_lib", ":gpu_conftest"],
 )
