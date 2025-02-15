@@ -15,6 +15,7 @@
 #include "ray/util/env.h"
 
 #include <cstdlib>
+#include <string>
 
 #include "absl/strings/ascii.h"
 #include "ray/util/logging.h"
