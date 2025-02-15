@@ -748,7 +748,6 @@ ray_cc_library(
     hdrs = ["src/ray/pubsub/subscriber.h"],
     deps = [
         ":pubsub_rpc",
-        "@boost//:any",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
