@@ -86,7 +86,7 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}" conda
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (
