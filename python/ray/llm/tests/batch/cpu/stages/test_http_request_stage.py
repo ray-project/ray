@@ -32,7 +32,7 @@ async def test_http_request_udf_basic():
         qps=None,
     )
 
-    batch = {"__data": [{"text": "hello", "metadata": "test"}]}
+    batch = {"__data": [{"payload": {"text": "hello", "metadata": "test"}}]}
 
     with patch("aiohttp.ClientSession") as mock_session_cls:
         session = AsyncMock()
@@ -42,7 +42,7 @@ async def test_http_request_udf_basic():
         mock_session_cls.return_value.__aenter__.return_value = session
 
         async for result in udf(batch):
-            assert result["__data"][0]["response"] == "test"
+            assert result["__data"][0]["http_response"]["response"] == "test"
 
         session.post.assert_called_once_with(
             "http://test.com/api",
@@ -50,7 +50,7 @@ async def test_http_request_udf_basic():
                 "Content-Type": "application/json",
                 "Authorization": "Bearer 1234567890",
             },
-            json={"text": "hello", "metadata": "test", "__idx_in_batch": 0},
+            json={"text": "hello", "metadata": "test"},
         )
 
 
@@ -62,7 +62,9 @@ async def test_http_request_udf_with_qps():
         qps=2,
     )
 
-    batch = {"__data": [{"text": "hello1"}, {"text": "hello2"}]}
+    batch = {
+        "__data": [{"payload": {"text": "hello1"}}, {"payload": {"text": "hello2"}}]
+    }
 
     with patch("aiohttp.ClientSession") as mock_session_cls, patch(
         "time.time"

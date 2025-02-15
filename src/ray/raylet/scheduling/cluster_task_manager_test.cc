@@ -1829,7 +1829,51 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
             task1.GetTaskSpecification().TaskId());
 }
 
-TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
+TEST_F(ClusterTaskManagerTest, NegativePlacementGroupCpuResources) {
+  // Add PG CPU resources.
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID("CPU_group_aaa"), std::vector<FixedPoint>{FixedPoint(2)});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID("CPU_group_0_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
+  scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+      scheduling::ResourceID("CPU_group_1_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
+
+  const NodeResources &node_resources =
+      scheduler_->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID(id_.Binary()));
+
+  auto worker1 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  auto allocated_instances = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      {{"CPU_group_aaa", 1.}, {"CPU_group_0_aaa", 1.}}, allocated_instances));
+  worker1->SetAllocatedInstances(allocated_instances);
+  // worker1 calls ray.get() and release the CPU resource
+  ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1));
+
+  // the released CPU resource is acquired by worker2
+  auto worker2 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 5678);
+  allocated_instances = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      {{"CPU_group_aaa", 1.}, {"CPU_group_0_aaa", 1.}}, allocated_instances));
+  worker2->SetAllocatedInstances(allocated_instances);
+
+  // ray.get() returns and worker1 acquires the CPU resource again
+  ASSERT_TRUE(local_task_manager_->ReturnCpuResourcesToUnblockedWorker(worker1));
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), 0);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), -1);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_1_aaa")), 1);
+
+  auto worker3 = std::make_shared<MockWorker>(WorkerID::FromRandom(), 7678);
+  allocated_instances = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      {{"CPU_group_aaa", 1.}, {"CPU_group_1_aaa", 1.}}, allocated_instances));
+  worker3->SetAllocatedInstances(allocated_instances);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_aaa")), -1);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_0_aaa")), -1);
+  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU_group_1_aaa")), 0);
+}
+
+TEST_F(ClusterTaskManagerTestWithGPUsAtHead, ReleaseAndReturnWorkerCpuResources) {
   // Add PG CPU and GPU resources.
   scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("CPU_group_aaa"), std::vector<FixedPoint>{FixedPoint(1)});
