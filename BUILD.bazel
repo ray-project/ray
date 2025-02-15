@@ -767,11 +767,11 @@ ray_cc_library(
         "src/ray/stats/tag_defs.h",
     ],
     deps = [
-        "//src/ray/util",
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
         "@com_google_absl//absl/base:core_headers",
         "@io_opencensus_cpp//opencensus/stats:stats",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -783,10 +783,11 @@ ray_cc_library(
     ],
     hdrs = [
         "src/ray/stats/metric_defs.h",
-        "src/ray/stats/tag_defs.h",
     ],
     deps = [
         ":stats_metric_core",
+        "@io_opencensus_cpp//opencensus/stats:stats",
+        "//src/ray/util:size_literals",
     ],
 )
 
