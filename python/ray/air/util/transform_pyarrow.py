@@ -11,7 +11,9 @@ def _is_column_extension_type(ca: "pyarrow.ChunkedArray") -> bool:
     return isinstance(ca.type, pyarrow.ExtensionType)
 
 
-def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array":
+def _concatenate_extension_column(
+    ca: "pyarrow.ChunkedArray", copy: bool = False
+) -> "pyarrow.Array":
     """Concatenate chunks of an extension column into a contiguous array.
 
     This concatenation is required for creating copies and for .take() to work on
@@ -32,7 +34,9 @@ def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array"
         # Create empty storage array.
         storage = pyarrow.array([], type=ca.type.storage_type)
     elif isinstance(ca.type, tensor_extension_types):
-        return ArrowTensorArray._concat_same_type(ca.chunks)
+        return ArrowTensorArray._concat_same_type(ca.chunks, copy)
+    elif ca.num_chunks == 1 and not copy:
+        storage = ca.chunks[0].storage
     else:
         storage = pyarrow.concat_arrays([c.storage for c in ca.chunks])
 
