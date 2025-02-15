@@ -218,12 +218,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
-        # TODO(swang): Creating this np.array index can add a lot of memory
-        # pressure when there are a large number of small rows. Investigate
-        # random shuffling in place to reduce memory pressure.
-        # See https://github.com/ray-project/ray/issues/42146.
+        num_rows = self.num_rows()
+        if num_rows == 0:
+            return pyarrow.table([])
         random = np.random.RandomState(random_seed)
-        return self.take(random.permutation(self.num_rows()))
+        shuffled_indices = np.arange(num_rows)
+        # Shuffle all rows in-place
+        random.shuffle(shuffled_indices)
+        return self.take(pyarrow.array(shuffled_indices))
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
