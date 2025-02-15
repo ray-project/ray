@@ -41,7 +41,7 @@ install_miniconda() {
     esac
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
-    local miniforge_url="https://github.com/conda-forge/miniforge/releases/download/24.11.3-0/Miniforge3-24.11.3-0-${miniconda_platform}-${HOSTTYPE}.sh"
+    local miniforge_url="https://github.com/conda-forge/miniforge/releases/download/25.1.1-0/Miniforge3-25.1.1-0-${miniconda_platform}-${HOSTTYPE}.sh"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
     curl -f -s -L -o "${miniconda_target}" "${miniforge_url}"
     chmod +x "${miniconda_target}"
@@ -86,7 +86,7 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda update python="${PYTHON}" -c conda-forge -q -y
+      "${WORKSPACE_DIR}"/ci/suppress_output conda  install -q -y python="${PYTHON}"
     )
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (
