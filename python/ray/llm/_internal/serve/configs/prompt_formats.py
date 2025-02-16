@@ -342,14 +342,16 @@ class PromptFormat(AbstractPromptFormat):
 
 
 class HuggingFacePromptFormat(AbstractPromptFormat):
-    use_hugging_face_chat_template: Literal[True]
     _processor: AutoProcessor = PrivateAttr()
 
-    def set_processor(self, model_id_or_path: str):
+    def set_processor(self, model_id_or_path: str, trust_remote_code: bool = False):
         if hasattr(self, "_processor"):
             return
 
-        self._processor = AutoProcessor.from_pretrained(model_id_or_path)
+        self._processor = AutoProcessor.from_pretrained(
+            model_id_or_path,
+            trust_remote_code=trust_remote_code,
+        )
 
     def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
         assert hasattr(

@@ -687,3 +687,59 @@ class VLLMEngine:
                         )
                     ]
         return return_log_probs, log_probs_idx + len(return_log_probs)
+
+
+MOCK_VLLM_ENGINE_ITL = 0.005
+
+
+class MockVLLMEngine:
+    """Mocks the VLLM Engine.
+
+    Used when testing performance overhead for ray-llm.
+    """
+
+    def __init__(self, llm_config: LLMConfig, *args, **kwargs):
+        self.llm_config = llm_config
+
+    @staticmethod
+    async def start():
+        logger.info("Instantiated MockVLLMEngine")
+
+    @staticmethod
+    async def mock_responses(vllm_engine_request: VLLMGenerationRequest):
+        num_tokens = vllm_engine_request.sampling_params.max_tokens or 150
+        for _ in range(num_tokens):
+            await asyncio.sleep(MOCK_VLLM_ENGINE_ITL)
+            yield LLMRawResponse(
+                generated_text="foo",
+                num_generated_tokens=1,
+                num_generated_tokens_batch=1,
+                num_input_tokens=1,
+                num_input_tokens_batch=1,
+                preprocessing_time=0,
+                generation_time=0,
+                finish_reason=None,
+            )
+
+        await asyncio.sleep(MOCK_VLLM_ENGINE_ITL)
+        yield LLMRawResponse(
+            generated_text="bar",
+            num_generated_tokens=1,
+            num_generated_tokens_batch=1,
+            num_input_tokens=1,
+            num_input_tokens_batch=1,
+            preprocessing_time=0,
+            generation_time=0,
+            finish_reason="done",
+        )
+
+    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
+        async for response in BatchLLMRawResponses(
+            self.mock_responses(vllm_engine_request),
+            interval_ms=MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+        ).stream():
+            yield response
+
+    @staticmethod
+    async def check_health() -> bool:
+        return True

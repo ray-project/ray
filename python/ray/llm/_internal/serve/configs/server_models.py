@@ -48,7 +48,6 @@ from ray.llm._internal.serve.configs.constants import (
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
     HuggingFacePromptFormat,
-    PromptFormat,
 )
 
 GPUType = Enum("GPUType", vars(accelerators))
@@ -362,7 +361,9 @@ class LLMConfig(BaseModelExtended):
     )
 
     _supports_vision: bool = PrivateAttr(False)
-    _prompt_format: PromptFormat = PrivateAttr(default_factory=HuggingFacePromptFormat)
+    _prompt_format: HuggingFacePromptFormat = PrivateAttr(
+        default_factory=HuggingFacePromptFormat
+    )
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -382,7 +383,7 @@ class LLMConfig(BaseModelExtended):
         return self._supports_vision
 
     @property
-    def prompt_format(self) -> PromptFormat:
+    def prompt_format(self) -> HuggingFacePromptFormat:
         return self._prompt_format
 
     @property

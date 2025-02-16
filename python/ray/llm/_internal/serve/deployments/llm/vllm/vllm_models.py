@@ -13,7 +13,7 @@ from vllm.lora.request import LoRARequest
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.configs.prompt_formats import (
-    PromptFormat,
+    HuggingFacePromptFormat,
 )
 from ray.llm._internal.serve.configs.server_models import (
     BaseModelExtended,
@@ -58,7 +58,7 @@ class VLLMEngineConfig(BaseModelExtended):
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
     runtime_env: Optional[Dict[str, Any]] = None
-    prompt_format: PromptFormat
+    prompt_format: HuggingFacePromptFormat
     engine_kwargs: Dict[str, Any] = {}
 
     @property

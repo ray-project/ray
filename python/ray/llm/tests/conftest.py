@@ -17,6 +17,7 @@ def download_model_ckpt():
         "https://air-example-data.s3.amazonaws.com/mistral-community-pixtral-12b/"
     )
     FILE_LIST = [
+        "config.json",
         "chat_template.json",
         "preprocessor_config.json",
         "processor_config.json",

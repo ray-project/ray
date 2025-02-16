@@ -1,6 +1,4 @@
-import os
 from enum import Enum
-from importlib.metadata import version
 from typing import Callable, Dict, List, Optional, Sequence
 
 import ray
@@ -149,8 +147,8 @@ class TelemetryAgent:
 
     def generate_report(self) -> Dict[str, str]:
         return {
-            TelemetryTags.RAYLLM_VERSION: version("rayllm"),
-            TelemetryTags.RAYLLM_COMMIT: os.getenv("GIT_COMMIT", "unknown"),
+            TelemetryTags.RAYLLM_VERSION: ray.__version__,
+            TelemetryTags.RAYLLM_COMMIT: ray.__commit__,
             TelemetryTags.RAYLLM_SERVE_MULTIPLE_MODELS: self._multiple_models(),
             TelemetryTags.RAYLLM_SERVE_MULTIPLE_APPS: self._multiple_apps(),
             TelemetryTags.RAYLLM_JSON_MODE_MODELS: self._json_mode_models(),
