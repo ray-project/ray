@@ -2,9 +2,9 @@ import pytest
 
 from ray.llm._internal.serve.configs.prompt_formats import (
     HuggingFacePromptFormat,
-    ContentContent,
-    ImageContent,
-    TextContent,
+    Content,
+    Image,
+    Text,
     Message,
     Prompt,
 )
@@ -30,13 +30,13 @@ def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
             Message(
                 role="user",
                 content=[
-                    ContentContent(field="text", content="Can this animal"),
-                    ImageContent(
+                    Content(field="text", content="Can this animal"),
+                    Image(
                         field="image_url",
                         image_url={"url": "https://example.com/dog.jpg"},
                     ),
-                    ContentContent(field="text", content="live here?"),
-                    ImageContent(
+                    Content(field="text", content="live here?"),
+                    Image(
                         field="image_url",
                         image_url={"url": "https://example.com/mountain.jpg"},
                     ),
@@ -75,13 +75,13 @@ def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
         Message(
             role="user",
             content=[
-                ContentContent(field="text", content="Can this animal"),
-                ImageContent(
+                Content(field="text", content="Can this animal"),
+                Image(
                     field="image_url",
                     image_url={"url": "https://example.com/dog.jpg"},
                 ),
-                ContentContent(field="text", content="live here?"),
-                ImageContent(
+                Content(field="text", content="live here?"),
+                Image(
                     field="image_url",
                     image_url={"url": "https://example.com/mountain.jpg"},
                 ),
@@ -158,7 +158,7 @@ def test_validation_message():
     Message(
         role="user",
         content=[
-            TextContent(type="text", text="This is a test."),
-            ImageContent(type="image_url", image_url={"url": "foo"}),
+            Text(type="text", text="This is a test."),
+            Image(type="image_url", image_url={"url": "foo"}),
         ],
     )
