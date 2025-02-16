@@ -86,9 +86,9 @@ install_miniconda() {
     (
       set +x
       echo "Creating Anaconda Python environment for ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda create -n py python="${PYTHON}" -c conda-forge -q -y
-      "${WORKSPACE_DIR}"/ci/suppress_output conda init bash
-      "${WORKSPACE_DIR}"/ci/suppress_output conda activate py
+      conda create -n py python="${PYTHON}" -c conda-forge -q -y
+      conda init bash
+      conda activate py
     )
   elif [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
     (
