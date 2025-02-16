@@ -33,3 +33,13 @@ MODEL_REPLICA_MEMORY_GB = int(
 ENABLE_WORKER_PROCESS_SETUP_HOOK = (
     os.environ.get("RAYLLM_ENABLE_WORKER_PROCESS_SETUP_HOOK", "1") == "1"
 )
+
+
+CLOUD_OBJECT_MISSING_EXPIRE_S = 30
+CLOUD_OBJECT_EXISTS_EXPIRE_S = 60 * 60
+
+# Sentinel object used to indicate that a LoRA adapter config file is missing.
+LORA_ADAPTER_CONFIG_NAME = "adapter_config.json"
+
+# Names of files in the fine-tuning checkpoint.
+GENERATION_CONFIG_NAME = "rayllm_generation_config.json"

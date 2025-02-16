@@ -6,19 +6,19 @@ from typing import Dict, Optional
 import backoff
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.server.llm.multiplex.utils import (
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     clean_model_id,
     clear_directory,
     get_lora_id,
     get_lora_mirror_config,
     sync_model,
+    make_async,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
     LoraMirrorConfig,
 )
-from rayllm.backend.server.utils import make_async
 
 logger = get_logger(__name__)
 

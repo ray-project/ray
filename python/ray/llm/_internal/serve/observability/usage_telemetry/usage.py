@@ -9,7 +9,7 @@ from ray import serve
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.server.llm.multiplex.utils import get_lora_model_ids
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
 from ray.llm._internal.serve.configs.server_models import LLMConfig
 from rayllm.backend.server.pydantic_utils import BaseModelExtended
 

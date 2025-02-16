@@ -27,7 +27,7 @@ from rayllm.backend.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
     metrics_lifespan,
 )
-from rayllm.backend.server.llm.multiplex.utils import (
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_base_model_id,
     get_lora_model_ids,
     get_lora_model_metadata,

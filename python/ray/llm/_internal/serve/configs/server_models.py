@@ -482,7 +482,7 @@ class LLMServingArgs(BaseModel):
         description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
     )
 
-    def parse_rayllm_args(self) -> "LLMServingArgs":
+    def parse_args(self) -> "LLMServingArgs":
         """Converts this LLMServingArgs object into an DeployArgs object."""
 
         llm_configs = []

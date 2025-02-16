@@ -7,9 +7,10 @@ from ray.serve.handle import DeploymentHandle
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.configs.server_models import LLMConfig, RayLLMArgs
+from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMServingArgs
+# TODO (genesu): rename router to LLMModelRouterDeployment
 from ray.llm._internal.serve.deployments.routers.router import Router
-from ray.llm._internal.configs.constants import (
+from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     MODEL_REPLICA_MEMORY_GB,
 )
@@ -134,8 +135,8 @@ def _get_llm_deployments(
     return llm_deployments
 
 
-def build_openai_app(args: RayLLMArgs) -> Application:
-    rayllm_args = RayLLMArgs.model_validate(args).parse_rayllm_args()
+def build_openai_app(args: LLMServingArgs) -> Application:
+    rayllm_args = LLMServingArgs.model_validate(args).parse_args()
 
     llm_configs = rayllm_args.llm_configs
     model_ids = set(m.model_id for m in llm_configs)
