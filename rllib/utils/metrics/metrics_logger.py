@@ -900,8 +900,7 @@ class MetricsLogger:
         else:
             subset_to_return = self.stats
 
-        with self._struct_lock:
-            frozen_subset_to_return = tree.map_structure(lambda s: s, subset_to_return)
+        frozen_subset_to_return = tree.map_structure(lambda s: s, subset_to_return)
 
         try:
             with self._threading_lock:
