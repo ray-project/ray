@@ -475,3 +475,26 @@ class LLMConfig(BaseModelExtended):
             )
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
+
+
+class LLMServingArgs(BaseModel):
+    llm_configs: List[Union[str, LLMConfig]] = Field(
+        description="A list of LLMConfigs, or paths to LLMConfigs, to run.",
+    )
+
+    def parse_rayllm_args(self) -> "LLMServingArgs":
+        """Converts this LLMServingArgs object into an DeployArgs object."""
+
+        llm_configs = []
+        for config in self.llm_configs:
+            parsed_config = parse_args(config)[0]
+            if not isinstance(parsed_config, LLMConfig):
+                raise ValueError(
+                    "When using the new Serve config format, all model "
+                    "configs must also use the new model config format. Got "
+                    "a model config that doesn't match new format. Type: "
+                    f"{type(parsed_config)}. Contents: {parsed_config}."
+                )
+            llm_configs.append(parsed_config)
+
+        return LLMServingArgs(llm_configs=llm_configs)
