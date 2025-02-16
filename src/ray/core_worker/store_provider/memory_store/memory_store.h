@@ -96,7 +96,8 @@ class CoreWorkerMemoryStore {
               int num_objects,
               int64_t timeout_ms,
               const WorkerContext &ctx,
-              absl::flat_hash_set<ObjectID> *ready);
+              absl::flat_hash_set<ObjectID> *ready,
+              absl::flat_hash_set<ObjectID> *plasma_object_ids);
 
   /// Get an object if it exists.
   ///
@@ -174,13 +175,16 @@ class CoreWorkerMemoryStore {
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// resources. is an exception.
+  /// \param[in] abort_after_num_objects Whether we should abort the loop that fills
+  /// results after after we find num_objects. False only for Wait.
   Status GetImpl(const std::vector<ObjectID> &object_ids,
                  int num_objects,
                  int64_t timeout_ms,
                  const WorkerContext &ctx,
                  bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
-                 bool abort_if_any_object_is_exception);
+                 bool abort_if_any_object_is_exception,
+                 bool abort_after_num_objects);
 
   /// Called when an object is deleted from the store.
   void OnDelete(std::shared_ptr<RayObject> obj);
