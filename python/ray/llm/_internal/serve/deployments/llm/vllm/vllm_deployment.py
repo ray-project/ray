@@ -6,20 +6,20 @@ from pydantic import ValidationError as PydanticValidationError
 from ray import serve
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.observability.usage_telemetry.usage import (
+from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
-from rayllm.backend.server.client.streaming_error_handler import StreamingErrorHandler
-from rayllm.backend.server.error_handling import ValidationErrorWithPydantic
-from rayllm.backend.server.llm.image_retriever import ImageRetriever
-from rayllm.backend.server.llm.llm_deployment import LLMDeployment
-from rayllm.backend.server.llm.multiplex.lora_model_loader import LoraModelLoader
+from ray.llm._internal.serve.deployments.streaming_error_handler import StreamingErrorHandler
+from ray.llm._internal.serve.deployments.error_handling import ValidationErrorWithPydantic
+from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
+from ray.llm._internal.serve.deployments.llm.llm_deployment import LLMDeployment
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import LoraModelLoader
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from rayllm.backend.server.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from rayllm.backend.server.models.llm_models import (
+from ray.llm._internal.serve.configs.llm_models import (
     ChatCompletionLogProb,
     ChatCompletionLogProbs,
     ChatCompletionLogProbsContent,
@@ -44,18 +44,19 @@ from ray.llm._internal.serve.configs.server_models import (
     ErrorResponse,
     LLMConfig,
     LLMRawResponse,
+    Message,
+    Prompt
 )
 from rayllm.backend.server.utils import (
     get_model_request_id,
     get_response_for_error,
     get_serve_request_id,
 )
-from rayllm.env_conf import (
+from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     ENGINE_START_TIMEOUT_S,
 )
-from rayllm.models import Message, Prompt
 
 logger = get_logger(__name__)
 

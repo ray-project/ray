@@ -1,6 +1,10 @@
 import yaml
 
 from enum import Enum
+from abc import ABC, abstractmethod
+from vllm.sampling_params import GuidedDecodingParams
+import json
+
 from typing import (
     Any,
     Dict,
@@ -9,6 +13,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
+    Literal,
 )
 
 from pydantic import (
@@ -498,3 +503,185 @@ class LLMServingArgs(BaseModel):
             llm_configs.append(parsed_config)
 
         return LLMServingArgs(llm_configs=llm_configs)
+
+
+class Text(BaseModel):
+    field: str = "text"
+    type: str = "text"
+    text: str
+
+
+# Ref: https://huggingface.co/mistral-community/pixtral-12b
+#
+# Community version of pixtral uses the key `content` instead of `text` in the content.
+# This is to support the "content" content type in the prompt format, as opposite of
+# the "text" content from the above which most other model uses.
+class Content(BaseModel):
+    field: str = "text"
+    type: str = "text"
+    content: str
+
+
+class Image(BaseModel):
+    field: str = "image_url"
+    image_url: Dict
+
+    @field_validator("image_url")
+    @classmethod
+    def check_image_url(cls, value):
+        if "url" not in value or not value["url"] or not isinstance(value["url"], str):
+            raise ValueError(
+                # TODO(xwjiang): Link to doc.
+                "Expecting 'url' string to be provided under 'image_url' dict."
+            )
+        return value
+
+
+ContentList = List[Union[Image, Text, Content]]
+
+
+class Message(BaseModel):
+    role: Literal["system", "assistant", "user"]
+    content: Optional[Union[str, ContentList]] = None
+
+    def __str__(self):
+        return self.model_dump_json()
+
+    @model_validator(mode="after")
+    def check_fields(self):
+        if self.role == "system":
+            if not isinstance(self.content, str):
+                raise ValueError("System content must be a string")
+        if self.role == "user" and self.content is None:
+            raise ValueError("User content must not be None.")
+        if self.role == "assistant":
+            # passing a regular assistant message
+            if self.content is not None and not isinstance(self.content, str):
+                raise ValueError("content must be a string or None")
+        return self
+
+
+class Prompt(BaseModel):
+    prompt: Union[str, List[Message]]
+    use_prompt_format: bool = True
+    parameters: Optional[Dict[str, Any]] = None
+
+    @field_validator("parameters", mode="before")
+    @classmethod
+    def parse_parameters(cls, value):
+        if isinstance(value, BaseModel):
+            # Use exclude_unset so that we can distinguish unset values from default values
+            return value.model_dump(exclude_unset=True)
+        return value
+
+    @field_validator("prompt")
+    @classmethod
+    def check_prompt(cls, value):
+        if isinstance(value, list) and not value:
+            raise ValueError("Messages cannot be an empty list.")
+        return value
+
+    def to_unformatted_string(self) -> str:
+        if isinstance(self.prompt, list):
+            return ", ".join(str(message.content) for message in self.prompt)
+        return self.prompt
+
+
+class ResponseFormat(BaseModel, ABC):
+    # make allow extra fields false
+    model_config = ConfigDict(extra="forbid")
+
+    @abstractmethod
+    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+        """Convert the response format to a vLLM guided decoding params.
+
+        Args:
+            backend: The backend to use for the guided decoding. (e.g. "xgrammar", "outlines")
+
+        Returns:
+            A vLLM guided decoding params object. It can also return None if the response format is not supported. (e.g. "text")
+        """
+        pass
+
+
+class ResponseFormatText(ResponseFormat):
+    type: Literal["text"]
+
+    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+        return None
+
+
+class JSONSchemaBase(ResponseFormat, ABC):
+    @property
+    @abstractmethod
+    def json_schema_str(self) -> str:
+        pass
+
+    @abstractmethod
+    def to_dict(self):
+        pass
+
+
+class ResponseFormatJsonObject(JSONSchemaBase):
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Support either keywords because it makes it more robust.
+    type: Literal["json_object", "json_schema"]
+    # Can use `schema` or `json_schema` interchangeably.
+    # `schema` is allowed for backwards compatibility
+    # (We released docs with `schema` field name)
+    json_schema: Optional[Union[Dict[str, Any], str]] = Field(
+        default={}, alias="schema", description="Schema for the JSON response format"
+    )
+
+    @model_validator(mode="after")
+    def read_and_validate_json_schema(self):
+        from ray.llm._internal.serve.configs.json_mode_utils import try_load_json_schema
+
+        # Make sure the json schema is valid and dereferenced.
+        self.json_schema = try_load_json_schema(self.json_schema)
+        return self
+
+    @property
+    def json_schema_str(self) -> str:
+        return json.dumps(self.json_schema)
+
+    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+        kwargs = {}
+
+        if self.json_schema:
+            kwargs["json"] = self.json_schema_str
+        else:
+            kwargs["json_object"] = True
+
+        return GuidedDecodingParams.from_optional(
+            backend=backend,
+            **kwargs,
+        )
+
+    def to_dict(self):
+        return {
+            "type": self.type,
+            "schema": self.json_schema_str,
+        }
+
+
+# TODO(Kourosh): Grammar has this known issue that if there is a syntax error in the grammar
+# The engine will die. We need to fix this from vLLM side.
+# For now avoiding documenting this approach in the docs.
+class ResponseFormatGrammar(ResponseFormat):
+    type: Literal["grammar", "grammar_gbnf"]
+    grammar: str
+
+    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+        return GuidedDecodingParams.from_optional(
+            backend=backend,
+            grammar=self.grammar,
+        )
+
+
+ResponseFormatType = Union[
+    ResponseFormatText,
+    ResponseFormatGrammar,
+    ResponseFormatJsonObject,
+]

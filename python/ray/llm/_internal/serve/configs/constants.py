@@ -43,3 +43,11 @@ LORA_ADAPTER_CONFIG_NAME = "adapter_config.json"
 
 # Names of files in the fine-tuning checkpoint.
 GENERATION_CONFIG_NAME = "rayllm_generation_config.json"
+
+DEFAULT_HEALTH_CHECK_PERIOD_S = int(
+    os.getenv("RAYLLM_DEFAULT_HEALTH_CHECK_PERIOD_S", "10")
+)
+DEFAULT_HEALTH_CHECK_TIMEOUT_S = int(
+    os.getenv("RAYLLM_DEFAULT_HEALTH_CHECK_TIMEOUT_S", "10")
+)
+ENGINE_START_TIMEOUT_S = int(os.getenv("RAYLLM_ENGINE_START_TIMEOUT_S", str(60 * 60)))
