@@ -8,7 +8,7 @@ from enum import Enum
 from abc import ABC, abstractmethod
 from vllm.sampling_params import GuidedDecodingParams
 import json
-from ray.llm._internal.serve.deployments.error_handling import TooManyStoppingSequences
+from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
 
 from typing import (
     Any,

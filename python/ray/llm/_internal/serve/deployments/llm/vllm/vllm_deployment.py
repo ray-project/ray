@@ -12,7 +12,7 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
 from ray.llm._internal.serve.deployments.streaming_error_handler import (
     StreamingErrorHandler,
 )
-from ray.llm._internal.serve.deployments.error_handling import (
+from ray.llm._internal.serve.configs.error_handling import (
     ValidationErrorWithPydantic,
 )
 from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever

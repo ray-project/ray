@@ -28,7 +28,7 @@ from ray.llm._internal.serve.observability.metrics.utils import (
     ClockUnit,
     MsClock,
 )
-from ray.llm._internal.serve.deployments.error_handling import (
+from ray.llm._internal.serve.configs.error_handling import (
     InputTooLong,
     ValidationError,
 )
