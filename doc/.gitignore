@@ -24,3 +24,6 @@ source/serve/examples.rst
 
 # Ignore generated versions
 source/_static/versions.json
+
+# Ignore doc/serve
+serve/

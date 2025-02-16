@@ -1,5 +1,5 @@
 ppo-breakoutnoframeskip-v5:
-    env: ALE/Breakout-v5
+    env: ale_py:ALE/Breakout-v5
     run: PPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -26,7 +26,7 @@ ppo-breakoutnoframeskip-v5:
         num_workers: 30
         # Run without Learner- and RLModule API (new stack).
         _enable_new_api_stack: false
-        num_envs_per_worker: 1
+        num_envs_per_env_runner: 1
         batch_mode: truncate_episodes
         observation_filter: NoFilter
         model:

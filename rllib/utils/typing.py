@@ -69,7 +69,16 @@ PartialAlgorithmConfigDict = dict  # @OldAPIStack
 
 # Represents the model config sub-dict of the algo config that is passed to
 # the model catalog.
-ModelConfigDict = dict
+ModelConfigDict = dict  # @OldAPIStack
+
+# Conv2D configuration format.
+# Each entry in the outer list represents one Conv2D layer.
+# Each inner list has the format: [num_output_filters, kernel, stride], where kernel
+# and stride may be single ints (width and height are the same) or 2-tuples (int, int)
+# for width and height (different values).
+ConvFilterSpec = List[
+    Tuple[int, Union[int, Tuple[int, int]], Union[int, Tuple[int, int]]]
+]
 
 # Objects that can be created through the `from_config()` util method
 # need a config dict with a "type" key, a class path (str), or a type directly.
@@ -168,10 +177,15 @@ Optimizer = LocalOptimizer
 Param = Union["torch.Tensor", "tf.Variable"]
 ParamRef = Hashable
 ParamDict = Dict[ParamRef, Param]
+ParamList = List[Param]
 
 # A single learning rate or a learning rate schedule (list of sub-lists, each of
 # the format: [ts (int), lr_to_reach_by_ts (float)]).
-LearningRateOrSchedule = Union[float, List[List[Union[int, float]]]]
+LearningRateOrSchedule = Union[
+    float,
+    List[List[Union[int, float]]],
+    List[Tuple[int, Union[int, float]]],
+]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,

@@ -1,12 +1,12 @@
 from collections import defaultdict
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch as unbatch_fn
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -40,7 +40,7 @@ class UnBatchToIndividualItems(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -50,30 +50,30 @@ class UnBatchToIndividualItems(ConnectorV2):
 
         # Simple case (no structure stored): Just unbatch.
         if memorized_map_structure is None:
-            return tree.map_structure(lambda s: unbatch(s), data)
+            return tree.map_structure(lambda s: unbatch_fn(s), batch)
         # Single agent case: Memorized structure is a list, whose indices map to
         # eps_id values.
         elif isinstance(memorized_map_structure, list):
-            for column, column_data in data.copy().items():
-                column_data = unbatch(column_data)
+            for column, column_data in batch.copy().items():
+                column_data = unbatch_fn(column_data)
                 new_column_data = defaultdict(list)
                 for i, eps_id in enumerate(memorized_map_structure):
                     # Keys are always tuples to resemble multi-agent keys, which
                     # have the structure (eps_id, agent_id, module_id).
                     key = (eps_id,)
                     new_column_data[key].append(column_data[i])
-                data[column] = dict(new_column_data)
+                batch[column] = dict(new_column_data)
         # Multi-agent case: Memorized structure is dict mapping module_ids to lists of
         # (eps_id, agent_id)-tuples, such that the original individual-items-based form
         # can be constructed.
         else:
-            for module_id, module_data in data.copy().items():
+            for module_id, module_data in batch.copy().items():
                 if module_id not in memorized_map_structure:
                     raise KeyError(
                         f"ModuleID={module_id} not found in `memorized_map_structure`!"
                     )
                 for column, column_data in module_data.items():
-                    column_data = unbatch(column_data)
+                    column_data = unbatch_fn(column_data)
                     new_column_data = defaultdict(list)
                     for i, (eps_id, agent_id) in enumerate(
                         memorized_map_structure[module_id]
@@ -89,4 +89,4 @@ class UnBatchToIndividualItems(ConnectorV2):
                         new_column_data[key].append(column_data[i])
                     module_data[column] = dict(new_column_data)
 
-        return data
+        return batch

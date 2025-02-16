@@ -15,15 +15,15 @@
 #pragma once
 
 #include <boost/thread.hpp>
+#include <memory>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-using json = nlohmann::json;
-namespace ray {
-namespace core {
+
+namespace ray::core {
 
 struct WorkerThreadContext;
 
@@ -48,10 +48,10 @@ class WorkerContext {
   /// WorkerContext::GetNextPutIndex.
   /// If std::nullopt is specified, it will deduce the put index from the
   /// current worker context.
-  const ObjectID GetGeneratorReturnId(const TaskID &task_id,
-                                      std::optional<ObjectIDIndexType> put_index);
+  ObjectID GetGeneratorReturnId(const TaskID &task_id,
+                                std::optional<ObjectIDIndexType> put_index);
 
-  const WorkerType GetWorkerType() const;
+  WorkerType GetWorkerType() const;
 
   const WorkerID &GetWorkerID() const;
 
@@ -60,18 +60,19 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  const TaskID GetMainThreadOrActorCreationTaskID() const;
+  TaskID GetMainThreadOrActorCreationTaskID() const;
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool ShouldCaptureChildTasksInPlacementGroup() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  const std::shared_ptr<rpc::RuntimeEnvInfo> GetCurrentRuntimeEnvInfo() const
+  std::shared_ptr<rpc::RuntimeEnvInfo> GetCurrentRuntimeEnvInfo() const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   const std::string &GetCurrentSerializedRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  std::shared_ptr<json> GetCurrentRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
+  std::shared_ptr<nlohmann::json> GetCurrentRuntimeEnv() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Initialize worker's job_id and job_config if they haven't already.
   // Note a worker's job config can't be changed after initialization.
@@ -120,7 +121,7 @@ class WorkerContext {
 
   uint64_t GetNextTaskIndex();
 
-  uint64_t GetTaskIndex();
+  uint64_t GetTaskIndex() const;
 
   // Returns the next put object index; used to calculate ObjectIDs for puts.
   ObjectIDIndexType GetNextPutIndex();
@@ -150,8 +151,13 @@ class WorkerContext {
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_ ABSL_GUARDED_BY(mutex_);
   // The runtime env for the current actor or task.
-  std::shared_ptr<json> runtime_env_ ABSL_GUARDED_BY(mutex_);
+  // For one worker context, it should have exactly one serialized runtime env; cache the
+  // parsed json and string for reuse.
+  std::string serialized_runtime_env_ ABSL_GUARDED_BY(mutex_);
+  std::shared_ptr<nlohmann::json> runtime_env_ ABSL_GUARDED_BY(mutex_);
   // The runtime env info.
+  // For one worker context, it should be assigned only once because Ray currently doesn't
+  // reuse worker to run tasks or actors with different runtime envs.
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ ABSL_GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
@@ -173,5 +179,4 @@ class WorkerContext {
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
 };
 
-}  // namespace core
-}  // namespace ray
+}  // namespace ray::core

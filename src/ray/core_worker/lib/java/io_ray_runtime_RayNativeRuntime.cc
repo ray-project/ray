@@ -37,6 +37,9 @@ inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_
   std::string ip = JavaStringToNativeString(
       env, (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_ip));
   int port = env->GetIntField(gcs_client_options, java_gcs_client_options_port);
+  std::string username = JavaStringToNativeString(
+      env,
+      (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_username));
   std::string password = JavaStringToNativeString(
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
@@ -275,6 +278,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   std::string serialized_job_config =
       (jobConfig == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfig));
   CoreWorkerOptions options;
+  options.debug_source = "java runtime";
   options.worker_type = static_cast<WorkerType>(workerMode);
   options.language = Language::JAVA;
   options.store_socket = JavaStringToNativeString(env, storeSocket);

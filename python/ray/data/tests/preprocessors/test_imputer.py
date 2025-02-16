@@ -61,6 +61,18 @@ def test_simple_imputer():
 
     assert pred_out_df.equals(pred_expected_df)
 
+    # with missing column
+    pred_in_df = pd.DataFrame.from_dict({"A": pred_col_a, "B": pred_col_b})
+    pred_out_df = imputer.transform_batch(pred_in_df)
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_processed_col_a,
+            "B": pred_processed_col_b,
+            "C": pred_processed_col_c,
+        }
+    )
+    assert pred_out_df.equals(pred_expected_df)
+
     # Test "most_frequent" strategy.
     most_frequent_col_a = [1, 2, 2, None, None, None]
     most_frequent_col_b = [None, "c", "c", "b", "b", "a"]
@@ -112,6 +124,52 @@ def test_simple_imputer():
     constant_expected_df["B"] = constant_expected_df["B"].astype("category")
 
     assert constant_out_df.equals(constant_expected_df)
+
+
+def test_imputer_all_nan_raise_error():
+    data = {
+        "A": [np.nan, np.nan, np.nan, np.nan],
+    }
+    df = pd.DataFrame(data)
+    dataset = ray.data.from_pandas(df)
+
+    imputer = SimpleImputer(columns=["A"], strategy="mean")
+    imputer.fit(dataset)
+
+    with pytest.raises(ValueError):
+        imputer.transform_batch(df)
+
+
+def test_imputer_constant_categorical():
+    data = {
+        "A_cat": ["one", "two", None, "four"],
+    }
+    df = pd.DataFrame(data)
+    df["A_cat"] = df["A_cat"].astype("category")
+    dataset = ray.data.from_pandas(df)
+
+    imputer = SimpleImputer(columns=["A_cat"], strategy="constant", fill_value="three")
+    imputer.fit(dataset)
+
+    transformed_df = imputer.transform_batch(df)
+
+    expected = {
+        "A_cat": ["one", "two", "three", "four"],
+    }
+
+    for column in data.keys():
+        np.testing.assert_array_equal(transformed_df[column].values, expected[column])
+
+    df = pd.DataFrame({"A": [1, 2, 3, 4]})
+    transformed_df = imputer.transform_batch(df)
+
+    expected = {
+        "A": [1, 2, 3, 4],
+        "A_cat": ["three", "three", "three", "three"],
+    }
+
+    for column in df:
+        np.testing.assert_array_equal(transformed_df[column].values, expected[column])
 
 
 if __name__ == "__main__":

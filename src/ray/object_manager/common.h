@@ -140,8 +140,8 @@ struct PlasmaObjectHeader {
                       uint64_t data_size,
                       uint64_t metadata_size,
                       int64_t num_readers,
-                      const std::unique_ptr<std::chrono::steady_clock::time_point>
-                          &timeout_point = nullptr);
+                      const std::optional<std::chrono::steady_clock::time_point>
+                          &timeout_point = std::nullopt);
 
   /// Call after completing a write to signal that readers may read.
   /// num_readers should be set before calling this.
@@ -152,6 +152,7 @@ struct PlasmaObjectHeader {
   /// Blocks until the given version is ready to read. Returns false if the
   /// maximum number of readers have already read the requested version.
   ///
+  /// \param[in] object_id ObjectID to acquire a lock from.
   /// \param[in] sem The semaphores for this channel.
   /// \param[in] read_version The version to read.
   /// \param[out] version_read For normal immutable objects, this will be set to
@@ -163,11 +164,13 @@ struct PlasmaObjectHeader {
   /// TimedOut immediately without blocking.
   /// \return Whether the correct version was read and there were still
   /// reads remaining.
-  Status ReadAcquire(Semaphores &sem,
+  Status ReadAcquire(const ObjectID &object_id,
+                     Semaphores &sem,
                      int64_t version_to_read,
                      int64_t &version_read,
-                     const std::unique_ptr<std::chrono::steady_clock::time_point>
-                         &timeout_point = nullptr);
+                     const std::function<Status()> &check_signals,
+                     const std::optional<std::chrono::steady_clock::time_point>
+                         &timeout_point = std::nullopt);
 
   // Finishes the read. If all reads are done, signals to the writer. This is
   // not necessary to call for objects that have num_readers=-1.
@@ -192,8 +195,9 @@ struct PlasmaObjectHeader {
   /// \return OK if the mutex was acquired successfully, TimedOut if timed out.
   Status TryToAcquireSemaphore(
       sem_t *sem,
-      const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point =
-          nullptr) const;
+      const std::optional<std::chrono::steady_clock::time_point> &timeout_point =
+          std::nullopt,
+      const std::function<Status()> &check_signals = nullptr) const;
 
   /// Set the error bit. This is a non-blocking method.
   ///

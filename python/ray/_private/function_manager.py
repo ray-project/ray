@@ -13,6 +13,7 @@ from collections import defaultdict, namedtuple
 from typing import Optional, Callable
 
 import ray
+from ray.remote_function import RemoteFunction
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
@@ -288,7 +289,6 @@ class FunctionActorManager:
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
-
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
                 # of the failure.
@@ -382,7 +382,12 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
-            function = object._function
+            # Directly importing from local may break function with dynamic ray.remote,
+            # such as the _start_controller function utilized for the Ray service.
+            if isinstance(object, RemoteFunction):
+                function = object._function
+            else:
+                function = object
             self._function_execution_info[function_id] = FunctionExecutionInfo(
                 function=function,
                 function_name=function_name,

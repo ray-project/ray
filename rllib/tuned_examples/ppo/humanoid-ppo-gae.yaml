@@ -11,9 +11,9 @@ humanoid-ppo-gae:
         lambda: 0.95
         clip_param: 0.2
         kl_coeff: 1.0
-        num_sgd_iter: 20
+        num_epochs: 20
         lr: .0001
-        sgd_minibatch_size: 32768
+        minibatch_size: 32768
         horizon: 5000
         train_batch_size: 320000
         model:

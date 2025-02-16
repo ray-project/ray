@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, AsyncMock
 import random
 import sys
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor
 
 from ray.util.state import (
     summarize_tasks,
@@ -42,7 +43,9 @@ from ray.util.state.state_manager import StateDataSourceClient
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 
@@ -280,9 +283,10 @@ async def test_api_manager_summary_objects(state_api_manager):
     assert first_summary.total_size_mb == 4.0
     assert first_summary.total_num_workers == 3
     assert first_summary.total_num_nodes == 2
-    assert first_summary.task_state_counts["PENDING_NODE_ASSIGNMENT"] == 1
-    assert first_summary.task_state_counts["Attempt #2: PENDING_NODE_ASSIGNMENT"] == 1
+    assert first_summary.task_state_counts["PENDING_NODE_ASSIGNMENT"] == 2
     assert first_summary.task_state_counts["RUNNING"] == 2
+    assert first_summary.task_attempt_number_counts["1"] == 3
+    assert first_summary.task_attempt_number_counts["2"] == 1
     assert first_summary.ref_type_counts["PINNED_IN_MEMORY"] == 3
     assert first_summary.ref_type_counts["USED_BY_PENDING_TASK"] == 1
 
@@ -292,6 +296,7 @@ async def test_api_manager_summary_objects(state_api_manager):
     assert second_summary.total_num_workers == 1
     assert second_summary.total_num_nodes == 1
     assert second_summary.task_state_counts["RUNNING"] == 1
+    assert second_summary.task_attempt_number_counts["1"] == 1
     assert second_summary.ref_type_counts["PINNED_IN_MEMORY"] == 1
 
     """

@@ -11,7 +11,7 @@ Key advantages include:
 - Automatic and fast failure recovery.
 - Automatic on-the-fly data splitting across distributed training workers.
 
-For more details about Ray Data, including comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
+For more details about Ray Data, check out the :ref:`Ray Data documentation<data>`.`
 
 .. note::
 
@@ -499,7 +499,9 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
     # Create preprocessors to scale some columns and concatenate the results.
     scaler = StandardScaler(columns=["mean radius", "mean texture"])
-    concatenator = Concatenator(exclude=["target"], dtype=np.float32)
+    columns_to_concatenate = dataset.columns()
+    columns_to_concatenate.remove("target")
+    concatenator = Concatenator(columns=columns_to_concatenate, dtype=np.float32)
 
     # Compute dataset statistics and get transformed datasets. Note that the
     # fit call is executed immediately, but the transformation is lazy.

@@ -55,6 +55,7 @@ Policy NOT using curiosity:
 [DOES NOT LEARN AT ALL]
 """
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.connectors.classes.count_based_curiosity import (
     CountBasedCuriosity,
 )
@@ -127,10 +128,10 @@ if __name__ == "__main__":
             learner_connector=(
                 None if args.no_curiosity else lambda *ags, **kw: CountBasedCuriosity()
             ),
-            num_sgd_iter=10,
+            num_epochs=10,
             vf_loss_coeff=0.01,
         )
-        .rl_module(model_config_dict={"vf_share_layers": True})
+        .rl_module(model_config=DefaultModelConfig(vf_share_layers=True))
     )
 
     run_rllib_example_script_experiment(base_config, args)

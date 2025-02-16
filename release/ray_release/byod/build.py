@@ -17,12 +17,13 @@ from ray_release.test import (
 )
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20240613.tar.gz"
-DATAPLANE_DIGEST = "b7c68dd3cf9ef05b2b1518a32729fc036f06ae83bae9b9ecd241e33b37868944"
+DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
+DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
+REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 
 
@@ -124,6 +125,8 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
             py_version = test.get_python_version()
             if test.use_byod_ml_image():
                 byod_requirements = f"{REQUIREMENTS_ML_BYOD}_{py_version}.txt"
+            elif test.use_byod_llm_image():
+                byod_requirements = f"{REQUIREMENTS_LLM_BYOD}_{py_version}.txt"
             else:
                 byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
 

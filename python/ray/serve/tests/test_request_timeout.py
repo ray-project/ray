@@ -13,9 +13,8 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.test_utils import send_signal_on_cancellation
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
 from ray.util.state import list_tasks
 
 
@@ -297,7 +296,8 @@ def test_cancel_on_http_timeout_during_execution(
 
     @serve.deployment
     async def inner():
-        await send_signal_on_cancellation(inner_signal_actor)
+        async with send_signal_on_cancellation(inner_signal_actor):
+            pass
 
     if use_fastapi:
         app = FastAPI()
@@ -311,7 +311,8 @@ def test_cancel_on_http_timeout_during_execution(
             @app.get("/")
             async def wait_for_cancellation(self):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     else:
 
@@ -322,7 +323,8 @@ def test_cancel_on_http_timeout_during_execution(
 
             async def __call__(self, request: Request):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     serve.run(Ingress.bind(inner.bind()))
 

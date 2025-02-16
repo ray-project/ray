@@ -11,6 +11,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray._private.worker import RayContext
+from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 
 KiB = 1 << 10
 MiB = 1 << 20
@@ -381,7 +382,7 @@ def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
         assert object_store_memory_bytes_from_dashboard == 500 * MiB
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=RAY_DASHBOARD_STATS_UPDATING_INTERVAL * 1.5)
 
 
 if __name__ == "__main__":

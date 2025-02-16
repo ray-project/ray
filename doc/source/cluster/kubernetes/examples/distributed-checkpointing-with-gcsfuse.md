@@ -179,7 +179,7 @@ else:
     )
 ```
 
-You can verify automatic checkpoint recovery by redeploying the same RayJob: 
+You can verify automatic checkpoint recovery by redeploying the same RayJob:
 ```
 kubectl create -f ray-job.pytorch-image-classifier.yaml
 ```
@@ -205,92 +205,92 @@ Result(
 If the previous job failed at an earlier checkpoint, the job should resume from the last saved checkpoint and run until `max_epochs=10`. For example, if the last run
 failed at epoch 7, the training automatically resumes using `checkpoint_000006` and run 3 more iterations until epoch 10:
 ```
-(TorchTrainer pid=611, ip=10.108.2.65) Restored on 10.108.2.65 from checkpoint: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000006)                                                                                                                                                   
-(RayTrainWorker pid=671, ip=10.108.2.65) Setting up process group for: env:// [rank=0, world_size=4]                                                                                                                                                                                                                                                                                                                                    
-(TorchTrainer pid=611, ip=10.108.2.65) Started distributed worker processes:                                                                                                         
-(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.2.65, pid=671) world_rank=0, local_rank=0, node_rank=0                                                                                                                                                                                
-(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.1.83, pid=589) world_rank=1, local_rank=0, node_rank=1                                                                                                                                                                                                                                                                 
-(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.0.72, pid=590) world_rank=2, local_rank=0, node_rank=2                                   
-(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.3.76, pid=590) world_rank=3, local_rank=0, node_rank=3                                                                                                                                                                                
-(RayTrainWorker pid=589, ip=10.108.1.83) Downloading: "https://download.pytorch.org/models/resnet50-0676ba61.pth" to /home/ray/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth                                                                                                         
-(RayTrainWorker pid=671, ip=10.108.2.65)                                                  
+(TorchTrainer pid=611, ip=10.108.2.65) Restored on 10.108.2.65 from checkpoint: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000006)
+(RayTrainWorker pid=671, ip=10.108.2.65) Setting up process group for: env:// [rank=0, world_size=4]
+(TorchTrainer pid=611, ip=10.108.2.65) Started distributed worker processes:
+(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.2.65, pid=671) world_rank=0, local_rank=0, node_rank=0
+(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.1.83, pid=589) world_rank=1, local_rank=0, node_rank=1
+(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.0.72, pid=590) world_rank=2, local_rank=0, node_rank=2
+(TorchTrainer pid=611, ip=10.108.2.65) - (ip=10.108.3.76, pid=590) world_rank=3, local_rank=0, node_rank=3
+(RayTrainWorker pid=589, ip=10.108.1.83) Downloading: "https://download.pytorch.org/models/resnet50-0676ba61.pth" to /home/ray/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth
+(RayTrainWorker pid=671, ip=10.108.2.65)
   0%|          | 0.00/97.8M [00:00<?, ?B/s]
-(RayTrainWorker pid=671, ip=10.108.2.65)                            
- 22%|██▏       | 21.8M/97.8M [00:00<00:00, 229MB/s]                                                                                          
-(RayTrainWorker pid=671, ip=10.108.2.65)   
- 92%|█████████▏| 89.7M/97.8M [00:00<00:00, 327MB/s]                                                                                                                                                                                                                                       
-(RayTrainWorker pid=671, ip=10.108.2.65)                                                                                                                                                                                                                                                                                                                                                                                                
-100%|██████████| 97.8M/97.8M [00:00<00:00, 316MB/s]                                                                                                                                                                                                                                       
-(RayTrainWorker pid=671, ip=10.108.2.65) Moving model to device: cuda:0                                                                                                                                                                                                                                                                                                                                                                                                                                                     
-(RayTrainWorker pid=671, ip=10.108.2.65) Wrapping provided model in DistributedDataParallel.                                                                                                                                                                                                                                                                               
-(RayTrainWorker pid=671, ip=10.108.2.65) Downloading: "https://download.pytorch.org/models/resnet50-0676ba61.pth" to /home/ray/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth [repeated 3x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/ray-logging.html#log-deduplication for more options.)                       
-(RayTrainWorker pid=590, ip=10.108.3.76)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
-  0%|          | 0.00/97.8M [00:00<?, ?B/s] [repeated 3x across cluster]                                                                                                                                                                                                                                                                                                   
-(RayTrainWorker pid=590, ip=10.108.0.72)                                                                                                                                                                                                                                                                                                                                   
- 85%|████████▍ | 82.8M/97.8M [00:00<00:00, 256MB/s]                                                       
-100%|██████████| 97.8M/97.8M [00:00<00:00, 231MB/s] [repeated 11x across cluster]                                                                              
-(RayTrainWorker pid=590, ip=10.108.3.76)                                                  
-100%|██████████| 97.8M/97.8M [00:00<00:00, 238MB/s]                                                                                                                                  
-(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 7-train Loss: 0.0903 Acc: 0.2418                                                                                
-(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 7-val Loss: 0.0881 Acc: 0.2353                                                                                                                                                                                                                                                                                              
-(RayTrainWorker pid=590, ip=10.108.0.72) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000007)                                                                                                         
-(RayTrainWorker pid=590, ip=10.108.0.72) Moving model to device: cuda:0 [repeated 3x across cluster]                                                                                                                                                                                                                                                                       
-(RayTrainWorker pid=590, ip=10.108.0.72) Wrapping provided model in DistributedDataParallel. [repeated 3x across cluster]                                                            
-                                                                                                                                                                                                                                                                                                                                                                                                                                        
-Training finished iteration 8 at 2024-04-29 17:27:29. Total running time: 54s                                                                                                                                                                                                                                                                                                                                                                                                                                               
-╭─────────────────────────────────────────╮                                                                                                                                                                         
-│ Training result                         │                                                                                                                                                                                                                                                                                                                                                                                             
-├─────────────────────────────────────────┤                                                                                                                                                                         
-│ checkpoint_dir_name   checkpoint_000007 │                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
-│ time_this_iter_s               40.46113 │                                                               
-│ time_total_s                   95.00043 │                                                                                                                                                                                                                   
-│ training_iteration                    8 │                                                                                                                                                                         
-│ acc                             0.23529 │                                                               
-│ loss                            0.08811 │                                                                                                                                                                                                                                                                                                                                                                                             
-╰─────────────────────────────────────────╯                                                               
-Training saved a checkpoint for iteration 8 at: (local)/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000007                                                                                                                                                                                                                                                                            
-(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 8-train Loss: 0.0893 Acc: 0.2459                                                                                                                                     
-(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 8-val Loss: 0.0859 Acc: 0.2353                                                                                                                                       
-(RayTrainWorker pid=589, ip=10.108.1.83) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000008) [repeated 4x across cluster]                                                                            
-                                                                                                          
-Training finished iteration 9 at 2024-04-29 17:27:36. Total running time: 1min 1s                                                                              
-╭─────────────────────────────────────────╮                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
-│ Training result                         │                                                                                                                    
-├─────────────────────────────────────────┤                                                                                                                                                                                                                   
-│ checkpoint_dir_name   checkpoint_000008 │                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
-│ time_this_iter_s                5.99923 │                                                                                    
-│ time_total_s                  100.99965 │                                                                                                                    
-│ training_iteration                    9 │                                                                                    
-│ acc                             0.23529 │                                                                                    
-│ loss                            0.08592 │                                                                                                                                                                                                                   
-╰─────────────────────────────────────────╯                                                                                    
-Training saved a checkpoint for iteration 9 at: (local)/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000008                                                                                                                                                                                                                                                                                                                                                                
-2024-04-29 17:27:37,170 WARNING util.py:202 -- The `process_trial_save` operation took 0.540 s, which may be a performance bottleneck.                         
-(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 9-train Loss: 0.0866 Acc: 0.2377                                                                                                                                                                                                                                                                                                                                                                                                                                             
-(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 9-val Loss: 0.0833 Acc: 0.2353                                                                                                                                                                                 
-(RayTrainWorker pid=589, ip=10.108.1.83) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009) [repeated 4x across cluster]                                                                            
-                                                                                                                                                                                                                                                              
-Training finished iteration 10 at 2024-04-29 17:27:43. Total running time: 1min 8s                                                                             
-╭─────────────────────────────────────────╮                                                                                                                    
-│ Training result                         │                                                                                                                    
-├─────────────────────────────────────────┤                                                                                                                    
-│ checkpoint_dir_name   checkpoint_000009 │                                                                                                                    
-│ time_this_iter_s                6.71457 │                                                                                                                    
-│ time_total_s                  107.71422 │                                                                                                                    
-│ training_iteration                   10 │                                                                                                                    
-│ acc                             0.23529 │                                                                                                                    
-│ loss                            0.08333 │                                                                                                                    
-╰─────────────────────────────────────────╯                                                                                                                    
-Training saved a checkpoint for iteration 10 at: (local)/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009                                                                                                                                                                 
+(RayTrainWorker pid=671, ip=10.108.2.65)
+ 22%|██▏       | 21.8M/97.8M [00:00<00:00, 229MB/s]
+(RayTrainWorker pid=671, ip=10.108.2.65)
+ 92%|█████████▏| 89.7M/97.8M [00:00<00:00, 327MB/s]
+(RayTrainWorker pid=671, ip=10.108.2.65)
+100%|██████████| 97.8M/97.8M [00:00<00:00, 316MB/s]
+(RayTrainWorker pid=671, ip=10.108.2.65) Moving model to device: cuda:0
+(RayTrainWorker pid=671, ip=10.108.2.65) Wrapping provided model in DistributedDataParallel.
+(RayTrainWorker pid=671, ip=10.108.2.65) Downloading: "https://download.pytorch.org/models/resnet50-0676ba61.pth" to /home/ray/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth [repeated 3x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/ray-logging.html#log-deduplication for more options.)
+(RayTrainWorker pid=590, ip=10.108.3.76)
+  0%|          | 0.00/97.8M [00:00<?, ?B/s] [repeated 3x across cluster]
+(RayTrainWorker pid=590, ip=10.108.0.72)
+ 85%|████████▍ | 82.8M/97.8M [00:00<00:00, 256MB/s]
+100%|██████████| 97.8M/97.8M [00:00<00:00, 231MB/s] [repeated 11x across cluster]
+(RayTrainWorker pid=590, ip=10.108.3.76)
+100%|██████████| 97.8M/97.8M [00:00<00:00, 238MB/s]
+(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 7-train Loss: 0.0903 Acc: 0.2418
+(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 7-val Loss: 0.0881 Acc: 0.2353
+(RayTrainWorker pid=590, ip=10.108.0.72) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000007)
+(RayTrainWorker pid=590, ip=10.108.0.72) Moving model to device: cuda:0 [repeated 3x across cluster]
+(RayTrainWorker pid=590, ip=10.108.0.72) Wrapping provided model in DistributedDataParallel. [repeated 3x across cluster]
 
-Training completed after 10 iterations at 2024-04-29 17:27:45. Total running time: 1min 9s                                                                     
+Training finished iteration 8 at 2024-04-29 17:27:29. Total running time: 54s
+╭─────────────────────────────────────────╮
+│ Training result                         │
+├─────────────────────────────────────────┤
+│ checkpoint_dir_name   checkpoint_000007 │
+│ time_this_iter_s               40.46113 │
+│ time_total_s                   95.00043 │
+│ training_iteration                    8 │
+│ acc                             0.23529 │
+│ loss                            0.08811 │
+╰─────────────────────────────────────────╯
+Training saved a checkpoint for iteration 8 at: (local)/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000007
+(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 8-train Loss: 0.0893 Acc: 0.2459
+(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 8-val Loss: 0.0859 Acc: 0.2353
+(RayTrainWorker pid=589, ip=10.108.1.83) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000008) [repeated 4x across cluster]
+
+Training finished iteration 9 at 2024-04-29 17:27:36. Total running time: 1min 1s
+╭─────────────────────────────────────────╮
+│ Training result                         │
+├─────────────────────────────────────────┤
+│ checkpoint_dir_name   checkpoint_000008 │
+│ time_this_iter_s                5.99923 │
+│ time_total_s                  100.99965 │
+│ training_iteration                    9 │
+│ acc                             0.23529 │
+│ loss                            0.08592 │
+╰─────────────────────────────────────────╯
+Training saved a checkpoint for iteration 9 at: (local)/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000008
+2024-04-29 17:27:37,170 WARNING util.py:202 -- The `process_trial_save` operation took 0.540 s, which may be a performance bottleneck.
+(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 9-train Loss: 0.0866 Acc: 0.2377
+(RayTrainWorker pid=671, ip=10.108.2.65) Epoch 9-val Loss: 0.0833 Acc: 0.2353
+(RayTrainWorker pid=589, ip=10.108.1.83) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009) [repeated 4x across cluster]
+
+Training finished iteration 10 at 2024-04-29 17:27:43. Total running time: 1min 8s
+╭─────────────────────────────────────────╮
+│ Training result                         │
+├─────────────────────────────────────────┤
+│ checkpoint_dir_name   checkpoint_000009 │
+│ time_this_iter_s                6.71457 │
+│ time_total_s                  107.71422 │
+│ training_iteration                   10 │
+│ acc                             0.23529 │
+│ loss                            0.08333 │
+╰─────────────────────────────────────────╯
+Training saved a checkpoint for iteration 10 at: (local)/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009
+
+Training completed after 10 iterations at 2024-04-29 17:27:45. Total running time: 1min 9s
 2024-04-29 17:27:46,236 WARNING experiment_state.py:323 -- Experiment checkpoint syncing has been triggered multiple times in the last 30.0 seconds. A sync will be triggered whenever a trial has checkpointed more than `num_to_keep` times since last sync or if 300 seconds have passed since last sync. If you have set `num_to_keep` in your `CheckpointConfig`, consider increasing the checkpoint frequency or keeping more checkpoints. You can supress this warning by changing the `TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S` environment variable.
 
-Result(                                                                                                                                                        
-  metrics={'loss': 0.08333033206416111, 'acc': 0.23529411764705882},                                                                                           
-  path='/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29',                                                                  
-  filesystem='local',                                                                                                                                          
-  checkpoint=Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009)                                                                                                                                                                         
-)                                                                                                                                                              
-(RayTrainWorker pid=590, ip=10.108.3.76) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009) [repeated 3x across cluster]  
+Result(
+  metrics={'loss': 0.08333033206416111, 'acc': 0.23529411764705882},
+  path='/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29',
+  filesystem='local',
+  checkpoint=Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009)
+)
+(RayTrainWorker pid=590, ip=10.108.3.76) Checkpoint successfully created at: Checkpoint(filesystem=local, path=/mnt/cluster_storage/finetune-resnet/TorchTrainer_96923_00000_0_2024-04-29_17-21-29/checkpoint_000009) [repeated 3x across cluster]
 ```

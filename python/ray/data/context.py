@@ -1,3 +1,4 @@
+import enum
 import logging
 import os
 import threading
@@ -22,6 +23,15 @@ _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 
+@DeveloperAPI(stability="alpha")
+class ShuffleStrategy(str, enum.Enum):
+    """Shuffle strategy determines shuffling algorithm employed by operations
+    like aggregate, repartition, etc"""
+
+    SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
+    SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
+
+
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
 # tasks, the memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM
 # * DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION * 0.3 (default object store memory
@@ -40,6 +50,12 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_num_rows_per_block. We will warn the user if slicing fails and we produce
+# blocks with more rows than this threshold.
+MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
+
+
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
 # This default appears to work well with most file sizes on remote storage systems,
@@ -56,6 +72,10 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
+DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -70,9 +90,15 @@ DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
-DEFAULT_MIN_PARALLELISM = 200
+DEFAULT_MIN_PARALLELISM = env_integer("RAY_DATA_DEFAULT_MIN_PARALLELISM", 200)
 
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+
+# NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
+#       total cumulative size (due to it internally utilizing int32 offsets)
+#
+#       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
+DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 
 DEFAULT_AUTO_LOG_STATS = False
 
@@ -82,6 +108,10 @@ DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS"
 
 DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
     "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
+)
+
+DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
+    "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
 )
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -98,6 +128,8 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
+# `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
+# shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
 DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
@@ -110,6 +142,7 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
+    "AWS Error SERVICE_UNAVAILABLE",
 )
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
@@ -158,6 +191,25 @@ def _execution_options_factory() -> "ExecutionOptions":
     from ray.data._internal.execution.interfaces import ExecutionOptions
 
     return ExecutionOptions()
+
+
+def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
+    if DEFAULT_USE_PUSH_BASED_SHUFFLE:
+        logger.warning(
+            "RAY_DATA_PUSH_BASED_SHUFFLE is deprecated, please use "
+            "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY to set shuffling strategy"
+        )
+
+        return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+    else:
+        vs = [s for s in ShuffleStrategy]  # noqa: C416
+
+        assert DEFAULT_SHUFFLE_STRATEGY in vs, (
+            f"RAY_DATA_DEFAULT_SHUFFLE_STRATEGY has to be one of the [{','.join(vs)}] "
+            f"(got {DEFAULT_SHUFFLE_STRATEGY})"
+        )
+
+        return DEFAULT_SHUFFLE_STRATEGY
 
 
 @DeveloperAPI
@@ -209,6 +261,12 @@ class DataContext:
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
+        use_arrow_tensor_v2: Config enabling V2 version of ArrowTensorArray supporting
+            tensors > 2Gb in size (off by default)
+        enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
+            values not suppported by Arrow natively (like user-defined custom Python
+            classes for ex, etc) using `ArrowPythonObjectType` (simply serializing
+            these as bytes)
         enable_auto_log_stats: Whether to automatically log stats after execution. If
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
@@ -247,6 +305,8 @@ class DataContext:
         log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
             Core code stack frames when logging to stdout. The full stack trace is
             always written to the Ray Data log file.
+        raise_original_map_exception: Whether to raise the original exception
+            encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
         s3_try_create_dir: If ``True``, try to create directories on S3 when a write
@@ -264,8 +324,19 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+
+    ################################################################
+    # Sort-based shuffling configuration
+    ################################################################
+
     use_push_based_shuffle: bool = DEFAULT_USE_PUSH_BASED_SHUFFLE
+
+    _shuffle_strategy: ShuffleStrategy = _deduce_default_shuffle_algorithm()
+
     pipeline_push_based_shuffle_reduce_tasks: bool = True
+
+    ################################################################
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
@@ -277,6 +348,8 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
+    enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
@@ -306,12 +379,15 @@ class DataContext:
     log_internal_stack_trace_to_stdout: bool = (
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
+    raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+
+    override_object_store_memory_limit_fraction: float = None
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -360,15 +436,42 @@ class DataContext:
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
+        elif name == "use_push_based_shuffle":
+            warnings.warn(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+                DeprecationWarning,
+            )
 
         super().__setattr__(name, value)
 
     @staticmethod
     def get_current() -> "DataContext":
-        """Get or create a singleton context.
+        """Get or create the current DataContext.
 
-        If the context has not yet been created in this process, it will be
-        initialized with default settings.
+        When a Dataset is created, the current DataContext will be sealed.
+        Changes to `DataContext.get_current()` will not impact existing Datasets.
+
+        Examples:
+
+            .. testcode::
+                import ray
+
+                context = ray.data.DataContext.get_current()
+
+                context.target_max_block_size = 100 * 1024 ** 2
+                ds1 = ray.data.range(1)
+                context.target_max_block_size = 1 * 1024 ** 2
+                ds2 = ray.data.range(1)
+
+                # ds1's target_max_block_size will be 100MB
+                ds1.take_all()
+                # ds2's target_max_block_size will be 1MB
+                ds2.take_all()
+
+        Developer notes: Avoid using `DataContext.get_current()` in data
+        internal components, use the DataContext object captured in the
+        Dataset and pass it around as arguments.
         """
 
         global _default_context
@@ -388,6 +491,22 @@ class DataContext:
         """
         global _default_context
         _default_context = context
+
+    @property
+    def shuffle_strategy(self) -> ShuffleStrategy:
+        if self.use_push_based_shuffle:
+            logger.warning(
+                "`use_push_based_shuffle` is deprecated, please configure "
+                "`shuffle_strategy` instead.",
+            )
+
+            return ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED
+
+        return self._shuffle_strategy
+
+    @shuffle_strategy.setter
+    def shuffle_strategy(self, value: ShuffleStrategy) -> None:
+        self._shuffle_strategy = value
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.

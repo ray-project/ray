@@ -50,15 +50,17 @@ class ActorTaskSubmitterInterface {
  public:
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
-                                        bool execute_out_of_order = false,
-                                        bool fail_if_actor_unreachable = true) = 0;
+                                        bool execute_out_of_order,
+                                        bool fail_if_actor_unreachable,
+                                        bool owned) = 0;
   virtual void ConnectActor(const ActorID &actor_id,
                             const rpc::Address &address,
                             int64_t num_restarts) = 0;
   virtual void DisconnectActor(const ActorID &actor_id,
                                int64_t num_restarts,
                                bool dead,
-                               const rpc::ActorDeathCause &death_cause) = 0;
+                               const rpc::ActorDeathCause &death_cause,
+                               bool is_restartable) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
 
@@ -77,13 +79,15 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      TaskFinisherInterface &task_finisher,
                      ActorCreatorInterface &actor_creator,
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
-                     instrumented_io_context &io_service)
+                     instrumented_io_context &io_service,
+                     std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : core_worker_client_pool_(core_worker_client_pool),
         actor_creator_(actor_creator),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
-        io_service_(io_service) {
+        io_service_(io_service),
+        reference_counter_(reference_counter) {
     next_queueing_warn_threshold_ =
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
   }
@@ -104,11 +108,13 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
   /// \param[in] execute_out_of_order Whether to execute tasks out of order.
   /// \param[in] fail_if_actor_unreachable Whether to fail newly submitted tasks
+  /// \param[in] owned Whether the actor is owned by the current process.
   /// immediately when the actor is unreachable.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
-                                bool execute_out_of_order = false,
-                                bool fail_if_actor_unreachable = true);
+                                bool execute_out_of_order,
+                                bool fail_if_actor_unreachable,
+                                bool owned);
 
   /// Submit a task to an actor for execution.
   ///
@@ -137,13 +143,15 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] num_restarts How many times this actor has been restarted
   /// before. If we've already seen a later incarnation of the actor, we will
   /// ignore the command to connect.
-  /// \param[in] dead Whether the actor is permanently dead. In this case, all
+  /// \param[in] dead Whether the actor is dead. In this case, all
   /// pending tasks for the actor should be failed.
   /// \param[in] death_cause Context about why this actor is dead.
+  /// \param[in] is_restartable Whether the dead actor is restartable.
   void DisconnectActor(const ActorID &actor_id,
                        int64_t num_restarts,
                        bool dead,
-                       const rpc::ActorDeathCause &death_cause);
+                       const rpc::ActorDeathCause &death_cause,
+                       bool is_restartable);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -182,6 +190,14 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
+
+  /// Get the given actor id's address.
+  /// It returns nullopt if the actor's address is not reported.
+  std::optional<rpc::Address> GetActorAddress(const ActorID &actor_id) const;
+
+  /// Get the local actor state. nullopt if the state is unknown.
+  std::optional<rpc::ActorTableData::ActorState> GetLocalActorState(
+      const ActorID &actor_id) const;
 
   /// Cancel an actor task of a given task spec.
   ///
@@ -263,9 +279,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     ClientQueue(ActorID actor_id,
                 bool execute_out_of_order,
                 int32_t max_pending_calls,
-                bool fail_if_actor_unreachable)
+                bool fail_if_actor_unreachable,
+                bool owned)
         : max_pending_calls(max_pending_calls),
-          fail_if_actor_unreachable(fail_if_actor_unreachable) {
+          fail_if_actor_unreachable(fail_if_actor_unreachable),
+          owned(owned) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {
@@ -284,6 +302,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
     int64_t num_restarts = -1;
+    /// How many times this actor has been lineage reconstructured.
+    /// This is used to drop stale messages.
+    int64_t num_restarts_due_to_lineage_reconstructions = 0;
     /// Whether this actor exits by spot preemption.
     bool preempted = false;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
@@ -291,6 +312,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
     /// The intended worker ID of the actor.
     std::string worker_id = "";
+    /// The actor is out of scope but the death info is not published
+    /// to this worker yet.
+    bool pending_out_of_scope_death = false;
+    /// If the actor is dead, whether it can be restarted.
+    bool is_restartable = false;
 
     /// The queue that orders actor requests.
     std::unique_ptr<IActorSubmitQueue> actor_submit_queue;
@@ -327,6 +353,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// Whether to fail newly submitted tasks immediately when the actor is unreachable.
     bool fail_if_actor_unreachable = true;
 
+    /// Whether the current process is owner of the actor.
+    bool owned;
+
     /// Returns debug string for class.
     ///
     /// \return string.
@@ -361,6 +390,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Send all pending tasks for an actor.
   ///
+  /// If the actor is pending out-of-scope death notification, pending tasks will
+  /// wait until the notification is received to decide whether we should
+  /// fail pending tasks or restart the actor.
   /// \param[in] actor_id Actor ID.
   /// \return Void.
   void SendPendingTasks(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -384,6 +416,12 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   void FailInflightTasks(
       const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Restart the actor from DEAD by sending a RestartActor rpc to GCS.
+  void RestartActor(const ActorID &actor_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  void NotifyGCSWhenActorOutOfScope(const ActorID &actor_id,
+                                    uint64_t num_restarts_due_to_lineage_reconstructions);
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
@@ -410,6 +448,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// The event loop where the actor task events are handled.
   instrumented_io_context &io_service_;
+
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
   friend class CoreWorkerTest;
 };

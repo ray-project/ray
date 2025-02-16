@@ -1,3 +1,4 @@
+from collections import deque
 import contextlib
 from functools import partial
 
@@ -34,7 +35,6 @@ from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
-    framework_iterator,
 )
 from ray.tune.utils import merge_dicts, deep_update
 
@@ -84,7 +84,7 @@ def force_list(elements=None, to_tuple=False):
         ctor()
         if elements is None
         else ctor(elements)
-        if type(elements) in [list, set, tuple]
+        if type(elements) in [list, set, tuple, deque]
         else ctor([elements])
     )
 
@@ -115,7 +115,6 @@ __all__ = [
     "fc",
     "force_list",
     "force_tuple",
-    "framework_iterator",
     "lstm",
     "merge_dicts",
     "one_hot",

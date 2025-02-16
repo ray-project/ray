@@ -18,6 +18,11 @@ torch, nn = try_import_torch()
 
 
 class MARWILTorchLearner(MARWILLearner, TorchLearner):
+    """Implements torch-specific MARWIL loss on top of MARWILLearner.
+
+    This class implements the MARWIL loss under `self.compute_loss_for_module()`.
+    """
+
     def compute_loss_for_module(
         self,
         *,
@@ -26,6 +31,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
+        module = self.module[module_id].unwrapped()
 
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
@@ -41,9 +47,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         else:
             possibly_masked_mean = torch.mean
 
-        action_dist_class_train = (
-            self.module[module_id].unwrapped().get_train_action_dist_cls()
-        )
+        action_dist_class_train = module.get_train_action_dist_cls()
         curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
@@ -59,9 +63,10 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # Otherwise, compute advantages.
         else:
             # cumulative_rewards = batch[Columns.ADVANTAGES]
-            value_fn_out = fwd_out[Columns.VF_PREDS]
-            # advantages = cumulative_rewards - value_fn_out
-            advantages = batch[Columns.ADVANTAGES]
+            value_fn_out = module.compute_values(
+                batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+            )
+            advantages = batch[Columns.VALUE_TARGETS] - value_fn_out
             advantages_squared_mean = possibly_masked_mean(torch.pow(advantages, 2.0))
 
             # Compute the value loss.

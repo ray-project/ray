@@ -116,6 +116,39 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.grpc_util.RayServegRPCContext
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
+   serve.exceptions.RequestCancelledError
+   serve.exceptions.DeploymentUnavailableError
+```
+
+#### Large Language Model (LLM) Serving APIs
+
+##### Configs
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.LLMConfig
+```
+
+##### Deployments
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.VLLMDeployment
+   serve.llm.LLMModelRouterDeployment
+```
+
+##### Builders
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.build_vllm_deployment
+   serve.llm.build_openai_app
 ```
 
 (serve-cli)=
@@ -373,9 +406,12 @@ Content-Type: application/json
    :toctree: doc/
 
    schema.ServeInstanceDetails
+   schema.APIType
+   schema.ApplicationStatus
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+   schema.ProxyStatus
 ```
 
 ## Observability

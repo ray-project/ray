@@ -2,6 +2,7 @@ from ray.air.util.tensor_extensions.arrow import (  # noqa: F401
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
+    ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
 )

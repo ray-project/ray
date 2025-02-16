@@ -27,8 +27,8 @@ namespace core {
 
 void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
                         rpc::Address rpc_address,
-                        std::shared_ptr<DependencyWaiter> dependency_waiter) {
-  waiter_ = std::move(dependency_waiter);
+                        DependencyWaiter *dependency_waiter) {
+  waiter_ = dependency_waiter;
   rpc_address_ = rpc_address;
   client_pool_ = client_pool;
 }
@@ -63,19 +63,21 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
-  std::shared_ptr<ResourceMappingType> resource_ids;
+  std::optional<ResourceMappingType> resource_ids;
   if (!task_spec.IsActorTask()) {
-    resource_ids.reset(new ResourceMappingType());
+    resource_ids = ResourceMappingType{};
     for (const auto &mapping : request.resource_mapping()) {
       std::vector<std::pair<int64_t, double>> rids;
+      rids.reserve(mapping.resource_ids().size());
       for (const auto &ids : mapping.resource_ids()) {
-        rids.push_back(std::make_pair(ids.index(), ids.quantity()));
+        rids.emplace_back(ids.index(), ids.quantity());
       }
-      (*resource_ids)[mapping.name()] = rids;
+      (*resource_ids)[mapping.name()] = std::move(rids);
     }
   }
 
-  auto accept_callback = [this, reply, task_spec, resource_ids](
+  auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
+                             const TaskSpecification &task_spec,
                              rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -96,7 +98,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     bool is_retryable_error = false;
     std::string application_error = "";
     auto status = task_handler_(task_spec,
-                                resource_ids,
+                                std::move(resource_ids),
                                 &return_objects,
                                 &dynamic_return_objects,
                                 &streaming_generator_returns,
@@ -215,8 +217,9 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
   };
 
-  auto cancel_callback = [reply, task_spec](const Status &status,
-                                            rpc::SendReplyCallback send_reply_callback) {
+  auto cancel_callback = [reply](const TaskSpecification &task_spec,
+                                 const Status &status,
+                                 rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
       send_reply_callback(status, nullptr, nullptr);
@@ -227,8 +230,6 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       send_reply_callback(status, nullptr, nullptr);
     }
   };
-
-  auto dependencies = task_spec.GetDependencies();
 
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
@@ -241,6 +242,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                           std::unique_ptr<SchedulingQueue>(
                               new OutOfOrderActorSchedulingQueue(task_main_io_service_,
                                                                  *waiter_,
+                                                                 task_event_buffer_,
                                                                  pool_manager_,
                                                                  fiber_state_manager_,
                                                                  is_asyncio_,
@@ -253,6 +255,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                           std::unique_ptr<SchedulingQueue>(
                               new ActorSchedulingQueue(task_main_io_service_,
                                                        *waiter_,
+                                                       task_event_buffer_,
                                                        pool_manager_,
                                                        fiber_state_manager_,
                                                        is_asyncio_,
@@ -267,10 +270,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                     std::move(accept_callback),
                     std::move(cancel_callback),
                     std::move(send_reply_callback),
-                    task_spec.ConcurrencyGroupName(),
-                    task_spec.FunctionDescriptor(),
-                    task_spec.TaskId(),
-                    dependencies);
+                    std::move(task_spec));
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
@@ -280,10 +280,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                                   std::move(accept_callback),
                                   std::move(cancel_callback),
                                   std::move(send_reply_callback),
-                                  "",
-                                  task_spec.FunctionDescriptor(),
-                                  task_spec.TaskId(),
-                                  dependencies);
+                                  std::move(task_spec));
   }
 }
 

@@ -1,16 +1,16 @@
-from typing import List, Tuple
+from collections import deque
+from typing import List, Tuple, Union
 
 import numpy as np
+import tree  # pip install dm_tree
 
+from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-def create_mask_and_seq_lens(
-    episode_lens: List[int],
-    T: int,
-) -> Tuple[np._typing.NDArray, np._typing.NDArray]:
-    """Creates loss mask and a seq_lens array, given a list of episode lengths and T.
+def create_mask_and_seq_lens(episode_len: int, T: int) -> Tuple[List, List]:
+    """Creates loss mask and a seq_lens array, given an episode length and T.
 
     Args:
         episode_lens: A list of episode lengths to infer the loss mask and seq_lens
@@ -20,123 +20,150 @@ def create_mask_and_seq_lens(
             most `T` long and remaining timesteps will be zero-padded (and masked out).
 
     Returns:
-         Tuple consisting of a) the loss mask to use (masking out areas that are past
-         the end of an episode (or rollout), but had to be zero-added due to the added
-         extra time rank (of length T) and b) the array of sequence lengths resulting
-         from splitting the given episodes into chunks of at most `T` timesteps.
+         Tuple consisting of a) list of the loss masks to use (masking out areas that
+         are past the end of an episode (or rollout), but had to be zero-added due to
+         the added extra time rank (of length T) and b) the list of sequence lengths
+         resulting from splitting the given episodes into chunks of at most `T`
+         timesteps.
     """
     mask = []
     seq_lens = []
-    for episode_len in episode_lens:
-        len_ = min(episode_len, T)
+
+    len_ = min(episode_len, T)
+    seq_lens.append(len_)
+    row = np.array([1] * len_ + [0] * (T - len_), np.bool_)
+    mask.append(row)
+
+    # Handle sequence lengths greater than T.
+    overflow = episode_len - T
+    while overflow > 0:
+        len_ = min(overflow, T)
         seq_lens.append(len_)
-        row = [1] * len_ + [0] * (T - len_)
-        mask.append(row)
+        extra_row = np.array([1] * len_ + [0] * (T - len_), np.bool_)
+        mask.append(extra_row)
+        overflow -= T
 
-        # Handle sequence lengths greater than T.
-        overflow = episode_len - T
-        while overflow > 0:
-            len_ = min(overflow, T)
-            seq_lens.append(len_)
-            extra_row = [1] * len_ + [0] * (T - len_)
-            mask.append(extra_row)
-            overflow -= T
-
-    return np.array(mask, dtype=np.bool_), np.array(seq_lens, dtype=np.int32)
-
-
-def split_and_pad(data_chunks: List[np._typing.NDArray], T: int) -> np._typing.NDArray:
-    """Splits and zero-pads data from episodes into a single ndarray with a fixed T-axis.
-
-    Processes each data chunk in `data_chunks`, coming from one episode by splitting
-    the chunk into smaller sub-chunks, each of a maximum size `T`. If a sub-chunk is
-    smaller than `T`, it is right-padded with zeros to match the desired size T.
-    All sub-chunks are then re-combined (concatenated) into a single ndarray, which is
-    reshaped to include the new time dimension `T` as axis 1 (axis 0 is the batch
-    axis). The resulting output array has dimensions (B=number of sub-chunks, T, ...),
-    where '...' represents the original dimensions of the input data (excluding the
-    batch dimension).
-
-    Args:
-        data_chunks: A list where each element is a NumPy array representing
-            an episode. Each array's shape should be (episode_length, ...)
-            where '...' represents any number of additional dimensions.
-        T: The desired time dimension size for each chunk.
-
-    Returns:
-        A np.ndarray containing the reshaped and padded chunks. The shape of the
-        array will be (B, T, ...) where B is automatically determined by the number
-        of chunks in `data_chunks` and `T`.
-        '...' represents the original dimensions of the input data, excluding the
-        batch dimension.
-    """
-    all_chunks = []
-
-    for data_chunk in data_chunks:
-        num_sub_chunks = int(np.ceil(data_chunk.shape[0] / T))
-
-        for i in range(num_sub_chunks):
-            start_index = i * T
-            end_index = start_index + T
-
-            # Extract the chunk.
-            sub_chunk = data_chunk[start_index:end_index]
-
-            # Pad the chunk if it's shorter than T
-            if sub_chunk.shape[0] < T:
-                padding_shape = [(0, T - sub_chunk.shape[0])] + [
-                    (0, 0) for _ in range(sub_chunk.ndim - 1)
-                ]
-                sub_chunk = np.pad(sub_chunk, pad_width=padding_shape, mode="constant")
-
-            all_chunks.append(sub_chunk)
-
-    # Combine all chunks into a single array.
-    result = np.concatenate(all_chunks, axis=0)
-
-    # Reshape the array to include the time dimension T.
-    # The new shape should be (-1, T) + original dimensions (excluding the
-    # batch dimension).
-    result = result.reshape((-1, T) + result.shape[1:])
-
-    return result
+    return mask, seq_lens
 
 
 @DeveloperAPI
-def split_and_pad_single_record(
-    data: np._typing.NDArray, episode_lengths: List[int], T: int
-):
-    """See `split_and_pad`, but initial data has already been concatenated over episodes.
+def split_and_zero_pad(
+    item_list: List[Union[BatchedNdArray, np._typing.NDArray, float]],
+    max_seq_len: int,
+) -> List[np._typing.NDArray]:
+    """Splits the contents of `item_list` into a new list of ndarrays and returns it.
 
-    Given an np.ndarray of data that is the result of a concatenation of data chunks
-    coming from different episodes, the lengths of these episodes, as well as the
-    maximum time dimension, split and possibly right-zero-pad this input data, such that
-    the resulting shape of the returned np.ndarray is (B', T, ...), where B' is the
-    number of generated sub-chunks and ... is the original shape of the data (excluding
-    the batch dim). T is the size of the newly inserted time axis (on which zero-padding
-    is applied if necessary).
+    In the returned list, each item is one ndarray of len (axis=0) `max_seq_len`.
+    The last item in the returned list may be (right) zero-padded, if necessary, to
+    reach `max_seq_len`.
+
+    If `item_list` contains one or more `BatchedNdArray` (instead of individual
+    items), these will be split accordingly along their axis=0 to yield the returned
+    structure described above.
+
+    .. testcode::
+
+        from ray.rllib.utils.postprocessing.zero_padding import (
+            BatchedNdArray,
+            split_and_zero_pad,
+        )
+        from ray.rllib.utils.test_utils import check
+
+        # Simple case: `item_list` contains individual floats.
+        check(
+            split_and_zero_pad([0, 1, 2, 3, 4, 5, 6, 7], 5),
+            [[0, 1, 2, 3, 4], [5, 6, 7, 0, 0]],
+        )
+
+        # `item_list` contains BatchedNdArray (ndarrays that explicitly declare they
+        # have a batch axis=0).
+        check(
+            split_and_zero_pad([
+                BatchedNdArray([0, 1]),
+                BatchedNdArray([2, 3, 4, 5]),
+                BatchedNdArray([6, 7, 8]),
+            ], 5),
+            [[0, 1, 2, 3, 4], [5, 6, 7, 8, 0]],
+        )
 
     Args:
-        data: The single np.ndarray input data to be split, zero-added, and reshaped.
-        episode_lengths: The list of episode lengths, from which `data` was originally
-            concat'd.
-        T: The maximum number of timesteps on the T-axis in the resulting np.ndarray.
+        item_list: A list of individual items or BatchedNdArrays to be split into
+            `max_seq_len` long pieces (the last of which may be zero-padded).
+        max_seq_len: The maximum length of each item in the returned list.
 
     Returns:
-        A single np.ndarray, which contains the same data as `data`, but split into sub-
-        chunks of max. size T (zero-padded if necessary at the end of individual
-        episodes), then reshaped to (B', T, ...).
+        A list of np.ndarrays (all of length `max_seq_len`), which contains the same
+        data as `item_list`, but split into sub-chunks of size `max_seq_len`.
+        The last item in the returned list may be zero-padded, if necessary.
     """
-    # Chop up `data` into chunks of max len=T, based on the lengths of the episodes
-    # where this data came from.
-    episodes_data = []
-    idx = 0
-    for episode_len in episode_lengths:
-        episodes_data.append(data[idx : idx + episode_len])
-        idx += episode_len
-    # Send everything through `split_and_pad` to perform the actual splitting into
-    # sub-chunks of max len=T and zero-padding.
-    return split_and_pad(episodes_data, T)
+    zero_element = tree.map_structure(
+        lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
+        item_list[0],
+    )
+
+    # The replacement list (to be returned) for `items_list`.
+    # Items list contains n individual items.
+    # -> ret will contain m batched rows, where m == n // T and the last row
+    # may be zero padded (until T).
+    ret = []
+
+    # List of the T-axis item, collected to form the next row.
+    current_time_row = []
+    current_t = 0
+
+    item_list = deque(item_list)
+    while len(item_list) > 0:
+        item = item_list.popleft()
+        # `item` is already a batched np.array: Split if necessary.
+        if isinstance(item, BatchedNdArray):
+            t = max_seq_len - current_t
+            current_time_row.append(item[:t])
+            if len(item) <= t:
+                current_t += len(item)
+            else:
+                current_t += t
+                item_list.appendleft(item[t:])
+        # `item` is a single item (no batch axis): Append and continue with next item.
+        else:
+            current_time_row.append(item)
+            current_t += 1
+
+        # `current_time_row` is "full" (max_seq_len): Append as ndarray (with batch
+        # axis) to `ret`.
+        if current_t == max_seq_len:
+            ret.append(
+                batch(
+                    current_time_row,
+                    individual_items_already_have_batch_dim="auto",
+                )
+            )
+            current_time_row = []
+            current_t = 0
+
+    # `current_time_row` is unfinished: Pad, if necessary and append to `ret`.
+    if current_t > 0 and current_t < max_seq_len:
+        current_time_row.extend([zero_element] * (max_seq_len - current_t))
+        ret.append(
+            batch(current_time_row, individual_items_already_have_batch_dim="auto")
+        )
+
+    return ret
+
+
+@DeveloperAPI
+def split_and_zero_pad_n_episodes(nd_array, episode_lens, max_seq_len):
+    ret = []
+
+    # item_list = deque(item_list)
+    cursor = 0
+    for episode_len in episode_lens:
+        # episode_item_list = []
+        items = BatchedNdArray(nd_array[cursor : cursor + episode_len])
+        # episode_item_list.append(items)
+        ret.extend(split_and_zero_pad([items], max_seq_len))
+        cursor += episode_len
+
+    return ret
 
 
 @DeveloperAPI
@@ -179,7 +206,7 @@ def unpad_data_if_necessary(episode_lens, data):
         return data
 
     # Assert we only have B and T dimensions (meaning this function only operates
-    # on single-float data, such as value function predictions).
+    # on single-float data, such as value function predictions, advantages, or rewards).
     assert len(data.shape) == 2
 
     new_data = []

@@ -16,11 +16,13 @@
 
 #include <memory>
 
+#include "absl/time/time.h"
 #include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
+#include "src/ray/protobuf/export_api/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -60,27 +62,11 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 }
 
 /// Helper function to produce error table data.
-inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
+std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
     const std::string &error_type,
     const std::string &error_msg,
-    double timestamp,
-    const JobID &job_id = JobID::Nil()) {
-  uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
-  auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
-  error_info_ptr->set_type(error_type);
-  if (error_msg.length() > max_error_msg_size_bytes) {
-    std::ostringstream stream;
-    stream << "The message size exceeds " << std::to_string(max_error_msg_size_bytes)
-           << " bytes. Find the full log from the log files. Here is abstract: "
-           << error_msg.substr(0, max_error_msg_size_bytes);
-    error_info_ptr->set_error_message(stream.str());
-  } else {
-    error_info_ptr->set_error_message(error_msg);
-  }
-  error_info_ptr->set_timestamp(timestamp);
-  error_info_ptr->set_job_id(job_id.Binary());
-  return error_info_ptr;
-}
+    absl::Time timestamp,
+    const JobID &job_id = JobID::Nil());
 
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
@@ -188,6 +174,15 @@ inline std::string GenErrorMessageFromDeathCause(
   }
 }
 
+inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
+  RAY_CHECK_EQ(actor.state(), rpc::ActorTableData::DEAD);
+  return actor.death_cause().context_case() == ContextCase::kActorDiedErrorContext &&
+         actor.death_cause().actor_died_error_context().reason() ==
+             rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
+         ((actor.max_restarts() == -1) ||
+          (static_cast<int64_t>(actor.num_restarts()) < actor.max_restarts()));
+}
+
 inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {
   std::stringstream ss;
   ss << "Error type " << error_info.error_type() << " exception string "
@@ -241,6 +236,62 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
   task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  const auto &pg_id = task_spec.PlacementGroupBundleId().first;
+  if (!pg_id.IsNil()) {
+    task_info->set_placement_group_id(pg_id.Binary());
+  }
+  if (task_spec.GetMessage().call_site().size() > 0) {
+    task_info->set_call_site(task_spec.GetMessage().call_site());
+  }
+}
+
+// Fill task_info for the export API with task specification from task_spec
+inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,
+                               const TaskSpecification &task_spec) {
+  rpc::TaskType type;
+  if (task_spec.IsNormalTask()) {
+    type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsDriverTask()) {
+    type = rpc::TaskType::DRIVER_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    type = rpc::TaskType::ACTOR_CREATION_TASK;
+    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
+  } else {
+    RAY_CHECK(task_spec.IsActorTask());
+    type = rpc::TaskType::ACTOR_TASK;
+    task_info->set_actor_id(task_spec.ActorId().Binary());
+  }
+  task_info->set_type(type);
+  task_info->set_language(task_spec.GetLanguage());
+  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+
+  task_info->set_task_id(task_spec.TaskId().Binary());
+  // NOTE: we set the parent task id of a task to be submitter's task id, where
+  // the submitter depends on the owner coreworker's:
+  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
+  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
+  // creation task id.
+  task_info->set_parent_task_id(task_spec.SubmitterTaskId().Binary());
+  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+  task_info->mutable_required_resources()->insert(resources_map.begin(),
+                                                  resources_map.end());
+
+  auto export_runtime_env_info = task_info->mutable_runtime_env_info();
+  export_runtime_env_info->set_serialized_runtime_env(
+      task_spec.RuntimeEnvInfo().serialized_runtime_env());
+  auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
+  export_runtime_env_uris->set_working_dir_uri(
+      task_spec.RuntimeEnvInfo().uris().working_dir_uri());
+  export_runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
+      task_spec.RuntimeEnvInfo().uris().py_modules_uris());
+  auto export_runtime_env_config = export_runtime_env_info->mutable_runtime_env_config();
+  export_runtime_env_config->set_setup_timeout_seconds(
+      task_spec.RuntimeEnvInfo().runtime_env_config().setup_timeout_seconds());
+  export_runtime_env_config->set_eager_install(
+      task_spec.RuntimeEnvInfo().runtime_env_config().eager_install());
+  export_runtime_env_config->mutable_log_files()->CopyFrom(
+      task_spec.RuntimeEnvInfo().runtime_env_config().log_files());
+
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
@@ -325,6 +376,34 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
     return;
   }
   (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
+}
+
+/// Fill the rpc::ExportTaskEventData::TaskStateUpdate with the timestamps
+/// according to the status change.
+///
+/// \param task_status The task status.
+/// \param timestamp The timestamp.
+/// \param[out] state_updates The state updates with timestamp to be updated.
+inline void FillExportTaskStatusUpdateTime(
+    const ray::rpc::TaskStatus &task_status,
+    int64_t timestamp,
+    rpc::ExportTaskEventData::TaskStateUpdate *state_updates) {
+  if (task_status == rpc::TaskStatus::NIL) {
+    // Not status change.
+    return;
+  }
+  (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
+}
+
+/// Convert rpc::TaskLogInfo to rpc::ExportTaskEventData::TaskLogInfo
+inline void TaskLogInfoToExport(const rpc::TaskLogInfo &src,
+                                rpc::ExportTaskEventData::TaskLogInfo *dest) {
+  dest->set_stdout_file(src.stdout_file());
+  dest->set_stderr_file(src.stderr_file());
+  dest->set_stdout_start(src.stdout_start());
+  dest->set_stdout_end(src.stdout_end());
+  dest->set_stderr_start(src.stderr_start());
+  dest->set_stderr_end(src.stderr_end());
 }
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {

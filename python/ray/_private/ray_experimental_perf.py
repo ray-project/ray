@@ -1,5 +1,6 @@
 """This is the script for `ray microbenchmark`."""
 
+import asyncio
 import logging
 from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
@@ -20,6 +21,9 @@ logger = logging.getLogger(__name__)
 @ray.remote
 class DAGActor:
     def echo(self, x):
+        return x
+
+    def echo_multiple(self, *x):
         return x
 
 
@@ -146,19 +150,24 @@ def main(results=None):
 
     # Tests for compiled DAGs.
 
-    def _exec(dag):
-        output_ref = dag.execute(b"x")
+    def _exec(dag, num_args=1, payload_size=1):
+        output_ref = dag.execute(*[b"x" * payload_size for _ in range(num_args)])
         ray.get(output_ref)
 
     async def exec_async(tag):
         async def _exec_async():
             fut = await compiled_dag.execute_async(b"x")
-            await fut
+            if not isinstance(fut, list):
+                await fut
+            else:
+                await asyncio.gather(*fut)
 
         return await asyncio_timeit(
             tag,
             _exec_async,
         )
+
+    # Single-actor DAG calls
 
     a = DAGActor.remote()
     with InputNode() as inp:
@@ -171,20 +180,23 @@ def main(results=None):
     results += timeit(
         "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
     )
-    compiled_dag.teardown()
+    del a
 
+    # Single-actor asyncio DAG calls
+
+    a = DAGActor.remote()
+    with InputNode() as inp:
+        dag = a.echo.bind(inp)
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(
             "[unstable] compiled single-actor asyncio DAG calls",
         )
     )
-    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
-    # these DAGs create a background thread that can segfault if the CoreWorker
-    # is torn down first.
-    compiled_dag.teardown()
-
     del a
+
+    # Scatter-gather DAG calls
+
     n_cpu = multiprocessing.cpu_count() // 2
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -198,18 +210,20 @@ def main(results=None):
         f"[unstable] compiled scatter-gather DAG calls, n={n_cpu} actors",
         lambda: _exec(compiled_dag),
     )
-    compiled_dag.teardown()
 
+    # Scatter-gather asyncio DAG calls
+
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(
             f"[unstable] compiled scatter-gather asyncio DAG calls, n={n_cpu} actors",
         )
     )
-    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
-    # these DAGs create a background thread that can segfault if the CoreWorker
-    # is torn down first.
-    compiled_dag.teardown()
+
+    # Chain DAG calls
 
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -225,16 +239,94 @@ def main(results=None):
         f"[unstable] compiled chain DAG calls, n={n_cpu} actors",
         lambda: _exec(compiled_dag),
     )
-    compiled_dag.teardown()
 
+    # Chain asyncio DAG calls
+
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = inp
+        for a in actors:
+            dag = a.echo.bind(dag)
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(f"[unstable] compiled chain asyncio DAG calls, n={n_cpu} actors")
     )
-    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
-    # these DAGs create a background thread that can segfault if the CoreWorker
-    # is torn down first.
-    compiled_dag.teardown()
+
+    # Multiple args with small payloads
+
+    n_actors = 8
+    assert (
+        n_cpu > n_actors
+    ), f"n_cpu ({n_cpu}) must be greater than n_actors ({n_actors})"
+
+    actors = [DAGActor.remote() for _ in range(n_actors)]
+    with InputNode() as inp:
+        dag = MultiOutputNode([actors[i].echo.bind(inp[i]) for i in range(n_actors)])
+    payload_size = 1
+    results += timeit(
+        f"[unstable] multiple args with small payloads DAG calls, n={n_actors} actors",
+        lambda: ray.get(dag.execute(*[b"x" * payload_size for _ in range(n_actors)])),
+    )
+    compiled_dag = dag.experimental_compile()
+    results += timeit(
+        f"[unstable] compiled multiple args with small payloads DAG calls, "
+        f"n={n_actors} actors",
+        lambda: _exec(compiled_dag, num_args=n_actors, payload_size=payload_size),
+    )
+
+    # Multiple args with medium payloads
+
+    actors = [DAGActor.remote() for _ in range(n_actors)]
+    with InputNode() as inp:
+        dag = MultiOutputNode([actors[i].echo.bind(inp[i]) for i in range(n_actors)])
+    payload_size = 1024 * 1024
+    results += timeit(
+        f"[unstable] multiple args with medium payloads DAG calls, n={n_actors} actors",
+        lambda: ray.get(dag.execute(*[b"x" * payload_size for _ in range(n_actors)])),
+    )
+    compiled_dag = dag.experimental_compile()
+    results += timeit(
+        "[unstable] compiled multiple args with medium payloads DAG calls, "
+        f"n={n_actors} actors",
+        lambda: _exec(compiled_dag, num_args=n_actors, payload_size=payload_size),
+    )
+
+    # Multiple args with large payloads
+
+    actors = [DAGActor.remote() for _ in range(n_actors)]
+    with InputNode() as inp:
+        dag = MultiOutputNode([actors[i].echo.bind(inp[i]) for i in range(n_actors)])
+    payload_size = 10 * 1024 * 1024
+    results += timeit(
+        f"[unstable] multiple args with large payloads DAG calls, n={n_actors} actors",
+        lambda: ray.get(dag.execute(*[b"x" * payload_size for _ in range(n_actors)])),
+    )
+    compiled_dag = dag.experimental_compile()
+    results += timeit(
+        "[unstable] compiled multiple args with large payloads DAG calls, "
+        f"n={n_actors} actors",
+        lambda: _exec(compiled_dag, num_args=n_actors, payload_size=payload_size),
+    )
+
+    # Worst case for multiple arguments: a single actor takes all the arguments
+    # with small payloads.
+
+    actor = DAGActor.remote()
+    n_args = 8
+    with InputNode() as inp:
+        dag = actor.echo_multiple.bind(*[inp[i] for i in range(n_args)])
+    payload_size = 1
+    results += timeit(
+        "[unstable] single-actor with all args with small payloads DAG calls, "
+        "n=1 actors",
+        lambda: ray.get(dag.execute(*[b"x" * payload_size for _ in range(n_args)])),
+    )
+    compiled_dag = dag.experimental_compile()
+    results += timeit(
+        "[unstable] single-actor with all args with small payloads DAG calls, "
+        "n=1 actors",
+        lambda: _exec(compiled_dag, num_args=n_args, payload_size=payload_size),
+    )
 
     ray.shutdown()
 

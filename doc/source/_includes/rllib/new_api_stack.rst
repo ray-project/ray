@@ -1,11 +1,7 @@
 .. note::
 
-    Ray 2.10.0 introduces the alpha stage of RLlib's "new API stack".
-    The Ray Team plans to transition algorithms, example scripts, and documentation to the new code base
-    thereby incrementally replacing the "old API stack" (e.g., ModelV2, Policy, RolloutWorker) throughout the subsequent minor releases leading up to Ray 3.0.
+    Ray 2.40 uses RLlib's new API stack by default.
+    The Ray team has mostly completed transitioning algorithms, example scripts, and
+    documentation to the new code base.
 
-    Note, however, that so far only PPO (single- and multi-agent) and SAC (single-agent only)
-    support the "new API stack" and continue to run by default with the old APIs.
-    You can continue to use the existing custom (old stack) classes.
-
-    :doc:`See here </rllib/rllib-new-api-stack>` for more details on how to use the new API stack.
+    If you're still using the old API stack, see :doc:`New API stack migration guide </rllib/new-api-stack-migration-guide>` for details on how to migrate.

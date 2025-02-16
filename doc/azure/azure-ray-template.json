@@ -32,7 +32,7 @@
             "type": "string",
             "defaultValue": "Regular",
             "allowedValues": ["Regular", "Low", "Spot"],
-            "metadata": { 
+            "metadata": {
                 "description": "Use Azure Spot instance for worker nodes"
             }
         },
@@ -47,7 +47,7 @@
             "type": "string",
             "defaultValue": "Spot",
             "allowedValues": ["Regular", "Low", "Spot"],
-            "metadata": { 
+            "metadata": {
                 "description": "Use Azure Spot instance for worker nodes"
             }
         },

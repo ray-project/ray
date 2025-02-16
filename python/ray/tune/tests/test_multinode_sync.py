@@ -3,7 +3,7 @@ import time
 import unittest
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.air.util.node import _force_on_node
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
@@ -84,7 +84,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         """Test that newly added nodes from autoscaling are not stale."""
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": 2, "GPU": 0}},
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
@@ -103,7 +103,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         def autoscaling_train(config):
             time.sleep(120)
-            train.report({"_metric": 1.0})
+            tune.report({"_metric": 1.0})
 
         tune.run(
             autoscaling_train,
@@ -119,7 +119,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         """
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": 2, "GPU": 0}},
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
@@ -139,7 +139,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         def train_fn(config):
             time.sleep(120)
-            train.report({"_metric": 1.0})
+            tune.report({"_metric": 1.0})
 
         class FailureInjectionCallback(Callback):
             def __init__(self):

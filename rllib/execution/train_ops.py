@@ -45,14 +45,16 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     config = algorithm.config
     workers = algorithm.env_runner_group
     local_worker = workers.local_env_runner
-    num_sgd_iter = config.get("num_sgd_iter", 1)
-    sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
+    num_sgd_iter = config.get("num_epochs", config.get("num_sgd_iter", 1))
+    minibatch_size = config.get("minibatch_size")
+    if minibatch_size is None:
+        minibatch_size = config.get("sgd_minibatch_size", 0)
 
     learn_timer = algorithm._timers[LEARN_ON_BATCH_TIMER]
     with learn_timer:
-        # Subsample minibatches (size=`sgd_minibatch_size`) from the
+        # Subsample minibatches (size=`minibatch_size`) from the
         # train batch and loop through train batch `num_sgd_iter` times.
-        if num_sgd_iter > 1 or sgd_minibatch_size > 0:
+        if num_sgd_iter > 1 or minibatch_size > 0:
             info = do_minibatch_sgd(
                 train_batch,
                 {
@@ -62,7 +64,7 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
                 },
                 local_worker,
                 num_sgd_iter,
-                sgd_minibatch_size,
+                minibatch_size,
                 [],
             )
         # Single update step using train batch.
@@ -114,15 +116,17 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     config = algorithm.config
     workers = algorithm.env_runner_group
     local_worker = workers.local_env_runner
-    num_sgd_iter = config.get("num_sgd_iter", 1)
-    sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
+    num_sgd_iter = config.get("num_epochs", config.get("num_sgd_iter", 1))
+    minibatch_size = config.get("minibatch_size")
+    if minibatch_size is None:
+        minibatch_size = config["train_batch_size"]
 
     # Determine the number of devices (GPUs or 1 CPU) we use.
     num_devices = int(math.ceil(config["num_gpus"] or 1))
 
     # Make sure total batch size is dividable by the number of devices.
     # Batch size per tower.
-    per_device_batch_size = sgd_minibatch_size // num_devices
+    per_device_batch_size = minibatch_size // num_devices
     # Total batch size.
     batch_size = per_device_batch_size * num_devices
     assert batch_size % num_devices == 0

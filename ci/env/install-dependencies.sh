@@ -244,9 +244,9 @@ install_pip_packages() {
 
     # For DAG visualization
     requirements_packages+=("pydot")
-    requirements_packages+=("pytesseract")
-    requirements_packages+=("spacy>=3")
-    requirements_packages+=("spacy_langdetect")
+    requirements_packages+=("pytesseract==0.3.13")
+    requirements_packages+=("spacy==3.7.5")
+    requirements_packages+=("spacy_langdetect==0.1.2")
   fi
 
   # Additional RLlib test dependencies.
@@ -257,7 +257,7 @@ install_pip_packages() {
     pip install --no-dependencies mlagents==0.28.0
 
     # Install MuJoCo.
-    sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    sudo apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf
     wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     mkdir -p /root/.mujoco
     mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
@@ -446,7 +446,7 @@ install_dependencies() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  if [ "${MINIMAL_INSTALL-}" != "1" ]; then
+  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" ]]; then
     install_pip_packages
   fi
 

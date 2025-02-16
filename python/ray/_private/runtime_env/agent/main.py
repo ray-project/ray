@@ -58,6 +58,9 @@ if __name__ == "__main__":
         "--gcs-address", required=True, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
+        "--cluster-id-hex", required=True, type=str, help="The cluster id in hex."
+    )
+    parser.add_argument(
         "--runtime-env-dir",
         required=True,
         type=str,
@@ -141,6 +144,7 @@ if __name__ == "__main__":
         runtime_env_dir=args.runtime_env_dir,
         logging_params=logging_params,
         gcs_address=args.gcs_address,
+        cluster_id_hex=args.cluster_id_hex,
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
