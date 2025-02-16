@@ -195,9 +195,7 @@ class TrainController:
         controller_state = self.get_state()
 
         for callback in self._controller_callbacks:
-            callback.before_controller_execute_failure_decision(
-                failure_decision, worker_group_status
-            )
+            callback.before_controller_execute_failure_decision(failure_decision)
 
         # TODO: What should we do here?
         # This currently never happens because there must be errors.
@@ -208,12 +206,7 @@ class TrainController:
                 next_state=RunningState(),
             )
 
-        errors_str = "\n".join(
-            [
-                f"[Rank {worker_rank}]\n{error}"
-                for worker_rank, error in worker_group_status.errors.items()
-            ]
-        )
+        errors_str = worker_group_status.get_error_string()
 
         if failure_decision == FailureDecision.RESTART:
             logger.error(
@@ -283,6 +276,7 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
 
         worker_group_context = WorkerGroupContext(
+            run_attempt_id=self._get_run_attempt_id(),
             train_fn=self._train_fn,
             num_workers=num_workers,
             resources_per_worker=resources_per_worker,
