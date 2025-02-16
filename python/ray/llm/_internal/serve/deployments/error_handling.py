@@ -2,7 +2,6 @@ from pydantic import ValidationError as PydanticValidationError
 from abc import ABC, abstractmethod
 
 
-
 class ValidationError(ValueError):
     status_code = 400
     pass

@@ -8,11 +8,23 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.server.utils import (
+from ray.llm._internal.serve.deployments.server_utils import (
     get_response_for_error,
 )
 
 logger = get_logger(__file__)
+
+
+def get_request_id(request) -> str:
+    """Fetches request-id from Starlette's request object.
+
+    NOTE: This method relies on "request_id" value to be injected into the
+    Starlette's `request.state` via `inject_request_id` middleware
+
+    :param request: Starlette request object
+    :return: (optional) Id allowing to identify particular user
+    """
+    return getattr(request.state, "request_id", None)
 
 
 async def _handle_validation_error(
@@ -36,6 +48,30 @@ async def _handle_validation_error(
     }
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=error_response)
+
+
+def _uncaught_exception_handler(request: Request, e: Exception):
+    """This method serves as an uncaught exception handler being
+    the last resort to return properly formatted response.
+
+    NOTE: Exceptions from application handlers should NOT be reaching this point,
+          this handler is here to intercept "fly-away" exceptions and should not
+          be handled for handling of converting application exceptions into
+          appropriate responses
+    """
+
+    if isinstance(e, CancelledError):
+        return JSONResponse(content={}, status_code=204)
+
+    request_id = get_request_id(request)
+
+    logger.error(f"Uncaught exception while handling request {request_id}", exc_info=e)
+
+    response_payload = get_response_for_error(e, request_id)
+
+    return JSONResponse(
+        content=response_payload.model_dump(), status_code=response_payload.error.code
+    )
 
 
 def add_exception_handling_middleware(router: FastAPI):
@@ -94,30 +130,6 @@ def add_exception_handling_middleware(router: FastAPI):
     )
 
 
-def _uncaught_exception_handler(request: Request, e: Exception):
-    """This method serves as an uncaught exception handler being
-    the last resort to return properly formatted response.
-
-    NOTE: Exceptions from application handlers should NOT be reaching this point,
-          this handler is here to intercept "fly-away" exceptions and should not
-          be handled for handling of converting application exceptions into
-          appropriate responses
-    """
-
-    if isinstance(e, CancelledError):
-        return JSONResponse(content={}, status_code=204)
-
-    request_id = get_request_id(request)
-
-    logger.error(f"Uncaught exception while handling request {request_id}", exc_info=e)
-
-    response_payload = get_response_for_error(e, request_id)
-
-    return JSONResponse(
-        content=response_payload.model_dump(), status_code=response_payload.error.code
-    )
-
-
 class SetRequestIdMiddleware:
     """Injects request ID into the request's state.
 
@@ -139,18 +151,6 @@ class SetRequestIdMiddleware:
             )
 
         return await self.app(scope, receive, send)
-
-
-def get_request_id(request) -> str:
-    """Fetches request-id from Starlette's request object.
-
-    NOTE: This method relies on "request_id" value to be injected into the
-    Starlette's `request.state` via `inject_request_id` middleware
-
-    :param request: Starlette request object
-    :return: (optional) Id allowing to identify particular user
-    """
-    return getattr(request.state, "request_id", None)
 
 
 def get_user_id(request) -> Optional[str]:

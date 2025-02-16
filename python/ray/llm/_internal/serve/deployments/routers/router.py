@@ -21,9 +21,9 @@ from ray._private.utils import get_or_create_event_loop
 from ray.serve.handle import DeploymentHandle
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from rayllm.backend.constants import RAYLLM_ROUTER_HTTP_TIMEOUT
+from ray.llm._internal.serve.configs.constants import RAYLLM_ROUTER_HTTP_TIMEOUT
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.observability.metrics.fast_api_metrics import (
+from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
     metrics_lifespan,
 )
@@ -32,7 +32,7 @@ from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_lora_model_ids,
     get_lora_model_metadata,
 )
-from rayllm.backend.server.models.llm_models import (
+from ray.llm._internal.serve.configs.llm_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionStreamResponse,
@@ -45,17 +45,15 @@ from rayllm.backend.server.models.llm_models import (
 from ray.llm._internal.serve.configs.server_models import (
     ErrorResponse,
     LLMConfig,
+    ModelData,
+    Model,
 )
-from rayllm.backend.server.openai_utils import OpenAIHTTPException, to_model_metadata
-from rayllm.backend.server.routers.middleware import (
+from ray.llm._internal.serve.deployments.openai_utils import OpenAIHTTPException, to_model_metadata
+from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
-from rayllm.backend.server.utils import replace_prefix
-from rayllm.models import (
-    Model,
-    ModelData,
-)
+from ray.llm._internal.serve.deployments.server_utils import replace_prefix
 
 logger = get_logger(__name__)
 
@@ -175,7 +173,7 @@ async def _peek_at_openai_json_generator(
     max_ongoing_requests=1000,  # Maximum backlog for a single replica
 )
 @serve.ingress(fastapi_router_app)
-class Router:
+class LLMModelRouterDeployment:
     def __init__(
         self,
         llm_deployments: List[DeploymentHandle],

@@ -108,3 +108,8 @@ def get_serve_request_id() -> str:
 
 def get_model_request_id(model: str):
     return model + "-" + get_serve_request_id()
+
+
+def replace_prefix(model: str) -> str:
+    """Replace -- with / in model name to handle slashes within the URL path segment"""
+    return model.replace("--", "/")

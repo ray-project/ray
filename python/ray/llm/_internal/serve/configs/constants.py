@@ -64,3 +64,5 @@ ENV_VARS_TO_PROPAGATE = {
     "HUGGING_FACE_HUB_TOKEN",
     "HF_TOKEN",
 }
+# timeout in 10 minutes. Streaming can take longer than 3 min
+RAYLLM_ROUTER_HTTP_TIMEOUT = float(os.environ.get("RAYLLM_ROUTER_HTTP_TIMEOUT", 600))

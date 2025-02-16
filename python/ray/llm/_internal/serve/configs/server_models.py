@@ -611,6 +611,9 @@ ResponseFormatType = Union[
 ]
 
 
+TModel = TypeVar("TModel", bound="Model")
+
+
 class ModelData(BaseModel):
     model_config = ConfigDict(protected_namespaces=tuple())
 
@@ -623,6 +626,15 @@ class ModelData(BaseModel):
     @property
     def model_type(self) -> str:
         return self.rayllm_metadata["engine_config"]["model_type"]
+
+
+class Model(BaseModel):
+    data: List[ModelData]
+    object: str = "list"
+
+    @classmethod
+    def list(cls) -> TModel:
+        pass
 
 
 class FinishReason(str, Enum):
