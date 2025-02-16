@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <Python.h>
+
 #include <memory>
 
 #include "ray/common/task/task_spec.h"
@@ -35,7 +37,8 @@ class ConcurrencyGroupManager final {
  public:
   explicit ConcurrencyGroupManager(
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const int32_t max_concurrency_for_default_concurrency_group = 1);
+      const int32_t max_concurrency_for_default_concurrency_group = 1,
+      std::optional<Language> language = std::nullopt);
 
   /// Get the corresponding concurrency group executor by the give concurrency group or
   /// function descriptor.
@@ -50,6 +53,13 @@ class ConcurrencyGroupManager final {
   /// Otherwise return the corresponding executor by the given function descriptor.
   std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
                                             const ray::FunctionDescriptor &fd);
+
+  /// Initialize the executor for specific language runtime.
+  ///
+  /// \param executor The executor to be initialized.
+  /// \return The function that can be used to release the executor.
+  std::optional<std::function<void()>> InitializeExecutor(
+      std::shared_ptr<ExecutorType> executor);
 
   /// Get the default executor.
   std::shared_ptr<ExecutorType> GetDefaultExecutor() const;
@@ -67,6 +77,13 @@ class ConcurrencyGroupManager final {
 
   // The default concurrency group executor. It's nullptr if its max concurrency is 1.
   std::shared_ptr<ExecutorType> default_executor_ = nullptr;
+
+  // The functions that can be used to release executors.
+  std::vector<std::optional<std::function<void()>>> executor_releasers_;
+
+  // The programming language runtime (e.g. Python, Java) used by this concurrency group
+  // manager.
+  std::optional<Language> language_;
 
   friend class ConcurrencyGroupManagerTest;
 };
