@@ -76,12 +76,10 @@ class IMPALALearner(Learner):
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
-            self._gpu_lock = threading.Lock()
             self._gpu_loader_threads = [
                 _GPULoaderThread(
                     in_queue=self._gpu_loader_in_queue,
                     out_queue=self._learner_thread_in_queue,
-                    gpu_lock=self._gpu_lock,
                     device=self._device,
                     metrics_logger=self.metrics,
                 )
@@ -229,7 +227,6 @@ class _GPULoaderThread(threading.Thread):
         *,
         in_queue: queue.Queue,
         out_queue: deque,
-        gpu_lock: threading.Lock,
         device: torch.device,
         metrics_logger: MetricsLogger,
     ):
@@ -238,7 +235,6 @@ class _GPULoaderThread(threading.Thread):
 
         self._in_queue = in_queue
         self._out_queue = out_queue
-        self._gpu_lock = gpu_lock
         self._ts_dropped = 0
         self._device = device
         self.metrics = metrics_logger
@@ -254,8 +250,7 @@ class _GPULoaderThread(threading.Thread):
 
         # Load the batch onto the GPU device.
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
-            with self._gpu_lock:
-                ma_batch_on_gpu = ma_batch_on_cpu.to_device(self._device, pin_memory=False)
+            ma_batch_on_gpu = ma_batch_on_cpu.to_device(self._device, pin_memory=False)
 
         if isinstance(self._out_queue, CircularBuffer):
             ts_dropped = self._out_queue.add(ma_batch_on_gpu)

@@ -113,6 +113,7 @@ class MetricsLogger:
         # Lock that makes sure that structural changes to the self.stats
         # nested dict are thread-save.
         self._struct_lock = threading.Lock()
+        self._threading_lock = _DummyRLock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -344,31 +345,32 @@ class MetricsLogger:
 
         value = self._check_tensor(key, value)
 
-        # `key` doesn't exist -> Automatically create it.
-        if not self._key_in_stats(key):
-            self._set_key(
-                key,
-                (
-                    Stats.similar_to(value, init_value=value.values)
-                    if isinstance(value, Stats)
-                    else Stats(
-                        value,
-                        reduce=reduce,
-                        window=window,
-                        ema_coeff=ema_coeff,
-                        clear_on_reduce=clear_on_reduce,
-                        throughput=with_throughput,
-                        thread_save=self._thread_save,
-                    )
-                ),
-            )
-        # If value itself is a `Stats`, we merge it on time axis into self's
-        # `Stats`.
-        elif isinstance(value, Stats):
-            self._get_key(key).merge_on_time_axis(value)
-        # Otherwise, we just push the value into self's `Stats`.
-        else:
-            self._get_key(key).push(value)
+        with self._threading_lock:
+            # `key` doesn't exist -> Automatically create it.
+            if not self._key_in_stats(key):
+                self._set_key(
+                    key,
+                    (
+                        Stats.similar_to(value, init_value=value.values)
+                        if isinstance(value, Stats)
+                        else Stats(
+                            value,
+                            reduce=reduce,
+                            window=window,
+                            ema_coeff=ema_coeff,
+                            clear_on_reduce=clear_on_reduce,
+                            throughput=with_throughput,
+                            thread_save=self._thread_save,
+                        )
+                    ),
+                )
+            # If value itself is a `Stats`, we merge it on time axis into self's
+            # `Stats`.
+            elif isinstance(value, Stats):
+                self._get_key(key).merge_on_time_axis(value)
+            # Otherwise, we just push the value into self's `Stats`.
+            else:
+                self._get_key(key).push(value)
 
     def log_dict(
         self,
@@ -472,7 +474,8 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
-        tree.map_structure_with_path(_map, stats_dict)
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, stats_dict)
 
     def merge_and_log_n_dicts(
         self,
@@ -904,10 +907,11 @@ class MetricsLogger:
             frozen_subset_to_return = tree.map_structure(lambda s: s, subset_to_return)
 
         try:
-            assert not self.tensor_mode, "Can't reduce if `self.tensor_mode` is True!"
-            reduced_subset_to_return = tree.map_structure_with_path(
-                _reduce, frozen_subset_to_return
-            )
+            with self._threading_lock:
+                assert not self.tensor_mode, "Can't reduce if `self.tensor_mode` is True!"
+                reduced_subset_to_return = tree.map_structure_with_path(
+                    _reduce, frozen_subset_to_return
+                )
         # Provide proper error message if reduction fails due to bad data.
         except Exception as e:
             raise ValueError(
@@ -938,6 +942,7 @@ class MetricsLogger:
         them TODO (sven) continue docstring
 
         """
+        self._threading_lock.acquire()
         assert not self.tensor_mode
         self._tensor_mode = True
 
@@ -956,6 +961,7 @@ class MetricsLogger:
         for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
             self._get_key(key).set_to_numpy_values(values)
+        self._threading_lock.release()
 
     @property
     def tensor_mode(self):
@@ -1156,3 +1162,17 @@ class MetricsLogger:
         except KeyError as e:
             if key_error:
                 raise e
+
+
+class _DummyRLock:
+    def acquire(self, blocking=True, timeout=-1):
+        return True
+
+    def release(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
