@@ -890,26 +890,34 @@ class MetricsLogger:
         # throw an error).
         PATH = None
 
-        def _reduce(path, stats: Stats):
+        def _reduce(path, stats):
             nonlocal PATH
             PATH = path
             return stats.reduce()
 
+        # Create a shallow (yet nested) copy of `self.stats` in case we need to reset
+        # some of our stats due to this `reduce()` call and Stats having
+        # `self.clear_on_reduce=True`. In the latter case we would receive a new empty
+        # `Stats` object from `stat.reduce()` with the same settings as existing one and
+        # can now re-assign it to `self.stats[key]`, while we return from this method
+        # the properly reduced, but not cleared/emptied new `Stats`.
         if key is not None:
-            subset_to_return = self._get_key(key, key_error=False)
+            stats_to_return = self._get_key(key, key_error=False)
         else:
-            subset_to_return = self.stats
-
-        frozen_subset_to_return = tree.map_structure(lambda s: s, subset_to_return)
+            stats_to_return = self.stats
 
         try:
             with self._threading_lock:
                 assert (
                     not self.tensor_mode
                 ), "Can't reduce if `self.tensor_mode` is True!"
-                reduced_subset_to_return = tree.map_structure_with_path(
-                    _reduce, frozen_subset_to_return
+                reduced = copy.deepcopy(
+                    tree.map_structure_with_path(_reduce, stats_to_return)
                 )
+                if key is not None:
+                    self._set_key(key, reduced)
+                else:
+                    self.stats = reduced
         # Provide proper error message if reduction fails due to bad data.
         except Exception as e:
             raise ValueError(
@@ -922,10 +930,10 @@ class MetricsLogger:
 
         # Return (reduced) `Stats` objects as leafs.
         if return_stats_obj:
-            return reduced_subset_to_return
-        # Return actual (reduced) values as leafs.
+            return stats_to_return
+        # Return actual (reduced) values (not reduced `Stats` objects) as leafs.
         else:
-            return self.peek_results(reduced_subset_to_return)
+            return self.peek_results(stats_to_return)
 
     def activate_tensor_mode(self):
         """Switches to tensor-mode, in which in-graph tensors can be logged.
