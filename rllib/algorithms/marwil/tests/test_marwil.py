@@ -225,12 +225,12 @@ class TestMARWIL(unittest.TestCase):
 
         # Check all components.
         check(
-            learner_results[VF_LOSS_KEY],
+            learner_results[VF_LOSS_KEY].detach().cpu().numpy(),
             expected_vf_loss,
             decimals=4,
         )
         check(
-            learner_results[POLICY_LOSS_KEY],
+            learner_results[POLICY_LOSS_KEY].detach().cpu().numpy(),
             expected_pol_loss,
             decimals=4,
         )

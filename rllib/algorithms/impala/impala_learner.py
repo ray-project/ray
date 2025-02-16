@@ -47,8 +47,15 @@ class IMPALALearner(Learner):
     def build(self) -> None:
         super().build()
 
-        # Make the MetricsLogger of this Learner thread-save.
-        self.metrics.thread_save(True)
+        # TODO (sven): We replace the dummy RLock here for APPO/IMPALA, b/c these algos
+        #  require this for thread safety reasons.
+        #  An RLock breaks our current OfflineData and OfflinePreLearner logic, in which
+        #  the Learner (which contains a MetricsLogger) is serialized and deserialized.
+        #  We will have to fix this offline RL logic first, then can remove this hack
+        #  here and return to always using the RLock.
+        self.metrics._threading_lock = threading.RLock()
+        self._num_updates = 0
+        self._num_updates_lock = threading.Lock()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -72,7 +79,6 @@ class IMPALALearner(Learner):
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
-        self._learner_thread_out_queue = deque(maxlen=1)
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
@@ -92,8 +98,6 @@ class IMPALALearner(Learner):
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
-            out_queue=self._learner_thread_out_queue,
-            metrics_logger=self.metrics,
             learner=self,
         )
         self._learner_thread.start()
@@ -132,11 +136,13 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
-        try:
-            results = self._learner_thread_out_queue.pop()
-        except IndexError:
-            results = {}
-        return results
+        with self._num_updates_lock:
+            count = self._num_updates
+        if count >= 100:
+            with self._num_updates_lock:
+                self._num_updates = 0
+            return self.metrics.reduce()
+        return {}
 
     @override(Learner)
     def update_from_episodes(
@@ -270,20 +276,15 @@ class _LearnerThread(threading.Thread):
         *,
         update_method,
         in_queue: deque,
-        out_queue: deque,
-        metrics_logger,
         learner,
     ):
         super().__init__(name="_LearnerThread")
         self.daemon = True
-        self.metrics: MetricsLogger = metrics_logger
         self.learner = learner
         self.stopped = False
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
-        self._out_queue: deque = out_queue
-        self._updates = 0
 
     def run(self) -> None:
         while not self.stopped:
@@ -293,7 +294,9 @@ class _LearnerThread(threading.Thread):
         global _CURRENT_GLOBAL_TIMESTEPS
 
         # Get a new batch from the GPU-data (deque.pop -> newest item first).
-        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+        with self.learner.metrics.log_time(
+            (ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)
+        ):
             # Get a new batch from the GPU-data (learner queue OR circular buffer).
             if isinstance(self._in_queue, CircularBuffer):
                 ma_batch_on_gpu = self._in_queue.sample()
@@ -308,7 +311,7 @@ class _LearnerThread(threading.Thread):
                 ma_batch_on_gpu = self._in_queue.popleft()
 
         # Call the update method on the batch.
-        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
+        with self.learner.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
             # TODO (sven): For multi-agent AND SGD iter > 1, we need to make sure
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
@@ -317,11 +320,8 @@ class _LearnerThread(threading.Thread):
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
-            # Only reduce the metrics every nth time.
-            self._updates += 1
-            if self._updates >= 10:
-                self._updates = 0
-                self._out_queue.append(self.metrics.reduce())
+            with self.learner._num_updates_lock:
+                self.learner._num_updates += 1
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):

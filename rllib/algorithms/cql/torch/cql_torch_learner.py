@@ -262,7 +262,6 @@ class CQLTorchLearner(SACTorchLearner):
                 loss_tensor.backward(
                     retain_graph=False if optim_name in ["policy", "alpha"] else True
                 )
-
                 # Store the gradients for the component and module.
                 # TODO (simon): Check another time the graph for overlapping
                 # gradients.
