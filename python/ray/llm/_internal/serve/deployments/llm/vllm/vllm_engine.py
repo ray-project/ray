@@ -58,7 +58,7 @@ from ray.llm._internal.serve.configs.server_models import (
     FinishReason,
 )
 
-from ray.llm._internal.serve.condfigs.constants import (
+from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
     RAYLLM_GUIDED_DECODING_BACKEND,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
