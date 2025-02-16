@@ -1,9 +1,7 @@
 import json
 import subprocess
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union, Awaitable, Callable, TypeVar
-import asyncio
-from functools import partial
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from asyncache import cached
 from cachetools import TLRUCache
@@ -11,7 +9,7 @@ from fastapi import HTTPException
 from filelock import FileLock
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.llm.multiplex.cloud_utils import (
+from ray.llm._internal.serve.deployments.cloud_utils import (
     GCP_EXECUTABLE,
     AWS_EXECUTABLE,
     get_file_from_gcs,
@@ -29,31 +27,12 @@ from ray.llm._internal.serve.configs.constants import (
     CLOUD_OBJECT_EXISTS_EXPIRE_S,
     LORA_ADAPTER_CONFIG_NAME,
     GENERATION_CONFIG_NAME,
-
 )
-
-T = TypeVar("T")
-
+from ray.llm._internal.serve.deployments.server_utils import make_async
 
 CLOUD_OBJECT_MISSING = object()
 
-
 logger = get_logger(__name__)
-
-
-def make_async(_func: Callable[..., T]) -> Callable[..., Awaitable[T]]:
-    """Take a blocking function, and run it on in an executor thread.
-
-    This function prevents the blocking function from blocking the asyncio event loop.
-    The code in this function needs to be thread safe.
-    """
-
-    def _async_wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = asyncio.get_event_loop()
-        func = partial(_func, *args, **kwargs)
-        return loop.run_in_executor(executor=None, func=func)
-
-    return _async_wrapper
 
 
 def get_base_model_id(model_id: str) -> str:

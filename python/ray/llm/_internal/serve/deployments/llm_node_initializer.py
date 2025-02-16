@@ -8,16 +8,16 @@ from ray.util.placement_group import PlacementGroup
 from torch.hub import _get_torch_home
 from transformers import AutoTokenizer
 
-from rayllm.backend.observability.logging import get_logger
-from rayllm.backend.server.downloader import GCSDownloader, S3Downloader
-from rayllm.backend.server.llm.vllm.vllm_models import VLLMEngineConfig
-from rayllm.backend.server.models.server_models import (
+from ray.llm._internal.serve.observability.logging import get_logger
+
+from ray.llm._internal.serve.deployments.downloader import GCSDownloader, S3Downloader
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
+from ray.llm._internal.serve.configs.server_models import (
     GCSMirrorConfig,
     LLMConfig,
     S3MirrorConfig,
 )
-from rayllm.backend.server.utils import make_async
-from rayllm.models import HuggingFacePromptFormat
+from ray.llm._internal.serve.deployments.server_utils import make_async
 
 logger = get_logger(__name__)
 
@@ -67,7 +67,6 @@ def _log_download_info(
             logger.info("Downloading model, tokenizer, and extra files from %s", source)
         else:
             logger.info("Downloading model and tokenizer from %s", source)
-
 
 def download_model_files(
     model_id: Optional[str] = None,
@@ -131,7 +130,6 @@ def download_model_files(
         downloader.get_extra_files()
 
     return model_path_or_id
-
 
 async def initialize_worker_nodes(
     llm_config: LLMConfig,
@@ -272,8 +270,8 @@ def _initialize_local_node(
         trust_remote_code=engine_config.trust_remote_code,
     )
     prompt_format = engine_config.generation.prompt_format
-    if isinstance(prompt_format, HuggingFacePromptFormat):
-        prompt_format.set_processor(
-            engine_config.actual_hf_model_id,
-            trust_remote_code=engine_config.trust_remote_code,
-        )
+    # Note (genesu): The prompt format is always loaded from HF.
+    prompt_format.set_processor(
+        engine_config.actual_hf_model_id,
+        trust_remote_code=engine_config.trust_remote_code,
+    )

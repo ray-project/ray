@@ -3,13 +3,14 @@ from typing import AsyncGenerator, Optional
 
 from ray.exceptions import RayTaskError, TaskCancelledError
 
-from rayllm.backend.observability.logging import get_logger
-from rayllm.backend.observability.metrics.utils import (
+from ray.llm._internal.serve.observability.logging import get_logger
+
+from ray.llm._internal.serve.observability.metrics.utils import (
     InstrumentTokenAsyncGenerator,
 )
-from rayllm.backend.server.metrics import Metrics
-from rayllm.backend.server.models.server_models import LLMRawResponse
-from rayllm.backend.server.utils import get_response_for_error, get_serve_request_id
+from ray.llm._internal.serve.deployments.metrics import Metrics
+from ray.llm._internal.serve.configs.server_models import LLMRawResponse
+from ray.llm._internal.serve.deployments.server_utils import get_response_for_error, get_serve_request_id
 
 logger = get_logger(__name__)
 
