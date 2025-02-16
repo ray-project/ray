@@ -97,7 +97,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         from ray.experimental.channel.common import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        ctx.pop_gpu_future(self._fut_id, destroy_event=False)
+        ctx.pop_gpu_future(self._fut_id, destroy_event=True)
         return self._buf
 
     def cache(self, fut_id: int) -> None:

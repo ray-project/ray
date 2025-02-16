@@ -1805,7 +1805,10 @@ def test_torch_nccl_channel_with_local_reader(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_nccl_channel_with_two_local_readers(
+    ray_start_regular, overlap_gpu_communication
+):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
     assert (
@@ -1827,7 +1830,9 @@ def test_torch_nccl_channel_with_two_local_readers(ray_start_regular):
         branch2 = w1.recv.bind(dag)
         branch3 = w2.recv.bind(dag)
         dag = MultiOutputNode([branch1, branch2, branch3])
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == [(i, shape, dtype), (i, shape, dtype), (i, shape, dtype)]
