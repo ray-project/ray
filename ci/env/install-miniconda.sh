@@ -82,7 +82,7 @@ install_miniconda() {
 
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
-  if ["${PYTHON}" = "3.13"]; then
+  if [ "${PYTHON}" == "3.13"]; then
     (
       set +x
       echo "Creating Anaconda Python environment for ${PYTHON}..."
