@@ -167,7 +167,5 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Log the updated KL-coeff value.
         self.metrics.log_value(
-            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
-            curr_var.item(),
-            window=1,
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY), curr_var, window=1,
         )

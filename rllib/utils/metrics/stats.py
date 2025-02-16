@@ -743,6 +743,8 @@ class Stats:
             # Use the numpy "nan"-prefix to ignore NaN's in our value lists.
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
+                if torch and torch.is_tensor(values[-1]):
+                    values = convert_to_numpy(values)
                 reduced = reduce_meth(values)
 
             # Convert from numpy to primitive python types, if original `values` are

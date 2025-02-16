@@ -229,6 +229,6 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
 
         self.metrics.log_value(
             (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
-            kl_coeff_var.item(),
+            kl_coeff_var,
             window=1,
         )
