@@ -151,7 +151,7 @@ async def initialize_worker_nodes(
     engine_config = VLLMEngineConfig.from_llm_config(llm_config)
     pg_table = ray.util.placement_group_table(placement_group)
 
-    node_set = set([v for v in pg_table["bundles_to_node_id"].values()])
+    node_set = set(pg_table["bundles_to_node_id"].values())
     download_tasks = []
     for node_id in node_set:
         node_affinity_strategy = (

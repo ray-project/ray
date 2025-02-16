@@ -1,6 +1,8 @@
 import copy
 
 import yaml
+import pydantic
+import os
 
 from enum import Enum
 from abc import ABC, abstractmethod
@@ -18,6 +20,8 @@ from typing import (
     Union,
     Literal,
     Tuple,
+    Sequence,
+    Set,
 )
 import time
 from pydantic import (
@@ -486,6 +490,81 @@ class LLMConfig(BaseModelExtended):
             )
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
+
+
+def _is_yaml_file(filename: str) -> bool:
+    yaml_extensions = [".yml", ".yaml", ".json"]
+    for s in yaml_extensions:
+        if filename.endswith(s):
+            return True
+    return False
+
+
+def _parse_path_args(path: str) -> List[LLMConfig]:
+    assert os.path.exists(
+        path
+    ), f"Could not load model from {path}, as it does not exist."
+    if os.path.isfile(path):
+        with open(path, "r") as f:
+            llm_config = LLMConfig.parse_yaml(f)
+            return [llm_config]
+    elif os.path.isdir(path):
+        apps = []
+        for root, _dirs, files in os.walk(path):
+            for p in files:
+                if _is_yaml_file(p):
+                    with open(os.path.join(root, p), "r") as f:
+                        llm_config = LLMConfig.parse_yaml(f)
+                        apps.append(llm_config)
+        return apps
+    else:
+        raise ValueError(
+            f"Could not load model from {path}, as it is not a file or directory."
+        )
+
+
+def parse_args(
+    args: Union[str, LLMConfig, Any, Sequence[Union[LLMConfig, str, Any]]],
+) -> List[LLMConfig]:
+    """Parse the input args and return a standardized list of LLMConfig objects
+
+    Supported args format:
+    1. The path to a yaml file defining your LLMConfig
+    2. The path to a folder containing yaml files, which define your LLMConfigs
+    3. A list of yaml files defining multiple LLMConfigs
+    4. A dict or LLMConfig object
+    5. A list of dicts or LLMConfig objects
+    """
+
+    raw_models = [args]
+    if isinstance(args, list):
+        raw_models = args
+
+    # For each
+    models: List[LLMConfig] = []
+    for raw_model in raw_models:
+        if isinstance(raw_model, str):
+            if os.path.exists(raw_model):
+                parsed_models = _parse_path_args(raw_model)
+            else:
+                try:
+                    llm_config = LLMConfig.parse_yaml(raw_model)
+                    parsed_models = [llm_config]
+                except pydantic.ValidationError as e:
+                    raise ValueError(
+                        f"Could not parse string as yaml. If you are "
+                        "specifying a path, make sure it exists and can be "
+                        f"reached. raw_model: {raw_model}"
+                    ) from e
+        else:
+            try:
+                llm_config = LLMConfig.model_validate(raw_model)
+                parsed_models = [llm_config]
+            except pydantic.ValidationError:
+                parsed_models = [LLMConfig.model_validate(raw_model)]
+        models += parsed_models
+
+    return models
 
 
 class LLMServingArgs(BaseModel):
@@ -1041,7 +1120,7 @@ class SamplingParams(BaseModelExtended):
         if not values:
             return values
 
-        unique_val = sorted(list(set(values)))
+        unique_val = sorted(set(values))
 
         if len(unique_val) > MAX_NUM_STOPPING_SEQUENCES:
             TooManyStoppingSequences(

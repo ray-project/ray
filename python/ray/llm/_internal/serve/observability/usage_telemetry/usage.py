@@ -78,7 +78,7 @@ class TelemetryAgent:
         self.models = []
 
     def _multiple_models(self) -> str:
-        unique_models = set([model.model_id for model in self.models])
+        unique_models = {model.model_id for model in self.models}
         return "1" if len(unique_models) > 1 else "0"
 
     @staticmethod

@@ -367,9 +367,9 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
             content = []
             if isinstance(message.content, list):
                 for c in message.content:
-                    if isinstance(c, (TextContent, ContentContent)):
+                    if isinstance(c, (Text, Content)):
                         content.append(c.model_dump())
-                    elif isinstance(c, ImageContent):
+                    elif isinstance(c, Image):
                         content.append({"type": "image"})
                         images.append(ImageInput(image_url=c.image_url["url"]))
             else:

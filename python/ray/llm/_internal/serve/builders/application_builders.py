@@ -131,7 +131,7 @@ def build_openai_app(args: LLMServingArgs) -> Application:
     rayllm_args = LLMServingArgs.model_validate(args).parse_args()
 
     llm_configs = rayllm_args.llm_configs
-    model_ids = set(m.model_id for m in llm_configs)
+    model_ids = {m.model_id for m in llm_configs}
     if len(model_ids) != len(llm_configs):
         raise ValueError("Duplicate models found. Make sure model ids are unique.")
 
