@@ -12,7 +12,6 @@ from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMServingA
 from ray.llm._internal.serve.deployments.routers.router import Router
 from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
-    MODEL_REPLICA_MEMORY_GB,
 )
 
 logger = get_logger(__name__)
@@ -62,14 +61,6 @@ def set_deployment_placement_options(llm_config: LLMConfig) -> dict:
         }
     )
 
-    # Set a memory requirement if the model deployment uses a GPU. This ensures
-    # that model deployments running on a node with GPUs has enough memory to
-    # load model weights using anytensor.
-    if "memory" not in replica_actor_resources:
-        for bundle in deployment_config["placement_group_bundles"]:
-            if bundle.get("GPU", 0) > 0 and llm_config.use_anytensor:
-                replica_actor_resources["memory"] = MODEL_REPLICA_MEMORY_GB
-                break
     return deployment_config
 
 

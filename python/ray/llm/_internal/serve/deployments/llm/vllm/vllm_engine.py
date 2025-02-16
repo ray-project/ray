@@ -22,55 +22,50 @@ from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 from vllm.usage.usage_lib import UsageContext
 from vllm.utils import get_open_zmq_ipc_path
 
-from rayllm.backend.constants import (
-    RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
-    RAYLLM_GUIDED_DECODING_BACKEND,
-)
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.observability.metrics.utils import (
+from ray.llm._internal.serve.observability.metrics.utils import (
     LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
     ClockUnit,
     MsClock,
 )
-from rayllm.backend.server.error_handling import InputTooLong, ValidationError
-from rayllm.backend.server.first_init_marker import FirstInitMarker
-from rayllm.backend.server.generation import FinishReason
-from rayllm.backend.server.llm.vllm.anytensor_fast_loading.oss import (
-    vllm_oss_enable_anytensor_in_load_config_in_place,
-)
+from ray.llm._internal.serve.deployments.error_handling import InputTooLong, ValidationError
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
     VLLMEngineStats,
     VLLMEngineStatTracker,
     usage_counters,
 )
-from rayllm.backend.server.llm.vllm.vllm_models import (
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMEngineConfig,
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from rayllm.backend.server.llm_node_initializer import InitializeNodeOutput
-from rayllm.backend.server.llm_node_initializer import (
+from ray.llm._internal.serve.deployments.llm_node_initializer import InitializeNodeOutput
+from ray.llm._internal.serve.deployments.llm_node_initializer import (
     initialize_node as initialize_node_util,
 )
 from ray.llm._internal.serve.configs.server_models import (
     BatchedLLMRawResponse,
     LLMConfig,
     LLMRawResponse,
+    LogProb,
+    LogProbs,
+    FinishReason,
 )
-from rayllm.env_conf import MOCK_VLLM_ENGINE_ITL, MODEL_RESPONSE_BATCH_TIMEOUT_MS
-from rayllm.models import LogProb, LogProbs
+
+from ray.llm._internal.serve.condfigs.constants import (
+    RAYLLM_ENABLE_REQUEST_PROMPT_LOGS,
+    RAYLLM_GUIDED_DECODING_BACKEND,
+    MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    MIN_NUM_TOPLOGPROBS_ALLOWED,
+    MAX_NUM_TOPLOGPROBS_ALLOWED,
+)
 
 logger = get_logger(__name__)
 
 
-MIN_NUM_TOPLOGPROBS_ALLOWED = 0
-MAX_NUM_TOPLOGPROBS_ALLOWED = 5
-
-
-metrics_prefix = "vllm_engine_stats"
 time_in_queue_histogram = metrics.Histogram(
-    f"{metrics_prefix}_time_in_queue_ms",
+    "vllm_engine_stats_time_in_queue_ms",
     "Time a request spends in the queue first forward pass not included (ms).",
     boundaries=LONG_RANGE_LATENCY_HISTOGRAM_BUCKETS_MS,
 )
@@ -260,42 +255,16 @@ class VLLMEngine:
             logger.info("Skipping engine restart because the engine is already running")
             return
 
-        engine_config = self.llm_config.get_engine_config()
-
-        ctx = {
-            "model_id": engine_config.model_id,
-            "hf_model_id": engine_config.hf_model_id,
-            "s3_bucket_uri": (
-                engine_config.s3_mirror_config
-                and engine_config.s3_mirror_config.bucket_uri
-            ),
-            "gcs_bucket_uri": (
-                engine_config.gcs_mirror_config
-                and engine_config.gcs_mirror_config.bucket_uri
-            ),
-            "engine_kwargs": engine_config.engine_kwargs,
-            "runtime_env": engine_config.runtime_env,
-        }
-
         # Get the scaling options
         self.engine = await self._start_engine()
         self.running = True
         self.model_config = await self.engine.get_model_config()
 
-        FirstInitMarker.mark_first_init_done(engine_config.model_id, ctx)
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> EngineClient:
         args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
         engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
-
-        # Enable anytensor fast loading in this engine
-        anytensor_config = args.extra_init_kwargs.pop("anytensor_config", None)
-        if anytensor_config:
-            load_config = engine_config.load_config
-            vllm_oss_enable_anytensor_in_load_config_in_place(
-                load_config, anytensor_config
-            )
 
         if MQLLMEngineClient.is_unsupported_config(engine_args):
             # If the engine is not supported, we fall back to the legacy async engine.
@@ -713,56 +682,3 @@ class VLLMEngine:
                         )
                     ]
         return return_log_probs, log_probs_idx + len(return_log_probs)
-
-
-class MockVLLMEngine:
-    """Mocks the VLLM Engine.
-
-    Used when testing performance overhead for ray-llm.
-    """
-
-    def __init__(self, llm_config: LLMConfig, *args, **kwargs):
-        self.llm_config = llm_config
-
-    @staticmethod
-    async def start():
-        logger.info("Instantiated MockVLLMEngine")
-
-    @staticmethod
-    async def mock_responses(vllm_engine_request: VLLMGenerationRequest):
-        num_tokens = vllm_engine_request.sampling_params.max_tokens or 150
-        for _ in range(num_tokens):
-            await asyncio.sleep(MOCK_VLLM_ENGINE_ITL)
-            yield LLMRawResponse(
-                generated_text="foo",
-                num_generated_tokens=1,
-                num_generated_tokens_batch=1,
-                num_input_tokens=1,
-                num_input_tokens_batch=1,
-                preprocessing_time=0,
-                generation_time=0,
-                finish_reason=None,
-            )
-
-        await asyncio.sleep(MOCK_VLLM_ENGINE_ITL)
-        yield LLMRawResponse(
-            generated_text="bar",
-            num_generated_tokens=1,
-            num_generated_tokens_batch=1,
-            num_input_tokens=1,
-            num_input_tokens_batch=1,
-            preprocessing_time=0,
-            generation_time=0,
-            finish_reason="done",
-        )
-
-    async def generate(self, vllm_engine_request: VLLMGenerationRequest):
-        async for response in BatchLLMRawResponses(
-            self.mock_responses(vllm_engine_request),
-            interval_ms=MODEL_RESPONSE_BATCH_TIMEOUT_MS,
-        ).stream():
-            yield response
-
-    @staticmethod
-    async def check_health() -> bool:
-        return True

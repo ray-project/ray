@@ -20,7 +20,7 @@ from pydantic import (
 from transformers import AutoProcessor
 
 
-class TextContent(BaseModel):
+class Text(BaseModel):
     field: str = "text"
     type: str = "text"
     text: str
@@ -31,13 +31,13 @@ class TextContent(BaseModel):
 # Community version of pixtral uses the key `content` instead of `text` in the content.
 # This is to support the "content" content type in the prompt format, as opposite of
 # the "text" content from the above which most other model uses.
-class ContentContent(BaseModel):
+class Content(BaseModel):
     field: str = "text"
     type: str = "text"
     content: str
 
 
-class ImageContent(BaseModel):
+class Image(BaseModel):
     field: str = "image_url"
     image_url: Dict
 
@@ -52,7 +52,7 @@ class ImageContent(BaseModel):
         return value
 
 
-ContentList = List[Union[ImageContent, TextContent, ContentContent]]
+ContentList = List[Union[Image, Text, Content]]
 
 
 class Message(BaseModel):

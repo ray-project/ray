@@ -14,8 +14,9 @@ from typing import (
     TypeVar,
     Union,
     Literal,
+    Tuple,
 )
-
+import time
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -31,6 +32,7 @@ from ray.util.placement_group import (
     placement_group,
     placement_group_table,
 )
+from typing_extensions import Annotated
 
 from transformers import PretrainedConfig
 
@@ -505,88 +507,6 @@ class LLMServingArgs(BaseModel):
         return LLMServingArgs(llm_configs=llm_configs)
 
 
-class Text(BaseModel):
-    field: str = "text"
-    type: str = "text"
-    text: str
-
-
-# Ref: https://huggingface.co/mistral-community/pixtral-12b
-#
-# Community version of pixtral uses the key `content` instead of `text` in the content.
-# This is to support the "content" content type in the prompt format, as opposite of
-# the "text" content from the above which most other model uses.
-class Content(BaseModel):
-    field: str = "text"
-    type: str = "text"
-    content: str
-
-
-class Image(BaseModel):
-    field: str = "image_url"
-    image_url: Dict
-
-    @field_validator("image_url")
-    @classmethod
-    def check_image_url(cls, value):
-        if "url" not in value or not value["url"] or not isinstance(value["url"], str):
-            raise ValueError(
-                # TODO(xwjiang): Link to doc.
-                "Expecting 'url' string to be provided under 'image_url' dict."
-            )
-        return value
-
-
-ContentList = List[Union[Image, Text, Content]]
-
-
-class Message(BaseModel):
-    role: Literal["system", "assistant", "user"]
-    content: Optional[Union[str, ContentList]] = None
-
-    def __str__(self):
-        return self.model_dump_json()
-
-    @model_validator(mode="after")
-    def check_fields(self):
-        if self.role == "system":
-            if not isinstance(self.content, str):
-                raise ValueError("System content must be a string")
-        if self.role == "user" and self.content is None:
-            raise ValueError("User content must not be None.")
-        if self.role == "assistant":
-            # passing a regular assistant message
-            if self.content is not None and not isinstance(self.content, str):
-                raise ValueError("content must be a string or None")
-        return self
-
-
-class Prompt(BaseModel):
-    prompt: Union[str, List[Message]]
-    use_prompt_format: bool = True
-    parameters: Optional[Dict[str, Any]] = None
-
-    @field_validator("parameters", mode="before")
-    @classmethod
-    def parse_parameters(cls, value):
-        if isinstance(value, BaseModel):
-            # Use exclude_unset so that we can distinguish unset values from default values
-            return value.model_dump(exclude_unset=True)
-        return value
-
-    @field_validator("prompt")
-    @classmethod
-    def check_prompt(cls, value):
-        if isinstance(value, list) and not value:
-            raise ValueError("Messages cannot be an empty list.")
-        return value
-
-    def to_unformatted_string(self) -> str:
-        if isinstance(self.prompt, list):
-            return ", ".join(str(message.content) for message in self.prompt)
-        return self.prompt
-
-
 class ResponseFormat(BaseModel, ABC):
     # make allow extra fields false
     model_config = ConfigDict(extra="forbid")
@@ -685,3 +605,346 @@ ResponseFormatType = Union[
     ResponseFormatGrammar,
     ResponseFormatJsonObject,
 ]
+
+
+class ModelData(BaseModel):
+    model_config = ConfigDict(protected_namespaces=tuple())
+
+    id: str
+    object: str
+    owned_by: str
+    permission: List[str]
+    rayllm_metadata: Dict[str, Any]
+
+    @property
+    def model_type(self) -> str:
+        return self.rayllm_metadata["engine_config"]["model_type"]
+
+
+class FinishReason(str, Enum):
+    LENGTH = "length"
+    STOP = "stop"
+    ERROR = "error"
+    CANCELLED = "cancelled"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def from_vllm_finish_reason(
+        cls, finish_reason: Optional[str]
+    ) -> Optional["FinishReason"]:
+        if finish_reason is None:
+            return None
+        if finish_reason == "stop":
+            return cls.STOP
+        if finish_reason == "length":
+            return cls.LENGTH
+        if finish_reason == "abort":
+            return cls.CANCELLED
+        return cls.STOP
+
+
+# TODO (genesu): remove GenerationConfig
+class GenerationConfig(BaseModelExtended):
+    # prompt_format: Optional[
+    #     Union[HuggingFacePromptFormat]
+    # ] = Field(
+    #     default=HuggingFacePromptFormat(use_hugging_face_chat_template=True),
+    #     description="Handles chat template formatting and tokenization. If None, prompt formatting will be disabled and the model can be only queried in the completion mode.",
+    # )
+    generate_kwargs: Dict[str, Any] = Field(
+        default={},
+        description="Extra generation kwargs that needs to be passed into the sampling stage for the deployment (this includes things like temperature, etc.)",
+    )
+    stopping_sequences: Optional[List[str]] = Field(
+        default=None,
+        description="Stopping sequences (applied after detokenization) to propagate for inference.",
+    )
+    stopping_tokens: Optional[List[int]] = Field(
+        default=[],
+        description="Stopping tokens (applied before detokenization) to propagate for inference. By default, we use EOS/UNK tokens at inference.",
+    )
+
+    # @field_validator("prompt_format")
+    # @classmethod
+    # def default_prompt_format(cls, prompt_format):
+    #     return prompt_format if prompt_format is not None else DisabledPromptFormat()
+    #
+    # @property
+    # def all_generate_kwargs(self) -> Dict[str, Any]:
+    #     return {
+    #         "stopping_sequences": self.stopping_sequences,
+    #         "stopping_tokens": self.stopping_tokens,
+    #         **self.generate_kwargs,
+    #     }
+
+
+class LoraMirrorConfig(BaseModelExtended):
+    lora_model_id: str
+    bucket_uri: str
+    max_total_tokens: Optional[int]
+    generation: Optional[GenerationConfig]
+    sync_args: Optional[List[str]] = None
+
+    @field_validator("bucket_uri")
+    @classmethod
+    def validate_bucket_uri(cls, value: str):
+        # TODO(tchordia): remove this. this is a short term fix.
+        # We should fix this on the LLM-forge side
+        if not value.startswith("s3://") and not value.startswith("gs://"):
+            value = "s3://" + value
+        return value
+
+    @property
+    def _bucket_name_and_path(self) -> str:
+        for prefix in ["s3://", "gs://"]:
+            if self.bucket_uri.startswith(prefix):
+                return self.bucket_uri[len(prefix) :]
+        return self.bucket_uri
+
+    @property
+    def bucket_name(self) -> str:
+        return self._bucket_name_and_path.split("/")[0]
+
+    @property
+    def bucket_path(self) -> str:
+        return "/".join(self._bucket_name_and_path.split("/")[1:])
+
+
+class DiskMultiplexConfig(BaseModelExtended):
+    model_id: str
+    generation: Optional[GenerationConfig]
+    max_total_tokens: Optional[int]
+    local_path: str
+
+    # this is a per process id assigned to the model
+    lora_assigned_int_id: int
+
+class ErrorResponse(BaseModel):
+    message: str
+    internal_message: str
+    code: int
+    type: str
+    param: Dict[str, Any] = {}
+    # We use `Any` here since pydantic doesn't have a validator for exceptions.
+    # This is fine since the field is excluded.
+    original_exception: Annotated[Optional[Any], Field(exclude=True)] = None
+
+
+class ComputedPropertyMixin:
+    """
+    Include properties in the dict and json representations of the model.
+    """
+
+    # Replace with pydantic.computed_field once it's available
+    @classmethod
+    def get_properties(cls):
+        return [prop for prop in dir(cls) if isinstance(getattr(cls, prop), property)]
+
+    def model_dump(self, *args, **kwargs):
+        self.__dict__.update(
+            {prop: getattr(self, prop) for prop in self.get_properties()}
+        )
+        return super().model_dump(*args, **kwargs)  # type: ignore
+
+    def model_dump_json(
+        self,
+        *args,
+        **kwargs,
+    ) -> str:
+        self.__dict__.update(
+            {prop: getattr(self, prop) for prop in self.get_properties()}
+        )
+
+        return super().model_dump_json(*args, **kwargs)  # type: ignore
+
+
+class LogProb(BaseModel):
+    logprob: float
+    token: str
+    bytes: List[int]
+
+
+class LogProbs(BaseModel):
+    token: str
+    logprob: float
+    bytes: List[int]
+    top_logprobs: List[LogProb]
+
+    @classmethod
+    def create(cls, logprobs: List[LogProb], top_logprobs: Optional[int] = None):
+        assert len(logprobs) > 0, "logprobs must be a non-empty list"
+        token = logprobs[0].token
+        logprob = logprobs[0].logprob
+        bytes = logprobs[0].bytes
+        all_logprobs = logprobs if top_logprobs else []
+        ret = cls(token=token, logprob=logprob, bytes=bytes, top_logprobs=all_logprobs)
+        return ret
+
+
+class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
+    """The response from a query to a RayLLM Model.
+
+    Args:
+        generated_text: The generated text.
+        logprobs: Log probabilities of each token and possibly some of the unchosen tokens.
+        num_input_tokens: The number of input tokens.
+        num_generated_tokens: The number of generated tokens.
+        num_input_tokens_batch: The number of input tokens in the batch.
+        num_generated_tokens_batch: The number of generated tokens in the batch.
+        preprocessing_time: The time spent preprocessing the request.
+        generation_time: The time spent generating the response.
+        timestamp: The timestamp of the response.
+        finish_reason: The reason the generation finished.
+        error: The error, if any.
+
+    """
+
+    generated_text: Optional[str] = None
+    logprobs: Optional[List[LogProbs]] = None
+    num_input_tokens: Optional[int] = None
+    num_input_tokens_batch: Optional[int] = None
+    num_generated_tokens: Optional[int] = None
+    num_generated_tokens_batch: Optional[int] = None
+    preprocessing_time: Optional[float] = None
+    generation_time: Optional[float] = None
+    timestamp: Optional[float] = Field(default_factory=time.time)
+    finish_reason: Optional[str] = None
+    error: Optional[ErrorResponse] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def text_or_error_or_finish_reason(cls, values):
+        if (
+            values.get("generated_text") is None
+            and values.get("error") is None
+            and values.get("finish_reason") is None
+        ):
+            raise ValueError(
+                "'generated_text', 'error', or 'finish_reason' must be set."
+            )
+        return values
+
+    @classmethod
+    def merge_stream(cls, *responses: "LLMRawResponse") -> "LLMRawResponse":
+        """
+        Merge a stream of responses into a single response.
+
+        The generated text is concatenated. Fields are maxed, except for
+        num_generated_tokens and generation_time, which are summed.
+        """
+        if len(responses) == 1:
+            return responses[0]
+
+        generated_text = (
+            None
+            if responses[0].generated_text is None
+            else "".join([response.generated_text or "" for response in responses])
+        )
+        num_input_tokens = [
+            response.num_input_tokens
+            for response in responses
+            if response.num_input_tokens is not None
+        ]
+        max_num_input_tokens = max(num_input_tokens) if num_input_tokens else None
+        num_input_tokens_batch = [
+            response.num_input_tokens_batch
+            for response in responses
+            if response.num_input_tokens_batch is not None
+        ]
+        max_num_input_tokens_batch = (
+            max(num_input_tokens_batch) if num_input_tokens_batch else None
+        )
+        num_generated_tokens = [
+            response.num_generated_tokens
+            for response in responses
+            if response.num_generated_tokens is not None
+        ]
+        total_generated_tokens = (
+            sum(num_generated_tokens) if num_generated_tokens else None
+        )
+        num_generated_tokens_batch = [
+            response.num_generated_tokens_batch
+            for response in responses
+            if response.num_generated_tokens_batch is not None
+        ]
+        total_generated_tokens_batch = (
+            sum(num_generated_tokens_batch) if num_generated_tokens_batch else None
+        )
+        preprocessing_time = [
+            response.preprocessing_time
+            for response in responses
+            if response.preprocessing_time is not None
+        ]
+        max_preprocessing_time = max(preprocessing_time) if preprocessing_time else None
+        generation_time = [
+            response.generation_time
+            for response in responses
+            if response.generation_time is not None
+        ]
+        total_generation_time = sum(generation_time) if generation_time else None
+        error = next(
+            (response.error for response in reversed(responses) if response.error), None
+        )
+        logprobs = []
+        for response in responses:
+            if response.logprobs:
+                logprobs.extend(response.logprobs)
+
+        return cls(
+            generated_text=generated_text,
+            logprobs=logprobs,
+            num_input_tokens=max_num_input_tokens,
+            num_input_tokens_batch=max_num_input_tokens_batch,
+            num_generated_tokens=total_generated_tokens,
+            num_generated_tokens_batch=total_generated_tokens_batch,
+            preprocessing_time=max_preprocessing_time,
+            generation_time=total_generation_time,
+            timestamp=responses[-1].timestamp,
+            finish_reason=responses[-1].finish_reason,
+            error=error,
+        )
+
+    @property
+    def total_time(self) -> Optional[float]:
+        if self.generation_time is None and self.preprocessing_time is None:
+            return None
+        return (self.preprocessing_time or 0) + (self.generation_time or 0)
+
+    @property
+    def num_total_tokens(self) -> Optional[float]:
+        try:
+            return (self.num_input_tokens or 0) + (self.num_generated_tokens or 0)
+        except Exception:
+            return None
+
+    @property
+    def num_total_tokens_batch(self) -> Optional[float]:
+        try:
+            return (self.num_input_tokens_batch or 0) + (
+                self.num_generated_tokens_batch or 0
+            )
+        except Exception:
+            return None
+
+    def unpack(self) -> Tuple["LLMRawResponse", ...]:
+        return (self,)
+
+
+class BatchedLLMRawResponse(LLMRawResponse):
+    # Same as LLMRawResponse, but persists the individual responses
+    # that were batched together to produce this response.
+
+    _individual_responses: Optional[List[LLMRawResponse]] = PrivateAttr(None)
+
+    @classmethod
+    def merge_stream(cls, *responses: LLMRawResponse) -> LLMRawResponse:
+        if len(responses) == 1:
+            return responses[0]
+        obj = super().merge_stream(*responses)
+        obj._individual_responses = list(responses)  # type: ignore
+        return obj
+
+    def unpack(self) -> Tuple[LLMRawResponse]:
+        return tuple(self._individual_responses or [])

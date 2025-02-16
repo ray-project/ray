@@ -22,11 +22,6 @@ DEFAULT_TARGET_ONGOING_REQUESTS = 16
 
 FALLBACK_MAX_ONGOING_REQUESTS = 64
 
-GB = 10**9
-MODEL_REPLICA_MEMORY_GB = int(
-    float(os.getenv("RAYLLM_MODEL_REPLICA_MEMORY_GB", "48")) * GB
-)
-
 # If true, a default runtime_env will be injected to import rayllm on worker startup.
 # This is a startup time optimization to avoid the latency penalty of sequentially
 # importing rayllm in multiple layers of worker processes.
@@ -51,3 +46,15 @@ DEFAULT_HEALTH_CHECK_TIMEOUT_S = int(
     os.getenv("RAYLLM_DEFAULT_HEALTH_CHECK_TIMEOUT_S", "10")
 )
 ENGINE_START_TIMEOUT_S = int(os.getenv("RAYLLM_ENGINE_START_TIMEOUT_S", str(60 * 60)))
+
+MIN_NUM_TOPLOGPROBS_ALLOWED = 0
+MAX_NUM_TOPLOGPROBS_ALLOWED = 5
+MODEL_RESPONSE_BATCH_TIMEOUT_MS = float(
+    os.getenv("RAYLLM_MODEL_RESPONSE_BATCH_TIMEOUT_MS", "200")
+)
+RAYLLM_ENABLE_REQUEST_PROMPT_LOGS = (
+    os.environ.get("RAYLLM_ENABLE_REQUEST_PROMPT_LOGS", "1") == "1"
+)
+RAYLLM_GUIDED_DECODING_BACKEND = os.environ.get(
+    "RAYLLM_GUIDED_DECODING_BACKEND", "xgrammar"
+)

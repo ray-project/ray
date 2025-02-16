@@ -1,4 +1,6 @@
 from pydantic import ValidationError as PydanticValidationError
+from abc import ABC, abstractmethod
+
 
 
 class ValidationError(ValueError):
@@ -28,3 +30,39 @@ class ValidationErrorWithPydantic(ValidationError):
 
     def __str__(self) -> str:
         return self.exc.__str__()
+
+
+class PromptTooLongError(ValidationError):
+    pass
+
+
+class ErrorReason(ABC):
+    @abstractmethod
+    def get_message(self) -> str:
+        raise NotImplementedError
+
+    def __str__(self) -> str:
+        return self.get_message()
+
+    @property
+    @abstractmethod
+    def exception(self) -> Exception:
+        raise NotImplementedError
+
+    def raise_exception(self) -> Exception:
+        raise self.exception
+
+
+class InputTooLong(ErrorReason):
+    def __init__(self, num_tokens: int, max_num_tokens: int) -> None:
+        self.num_tokens = num_tokens
+        self.max_num_tokens = max_num_tokens
+
+    def get_message(self) -> str:
+        if self.num_tokens < 0:
+            return f"Input too long. The maximum input length is {self.max_num_tokens} tokens."
+        return f"Input too long. Recieved {self.num_tokens} tokens, but the maximum input length is {self.max_num_tokens} tokens."
+
+    @property
+    def exception(self) -> Exception:
+        return PromptTooLongError(self.get_message())

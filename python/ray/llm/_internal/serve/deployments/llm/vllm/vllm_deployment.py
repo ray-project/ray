@@ -44,10 +44,12 @@ from ray.llm._internal.serve.configs.server_models import (
     ErrorResponse,
     LLMConfig,
     LLMRawResponse,
+)
+from ray.llm._internal.serve.configs.prompt_formats import (
     Message,
     Prompt
 )
-from rayllm.backend.server.utils import (
+from ray.llm._internal.serve.deployments.server_utils import (
     get_model_request_id,
     get_response_for_error,
     get_serve_request_id,
