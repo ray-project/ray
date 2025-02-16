@@ -137,28 +137,27 @@ class TorchLearner(Learner):
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
-        # TODO (sven): Causes weird cuda error when WandB is used.
-        #  Diagnosis thus far:
-        #  - All peek values during metrics.reduce are non-tensors.
-        #  - However, in impala.py::training_step(), a tensor does arrive after learner
-        #    group.update_from_episodes(), so somehow, there is still a race condition
-        #    possible (learner, which performs the reduce() and learner thread, which
-        #    performs the logging of tensors into metrics logger).
-        self._compute_off_policyness(batch)
+        with self._gpu_lock:
+            # TODO (sven): Causes weird cuda error when WandB is used.
+            #  Diagnosis thus far:
+            #  - All peek values during metrics.reduce are non-tensors.
+            #  - However, in impala.py::training_step(), a tensor does arrive after learner
+            #    group.update_from_episodes(), so somehow, there is still a race condition
+            #    possible (learner, which performs the reduce() and learner thread, which
+            #    performs the logging of tensors into metrics logger).
+            self._compute_off_policyness(batch)
 
-        fwd_out = self.module.forward_train(batch)
-        loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
-        gradients = self.compute_gradients(loss_per_module)
+            fwd_out = self.module.forward_train(batch)
+            loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
+            gradients = self.compute_gradients(loss_per_module)
 
-        with contextlib.ExitStack() as stack:
-            if self.config.num_learners > 1:
-                for mod in self.module.values():
-                    stack.enter_context(mod.no_sync())
-            postprocessed_gradients = self.postprocess_gradients(gradients)
-            self.apply_gradients(postprocessed_gradients)
+            with contextlib.ExitStack() as stack:
+                if self.config.num_learners > 1:
+                    for mod in self.module.values():
+                        stack.enter_context(mod.no_sync())
+                postprocessed_gradients = self.postprocess_gradients(gradients)
+                self.apply_gradients(postprocessed_gradients)
 
-        # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
-        # results.
         return fwd_out, loss_per_module, {}
 
     @override(Learner)
