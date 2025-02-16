@@ -484,6 +484,70 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize(
+    "overlap_gpu_communication",
+    [
+        False,
+        # True,
+    ],
+)
+def test_torch_tensor_nccl_send_overlap_result_across_actors(
+    ray_start_regular, overlap_gpu_communication
+):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 2
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    dtype = torch.float16
+    coll_shape = (100_000_000,)
+    comp_shape = (100_000,)
+    comp_repeat = 1_000
+    with InputNode() as inp:
+        coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
+        comp_inputs = [worker.send.bind(comp_shape, dtype, inp) for worker in workers]
+        comp_outputs = [
+            worker.compute_inc.bind(comp, comp_repeat)
+            for worker, comp in zip(workers, comp_inputs)
+        ]
+        coll_values = collective.allreduce.bind(coll_inputs)
+        coll_outputs = [
+            workers[0].recv.bind(coll_values[1]),
+            workers[1].recv.bind(coll_values[0]),
+        ]
+        dag = MultiOutputNode(coll_outputs + comp_outputs)
+
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    elapses = []
+    start = time.monotonic()
+    for i in range(5):
+        start = time.monotonic()
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        duration = time.monotonic() - start
+        elapses.append(duration)
+        assert (
+            result
+            == [(i * num_workers, coll_shape, dtype)] * num_workers
+            + [(i + comp_repeat, comp_shape, dtype)] * num_workers
+        )
+    duration = time.monotonic() - start
+    print(f"{overlap_gpu_communication=}, {duration=}")
+    for i, elapse in enumerate(elapses):
+        print(f"iteration {i=}, {elapse=}")
+
+    compiled_dag.teardown()
+
+
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     """
     Check that the driver cannot participate in the NCCL group, i.e. DAG input
