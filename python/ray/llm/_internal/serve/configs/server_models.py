@@ -33,12 +33,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from ray.util.placement_group import (
-    PlacementGroup,
-    get_current_placement_group,
-    placement_group,
-    placement_group_table,
-)
 from typing_extensions import Annotated
 
 from transformers import PretrainedConfig
@@ -47,7 +41,6 @@ from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
 
 from ray.llm._internal.serve.configs.constants import (
-    ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     DEFAULT_TARGET_ONGOING_REQUESTS,
@@ -247,17 +240,7 @@ class InputModality(str, Enum):
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
-    VLLMEngine = "VLLMEngine"
-
-
-class ParallelismConfig(BaseModelExtended):
-    degree: int = Field(
-        default=1,
-        description=(
-            "The degree of tensor parallelism. Must be greater than or equal "
-            "to 1. When set to 1, the model does not use tensor parallelism."
-        ),
-    )
+    VLLM = "VLLM"
 
 
 class JSONModeOptions(BaseModelExtended):
@@ -349,7 +332,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     llm_engine: LLMEngine = Field(
-        default=LLMEngine.VLLMEngine,
+        default=LLMEngine.VLLM,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -365,16 +348,6 @@ class LLMConfig(BaseModelExtended):
 
     accelerator_type: GPUType = Field(
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
-    )
-
-    tensor_parallelism: ParallelismConfig = Field(
-        default_factory=ParallelismConfig,
-        description="The tensor parallelism settings for the model.",
-    )
-
-    pipeline_parallelism: ParallelismConfig = Field(
-        default_factory=ParallelismConfig,
-        description="The pipeline parallelism settings for the model.",
     )
 
     lora_config: Optional[LoraConfig] = Field(
@@ -448,48 +421,19 @@ class LLMConfig(BaseModelExtended):
             )
         return multiplex_config
 
-    @property
-    def placement_strategy(self) -> str:
-        # If pp <= 1, it's TP so we should make sure all replicas are on the same node.
-        if self.pipeline_parallelism.degree > 1:
-            return "PACK"
-        return "STRICT_PACK"
+    def get_engine_config(self):
+        """Returns the engine config for the given LLM config.
 
-    @property
-    def placement_bundles(self) -> List[Dict[str, float]]:
-        num_workers = self.tensor_parallelism.degree * self.pipeline_parallelism.degree
-        bundles = [
-            {"GPU": 1, self.ray_accelerator_type(): 0.001} for _ in range(num_workers)
-        ]
-
-        return bundles
-
-    def get_or_create_pg(self) -> PlacementGroup:
-        """Gets or a creates a placement group.
-
-        If we are already in a placement group, return the existing placement group.
-        Else, create a new placement group based on the scaling config.
+        LLMConfig not only has engine config but also deployment config, etc.
         """
-        pg = get_current_placement_group()
-        if pg:
-            logger.debug(
-                "Using existing placement group %s, details: %s",
-                pg.id,
-                placement_group_table(pg),
-            )
-        else:
-            if not ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT:
-                raise RuntimeError(
-                    "Creating new placement groups is not allowed. "
-                    "Change RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT "
-                    "if this is not intended."
-                )
+        if self.llm_engine == LLMEngine.VLLM:
+            from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 
-            pg = placement_group(
-                self.placement_bundles, strategy=self.placement_strategy
-            )
-            logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
-        return pg
+            return VLLMEngineConfig.from_llm_config(self)
+        else:
+            # Note (genesu): This should never happen because we validate the engine
+            # in the config.
+            raise ValueError(f"Unsupported engine: {self.llm_engine}")
 
 
 def _is_yaml_file(filename: str) -> bool:

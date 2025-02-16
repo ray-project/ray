@@ -21,9 +21,6 @@ engine_kwargs:
 
 accelerator_type: A10G
 
-tensor_parallelism:
-  degree: 1
-
 lora_config: null
 
 deployment_config:

@@ -7,7 +7,7 @@ from ray.serve.handle import DeploymentHandle
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMServingArgs
+from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMServingArgs, LLMEngine
 from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
 from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
@@ -16,7 +16,7 @@ from ray.llm._internal.serve.configs.constants import (
 logger = get_logger(__name__)
 
 
-def set_deployment_placement_options(llm_config: LLMConfig) -> dict:
+def _set_deployment_placement_options(llm_config: LLMConfig) -> dict:
     deployment_config = llm_config.deployment_config.model_copy(deep=True).model_dump()
     engine_config = llm_config.get_engine_config()
 
@@ -63,7 +63,7 @@ def set_deployment_placement_options(llm_config: LLMConfig) -> dict:
     return deployment_config
 
 
-def get_deployment_name(llm_config: LLMConfig, name_prefix: str):
+def _get_deployment_name(llm_config: LLMConfig, name_prefix: str):
     unsanitized_deployment_name = name_prefix + llm_config.model_id
     return unsanitized_deployment_name.replace("/", "--").replace(".", "_")
 
@@ -74,7 +74,7 @@ def get_serve_deployment_args(
     name_prefix: str,
     default_runtime_env: Optional[dict] = None,
 ):
-    deployment_config = set_deployment_placement_options(llm_config)
+    deployment_config = _set_deployment_placement_options(llm_config)
 
     if default_runtime_env:
         ray_actor_options = deployment_config.get("ray_actor_options", {})
@@ -87,15 +87,14 @@ def get_serve_deployment_args(
         deployment_config["ray_actor_options"] = ray_actor_options
 
     # Set the name of the deployment config to map to the model ID.
-    deployment_config["name"] = get_deployment_name(llm_config, name_prefix)
+    deployment_config["name"] = _get_deployment_name(llm_config, name_prefix)
     return deployment_config
 
 
-# TODO (genesu): rename to build_vllm_deployment and refactor
-def _get_llm_deployments(
-    llm_base_models: Optional[Sequence[LLMConfig]] = None,
+def build_vllm_deployment(
+    llm_config: LLMConfig,
     deployment_kwargs: Optional[dict] = None,
-) -> List[DeploymentHandle]:
+):
     if deployment_kwargs is None:
         deployment_kwargs = {}
 
@@ -105,22 +104,31 @@ def _get_llm_deployments(
             "worker_process_setup_hook"
         ] = "ray.llm._internal.serve._worker_process_setup_hook"
 
+    deployment_options = get_serve_deployment_args(
+        llm_config,
+        name_prefix="VLLMDeployment:",
+        default_runtime_env=default_runtime_env,
+    )
+
+    return VLLMDeployment.options(**deployment_options).bind(
+        llm_config=llm_config, **deployment_kwargs
+    )
+
+
+def _get_llm_deployments(
+    llm_base_models: Optional[Sequence[LLMConfig]] = None,
+    deployment_kwargs: Optional[dict] = None,
+) -> List[DeploymentHandle]:
     llm_deployments = []
     for llm_config in llm_base_models:
-        # Note (genesu): this is mostly used in the test to override the engine_cls...
-        deployment_kwargs.setdefault("engine_cls", VLLMEngine)
-
-        deployment_options = get_serve_deployment_args(
-            llm_config,
-            name_prefix="VLLMDeployment:",
-            default_runtime_env=default_runtime_env,
-        )
-
-        llm_deployments.append(
-            VLLMDeployment.options(**deployment_options).bind(
-                llm_config=llm_config, **deployment_kwargs
+        if llm_config.llm_engine == LLMEngine.VLLM:
+            llm_deployments.append(
+                build_vllm_deployment(llm_config, deployment_kwargs)
             )
-        )
+        else:
+            # Note (genesu): This should never happen because we validate the engine
+            # in the config.
+            raise ValueError(f"Unsupported engine: {llm_config.llm_engine}")
 
     return llm_deployments
 
