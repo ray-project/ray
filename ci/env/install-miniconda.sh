@@ -41,9 +41,8 @@ install_miniconda() {
     esac
 
     local miniconda_url="https://repo.continuum.io/miniconda/${miniconda_version}-${miniconda_platform}-${HOSTTYPE}${exe_suffix}"
-    local miniforge_url="https://github.com/conda-forge/miniforge/releases/download/25.1.1-0/Miniforge3-25.1.1-0-${miniconda_platform}-${HOSTTYPE}.sh"
     local miniconda_target="${HOME}/${miniconda_url##*/}"
-    curl -f -s -L -o "${miniconda_target}" "${miniforge_url}"
+    curl -f -s -L -o "${miniconda_target}" "${miniconda_url}"
     chmod +x "${miniconda_target}"
 
     case "${OSTYPE}" in
@@ -82,15 +81,7 @@ install_miniconda() {
 
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
-  if [ "${PYTHON}" == "3.13" ]; then
-    (
-      set +x
-      echo "Creating Anaconda Python environment for ${PYTHON}..."
-      conda create -n py python="${PYTHON}" -c conda-forge -q -y
-      source "${miniconda_dir}/etc/profile.d/conda.sh"
-      conda activate py
-    )
-  elif [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
+  if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
