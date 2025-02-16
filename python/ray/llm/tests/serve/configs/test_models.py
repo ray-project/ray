@@ -1,7 +1,7 @@
 import pydantic
 import pytest
 
-from ray.llm._internal.serve.configs.models import LLMConfig, ModelLoadingConfig
+from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
 
 from pathlib import Path
 
