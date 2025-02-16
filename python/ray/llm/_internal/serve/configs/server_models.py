@@ -737,6 +737,7 @@ class DiskMultiplexConfig(BaseModelExtended):
     # this is a per process id assigned to the model
     lora_assigned_int_id: int
 
+
 class ErrorResponse(BaseModel):
     message: str
     internal_message: str

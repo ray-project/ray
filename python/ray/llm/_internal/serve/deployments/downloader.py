@@ -26,7 +26,7 @@ def get_model_location_on_disk(model_id: str) -> str:
     """Get the location of the model on disk.
 
     Args:
-        model_id (str): Hugging Face model ID.
+        model_id: Hugging Face model ID.
     """
     from transformers.utils.hub import TRANSFORMERS_CACHE
 

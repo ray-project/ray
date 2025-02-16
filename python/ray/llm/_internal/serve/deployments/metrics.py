@@ -49,7 +49,7 @@ class Metrics:
         input_tokens: Optional[int],
         *,
         model_id: str,
-        user_id: str = _UNKNOWN_USER_ID_VAL
+        user_id: str = _UNKNOWN_USER_ID_VAL,
     ):
         if input_tokens:
             self.tokens_input.inc(input_tokens, tags=self._get_tags(model_id, user_id))

@@ -3,7 +3,11 @@ from typing import Any, Dict, Optional
 from ray.llm._internal.serve.observability.logging import get_logger
 
 # TODO (genesu): double check if LLMConfig, LLMRawResponse need to be lazy imported
-from ray.llm._internal.serve.configs.server_models import ModelData, LLMConfig, LLMRawResponse
+from ray.llm._internal.serve.configs.server_models import (
+    ModelData,
+    LLMConfig,
+    LLMRawResponse,
+)
 
 
 logger = get_logger(__name__)

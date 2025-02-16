@@ -68,6 +68,7 @@ def _log_download_info(
         else:
             logger.info("Downloading model and tokenizer from %s", source)
 
+
 def download_model_files(
     model_id: Optional[str] = None,
     s3_mirror_config: Optional[S3MirrorConfig] = None,
@@ -130,6 +131,7 @@ def download_model_files(
         downloader.get_extra_files()
 
     return model_path_or_id
+
 
 async def initialize_worker_nodes(
     llm_config: LLMConfig,

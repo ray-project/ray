@@ -17,7 +17,10 @@ from ray.llm._internal.serve.observability.metrics.fastapi_utils import (
     FASTAPI_HTTP_USER_ID_TAG_KEY,
     get_app_name,
 )
-from ray.llm._internal.serve.deployments.routers.middleware import get_request_id, get_user_id
+from ray.llm._internal.serve.deployments.routers.middleware import (
+    get_request_id,
+    get_user_id,
+)
 
 logger = get_logger("ray.serve")
 

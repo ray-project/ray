@@ -28,7 +28,10 @@ from ray.llm._internal.serve.observability.metrics.utils import (
     ClockUnit,
     MsClock,
 )
-from ray.llm._internal.serve.deployments.error_handling import InputTooLong, ValidationError
+from ray.llm._internal.serve.deployments.error_handling import (
+    InputTooLong,
+    ValidationError,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine_stats import (
     ArgUsage,
     VLLMEngineStats,
@@ -40,7 +43,9 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from ray.llm._internal.serve.deployments.llm_node_initializer import InitializeNodeOutput
+from ray.llm._internal.serve.deployments.llm_node_initializer import (
+    InitializeNodeOutput,
+)
 from ray.llm._internal.serve.deployments.llm_node_initializer import (
     initialize_node as initialize_node_util,
 )
@@ -222,7 +227,7 @@ class VLLMEngine:
         """Create a VLLM Engine class
 
         Args:
-            llm_config (LLMConfig): The llm configuration for this engine
+            llm_config: The llm configuration for this engine
         """
         assert isinstance(
             llm_config, LLMConfig

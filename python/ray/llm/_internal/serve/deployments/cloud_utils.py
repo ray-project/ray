@@ -41,7 +41,6 @@ def get_file_from_s3(
     return body
 
 
-
 def get_gcs_bucket_name_and_prefix(
     bucket_uri: str, is_file: bool = False
 ) -> Tuple[str, str]:
@@ -80,7 +79,6 @@ def get_gcs_bucket_name_and_prefix(
         bucket_prefix += "/"
 
     return bucket_name, bucket_prefix
-
 
 
 def get_gcs_client():
@@ -175,7 +173,6 @@ def list_subfolders_s3(folder_uri: str) -> List[str]:
                 subfolders.append(subfolder)
 
     return subfolders
-
 
 
 def list_subfolders_gcs(folder_uri: str) -> List[str]:
@@ -441,7 +438,7 @@ def download_files_from_s3(
             + s3_sync_args
             + [bucket_uri, path],
             env=env,
-            )
+        )
     except subprocess.CalledProcessError:
         logger.exception("Encountered an error while downloading files.")
 
@@ -478,7 +475,7 @@ def download_model_from_s3(
             + s3_sync_args
             + [s3_hash_file_path, "."],
             env=extended_env,
-            )
+        )
     except subprocess.CalledProcessError:
         logger.exception(
             "Encountered an error while copying the hash file at "
@@ -502,11 +499,11 @@ def download_model_from_s3(
         target_path,
         bucket_uri,
         s3_sync_args=s3_sync_args
-                     + (
-                         ["--exclude", "*", "--include", "*token*", "--include", "config.json"]
-                         if tokenizer_only
-                         else []
-                     ),
+        + (
+            ["--exclude", "*", "--include", "*token*", "--include", "config.json"]
+            if tokenizer_only
+            else []
+        ),
         aws_executable=aws_executable,
         env=extended_env,
     )

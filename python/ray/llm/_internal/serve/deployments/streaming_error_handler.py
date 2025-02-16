@@ -10,7 +10,10 @@ from ray.llm._internal.serve.observability.metrics.utils import (
 )
 from ray.llm._internal.serve.deployments.metrics import Metrics
 from ray.llm._internal.serve.configs.server_models import LLMRawResponse
-from ray.llm._internal.serve.deployments.server_utils import get_response_for_error, get_serve_request_id
+from ray.llm._internal.serve.deployments.server_utils import (
+    get_response_for_error,
+    get_serve_request_id,
+)
 
 logger = get_logger(__name__)
 

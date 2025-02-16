@@ -48,7 +48,10 @@ from ray.llm._internal.serve.configs.server_models import (
     ModelData,
     Model,
 )
-from ray.llm._internal.serve.deployments.openai_utils import OpenAIHTTPException, to_model_metadata
+from ray.llm._internal.serve.deployments.openai_utils import (
+    OpenAIHTTPException,
+    to_model_metadata,
+)
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,

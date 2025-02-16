@@ -27,12 +27,14 @@ _strict_metaschema = {
 }
 strict_validator = Draft202012Validator(_strict_metaschema)
 
+
 def raise_invalid_response_format_schema(error_msg: str, e: Optional[Exception]):
     raise OpenAIHTTPException(
         message=INVALID_RESPONSE_FORMAT_SCHEMA_MSG + " Exception:\n" + error_msg,
         status_code=status.HTTP_400_BAD_REQUEST,
         type=INVALID_RESPONSE_FORMAT_SCHEMA,
     ) from e
+
 
 def _dereference_json(schema: Optional[Union[str, Dict[str, Any]]]) -> Dict[str, Any]:
     """Remove $defs/definitions from json schema by dereferencing any references."""
