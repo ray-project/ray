@@ -79,6 +79,8 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
 
     def on_write_start(self) -> None:
         """Prepare for the transaction"""
+        from pyiceberg.table import PropertyUtil, TableProperties
+
         catalog = self._get_catalog()
         table = catalog.load_table(self.table_identifier)
         self._txn = table.transaction()
@@ -94,6 +96,12 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             raise ValueError(
                 f"Not all partition types are supported for writes. Following partitions cannot be written using pyarrow: {unsupported_partitions}."
             )
+
+        self._manifest_merge_enabled = PropertyUtil.property_as_bool(
+            self._table_metadata.properties,
+            TableProperties.MANIFEST_MERGE_ENABLED,
+            TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
+        )
 
     def write(self, blocks: Iterable[Block], ctx: TaskContext):
         from pyiceberg.io.pyarrow import (
@@ -127,16 +135,19 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         return data_files_list
 
     def on_write_complete(self, write_result: WriteResult[List["DataFile"]]):
-        from pyiceberg.table import FastAppendFiles
-        from pyiceberg.table.snapshots import Operation
+        update_snapshot = self._txn.update_snapshot(
+            snapshot_properties=self._snapshot_properties
+        )
+        append_method = (
+            update_snapshot.merge_append
+            if self._manifest_merge_enabled
+            else update_snapshot.fast_append
+        )
 
-        with FastAppendFiles(
-            operation=Operation.APPEND,
-            transaction=self._txn,
-            io=self._io,
-            commit_uuid=self._uuid,
-            snapshot_properties=self._snapshot_properties,
-        ) as append_files:
-            for write_return in write_result.write_returns:
-                for data_file in write_return:
+        with append_method() as append_files:
+            append_files.commit_uuid = self._uuid
+            for data_files in write_result.write_returns:
+                for data_file in data_files:
                     append_files.append_data_file(data_file)
+
+        self._txn.commit_transaction()

@@ -275,7 +275,6 @@ def test_write_basic():
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-
     table.delete()
 
     ds = ray.data.from_arrow(create_pa_table())
@@ -285,6 +284,7 @@ def test_write_basic():
     )
 
     # Read the raw table from PyIceberg after writing
+    table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
     orig_table_p = (
         table.scan()
         .to_pandas()
