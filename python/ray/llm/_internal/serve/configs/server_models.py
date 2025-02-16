@@ -427,7 +427,9 @@ class LLMConfig(BaseModelExtended):
         LLMConfig not only has engine config but also deployment config, etc.
         """
         if self.llm_engine == LLMEngine.VLLM:
-            from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
+            from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+                VLLMEngineConfig,
+            )
 
             return VLLMEngineConfig.from_llm_config(self)
         else:

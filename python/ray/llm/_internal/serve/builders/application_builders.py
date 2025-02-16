@@ -6,8 +6,11 @@ from ray.serve.handle import DeploymentHandle
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.configs.server_models import LLMConfig, LLMServingArgs, LLMEngine
+from ray.llm._internal.serve.configs.server_models import (
+    LLMConfig,
+    LLMServingArgs,
+    LLMEngine,
+)
 from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
 from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
@@ -122,9 +125,7 @@ def _get_llm_deployments(
     llm_deployments = []
     for llm_config in llm_base_models:
         if llm_config.llm_engine == LLMEngine.VLLM:
-            llm_deployments.append(
-                build_vllm_deployment(llm_config, deployment_kwargs)
-            )
+            llm_deployments.append(build_vllm_deployment(llm_config, deployment_kwargs))
         else:
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
