@@ -121,7 +121,7 @@ class WorkerLeaseInterface {
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback) = 0;
 
-  virtual ~WorkerLeaseInterface() {};
+  virtual ~WorkerLeaseInterface(){};
 };
 
 /// Interface for leasing resource.
@@ -154,7 +154,7 @@ class ResourceReserveInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
 
-  virtual ~ResourceReserveInterface() {};
+  virtual ~ResourceReserveInterface(){};
 };
 
 /// Interface for waiting dependencies. Abstract for testing.
@@ -169,7 +169,7 @@ class DependencyWaiterInterface {
   virtual ray::Status WaitForDirectActorCallArgs(
       const std::vector<rpc::ObjectReference> &references, int64_t tag) = 0;
 
-  virtual ~DependencyWaiterInterface() {};
+  virtual ~DependencyWaiterInterface(){};
 };
 
 /// Inteface for getting resource reports.
@@ -178,7 +178,7 @@ class ResourceTrackingInterface {
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
 
-  virtual ~ResourceTrackingInterface() {};
+  virtual ~ResourceTrackingInterface(){};
 };
 
 class MutableObjectReaderInterface {
@@ -229,7 +229,7 @@ class RayletClientInterface : public PinObjectsInterface,
                               public ResourceTrackingInterface,
                               public MutableObjectReaderInterface {
  public:
-  virtual ~RayletClientInterface() {};
+  virtual ~RayletClientInterface(){};
 
   /// Get the system config from Raylet.
   /// \param callback Callback that will be called after raylet replied the system config.
