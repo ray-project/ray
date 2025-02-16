@@ -8,7 +8,7 @@ from starlette.routing import Match
 from starlette.types import Message
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.observability.metrics.fastapi_utils import (
+from ray.llm._internal.serve.observability.metrics.fastapi_utils import (
     FASTAPI_API_SERVER_TAG_KEY,
     FASTAPI_HTTP_HANDLER_TAG_KEY,
     FASTAPI_HTTP_METHOD_TAG_KEY,
@@ -17,7 +17,7 @@ from rayllm.backend.observability.metrics.fastapi_utils import (
     FASTAPI_HTTP_USER_ID_TAG_KEY,
     get_app_name,
 )
-from rayllm.backend.server.routers.middleware import get_request_id, get_user_id
+from ray.llm._internal.serve.deployments.routers.middleware import get_request_id, get_user_id
 
 logger = get_logger("ray.serve")
 

@@ -66,3 +66,5 @@ ENV_VARS_TO_PROPAGATE = {
 }
 # timeout in 10 minutes. Streaming can take longer than 3 min
 RAYLLM_ROUTER_HTTP_TIMEOUT = float(os.environ.get("RAYLLM_ROUTER_HTTP_TIMEOUT", 600))
+
+ENABLE_VERBOSE_TELEMETRY = bool(int(os.getenv("RAYLLM_ENABLE_VERBOSE_TELEMETRY", "0")))

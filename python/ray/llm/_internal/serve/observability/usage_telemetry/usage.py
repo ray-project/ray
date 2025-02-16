@@ -10,8 +10,7 @@ from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
-from ray.llm._internal.serve.configs.server_models import LLMConfig
-from rayllm.backend.server.pydantic_utils import BaseModelExtended
+from ray.llm._internal.serve.configs.server_models import LLMConfig, BaseModelExtended
 
 RAYLLM_TELEMETRY_NAMESPACE = "rayllm_telemetry"
 RAYLLM_TELEMETRY_ACTOR_NAME = "rayllm_telemetry"

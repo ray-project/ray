@@ -6,19 +6,19 @@ from fastapi import FastAPI
 from ray.util import metrics
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from rayllm.backend.observability.metrics.event_loop_monitoring import (
+from ray.llm._internal.serve.observability.metrics.event_loop_monitoring import (
     EVENT_LOOP_LATENCY_HISTOGRAM_BOUNDARIES,
     setup_event_loop_monitoring,
 )
-from rayllm.backend.observability.metrics.fastapi_utils import (
+from ray.llm._internal.serve.observability.metrics.fastapi_utils import (
     FASTAPI_API_SERVER_TAG_KEY,
     FASTAPI_BASE_HTTP_METRIC_TAG_KEYS,
     get_app_name,
 )
-from rayllm.backend.observability.metrics.middleware import (
+from ray.llm._internal.serve.observability.metrics.middleware import (
     MeasureHTTPRequestMetricsMiddleware,
 )
-from rayllm.env_conf import ENABLE_VERBOSE_TELEMETRY
+from ray.llm._internal.serve.configs.constants import ENABLE_VERBOSE_TELEMETRY
 
 logger = get_logger(__name__)
 

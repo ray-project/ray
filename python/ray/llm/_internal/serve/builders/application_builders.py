@@ -102,10 +102,9 @@ def _get_llm_deployments(
 
     default_runtime_env = ray.get_runtime_context().runtime_env
     if ENABLE_WORKER_PROCESS_SETUP_HOOK:
-        # TODO (genesu): fixit
         default_runtime_env[
             "worker_process_setup_hook"
-        ] = "rayllm._worker_process_setup_hook"
+        ] = "ray.llm._internal.serve._worker_process_setup_hook"
 
     llm_deployments = []
     for llm_config in llm_base_models:
