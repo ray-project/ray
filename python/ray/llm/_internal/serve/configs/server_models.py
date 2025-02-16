@@ -1,9 +1,12 @@
+import copy
+
 import yaml
 
 from enum import Enum
 from abc import ABC, abstractmethod
 from vllm.sampling_params import GuidedDecodingParams
 import json
+from ray.llm._internal.serve.deployments.error_handling import TooManyStoppingSequences
 
 from typing import (
     Any,
@@ -45,8 +48,9 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     FALLBACK_MAX_ONGOING_REQUESTS,
+    MAX_NUM_STOPPING_SEQUENCES,
 )
-
+from ray.llm._internal.serve.configs.prompt_formats import Prompt
 
 GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -948,3 +952,122 @@ class BatchedLLMRawResponse(LLMRawResponse):
 
     def unpack(self) -> Tuple[LLMRawResponse]:
         return tuple(self._individual_responses or [])
+
+
+def merge_dicts(base: Dict, overwrite: Dict) -> Dict:
+    """
+    Merge overwrite into base. Modify base inplace.
+    """
+
+    for key in overwrite:
+        if (
+            key in base
+            and isinstance(base[key], dict)
+            and isinstance(overwrite[key], dict)
+        ):
+            merge_dicts(base[key], overwrite[key])
+        else:
+            base[key] = overwrite[key]
+    return base
+
+
+class SamplingParams(BaseModelExtended):
+    """
+    Args:
+        max_tokens: The maximum number of tokens to generate. Defaults to inf.
+        temperature: What sampling temperature to use.
+        top_p: An alternative to sampling with temperature, called nucleus sampling.
+        n: How many completions to generate for each prompt.
+        logprobs: Include the log probabilities on the `logprobs` most likely
+            tokens, as well the chosen tokens.
+        top_logprobs: The number of logprobs to return. Defaults to 1. `logprobs`
+            must be set to `True` in order to use top_logprobs.
+        stop: Up to 4 sequences where the API will stop generating further tokens.
+            The returned text will not contain the stop sequence.
+        stop_tokens: Tokens to stop on (applied before detokenization).
+        presence_penalty: Number between -2.0 and 2.0.
+            Positive values penalize new tokens based on whether they appear in
+            the text so far, increasing the model's likelihood to talk about
+            new topics.
+        frequency_penalty: Number between -2.0 and 2.0. Positive values penalize
+            new tokens based on their existing frequency in the text so far,
+            decreasing the model's likelihood to repeat the same line verbatim.
+        best_of: Generates `best_of` completions server-side and returns the "best".
+        logit_bias: Modify the likelihood of specified tokens appearing in
+            the completion.
+        response_format: Format to return the final response in. Can be for ex:
+            response_format={"type": "json", "schema": "{...}"}
+
+    """
+
+    _ignored_fields: Set[str] = set()
+
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    n: int = 1
+    logprobs: Optional[bool] = None
+    top_logprobs: Optional[int] = None
+    logit_bias: Optional[Dict[str, float]] = None
+    stop: Optional[List[str]] = None
+    stop_tokens: Optional[List[int]] = None
+    ignore_eos: Optional[bool] = None
+    presence_penalty: Optional[float] = None
+    frequency_penalty: Optional[float] = None
+    best_of: int = 1
+    response_format: Optional[ResponseFormatType] = None
+
+    def model_dump(self, **kwargs):
+        if kwargs.get("exclude", None) is None:
+            kwargs["exclude"] = self._ignored_fields
+        return super().model_dump(**kwargs)
+
+    @field_validator("stop", mode="before")
+    @classmethod
+    def validate_stopping_sequences(cls, values):
+        if not values:
+            return values
+
+        unique_val = sorted(list(set(values)))
+
+        if len(unique_val) > MAX_NUM_STOPPING_SEQUENCES:
+            TooManyStoppingSequences(
+                len(unique_val), MAX_NUM_STOPPING_SEQUENCES
+            ).raise_exception()
+
+        return unique_val
+
+    @classmethod
+    def merge_generation_params(
+        cls: Type[ModelT], prompt: Prompt, generation: GenerationConfig
+    ) -> ModelT:
+        # Extract parameters object from prompt
+        parameters = prompt.parameters or {}
+        if not isinstance(parameters, dict):
+            parameters = parameters.model_dump(exclude_unset=True)
+
+        # Merge in the generate kwargs
+        generate_kwargs_copy = copy.deepcopy(generation.generate_kwargs)
+        generate_kwargs = merge_dicts(
+            generate_kwargs_copy,
+            parameters,
+        )
+
+        # The stoppping sequence needs to be merged manually
+        generate_kwargs["stop"] = list(
+            set((parameters.get("stop") or []) + (generation.stopping_sequences or []))
+        )
+        generate_kwargs["stop_tokens"] = list(
+            set(
+                (parameters.get("stop_tokens") or [])
+                + (generation.stopping_tokens or [])
+            )
+        )
+
+        return cls.model_validate(generate_kwargs)
+
+
+class GenerationRequest(BaseModelExtended):
+    prompt: Union[str, List[int], List[str]]
+    request_id: Union[str, List[str]]
+    sampling_params: Optional[Union[SamplingParams, List[SamplingParams]]] = None

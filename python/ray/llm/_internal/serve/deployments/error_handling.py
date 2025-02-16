@@ -36,6 +36,10 @@ class PromptTooLongError(ValidationError):
     pass
 
 
+class TooManyStoppingSequencesError(ValidationError):
+    pass
+
+
 class ErrorReason(ABC):
     @abstractmethod
     def get_message(self) -> str:
@@ -66,3 +70,21 @@ class InputTooLong(ErrorReason):
     @property
     def exception(self) -> Exception:
         return PromptTooLongError(self.get_message())
+
+
+class TooManyStoppingSequences(ErrorReason):
+    def __init__(
+        self, num_stopping_sequences: int, max_num_stopping_sequences: int
+    ) -> None:
+        self.num_stopping_sequences = num_stopping_sequences
+        self.max_num_stopping_sequences = max_num_stopping_sequences
+
+    def get_message(self) -> str:
+        return (
+            f"Too many stopping sequences. Recieved {self.num_stopping_sequences} stopping sequences,"
+            f"but the maximum is {self.max_num_stopping_sequences}. Please reduce the number of provided stopping sequences."
+        )
+
+    @property
+    def exception(self) -> Exception:
+        return TooManyStoppingSequencesError(self.get_message())

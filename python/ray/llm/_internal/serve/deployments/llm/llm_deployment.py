@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from rayllm.backend.server.models.llm_models import (
+from ray.llm._internal.serve.configs.llm_models import (
     ChatCompletionRequest,
     CompletionRequest,
     LLMChatResponse,

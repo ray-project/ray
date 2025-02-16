@@ -13,6 +13,7 @@ from vllm.lora.request import LoRARequest
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.configs.server_models import (
+    BaseModelExtended,
     DiskMultiplexConfig,
     GCSMirrorConfig,
     GenerationConfig,
@@ -22,8 +23,7 @@ from ray.llm._internal.serve.configs.server_models import (
     S3MirrorConfig,
     SamplingParams,
 )
-from rayllm.backend.server.pydantic_utils import BaseModelExtended
-from rayllm.env_conf import (
+from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
 )
