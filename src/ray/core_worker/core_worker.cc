@@ -2090,8 +2090,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
           &ready));
     }
   } else {
-    // When we don't need to fetch_local, we can simply just add the object_ids that we
-    // know are ready in plasma until we have num_objects.
+    // When we don't need to fetch_local, we don't need to wait for the objects to be
+    // pulled to the local object store, so we can directly add them to the ready set.
     for (const auto &object_id : plasma_object_ids) {
       if (ready.size() == static_cast<size_t>(num_objects)) {
         break;
