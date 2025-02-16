@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional
 
 from ray.llm._internal.serve.observability.logging import get_logger
 
-# TODO (genesu): double check if LLMConfig, LLMRawResponse need to be lazy imported
 from ray.llm._internal.serve.configs.server_models import (
     ModelData,
     LLMConfig,
@@ -54,7 +53,6 @@ def to_model_metadata(
     metadata = {
         "model_id": model_config.model_id,
         "input_modality": model_config.input_modality,
-        "generation": model_config.generation_config.model_dump(),
         "max_request_context_length": model_config.max_request_context_length,
     }
 

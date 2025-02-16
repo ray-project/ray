@@ -171,7 +171,6 @@ class LoraModelLoader:
             {
                 "model_id": lora_mirror_config.lora_model_id,
                 "max_total_tokens": lora_mirror_config.max_total_tokens,
-                "generation": lora_mirror_config.generation,
                 "local_path": local_path,
                 "lora_assigned_int_id": global_id_manager.next(),
             }

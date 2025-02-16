@@ -36,9 +36,6 @@ CLOUD_OBJECT_EXISTS_EXPIRE_S = 60 * 60
 # Sentinel object used to indicate that a LoRA adapter config file is missing.
 LORA_ADAPTER_CONFIG_NAME = "adapter_config.json"
 
-# Names of files in the fine-tuning checkpoint.
-GENERATION_CONFIG_NAME = "rayllm_generation_config.json"
-
 DEFAULT_HEALTH_CHECK_PERIOD_S = int(
     os.getenv("RAYLLM_DEFAULT_HEALTH_CHECK_PERIOD_S", "10")
 )

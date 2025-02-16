@@ -18,7 +18,6 @@ from ray.llm._internal.serve.deployments.cloud_utils import (
     list_subfolders_s3,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    GenerationConfig,
     LLMConfig,
     LoraMirrorConfig,
 )
@@ -26,7 +25,6 @@ from ray.llm._internal.serve.configs.constants import (
     CLOUD_OBJECT_MISSING_EXPIRE_S,
     CLOUD_OBJECT_EXISTS_EXPIRE_S,
     LORA_ADAPTER_CONFIG_NAME,
-    GENERATION_CONFIG_NAME,
 )
 from ray.llm._internal.serve.deployments.server_utils import make_async
 
@@ -241,29 +239,6 @@ async def get_lora_finetuned_context_length(bucket_uri: str):
         return adapter_config.get("context_length")
 
 
-async def get_lora_generation_config(bucket_uri: str) -> Optional[GenerationConfig]:
-    """Gets the generation config used to tune the LoRA adapter.
-
-    Return: Returns the generation config for the adapter, if it
-        exists. Returns None otherwise.
-    """
-
-    if bucket_uri.endswith("/"):
-        bucket_uri = bucket_uri.rstrip("/")
-    object_uri = f"{bucket_uri}/{GENERATION_CONFIG_NAME}"
-
-    object_str_or_missing_message = await get_object_from_cloud(object_uri)
-
-    # TODO (shrekris): add deduped logs here to tell whether the correct
-    # generation config is actually being used.
-    if object_str_or_missing_message is CLOUD_OBJECT_MISSING:
-        return None
-    else:
-        generation_config_str = object_str_or_missing_message
-        generation_config = GenerationConfig.model_validate_json(generation_config_str)
-        return generation_config
-
-
 def get_lora_model_ids(
     dynamic_lora_loading_path: str,
     base_model_id: str,
@@ -316,16 +291,14 @@ def get_lora_model_ids(
 
 async def download_multiplex_config_info(
     model_id: str, base_path: str
-) -> Tuple[str, int, Optional[GenerationConfig]]:
+) -> Tuple[str, int]:
     """Downloads info needed to create a multiplex config.
 
     Downloads objects using cloud storage provider APIs.
 
-    Returns: 3-tuple containing
+    Returns: 2-tuple containing
         1. A bucket_uri for the bucket containing LoRA weights and config.
         2. The maximum LoRA sequence length.
-        3. The generation config from the LoRA checkpoint, if the config
-           exists. Otherwise, this is None.
 
     Raises: HTTPException if the LoRA adapter config file isn't available
         in the cloud storage repository.
@@ -333,8 +306,7 @@ async def download_multiplex_config_info(
 
     bucket_uri = f"{base_path}/{model_id}"
     ft_context_length = await get_lora_finetuned_context_length(bucket_uri)
-    generation_config = await get_lora_generation_config(bucket_uri)
-    return bucket_uri, ft_context_length, generation_config
+    return bucket_uri, ft_context_length
 
 
 async def get_lora_model_metadata(
@@ -357,18 +329,11 @@ async def get_lora_model_metadata(
     (
         bucket_uri,
         ft_context_length,
-        generation_config,
     ) = await download_multiplex_config_info(lora_id, base_path)
-
-    if generation_config is None:
-        generation = llm_config.generation_config
-    else:
-        generation = generation_config
 
     return {
         "model_id": model_id,
         "base_model_id": base_model_id,
-        "generation": generation.model_dump(),
         "max_request_context_length": ft_context_length,
         # Note (genesu): `bucket_uri` affects where the lora weights are downloaded
         # from remote location.
@@ -386,5 +351,4 @@ async def get_lora_mirror_config(
         lora_model_id=model_id,
         bucket_uri=metadata["bucket_uri"],
         max_total_tokens=metadata["max_request_context_length"],
-        generation=metadata["generation"],
     )

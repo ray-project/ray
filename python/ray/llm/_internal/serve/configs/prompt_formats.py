@@ -358,6 +358,9 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
 
         if isinstance(messages, Prompt):
             if isinstance(messages.prompt, str):
+                if not messages.use_prompt_format:
+                    return EngineInput(text=self.bos + messages.prompt)
+
                 raise ValueError("String prompts are not supported.")
             messages = messages.prompt
 

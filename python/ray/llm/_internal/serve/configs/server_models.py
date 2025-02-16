@@ -1,5 +1,3 @@
-import copy
-
 import yaml
 import pydantic
 import os
@@ -47,7 +45,11 @@ from ray.llm._internal.serve.configs.constants import (
     FALLBACK_MAX_ONGOING_REQUESTS,
     MAX_NUM_STOPPING_SEQUENCES,
 )
-from ray.llm._internal.serve.configs.prompt_formats import Prompt
+from ray.llm._internal.serve.configs.prompt_formats import (
+    Prompt,
+    HuggingFacePromptFormat,
+    PromptFormat,
+)
 
 GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -360,6 +362,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     _supports_vision: bool = PrivateAttr(False)
+    _prompt_format: PromptFormat = PrivateAttr(default_factory=HuggingFacePromptFormat)
 
     def _infer_supports_vision(self, model_id_or_path: str) -> None:
         """Called in llm node initializer together with other transformers calls. It
@@ -377,6 +380,10 @@ class LLMConfig(BaseModelExtended):
     @property
     def supports_vision(self) -> bool:
         return self._supports_vision
+
+    @property
+    def prompt_format(self) -> PromptFormat:
+        return self._prompt_format
 
     @property
     def input_modality(self) -> str:
@@ -686,46 +693,10 @@ class FinishReason(str, Enum):
         return cls.STOP
 
 
-# TODO (genesu): remove GenerationConfig
-class GenerationConfig(BaseModelExtended):
-    # prompt_format: Optional[
-    #     Union[HuggingFacePromptFormat]
-    # ] = Field(
-    #     default=HuggingFacePromptFormat(use_hugging_face_chat_template=True),
-    #     description="Handles chat template formatting and tokenization. If None, prompt formatting will be disabled and the model can be only queried in the completion mode.",
-    # )
-    generate_kwargs: Dict[str, Any] = Field(
-        default={},
-        description="Extra generation kwargs that needs to be passed into the sampling stage for the deployment (this includes things like temperature, etc.)",
-    )
-    stopping_sequences: Optional[List[str]] = Field(
-        default=None,
-        description="Stopping sequences (applied after detokenization) to propagate for inference.",
-    )
-    stopping_tokens: Optional[List[int]] = Field(
-        default=[],
-        description="Stopping tokens (applied before detokenization) to propagate for inference. By default, we use EOS/UNK tokens at inference.",
-    )
-
-    # @field_validator("prompt_format")
-    # @classmethod
-    # def default_prompt_format(cls, prompt_format):
-    #     return prompt_format if prompt_format is not None else DisabledPromptFormat()
-    #
-    # @property
-    # def all_generate_kwargs(self) -> Dict[str, Any]:
-    #     return {
-    #         "stopping_sequences": self.stopping_sequences,
-    #         "stopping_tokens": self.stopping_tokens,
-    #         **self.generate_kwargs,
-    #     }
-
-
 class LoraMirrorConfig(BaseModelExtended):
     lora_model_id: str
     bucket_uri: str
     max_total_tokens: Optional[int]
-    generation: Optional[GenerationConfig]
     sync_args: Optional[List[str]] = None
 
     @field_validator("bucket_uri")
@@ -755,7 +726,6 @@ class LoraMirrorConfig(BaseModelExtended):
 
 class DiskMultiplexConfig(BaseModelExtended):
     model_id: str
-    generation: Optional[GenerationConfig]
     max_total_tokens: Optional[int]
     local_path: str
 
@@ -1076,31 +1046,14 @@ class SamplingParams(BaseModelExtended):
         return unique_val
 
     @classmethod
-    def merge_generation_params(
-        cls: Type[ModelT], prompt: Prompt, generation: GenerationConfig
-    ) -> ModelT:
+    def from_prompt(cls: Type[ModelT], prompt: Prompt) -> ModelT:
         # Extract parameters object from prompt
-        parameters = prompt.parameters or {}
-        if not isinstance(parameters, dict):
-            parameters = parameters.model_dump(exclude_unset=True)
+        generate_kwargs = prompt.parameters or {}
+        if not isinstance(generate_kwargs, dict):
+            generate_kwargs = generate_kwargs.model_dump(exclude_unset=True)
 
-        # Merge in the generate kwargs
-        generate_kwargs_copy = copy.deepcopy(generation.generate_kwargs)
-        generate_kwargs = merge_dicts(
-            generate_kwargs_copy,
-            parameters,
-        )
-
-        # The stoppping sequence needs to be merged manually
-        generate_kwargs["stop"] = list(
-            set((parameters.get("stop") or []) + (generation.stopping_sequences or []))
-        )
-        generate_kwargs["stop_tokens"] = list(
-            set(
-                (parameters.get("stop_tokens") or [])
-                + (generation.stopping_tokens or [])
-            )
-        )
+        generate_kwargs["stop"] = set(generate_kwargs.get("stop", []))
+        generate_kwargs["stop_tokens"] = set(generate_kwargs.get("stop_tokens", []))
 
         return cls.model_validate(generate_kwargs)
 

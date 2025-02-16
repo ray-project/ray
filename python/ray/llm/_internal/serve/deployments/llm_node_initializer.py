@@ -194,20 +194,13 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
 
     Downloads model, tokenizer, and extra files as necessary.
 
-    If an Anytensor fast loading config is provided, model files will not be downloaded.
-
     If the placement strategy is STRICT_PACK, all of the initialization will be run locally
     (as all of the workers must be colocated with this process). Else, the initialization
     will be run across the placement group bundles.
     """
-    anytensor_config = llm_config.model_loading_config.anytensor_config
     local_node_download_model = NodeModelDownloadable.TOKENIZER_ONLY
-    if anytensor_config is None:
-        worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
-        extra_init_kwargs = {}
-    else:
-        worker_node_download_model = NodeModelDownloadable.TOKENIZER_ONLY
-        extra_init_kwargs = {"anytensor_config": anytensor_config}
+    worker_node_download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
+    extra_init_kwargs = {}
 
     engine_config = llm_config.get_engine_config()
     pg = engine_config.get_or_create_pg()
@@ -271,7 +264,7 @@ def _initialize_local_node(
         engine_config.actual_hf_model_id,
         trust_remote_code=engine_config.trust_remote_code,
     )
-    prompt_format = engine_config.generation.prompt_format
+    prompt_format = engine_config.prompt_format
     # Note (genesu): The prompt format is always loaded from HF.
     prompt_format.set_processor(
         engine_config.actual_hf_model_id,

@@ -453,16 +453,12 @@ class VLLMDeploymentImpl(LLMDeployment):
                     self._llm_config.lora_config is not None
                 ), "Must setup lora config for multiplexed requests."
                 disk_lora_model = await self._disk_lora_model(multiplexed_model_id)
-                generation = disk_lora_model.generation
             else:
                 disk_lora_model = None
-                generation = self._llm_config.generation_config
 
-            prompt_output = generation.prompt_format.generate_prompt(prompt)
+            prompt_output = self._llm_config.prompt_format.generate_prompt(prompt)
 
-            sampling_params = VLLMSamplingParams.merge_generation_params(
-                prompt, generation
-            )
+            sampling_params = VLLMSamplingParams.from_prompt(prompt)
             prompt_text = prompt_output.text
             image_input = prompt_output.image
             image = []
