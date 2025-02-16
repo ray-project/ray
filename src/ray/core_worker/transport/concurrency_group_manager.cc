@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
+#include <optional>
+
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/transport/thread_pool.h"
 
@@ -23,11 +25,14 @@ namespace core {
 template <typename ExecutorType>
 ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     const std::vector<ConcurrencyGroup> &concurrency_groups,
-    const int32_t max_concurrency_for_default_concurrency_group) {
+    const int32_t max_concurrency_for_default_concurrency_group,
+    std::optional<Language> language)
+    : language_(language) {
   for (auto &group : concurrency_groups) {
     const auto name = group.name;
     const auto max_concurrency = group.max_concurrency;
     auto executor = std::make_shared<ExecutorType>(max_concurrency);
+    executor_releasers_.push_back(InitializeExecutor(executor));
     auto &fds = group.function_descriptors;
     for (auto fd : fds) {
       functions_to_executor_index_[fd->ToString()] = executor;
@@ -43,6 +48,7 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
       !concurrency_groups.empty()) {
     default_executor_ =
         std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
+    executor_releasers_.push_back(InitializeExecutor(default_executor_));
   }
 }
 
@@ -81,9 +87,36 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetDefaultE
   return default_executor_;
 }
 
+template <typename ExecutorType>
+std::optional<std::function<void()>>
+ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
+    std::shared_ptr<ExecutorType> executor) {
+  if (language_ == Language::PYTHON) {
+    if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
+      PyGILState_STATE gstate;
+      executor->Post([this, &gstate]() {
+        gstate = PyGILState_Ensure();
+        PyEval_SaveThread();
+      });
+      return [this, &gstate, &executor]() {
+        executor->Post([this, &gstate]() { PyGILState_Release(gstate); });
+      };
+    }
+    // TODO: Consider whether we need to handle FiberState or using BoundedExecutor for
+    // both sync and async cases.
+  }
+  return std::nullopt;
+}
+
 /// Stop and join the executors that the this manager owns.
 template <typename ExecutorType>
 void ConcurrencyGroupManager<ExecutorType>::Stop() {
+  for (const auto &releaser : executor_releasers_) {
+    if (releaser) {
+      (*releaser)();
+    }
+  }
+
   if (default_executor_) {
     RAY_LOG(DEBUG) << "Default executor is stopping.";
     default_executor_->Stop();

@@ -1099,6 +1099,7 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@nlohmann_json",
+        "@local_config_python//:python_headers",
     ],
 )
 
