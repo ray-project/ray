@@ -908,7 +908,7 @@ class MetricsLogger:
 
         try:
             with self._threading_lock:
-                assert not self.tensor_mode, "Can't reduce if `self.tensor_mode` is True!"
+                #assert not self.tensor_mode, "Can't reduce if `self.tensor_mode` is True!"
                 reduced_subset_to_return = tree.map_structure_with_path(
                     _reduce, frozen_subset_to_return
                 )
@@ -943,18 +943,18 @@ class MetricsLogger:
 
         """
         self._threading_lock.acquire()
-        assert not self.tensor_mode
-        self._tensor_mode = True
+        #assert not self.tensor_mode
+        #self._tensor_mode = True
 
-    def deactivate_tensor_mode(self):
-        """Switches off tensor-mode."""
-        assert self.tensor_mode
-        self._tensor_mode = False
-        # Return all logged tensors (logged during the tensor-mode phase).
-        logged_tensors = {key: self._get_key(key).peek() for key in self._tensor_keys}
-        # Clear out logged tensor keys.
-        self._tensor_keys.clear()
-        return logged_tensors
+    #def deactivate_tensor_mode(self):
+    #    """Switches off tensor-mode."""
+    #    assert self.tensor_mode
+    #    self._tensor_mode = False
+    #    # Return all logged tensors (logged during the tensor-mode phase).
+    #    logged_tensors = {key: self._get_key(key).peek() for key in self._tensor_keys}
+    #    # Clear out logged tensor keys.
+    #    self._tensor_keys.clear()
+    #    return logged_tensors
 
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""
@@ -1099,7 +1099,8 @@ class MetricsLogger:
             return value.detach().cpu()
 
         if self.tensor_mode and (tf and tf.is_tensor(value)):
-            self._tensor_keys.add(key)
+            assert False
+            #self._tensor_keys.add(key)
 
         return value
 
