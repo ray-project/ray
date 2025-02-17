@@ -134,10 +134,8 @@ def _get_llm_deployments(
     return llm_deployments
 
 
-def build_openai_app(
-    args: LLMServingArgs, deployment_kwargs: Optional[dict] = None
-) -> Application:
-    rayllm_args = LLMServingArgs.model_validate(args).parse_args()
+def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
+    rayllm_args = LLMServingArgs.model_validate(llm_serving_args).parse_args()
 
     llm_configs = rayllm_args.llm_configs
     model_ids = {m.model_id for m in llm_configs}
@@ -149,6 +147,6 @@ def build_openai_app(
             "List of models is empty. Maybe some parameters cannot be parsed into the LLMConfig config."
         )
 
-    llm_deployments = _get_llm_deployments(llm_configs, deployment_kwargs)
+    llm_deployments = _get_llm_deployments(llm_configs)
 
     return LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)

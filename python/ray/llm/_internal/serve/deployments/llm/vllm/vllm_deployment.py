@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Optional, Type, Union
 
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve
+from ray._private.utils import import_attr
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
@@ -61,6 +62,7 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     ENGINE_START_TIMEOUT_S,
+    RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 
 logger = get_logger(__name__)
@@ -397,7 +399,7 @@ class VLLMDeploymentImpl(LLMDeployment):
         await super().__init__(llm_config)
 
         self._engine_cls = engine_cls or self._default_engine_cls
-        self.engine = self._engine_cls(llm_config)
+        self.engine = self._get_engine_class(llm_config)
         await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         self.image_retriever = (
@@ -427,6 +429,23 @@ class VLLMDeploymentImpl(LLMDeployment):
 
         # Push telemetry reports for the model in the current deployment.
         push_telemetry_report_for_all_models(all_models=[llm_config])
+
+    @property
+    def _get_engine_class(self) -> VLLMEngine:
+        """Helper to load the engine class from the environment variable if existed
+        else it will fallback to the default engine class.
+        """
+        engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
+        if engine_cls_path:
+            try:
+                return import_attr(engine_cls_path)
+            except AttributeError:
+                logger.warning(
+                    f"Failed to import engine class {engine_cls_path}. "
+                    f"Using the default engine class {self._engine_cls}."
+                )
+
+        return self._engine_cls
 
     async def _start_engine(self):
         await self.engine.start()
