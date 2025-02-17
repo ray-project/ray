@@ -1,5 +1,6 @@
 import openai
 import pytest
+import sys
 
 from ray.llm._internal.serve.configs.constants import (
     MAX_NUM_TOPLOGPROBS_ALLOWED,
@@ -291,3 +292,7 @@ class TestOpenAICompatibility:
             ):
                 pass
         assert "Could not find" in str(exc_info.value)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

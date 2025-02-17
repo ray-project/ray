@@ -1,4 +1,5 @@
 import pytest
+import sys
 
 from ray.llm._internal.serve.configs.prompt_formats import (
     HuggingFacePromptFormat,
@@ -165,3 +166,7 @@ def test_validation_message():
             Image(type="image_url", image_url={"url": "foo"}),
         ],
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

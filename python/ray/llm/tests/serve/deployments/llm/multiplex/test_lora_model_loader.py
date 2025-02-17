@@ -1,6 +1,7 @@
 import asyncio
 import subprocess
 from unittest.mock import AsyncMock, Mock, patch
+import sys
 
 import pytest
 
@@ -290,3 +291,7 @@ async def test_lora_model_loader_task_retry():
         # The download task should have been called only once across all requests
         assert model_loader.task_call_counter == 1
         assert tries == 2
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -13,6 +13,7 @@ import yaml
 import os
 import tempfile
 import signal
+import sys
 
 from ray._private.test_utils import wait_for_condition
 
@@ -117,3 +118,7 @@ class TestBuildVllmDeployment:
         app = build_vllm_deployment(llm_config)
         assert isinstance(app, serve.Application)
         serve.run(app)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

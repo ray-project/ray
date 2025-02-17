@@ -1,5 +1,6 @@
 import pytest
 import ray
+import sys
 
 from ray.llm._internal.serve.deployments.streaming_error_handler import (
     StreamingErrorHandler,
@@ -118,3 +119,7 @@ async def test_streaming_error_handler_prompt_too_long(handler):
     )
     assert last_response.error.type == "PromptTooLongError"
     assert last_response.error.code == 400
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

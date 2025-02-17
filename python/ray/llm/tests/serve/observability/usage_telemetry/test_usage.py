@@ -2,6 +2,8 @@ import os
 
 import ray
 from ray._private.usage.usage_lib import TagKey
+import pytest
+import sys
 
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     _get_or_create_telemetry_agent,
@@ -121,3 +123,7 @@ def test_push_telemetry_report_for_all_models():
     except AttributeError:
         # If the key doesn't exist in the TagKey, no telemetry should be logged.
         assert telemetry == {}
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,5 +1,6 @@
 from copy import deepcopy
 from typing import List
+import sys
 
 import pytest
 from fastapi import HTTPException
@@ -227,3 +228,7 @@ async def test_lora_include_adapters_in_list_models(
         expected_model_ids.discard(model_data["id"])
 
     assert len(expected_model_ids) == 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

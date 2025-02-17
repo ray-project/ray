@@ -2,6 +2,7 @@ import pytest
 import ray
 import ray.serve.context
 from ray import serve
+import sys
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
 from ray.llm._internal.serve.configs.server_models import (
@@ -195,3 +196,7 @@ async def test_multiplex_deployment(
         f"\n\nModel dump: {arg.model_dump()}"
         f"\n\nExpected model dump: {expected_model_dump}"
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

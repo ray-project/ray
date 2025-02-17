@@ -1,6 +1,7 @@
 import base64
 import io
 from unittest.mock import AsyncMock, patch
+import sys
 
 import pytest
 from PIL import Image
@@ -58,3 +59,7 @@ async def test_image_processor_with_http_url():
         image = await retriever.get("http://dummyurl.com/image.png")
 
     assert isinstance(image, Image.Image)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

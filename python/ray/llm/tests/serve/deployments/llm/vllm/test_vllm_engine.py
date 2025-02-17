@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 from typing import List, Optional
 from unittest.mock import Mock
-
+import sys
 import pytest
 
 from ray.llm._internal.serve.configs.server_models import FinishReason
@@ -379,3 +379,7 @@ class TestBatching:
         assert task.done(), "All tasks should be done"
 
         # Inner task is checked automatically with pytest.raises
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
