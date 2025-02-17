@@ -44,6 +44,9 @@ class BuilderContainer(LinuxContainer):
         assert build_type in BUILD_TYPES, f"build_type must be one of {BUILD_TYPES}"
         self.build_type = build_type
         self.bin_path = python_version_info["bin_path"]
+        # `python_bin_path` is used to set `PYTHON3_BIN_PATH`, which is
+        # required to determine the Python version used for <Python.h>.
+        self.python_bin_path = f"/usr/local/bin/python{python_version}"
         self.upload = upload
 
     def run(self) -> None:
@@ -58,6 +61,7 @@ class BuilderContainer(LinuxContainer):
             cmds += ["export RAY_INSTALL_JAVA=0"]
 
         cmds += [
+            f"PYTHON3_BIN_PATH={self.python_bin_path}",
             "./ci/build/build-manylinux-ray.sh",
             f"./ci/build/build-manylinux-wheel.sh {self.bin_path}",
             "chown -R 2000:100 /artifact-mount",
