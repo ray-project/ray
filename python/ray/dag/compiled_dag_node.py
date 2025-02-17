@@ -690,22 +690,6 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
-        # [TODO:P1] Basic structure for creator of ExecutableTask.
-        # # NCCL write args:
-        # args = [
-        #     P2POp.SEND,
-        #     NCCLChannelWrapper(self.nccl_ch),
-        #     upstream_task_output_channel,
-        # ]
-
-        # # NCCL read args:
-        # args = [P2POp.READ, NCCLChannelWrapper(self.nccl_ch)]
-
-        # # NCCL collective args:
-        # args = [CollectiveOp, NCCLChannelWrapper(self.nccl_ch)]
-
-        # t = ExecutableTask(task, args, stream: Optional[Stream])
-
         # [TODO:P1] This function should have structure like this:
         # with self._stream:
         #     try:
@@ -722,9 +706,6 @@ class ExecutableTask:
         #     if self.output_writer is not None:
         #         self.output_writer.write(output_val)
 
-        # [TODO:P1] Task lambda should take in a Tuple[TaskArgs, Optional[Exception]].
-        # Task can decide whether to re-raise the Exception or do something with it.
-
         # [TODO:P1] overlap_gpu_communication should only be used in two places:
         # - deciding how many streams to create
         # - in wrap_and_set_intermediate_future: when deciding whether
@@ -735,7 +716,13 @@ class ExecutableTask:
         with _device_context_manager():
             input_values = []
             input_exc = None
+            output_val = None
+
+            # [TODO] Move stream outside.
+
             if self.requires_nccl_read:
+                # [TODO] Remove args of P2POp.
+                # Concrete _P2POperation when constructing the task.
                 input_values = [P2POp.RECV]
             else:
                 if self.requires_nccl_write:
@@ -750,7 +737,9 @@ class ExecutableTask:
                         _process_return_vals(input_data, return_single_output=False)
                         input_data_ready = []
                         for val in input_data:
+                            # [TODO] Remove ResolvedFuture.
                             if isinstance(val, DAGOperationFuture):
+                                assert isinstance(val, GPUFuture)
                                 val = val.wait()
                                 if isinstance(val, RayTaskError):
                                     raise val.as_instanceof_cause()
@@ -759,62 +748,55 @@ class ExecutableTask:
                             input_values.append(task_input.resolve(input_data_ready))
                     except Exception as exc:
                         input_exc = exc
-                        self.wrap_and_set_intermediate_future(
-                            exc, wrap_in_gpu_future=False
-                        )
 
                     if input_exc is not None and self.requires_nccl_write:
                         input_values = [P2POp.SEND, input_exc]
                         input_exc = None
-                        self.fetch_intermediate_future(wait_future=True)
 
-            # Execute the task if there is no exception from reading input values. If an
-            # exception occurs, wrap and save the exception.
-            if input_exc is None:
-                if self.nccl_op is not None:
-                    method = self.nccl_op.execute
-                else:
-                    method = getattr(class_handle, self.method_name)
-
-                with self.stream:
-                    try:
-                        output_val = method(*input_values, **self.resolved_kwargs)
-                    except RayChannelError:
-                        return True
-                    except Exception as exc:
-                        if self.nccl_op is not None:
-                            raise exc
-                        else:
-                            output_val = _wrap_exception(exc)
-
-                    # [TODO:P1] Change to use `self.output_writer`.
-                    if not self.requires_nccl_write:
-                        self.wrap_and_set_intermediate_future(
-                            output_val, wrap_in_gpu_future=overlap_gpu_communication
-                        )
-
-            # Write the output value to the output channel. It is either an execution result
-            # or an exception.
-            # [TODO:P1] Change to use `self.output_writer`.
-            if not self.requires_nccl_write:
-                # The GPU future is always returned without waiting, except when it
-                # contributes to the DAG output. When it is directly returned, downstream
-                # tasks can wait on its event from their streams.
-                if self.requires_nccl_read or self.requires_nccl_collective:
-                    wait_future = self.is_dag_output
-                else:
-                    wait_future = True
-                with self.stream:
-                    output_val = self.fetch_intermediate_future(wait_future)
-                if not wait_future and overlap_gpu_communication:
-                    assert isinstance(output_val, GPUFuture)
-                    output_val.cache(self.task_idx)
+            if input_exc is not None:
                 try:
-                    self.output_writer.write(output_val)
+                    self.output_writer.write(input_exc)
                 except RayChannelError:
                     return True
 
-            return False
+            if self.nccl_op is not None:
+                method = self.nccl_op.execute
+            else:
+                method = getattr(class_handle, self.method_name)
+
+            with self.stream:
+                try:
+                    output_val = method(*input_values, **self.resolved_kwargs)
+                except RayChannelError:
+                    return True
+                except Exception as exc:
+                    if self.nccl_op is not None:
+                        raise exc
+                    else:
+                        output_val = _wrap_exception(exc)
+
+                # if not self.requires_nccl_write and overlap_gpu_communication:
+                #     output_val = GPUFuture(output_val)
+
+            # [TODO:P1] Change to use `self.output_writer`. Set it to None or empty list.
+            if not self.requires_nccl_write:
+                with self.stream:
+                    if overlap_gpu_communication:
+                        output_val = GPUFuture(output_val)
+
+                    # if isinstance(output_val, GPUFuture) and self.is_dag_output:
+                    #     output_val = output_val.wait()
+
+                    # if not wait_future and overlap_gpu_communication:
+                    #     assert isinstance(output_val, GPUFuture)
+                    #     output_val.cache(self.task_idx)
+
+                    try:
+                        self.output_writer.write(output_val)
+                    except RayChannelError:
+                        return True
+
+                return False
 
 
 @dataclass
