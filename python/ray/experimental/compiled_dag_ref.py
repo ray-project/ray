@@ -200,6 +200,7 @@ class CompiledDAGFuture:
         raise ValueError("CompiledDAGFuture cannot be pickled.")
 
     def __await__(self):
+        print(f"__await__ {self._execution_index}, {self._channel_index}")
         if self._fut is None:
             raise ValueError(
                 "CompiledDAGFuture can only be awaited upon once, and it has "
@@ -212,10 +213,14 @@ class CompiledDAGFuture:
         fut = self._fut
         self._fut = None
 
+        print(f"__await__ fut {self._execution_index}, {self._channel_index}")
+
         if not self._dag._has_execution_results(self._execution_index):
             result = yield from fut.__await__()
             self._dag._max_finished_execution_index += 1
             self._dag._cache_execution_results(self._execution_index, result)
+
+        print(f"__await__ result{self._execution_index}, {self._channel_index}")
 
         return_vals = self._dag._get_execution_results(
             self._execution_index, self._channel_index
@@ -224,13 +229,13 @@ class CompiledDAGFuture:
         return _process_return_vals(return_vals, True)
 
     def __del__(self):
-        if self._dag.is_teardown:
-            return
         print(
             "CompiledDAGFuture __del__ for execution_index {} and channel_index {}".format(
                 self._execution_index, self._channel_index
             )
         )
+        if self._dag.is_teardown:
+            return
         self._dag._destructed_ref_idxs[self._execution_index].add(self._channel_index)
         self._dag._try_release_once(self._execution_index)
         self._dag._try_release_buffers()

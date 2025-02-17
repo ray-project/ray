@@ -175,6 +175,30 @@ def test_basic(ray_start_regular):
         del result
 
 
+def test_asyncio_capacity(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+    async def main(i):
+        # asyncio.sleep(i)
+        # if i != 0:
+        futs = await compiled_dag.execute_async(i)
+        assert len(futs) == 2
+        result = await futs[0]
+        assert result == i
+        # print(f"{i} {futs[1]._dag._max_finished_execution_index=}")
+        # del futs
+        # asyncio.sleep(0)
+
+    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(6)]))
+    # del loop
+
+
 class TestDAGRefDestruction:
     def test_basic_destruction(self, ray_start_regular):
         a = Actor.remote(0)
