@@ -19,6 +19,7 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 pip install --no-deps -r python/requirements_compiled_rayllm_test_py311.txt
 
 # FIXME(comaniac)
-pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+pip uninstall -y torch
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
 EOF
