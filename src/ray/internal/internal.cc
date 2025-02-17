@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <unordered_map> 
+#include <memory>
+#include <utility>
+#include <vector> 
+#include <string>
+
 #include "ray/internal/internal.h"
 
 #include "ray/core_worker/core_worker.h"
@@ -39,13 +45,13 @@ std::vector<rpc::ObjectReference> SendInternal(
 
   char meta_data[3] = {'R', 'A', 'W'};
   std::shared_ptr<LocalMemoryBuffer> meta =
-      std::make_shared<LocalMemoryBuffer>((uint8_t *)meta_data, 3, true);
+      std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(meta_data), 3, true);
 
   std::vector<std::unique_ptr<TaskArg>> args;
   if (function.GetLanguage() == Language::PYTHON) {
     auto dummy = "__RAY_DUMMY__";
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
-        std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
+        std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(dummy), 13, true);
     args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
         std::move(dummyBuffer), meta, std::vector<rpc::ObjectReference>(), true)));
   }
