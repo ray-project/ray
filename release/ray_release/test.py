@@ -476,6 +476,10 @@ class Test(dict):
         Update test object with data fields that exist only on s3
         """
         try:
+            key = f"{AWS_TEST_KEY}/{self._get_s3_name(self.get_name())}.json"
+            logger.warning(
+                f"in update_from_s3 {get_read_state_machine_aws_bucket()=} {key=}"
+            )
             data = (
                 boto3.client("s3")
                 .get_object(
