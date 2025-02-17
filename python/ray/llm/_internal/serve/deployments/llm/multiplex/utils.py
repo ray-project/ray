@@ -1,10 +1,7 @@
 import json
 import subprocess
-import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from asyncache import cached
-from cachetools import TLRUCache
 from fastapi import HTTPException
 from filelock import FileLock
 
@@ -193,14 +190,6 @@ def _get_object_from_cloud(object_uri: str) -> Union[str, object]:
         return body_str
 
 
-@cached(
-    cache=TLRUCache(
-        maxsize=4096,
-        getsizeof=lambda x: 1,
-        ttu=_validate_model_ttu,
-        timer=time.monotonic,
-    )
-)
 async def get_object_from_cloud(object_uri: str) -> Union[str, object]:
     """Calls _get_object_from_cloud with caching.
 
