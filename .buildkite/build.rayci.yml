@@ -7,10 +7,7 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - which python3
-      - echo $PATH
-      - sleep 80000
-      - bazel run //ci/ray_ci:build_in_docker --define PYTHON3_BIN_PATH=$(which python3) -- wheel --python-version {{matrix}} --architecture x86_64 --upload
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
       - "3.9"
       - "3.10"
