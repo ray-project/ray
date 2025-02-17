@@ -16,11 +16,15 @@ RUN <<EOF
 set -euo pipefail
 
 # minimal dependencies
-MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ci/env/install-dependencies.sh
+MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} if [ "$PYTHON" = "3.13" ]; then ci/env/install-uv.sh; else ci/env/install-dependencies.sh; fi
 rm -rf python/ray/thirdparty_files
 
 # install test requirements
-python -m pip install -U pytest==7.0.1 pip-tools==7.3.0
+if [ "$PYTHON_VERSION" = "3.13" ]; then
+  uv pip install -U pytest==7.0.1 pip-tools==7.3.0;
+else
+  python -m pip install -U pytest==7.0.1 pip-tools==7.3.0;
+fi
 
 # install extra dependencies
 if [[ "${EXTRA_DEPENDENCY}" == "core" ]]; then
