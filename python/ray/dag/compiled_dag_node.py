@@ -30,7 +30,7 @@ from ray.dag.constants import (
     P2P_OPERATION_KEY,
     BIND_INDEX_KEY,
 )
-from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
+from ray.dag.dag_operation_future import GPUFuture
 from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.communicator import Communicator
@@ -545,12 +545,6 @@ class ExecutableTask:
             nccl_ch = self.output_channels[0]
             self.nccl_op.send_ch = nccl_ch
 
-        # The intermediate future for a read or compute operation,
-        # and `wait()` must be called to get the actual result of the operation.
-        # The result of a read operation will be used by a compute operation,
-        # and the result of a compute operation will be used by a write operation.
-        self._intermediate_future: Optional[DAGOperationFuture] = None
-
     @property
     def requires_nccl_read(self) -> bool:
         return self.nccl_op_type == P2POp.RECV
@@ -625,54 +619,6 @@ class ExecutableTask:
             assert isinstance(self.nccl_op, _CollectiveOperation)
             self.stream = self.nccl_op.get_communicator().coll_stream
 
-    def wrap_and_set_intermediate_future(
-        self, val: Any, wrap_in_gpu_future: bool
-    ) -> None:
-        """
-        Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
-        The value corresponds to result of a read or compute operation.
-
-        If wrap_in_gpu_future is True, the value will be wrapped in a GPUFuture,
-        Otherwise, the future will be a ResolvedFuture.
-
-        Args:
-            val: The value to wrap in a future.
-            wrap_in_gpu_future: Whether to wrap the value in a GPUFuture.
-        """
-        # [TODO:P1] See if we can remove self._intermediate_future / these two
-        # helper functions.
-        assert self._intermediate_future is None
-
-        if wrap_in_gpu_future:
-            future = GPUFuture(val)
-        else:
-            future = ResolvedFuture(val)
-        self._intermediate_future = future
-
-    def fetch_intermediate_future(self, wait_future: bool) -> Any:
-        """
-        Fetch the intermediate future. If `wait_future` is True, the future
-        is waited and the result is returned. Otherwise, the future is returned
-        without waiting.
-
-        If the future is waited, the wait does not block the CPU because:
-        - If the future is a ResolvedFuture, the result is immediately returned.
-        - If the future is a GPUFuture, the result is only waited by the current
-            CUDA stream, and the CPU is not blocked.
-
-        Args:
-            wait_future: Whether to wait for the future.
-
-        Returns:
-            The result of the intermediate future.
-        """
-        future = self._intermediate_future
-        self._intermediate_future = None
-        if wait_future:
-            return future.wait()
-        else:
-            return future
-
     def exec_operation_in_contexts(
         self,
         class_handle,
@@ -726,8 +672,6 @@ class ExecutableTask:
         input_exc = None
         output_val = None
 
-        # [TODO] Move stream outside.
-
         if self.requires_nccl_read:
             # [TODO] Remove args of P2POp.
             # Concrete _P2POperation when constructing the task.
@@ -745,9 +689,7 @@ class ExecutableTask:
                 _process_return_vals(input_data, return_single_output=False)
                 input_data_ready = []
                 for val in input_data:
-                    # [TODO] Remove ResolvedFuture.
-                    if isinstance(val, DAGOperationFuture):
-                        assert isinstance(val, GPUFuture)
+                    if isinstance(val, GPUFuture):
                         val = val.wait()
                         if isinstance(val, RayTaskError):
                             raise val.as_instanceof_cause()
