@@ -542,7 +542,7 @@ class Stats:
                 new_values.extend(tmp_values)
             else:
                 new_values.extend(
-                    [self._reduced_values(values=tmp_values, window=float("inf"))[0]] * len(tmp_values)
+                    [self._reduced_values(values=tmp_values)[0]] * len(tmp_values)
                 )
             tmp_values.clear()
             if len(new_values) >= win:
@@ -562,7 +562,7 @@ class Stats:
             self.values = numpy_values
         else:
             assert len(self.values) > 0
-            self.values = [numpy_values]
+            self._set_values(force_list(numpy_values))
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -676,7 +676,7 @@ class Stats:
         else:
             self.values = new_values
 
-    def _reduced_values(self, values=None, window=None) -> Tuple[Any, Any]:
+    def _reduced_values(self, values=None) -> Tuple[Any, Any]:
         """Runs a non-commited reduction procedure on given values (or `self.values`).
 
         Note that this method does NOT alter any state of `self` or the possibly
@@ -685,19 +685,12 @@ class Stats:
 
         Args:
             values: The list of values to reduce. If not None, use `self.values`
-            window: A possible override window setting to use (instead of
-                `self._window`). Use float('inf') here for an infinite window size.
 
         Returns:
             A tuple containing 1) the reduced value and 2) the new internal values list
             to be used.
         """
         values = values if values is not None else self.values
-        window = window if window is not None else self._window
-        inf_window = window in [None, float("inf")]
-
-        ## Apply the window (if provided and not inf).
-        #values = values if inf_window else values[-window:]
 
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
@@ -716,7 +709,7 @@ class Stats:
             mean_value = values[0]
             for v in values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
-            if inf_window:
+            if self._inf_window:
                 return mean_value, [mean_value]
             else:
                 return mean_value, values
@@ -766,7 +759,7 @@ class Stats:
 
             # For window=None|inf (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.
-            if inf_window and self._reduce_method != "mean":
+            if self._inf_window and self._reduce_method != "mean":
                 # TODO (sven): What if values are torch tensors? In this case, we
                 #  would have to do reduction using `torch` above (not numpy) and only
                 #  then return the python primitive AND put the reduced new torch
