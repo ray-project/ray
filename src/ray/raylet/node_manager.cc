@@ -89,9 +89,7 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReference(
 
 }  // namespace
 
-namespace ray {
-
-namespace raylet {
+namespace ray::raylet {
 
 void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
   std::vector<std::string> default_keys = {kLabelKeyNodeID};
@@ -1760,6 +1758,31 @@ void NodeManager::ProcessWaitRequestMessage(
                         current_task_id,
                         /*ray_get=*/false);
   }
+  if (message->num_ready_objects() == 0) {
+    // If we don't need to wait for any, return immediately after making the pull
+    // requests through AsyncResolveObjects above.
+    flatbuffers::FlatBufferBuilder fbb;
+    auto wait_reply = protocol::CreateWaitReply(fbb,
+                                                to_flatbuf(fbb, std::vector<ObjectID>{}),
+                                                to_flatbuf(fbb, std::vector<ObjectID>{}));
+    fbb.Finish(wait_reply);
+    const auto status =
+        client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                             fbb.GetSize(),
+                             fbb.GetBufferPointer());
+    if (status.ok()) {
+      if (resolve_objects) {
+        AsyncResolveObjectsFinish(client, current_task_id);
+      }
+    } else {
+      // We failed to write to the client, so disconnect the client.
+      std::ostringstream stream;
+      stream << "Failed to write WaitReply to the client. Status " << status
+             << ", message: " << status.message();
+      DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+    }
+    return;
+  }
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   wait_manager_.Wait(
       object_ids,
@@ -1852,14 +1875,30 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
 void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                             rpc::ReportWorkerBacklogReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  HandleReportWorkerBacklog(
+      request, reply, send_reply_callback, worker_pool_, *local_task_manager_);
+}
+
+void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
+                                            rpc::ReportWorkerBacklogReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback,
+                                            WorkerPoolInterface &worker_pool,
+                                            ILocalTaskManager &local_task_manager) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  local_task_manager_->ClearWorkerBacklog(worker_id);
+  if (worker_pool.GetRegisteredWorker(worker_id) == nullptr &&
+      worker_pool.GetRegisteredDriver(worker_id) == nullptr) {
+    // The worker is already disconnected.
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  local_task_manager.ClearWorkerBacklog(worker_id);
   std::unordered_set<SchedulingClass> seen;
   for (const auto &backlog_report : request.backlog_reports()) {
     const TaskSpecification resource_spec(backlog_report.resource_spec());
     const SchedulingClass scheduling_class = resource_spec.GetSchedulingClass();
     RAY_CHECK(seen.find(scheduling_class) == seen.end());
-    local_task_manager_->SetWorkerBacklog(
+    local_task_manager.SetWorkerBacklog(
         scheduling_class, worker_id, backlog_report.backlog_size());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3273,6 +3312,4 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       shutdown_raylet_gracefully_);
 }
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet

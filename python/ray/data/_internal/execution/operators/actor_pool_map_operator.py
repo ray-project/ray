@@ -162,7 +162,9 @@ class ActorPoolMapOperator(MapOperator):
         ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
-        actor = self._cls.remote(
+        actor = self._cls.options(
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
+        ).remote(
             ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,

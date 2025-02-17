@@ -16,7 +16,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
 from asyncio import Future
-from typing import List
+from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
 from ray.includes.common cimport (
@@ -277,7 +277,7 @@ cdef class InnerGcsClient:
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ips: List[bytes], timeout: Optional[float] = None
+        self, node_ips: List[bytes], timeout: Optional[int | float] = None
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -290,7 +290,7 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
-        self, node_ips: List[bytes], timeout: Optional[float] = None
+        self, node_ips: List[bytes], timeout: Optional[int | float] = None
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -307,7 +307,7 @@ cdef class InnerGcsClient:
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
-        self, node_ids: List[bytes], timeout: Optional[float] = None
+        self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
     ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         cdef:
@@ -316,14 +316,14 @@ cdef class InnerGcsClient:
             c_vector[c_string] results
             CRayStatus status
         for node_id in node_ids:
-            c_node_ids.push_back(CNodeID.FromBinary(node_id))
+            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
             status = self.inner.get().Nodes().DrainNodes(
                 c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
-        self, timeout: Optional[float] = None
+        self, timeout: Optional[int | float] = None
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef c_vector[CGcsNodeInfo] reply
@@ -333,7 +333,7 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, node_id: Optional[NodeID] = None, timeout: Optional[float] = None
+        self, node_id: Optional[NodeID] = None, timeout: Optional[int | float] = None
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -356,7 +356,7 @@ cdef class InnerGcsClient:
     # NodeResources methods
     #############################################################
     def get_all_resource_usage(
-        self, timeout: Optional[float] = None
+        self, timeout: Optional[int | float] = None
     ) -> GetAllResourceUsageReply:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef CGetAllResourceUsageReply c_reply
@@ -381,7 +381,7 @@ cdef class InnerGcsClient:
         actor_id: Optional[ActorID] = None,
         job_id: Optional[JobID] = None,
         actor_state_name: Optional[str] = None,
-        timeout: Optional[float] = None
+        timeout: Optional[int | float] = None
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -409,7 +409,7 @@ cdef class InnerGcsClient:
 
     def async_kill_actor(
         self, actor_id: ActorID, c_bool force_kill, c_bool no_restart,
-        timeout: Optional[float] = None
+        timeout: Optional[int | float] = None
     ) -> ConcurrentFuture[None]:
         """
         On success: returns None.
@@ -439,7 +439,7 @@ cdef class InnerGcsClient:
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[float] = None
+        timeout: Optional[int | float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef c_string c_job_or_submission_id
         cdef optional[c_string] c_optional_job_or_submission_id = nullopt
@@ -462,7 +462,7 @@ cdef class InnerGcsClient:
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[float] = None
+        timeout: Optional[int | float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             c_string c_job_or_submission_id
@@ -507,7 +507,7 @@ cdef class InnerGcsClient:
     #############################################################
     def request_cluster_resource_constraint(
             self,
-            bundles: c_vector[unordered_map[c_string, double]],
+            bundles: c_vector[unordered_map[c_string, cython.double]],
             count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
@@ -629,7 +629,7 @@ cdef incremented_fut():
     cpython.Py_INCREF(fut)
     return fut
 
-cdef void assign_and_decrement_fut(result, fut) with gil:
+cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
     assert isinstance(fut, concurrent.futures.Future)
 
     assert not fut.done()

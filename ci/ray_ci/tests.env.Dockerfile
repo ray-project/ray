@@ -5,6 +5,7 @@ FROM "$BASE_IMAGE"
 
 ARG BUILD_TYPE
 ARG BUILDKITE_CACHE_READONLY
+ARG RAY_INSTALL_MASK=
 
 ENV CC=clang
 ENV CXX=clang++-12
@@ -28,11 +29,23 @@ if [[ "$BUILD_TYPE" == "skip" ]]; then
   exit 0
 fi
 
+if [[ "$RAY_INSTALL_MASK" != "" ]]; then
+  echo "--- Apply mask: $RAY_INSTALL_MASK"
+  if [[ "$RAY_INSTALL_MASK" =~ serve ]]; then
+    rm -rf python/ray/serve
+  fi
+fi
+
+echo "--- Build dashboard"
+
 (
   cd python/ray/dashboard/client
   npm ci
   npm run build
 )
+
+echo "--- Install Ray with -e"
+
 if [[ "$BUILD_TYPE" == "debug" ]]; then
   RAY_DEBUG_BUILD=debug pip install -v -e python/
 elif [[ "$BUILD_TYPE" == "asan" ]]; then

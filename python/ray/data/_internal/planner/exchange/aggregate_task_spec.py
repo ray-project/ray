@@ -54,7 +54,9 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
             )
         else:
             partitions = [block]
-        parts = [BlockAccessor.for_block(p).combine(sort_key, aggs) for p in partitions]
+        parts = [
+            BlockAccessor.for_block(p)._aggregate(sort_key, aggs) for p in partitions
+        ]
         meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         return parts + [meta]
 
@@ -67,9 +69,10 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
         normalized_blocks = TableBlockAccessor.normalize_block_types(
-            mapper_outputs, normalize_type=batch_format
+            mapper_outputs,
+            target_block_type=ExchangeTaskSpec._derive_target_block_type(batch_format),
         )
-        return BlockAccessor.for_block(normalized_blocks[0]).aggregate_combined_blocks(
+        return BlockAccessor.for_block(normalized_blocks[0])._combine_aggregated_blocks(
             list(normalized_blocks), key, aggs, finalize=not partial_reduce
         )
 

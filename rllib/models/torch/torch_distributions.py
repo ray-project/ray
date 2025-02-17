@@ -70,7 +70,7 @@ class TorchDistribution(Distribution, abc.ABC):
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
-    """Wrapper class for PyTorch Categorical distribution.
+    r"""Wrapper class for PyTorch Categorical distribution.
 
     Creates a categorical distribution parameterized by either :attr:`probs` or
     :attr:`logits` (but not both).
@@ -129,7 +129,9 @@ class TorchCategorical(TorchDistribution):
         logits: "torch.Tensor" = None,
         probs: "torch.Tensor" = None,
     ) -> "torch.distributions.Distribution":
-        return torch.distributions.categorical.Categorical(logits=logits, probs=probs)
+        return torch.distributions.categorical.Categorical(
+            logits=logits, probs=probs, validate_args=False
+        )
 
     @staticmethod
     @override(Distribution)
@@ -141,7 +143,7 @@ class TorchCategorical(TorchDistribution):
     def rsample(self, sample_shape=()):
         if self._one_hot is None:
             self._one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-                logits=self.logits, probs=self.probs
+                logits=self.logits, probs=self.probs, validate_args=False
             )
         one_hot_sample = self._one_hot.sample(sample_shape)
         return (one_hot_sample - self.probs).detach() + self.probs
@@ -207,7 +209,7 @@ class TorchDiagGaussian(TorchDistribution):
         super().__init__(loc=loc, scale=scale)
 
     def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
-        return torch.distributions.normal.Normal(loc, scale)
+        return torch.distributions.normal.Normal(loc, scale, validate_args=False)
 
     @override(TorchDistribution)
     def logp(self, value: TensorType) -> TensorType:
@@ -255,7 +257,7 @@ class TorchSquashedGaussian(TorchDistribution):
         super().__init__(loc=loc, scale=scale)
 
     def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
-        return torch.distributions.normal.Normal(loc, scale)
+        return torch.distributions.normal.Normal(loc, scale, validate_args=False)
 
     @override(TorchDistribution)
     def sample(

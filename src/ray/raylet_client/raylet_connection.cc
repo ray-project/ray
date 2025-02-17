@@ -14,6 +14,10 @@
 
 #include "ray/raylet_client/raylet_connection.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 using MessageType = ray::protocol::MessageType;
 
 namespace ray::raylet {
