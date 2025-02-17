@@ -1,3 +1,14 @@
+"""
+Note (genesu): majority of this file is adapted from
+- https://github.com/vllm-project/vllm/blob/5095e966069b9e65b7c4c63427e06cebacaad0a0/vllm/entrypoints/openai/protocol.py
+- https://github.com/vllm-project/vllm/blob/5095e966069b9e65b7c4c63427e06cebacaad0a0/vllm/entrypoints/chat_utils.py
+- https://github.com/openai/openai-python/tree/2e56c8da6f163db00a4ca362020148bb391edca9/src/openai/types/chat
+
+We patched `ErrorResponse` and `ResponseFormat` to be slightly different from the
+original source.
+"""
+
+
 import time
 from argparse import Namespace
 from typing import (
@@ -28,9 +39,14 @@ from ray.serve._private.utils import (
 )
 from typing_extensions import Annotated, Required, TypeAlias, TypedDict
 
-from ray.llm._internal.serve.configs.server_models import (
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType as ResponseFormat,
+)
+from ray.llm._internal.serve.configs.server_models import (
+    ModelData,
+    LLMConfig,
+    LLMRawResponse,
 )
 
 _LONG_INFO = Namespace(min=-9223372036854775808, max=9223372036854775807)
@@ -651,3 +667,59 @@ LLMCompletionsResponse = Union[
         Union[CompletionStreamResponse, CompletionResponse, ErrorResponse], None
     ],
 ]
+
+
+class OpenAIHTTPException(Exception):
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        type: str = "Unknown",
+        internal_message: Optional[str] = None,
+    ) -> None:
+        self.status_code = status_code
+        self.message = message
+        self.type = type
+        self.internal_message = internal_message
+
+    @classmethod
+    def from_model_response(cls, response: LLMRawResponse) -> "OpenAIHTTPException":
+        return cls(
+            status_code=response.error.code,
+            message=response.error.message,
+            type=response.error.type,
+            internal_message=response.error.internal_message,
+        )
+
+
+def to_model_metadata(
+    model_id: str,
+    model_config: LLMConfig,
+    overrides: Optional[Dict[str, Any]] = None,
+):
+    """Creates an OpenAI-compatible ModelData object.
+
+    Args:
+        model_id: The ID of the model. Should contain the suffix if the model
+            is LoRA fine-tuned. For example:
+                meta-llama/Llama-2-7b-chat-hf:my_suffix:aBc1234
+        model_config: The model's YAML config.
+        overrides: should only be set for LoRA fine-tuned models. The
+            overrides of the fine-tuned model metadata.
+    """
+    metadata = {
+        "model_id": model_config.model_id,
+        "input_modality": model_config.input_modality,
+        "max_request_context_length": model_config.max_request_context_length,
+    }
+
+    if overrides:
+        metadata.update(overrides)
+
+    return ModelData(
+        id=model_id,
+        rayllm_metadata=metadata,
+        object="model",
+        owned_by="organization-owner",
+        permission=[],
+    )

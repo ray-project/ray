@@ -2,7 +2,7 @@ import pytest
 import ray
 import sys
 
-from ray.llm._internal.serve.deployments.streaming_error_handler import (
+from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
     StreamingErrorHandler,
 )
 from ray.llm._internal.serve.configs.error_handling import (

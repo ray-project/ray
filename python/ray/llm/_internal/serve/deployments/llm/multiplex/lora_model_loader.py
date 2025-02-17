@@ -47,9 +47,6 @@ class LoraModelLoader:
 
     This entire downloader is sync.
 
-    TODO(tchordia): in the future, this class should also manage the disk to make sure
-    we don't overfill
-
     Args:
         lora_root: Path to directory where LoRA weights will be cached.
         download_timeout_s: How much time the download subprocess has to download

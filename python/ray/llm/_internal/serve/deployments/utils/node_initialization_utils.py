@@ -10,14 +10,17 @@ from transformers import AutoTokenizer
 
 from ray.llm._internal.serve.observability.logging import get_logger
 
-from ray.llm._internal.serve.deployments.downloader import GCSDownloader, S3Downloader
+from ray.llm._internal.serve.deployments.utils.downloader_utils import (
+    GCSDownloader,
+    S3Downloader,
+)
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.configs.server_models import (
     GCSMirrorConfig,
     LLMConfig,
     S3MirrorConfig,
 )
-from ray.llm._internal.serve.deployments.server_utils import make_async
+from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 
 logger = get_logger(__name__)
 

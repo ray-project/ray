@@ -43,10 +43,10 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from ray.llm._internal.serve.deployments.llm_node_initializer import (
+from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
-from ray.llm._internal.serve.deployments.llm_node_initializer import (
+from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     initialize_node as initialize_node_util,
 )
 from ray.llm._internal.serve.configs.server_models import (

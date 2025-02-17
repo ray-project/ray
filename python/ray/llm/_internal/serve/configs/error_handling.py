@@ -1,3 +1,4 @@
+# TODO (genesu): revisit these data structures
 from pydantic import ValidationError as PydanticValidationError
 from abc import ABC, abstractmethod
 

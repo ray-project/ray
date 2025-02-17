@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from filelock import FileLock
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.cloud_utils import (
+from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     GCP_EXECUTABLE,
     AWS_EXECUTABLE,
     get_file_from_gcs,
@@ -26,7 +26,7 @@ from ray.llm._internal.serve.configs.constants import (
     CLOUD_OBJECT_EXISTS_EXPIRE_S,
     LORA_ADAPTER_CONFIG_NAME,
 )
-from ray.llm._internal.serve.deployments.server_utils import make_async
+from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 
 CLOUD_OBJECT_MISSING = object()
 
@@ -107,7 +107,6 @@ def sync_model(
     This method isn't re-entrant and will block (up to timeout) if already syncing
     at a given path.
     """
-    # TODO(tchordia): we don't have to write a file all the time here
     if bucket_uri.startswith("s3://"):
         command = _get_aws_sync_command(bucket_uri, local_path, sync_args=sync_args)
     elif bucket_uri.startswith("gs://"):
