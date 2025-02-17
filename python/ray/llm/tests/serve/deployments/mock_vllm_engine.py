@@ -8,11 +8,13 @@ from PIL import Image
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 from ray.llm._internal.serve.configs.error_handling import ValidationError
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
+    ResponseFormatJsonObject,
+)
 from ray.llm._internal.serve.configs.server_models import (
     FinishReason,
     LogProb,
     LogProbs,
-    ResponseFormatJsonObject,
     DiskMultiplexConfig,
     LLMConfig,
     LLMRawResponse,
