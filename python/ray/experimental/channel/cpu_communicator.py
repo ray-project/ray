@@ -4,12 +4,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.communicator import (
-    AllReduceOp,
     Communicator,
-    ReduceScatterOp,
+    ReduceOp,
     TorchTensorAllocator,
 )
-from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import torch
@@ -72,19 +70,19 @@ class CPUCommBarrier:
         """Apply the specified reduction operation across a list of tensors."""
 
         result = tensors[0].clone()
-        if op == AllReduceOp.SUM:
+        if op == ReduceOp.SUM:
             for tensor in tensors[1:]:
                 result += tensor
-        elif op == AllReduceOp.PRODUCT:
+        elif op == ReduceOp.PRODUCT:
             for tensor in tensors[1:]:
                 result *= tensor
-        elif op == AllReduceOp.MAX:
+        elif op == ReduceOp.MAX:
             for tensor in tensors[1:]:
                 result = torch.max(result, tensor)
-        elif op == AllReduceOp.MIN:
+        elif op == ReduceOp.MIN:
             for tensor in tensors[1:]:
                 result = torch.min(result, tensor)
-        elif op == AllReduceOp.AVG:
+        elif op == ReduceOp.AVG:
             result = sum(tensors) / len(tensors)
         else:
             raise ValueError(f"Operation {op} not supported")
@@ -134,7 +132,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: AllReduceOp = AllReduceOp.SUM,
+        op: ReduceOp = ReduceOp.SUM,
     ):
         all_ranks = [
             self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
@@ -156,7 +154,7 @@ class CPUCommunicator(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceScatterOp = ReduceScatterOp.SUM,
+        op: ReduceOp = ReduceOp.SUM,
     ):
         raise NotImplementedError
 

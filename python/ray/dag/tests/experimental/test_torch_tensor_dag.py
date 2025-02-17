@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 import pytest
 import ray
 import ray.cluster_utils
-import ray.experimental.collective as collective
+import ray.experimental.collective.collective_ops as collective_ops
 import torch
 import time
 from ray.air._internal import torch_utils
@@ -28,6 +28,8 @@ from ray._private.test_utils import (
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental.util.types import (
+    ReduceOp,
+    AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
 )
@@ -497,7 +499,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: AllReduceOp = AllReduceOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
@@ -506,7 +508,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceScatterOp = ReduceScatterOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
@@ -623,7 +625,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: AllReduceOp = AllReduceOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -631,7 +633,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceScatterOp = ReduceScatterOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -792,7 +794,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: AllReduceOp = AllReduceOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -800,7 +802,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceScatterOp = ReduceScatterOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -1108,7 +1110,7 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, AllReduceOp.SUM)
+        collectives = collective_ops.allreduce.bind(computes, AllReduceOp())
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1154,7 +1156,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, AllReduceOp.SUM)
+        collectives = collective_ops.allreduce.bind(computes, AllReduceOp())
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([recv, tensor, collectives[1]])
@@ -1198,7 +1200,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, AllReduceOp.SUM)
+        collectives = collective_ops.allreduce.bind(computes, AllReduceOp())
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1314,7 +1316,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: AllReduceOp = AllReduceOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
@@ -1323,7 +1325,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceScatterOp = ReduceScatterOp.SUM,
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             self._inner.reducescatter(send_buf, recv_buf, op)
             recv_buf += 1
@@ -1349,7 +1351,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(computes, transport=nccl_group)
+        collectives = collective_ops.allreduce.bind(computes, AllReduceOp(), transport=nccl_group)
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1410,7 +1412,7 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
         t = workers[0].send.bind(shape, dtype, inp)
         t.with_tensor_transport(transport="nccl")
 
-        collectives = collective.allreduce.bind([x, y])
+        collectives = collective_ops.allreduce.bind([x, y], AllReduceOp())
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
@@ -1446,7 +1448,7 @@ def test_torch_tensor_nccl_all_reduce_with_class_method_output_node(ray_start_re
     with InputNode() as inp:
         t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
         t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
-        tensors = collective.allreduce.bind([t1, t4], AllReduceOp.SUM)
+        tensors = collective_ops.allreduce.bind([t1, t4], AllReduceOp())
         dag = MultiOutputNode(tensors + [t2, t3])
 
     compiled_dag = dag.experimental_compile()
@@ -1485,7 +1487,7 @@ def test_torch_tensor_nccl_reduce_scatter(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.reducescatter.bind(computes, ReduceScatterOp.SUM)
+        collectives = collective_ops.reducescatter.bind(computes, ReduceScatterOp())
         recvs = [
             worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1548,7 +1550,7 @@ def test_torch_tensor_nccl_reduce_scatter_scheduling(ray_start_regular):
         t = workers[0].send.bind(shape, dtype, inp)
         t.with_tensor_transport(transport="nccl")
 
-        collectives = collective.reducescatter.bind([x, y])
+        collectives = collective_ops.reducescatter.bind([x, y], ReduceScatterOp())
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
@@ -1586,7 +1588,7 @@ def test_torch_tensor_nccl_all_gather(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allgather.bind(computes)
+        collectives = collective_ops.allgather.bind(computes, AllGatherOp())
         recvs = [
             worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1647,7 +1649,7 @@ def test_torch_tensor_nccl_all_gather_scheduling(ray_start_regular):
         t = workers[0].send.bind(shape, dtype, inp)
         t.with_tensor_transport(transport="nccl")
 
-        collectives = collective.allgather.bind([x, y])
+        collectives = collective_ops.allgather.bind([x, y], AllGatherOp())
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 

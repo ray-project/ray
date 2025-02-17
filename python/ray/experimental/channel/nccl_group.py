@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import ray
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
-from ray.experimental.util.types import AllReduceOp, ReduceScatterOp
+from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -249,12 +249,43 @@ class _NcclGroup(Communicator):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
         return buf
+    
+    def allgather(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+    ):
+        if self._closed:
+            raise RayChannelError("NCCL group has been destroyed.")
+
+        assert send_buf.dtype == recv_buf.dtype, (
+            "Ray Compiled Graph derived the dtype of recv_buf from send_buf, "
+            "so send_buf and recv_buf must have the same dtype. "
+            "If you see this error, please file an issue at Ray repository."
+        )
+
+        self._comm.allGather(
+            self.nccl_util.get_tensor_ptr(send_buf),
+            self.nccl_util.get_tensor_ptr(recv_buf),
+            send_buf.numel(),
+            self.nccl_util.get_nccl_tensor_dtype(send_buf),
+            self._cuda_stream.ptr,
+        )
+
+        # This synchronize will be optional after merging the unify PR.
+        self._cuda_stream.synchronize()
+        if self._closed:
+            raise RayChannelError(
+                "NCCL group has been destroyed during allreduce operation. "
+                "There may be a dtype mismatch between input tensors from "
+                "different ranks."
+            )
 
     def allreduce(
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: AllReduceOp = AllReduceOp.SUM,
+        op: ReduceOp = ReduceOp.SUM,
     ):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
@@ -290,7 +321,7 @@ class _NcclGroup(Communicator):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceScatterOp = ReduceScatterOp.SUM,
+        op: ReduceOp = ReduceOp.SUM,
     ):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
@@ -306,37 +337,6 @@ class _NcclGroup(Communicator):
             recv_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
-            self._cuda_stream.ptr,
-        )
-
-        # This synchronize will be optional after merging the unify PR.
-        self._cuda_stream.synchronize()
-        if self._closed:
-            raise RayChannelError(
-                "NCCL group has been destroyed during allreduce operation. "
-                "There may be a dtype mismatch between input tensors from "
-                "different ranks."
-            )
-
-    def allgather(
-        self,
-        send_buf: "torch.Tensor",
-        recv_buf: "torch.Tensor",
-    ):
-        if self._closed:
-            raise RayChannelError("NCCL group has been destroyed.")
-
-        assert send_buf.dtype == recv_buf.dtype, (
-            "Ray Compiled Graph derived the dtype of recv_buf from send_buf, "
-            "so send_buf and recv_buf must have the same dtype. "
-            "If you see this error, please file an issue at Ray repository."
-        )
-
-        self._comm.allGather(
-            self.nccl_util.get_tensor_ptr(send_buf),
-            self.nccl_util.get_tensor_ptr(recv_buf),
-            send_buf.numel(),
-            self.nccl_util.get_nccl_tensor_dtype(send_buf),
             self._cuda_stream.ptr,
         )
 

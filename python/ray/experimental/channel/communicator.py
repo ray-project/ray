@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
-from ray.experimental.util.types import AllReduceOp, ReduceScatterOp
+from ray.experimental.util.types import ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -144,7 +144,7 @@ class Communicator(ABC):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: AllReduceOp,
+        op: ReduceOp,
     ) -> None:
         """
         Collectively allreduce the tensor across the group.
@@ -162,7 +162,7 @@ class Communicator(ABC):
         self,
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
-        op: ReduceScatterOp,
+        op: ReduceOp,
     ) -> None:
         """
         Collectively reducescatter the tensor across the group.
