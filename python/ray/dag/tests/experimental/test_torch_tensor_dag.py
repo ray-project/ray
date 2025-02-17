@@ -1089,9 +1089,17 @@ def test_torch_tensor_exceptions2(
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce(ray_start_regular):
+@pytest.mark.parametrize(
+    "op_name, op",
+    [
+        (collective_ops.allgather, AllGatherOp()),
+        (collective_ops.allreduce, AllReduceOp()),
+        (collective_ops.reducescatter, ReduceScatterOp()),
+    ],
+)
+def test_torch_tensor_nccl_collective_operations(ray_start_regular, op_name, op):
     """
-    Test basic all-reduce.
+    Test basic collective operations.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1110,9 +1118,9 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(computes, AllReduceOp())
+        collectives = op_name.bind(computes, op)
         recvs = [
-            worker.recv.bind(collective)
+            worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
         ]
         dag = MultiOutputNode(recvs)
@@ -1121,20 +1129,51 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
 
     for i in range(3):
         i += 1
-        shape = (i * 10,)
+        shape = (num_workers * i, i)
         dtype = torch.float16
         ref = compiled_dag.execute(
             [(shape, dtype, i + idx) for idx in range(num_workers)]
         )
         result = ray.get(ref)
-        reduced_val = sum(i + idx for idx in range(num_workers))
-        assert result == [(reduced_val, shape, dtype) for _ in workers]
+
+        if op_name == collective_ops.allgather:
+            expected_tensor_val = torch.cat(
+                [
+                    torch.ones(shape, dtype=dtype) * i + idx
+                    for idx in range(num_workers)
+                ],
+                dim=0,
+            )
+        elif op_name == collective_ops.reducescatter:
+            expected_tensor_val = torch.ones((i, i), dtype=dtype) * sum(
+                i + idx for idx in range(num_workers)
+            )
+        elif op_name == collective_ops.allreduce:
+            expected_tensor_val = torch.ones(shape, dtype=dtype) * sum(
+                i + idx for idx in range(num_workers)
+            )
+        else:
+            raise ValueError(f"Unknown op_name: {op_name}")
+
+        for tensor in result:
+            tensor = tensor.to("cpu")
+            assert torch.equal(tensor, expected_tensor_val)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
+@pytest.mark.parametrize(
+    "op_name, op",
+    [
+        (collective_ops.allgather, AllGatherOp()),
+        (collective_ops.allreduce, AllReduceOp()),
+        (collective_ops.reducescatter, ReduceScatterOp()),
+    ],
+)
+def test_torch_tensor_nccl_collective_operations_get_partial(
+    ray_start_regular, op_name, op
+):
     """
-    Test getting partial results from an all-reduce does not hang.
+    Test getting partial results from collective operations does not hang.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1148,38 +1187,67 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
     num_workers = 2
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
-    shape = (10,)
-    dtype = torch.float16
-
     with InputNode() as inp:
         computes = [
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(computes, AllReduceOp())
-        recv = workers[0].recv.bind(collectives[0])
-        tensor = workers[1].recv_tensor.bind(collectives[0])
-        dag = MultiOutputNode([recv, tensor, collectives[1]])
+        collectives = op_name.bind(computes, op)
+        tensor1 = workers[0].recv_tensor.bind(collectives[0])
+        tensor2 = workers[1].recv_tensor.bind(collectives[0])
+        dag = MultiOutputNode([tensor1, tensor2, collectives[1]])
 
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
+        i += 1
+        shape = (num_workers * i, i)
+        dtype = torch.float16
         ref = compiled_dag.execute(
-            [(shape, dtype, i + idx + 1) for idx in range(num_workers)]
+            [(shape, dtype, i + idx) for idx in range(num_workers)]
         )
         result = ray.get(ref)
-        metadata, tensor, _ = result
-        reduced_val = sum(i + idx + 1 for idx in range(num_workers))
-        assert metadata == (reduced_val, shape, dtype)
-        tensor = tensor.to("cpu")
-        expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_val
-        assert torch.equal(tensor, expected_tensor_val)
+        tensor1, tensor2, _ = result
+
+        if op_name == collective_ops.allgather:
+            expected_tensor_val = torch.cat(
+                [
+                    torch.ones(shape, dtype=dtype) * i + idx
+                    for idx in range(num_workers)
+                ],
+                dim=0,
+            )
+        elif op_name == collective_ops.reducescatter:
+            expected_tensor_val = torch.ones((i, i), dtype=dtype) * sum(
+                i + idx for idx in range(num_workers)
+            )
+        elif op_name == collective_ops.allreduce:
+            expected_tensor_val = torch.ones(shape, dtype=dtype) * sum(
+                i + idx for idx in range(num_workers)
+            )
+        else:
+            raise ValueError(f"Unknown op_name: {op_name}")
+
+        tensor1 = tensor1.to("cpu")
+        tensor2 = tensor2.to("cpu")
+        assert torch.equal(tensor1, expected_tensor_val)
+        assert torch.equal(tensor1, tensor2)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
+@pytest.mark.parametrize(
+    "op_name, op",
+    [
+        (collective_ops.allgather, AllGatherOp()),
+        (collective_ops.allreduce, AllReduceOp()),
+        (collective_ops.reducescatter, ReduceScatterOp()),
+    ],
+)
+def test_torch_tensor_nccl_collective_operations_wrong_shape(
+    ray_start_regular, op_name, op
+):
     """
-    Test an error is thrown when an all-reduce takes tensors of wrong shapes.
+    Test an error is thrown when collective operations takes tensors of wrong shapes.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1200,18 +1268,42 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(computes, AllReduceOp())
+        collectives = op_name.bind(computes, op)
         recvs = [
-            worker.recv.bind(collective)
+            worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
         ]
         dag = MultiOutputNode(recvs)
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute([((20,), dtype, idx + 1) for idx in range(num_workers)])
-    reduced_val = (1 + num_workers) * num_workers / 2
-    assert ray.get(ref) == [(reduced_val, (20,), dtype) for _ in range(num_workers)]
+    ref = compiled_dag.execute(
+        [((20, 10), dtype, idx + 1) for idx in range(num_workers)]
+    )
+    result = ray.get(ref)
+    for tensor in result:
+        tensor = tensor.to("cpu")
+
+        if op_name == collective_ops.allgather:
+            expected_tensor_val = torch.cat(
+                [
+                    torch.ones((20, 10), dtype=dtype) * idx + 1
+                    for idx in range(num_workers)
+                ],
+                dim=0,
+            )
+        elif op_name == collective_ops.allreduce:
+            expected_tensor_val = torch.ones((20, 10), dtype=dtype) * sum(
+                idx + 1 for idx in range(num_workers)
+            )
+        elif op_name == collective_ops.reducescatter:
+            expected_tensor_val = torch.ones((10, 10), dtype=dtype) * sum(
+                idx + 1 for idx in range(num_workers)
+            )
+        else:
+            raise ValueError(f"Unknown op_name: {op_name}")
+
+        assert torch.equal(tensor, expected_tensor_val)
 
     ref = compiled_dag.execute(
         [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
@@ -1229,9 +1321,19 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
+@pytest.mark.parametrize(
+    "op_name, op",
+    [
+        (collective_ops.allgather, AllGatherOp()),
+        (collective_ops.allreduce, AllReduceOp()),
+        (collective_ops.reducescatter, ReduceScatterOp()),
+    ],
+)
+def test_torch_tensor_nccl_collective_operations_custom_comm(
+    ray_start_regular, op_name, op
+):
     """
-    Test all-reduce works with a custom communicator.
+    Test collective operations work with a custom communicator.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1351,34 +1453,66 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(
-            computes, AllReduceOp(), transport=nccl_group
-        )
+        collectives = op_name.bind(computes, op, transport=nccl_group)
         recvs = [
-            worker.recv.bind(collective)
+            worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
         ]
         dag = MultiOutputNode(recvs)
 
     compiled_dag = dag.experimental_compile()
 
-    shape = (10,)
-    dtype = torch.float16
     for i in range(3):
+        i += 1
+        shape = (num_workers * i, i)
+        dtype = torch.float16
         ref = compiled_dag.execute(
-            [(shape, dtype, i + idx + 1) for idx in range(num_workers)]
+            [(shape, dtype, i + idx) for idx in range(num_workers)]
         )
         result = ray.get(ref)
-        reduced_val = sum(i + idx + 1 for idx in range(num_workers))
-        # The custom communicator adds 1 to the tensor after the all-reduce.
-        reduced_val += 1
-        assert result == [(reduced_val, shape, dtype) for _ in workers]
+
+        if op_name == collective_ops.allgather:
+            expected_tensor_val = torch.cat(
+                [
+                    (torch.ones(shape, dtype=dtype) * i + idx) + 1
+                    for idx in range(num_workers)
+                ],
+                dim=0,
+            )
+        elif op_name == collective_ops.reducescatter:
+            expected_tensor_val = (
+                torch.ones((i, i), dtype=dtype)
+                * sum(i + idx for idx in range(num_workers))
+                + 1
+            )
+        elif op_name == collective_ops.allreduce:
+            expected_tensor_val = (
+                torch.ones(shape, dtype=dtype)
+                * sum(i + idx for idx in range(num_workers))
+                + 1
+            )
+        else:
+            raise ValueError(f"Unknown op_name: {op_name}")
+
+        for tensor in result:
+            tensor = tensor.to("cpu")
+            assert torch.equal(tensor, expected_tensor_val)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
+@pytest.mark.parametrize(
+    "op_name, op",
+    [
+        (collective_ops.allgather, AllGatherOp()),
+        (collective_ops.allreduce, AllReduceOp()),
+        (collective_ops.reducescatter, ReduceScatterOp()),
+    ],
+)
+def test_torch_tensor_nccl_collective_operations_scheduling(
+    ray_start_regular, op_name, op
+):
     """
-    Test scheduling avoids potential deadlocks that arise from all-reduce operations.
+    Test scheduling avoids potential deadlocks that arise from collective operations.
 
     inp --> x(0) --> +------------+
         |            | all-reduce |
@@ -1414,7 +1548,7 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
         t = workers[0].send.bind(shape, dtype, inp)
         t.with_tensor_transport(transport="nccl")
 
-        collectives = collective_ops.allreduce.bind([x, y], AllReduceOp())
+        collectives = op_name.bind([x, y], op)
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
@@ -1423,17 +1557,35 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     value = 10
     ref = compiled_dag.execute(value)
     result = ray.get(ref)
-    reduced_value = value * 2
-    expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_value
+
+    if op_name == collective_ops.allgather:
+        expected_tensor_val = torch.ones((20,), dtype=dtype) * value
+    elif op_name == collective_ops.allreduce:
+        expected_tensor_val = torch.ones(shape, dtype=dtype) * value * 2
+    elif op_name == collective_ops.reducescatter:
+        expected_tensor_val = torch.ones((5,), dtype=dtype) * value * 2
+    else:
+        raise ValueError(f"Unknown op_name: {op_name}")
+
     assert torch.equal(result[0], expected_tensor_val)
     assert torch.equal(result[1], expected_tensor_val)
     assert result[2] == (value, shape, dtype)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
+@pytest.mark.parametrize(
+    "op_name, op",
+    [
+        (collective_ops.allgather, AllGatherOp()),
+        (collective_ops.allreduce, AllReduceOp()),
+        (collective_ops.reducescatter, ReduceScatterOp()),
+    ],
+)
+def test_torch_tensor_nccl_collective_operations_with_class_method_output_node(
+    ray_start_regular, op_name, op
+):
     """
-    Test all-reduce with class method output node.
+    Test collective operations with class method output node.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1450,220 +1602,46 @@ def test_torch_tensor_nccl_all_reduce_with_class_method_output_node(ray_start_re
     with InputNode() as inp:
         t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
         t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
-        tensors = collective_ops.allreduce.bind([t1, t4], AllReduceOp())
+        tensors = op_name.bind([t1, t4], op)
         dag = MultiOutputNode(tensors + [t2, t3])
 
     compiled_dag = dag.experimental_compile()
 
-    t1 = torch.tensor([1], device="cuda")
-    t2 = torch.tensor([2], device="cuda")
-    t3 = torch.tensor([3], device="cuda")
-    t4 = torch.tensor([4], device="cuda")
+    t1 = torch.tensor([1, 11], device="cuda")
+    t2 = torch.tensor([2, 22], device="cuda")
+    t3 = torch.tensor([3, 33], device="cuda")
+    t4 = torch.tensor([4, 44], device="cuda")
 
     for i in range(3):
         i += 1
         ref = compiled_dag.execute(t1, t2, t3, t4)
         result = ray.get(ref)
-        assert result == [t1 + t4, t1 + t4, t2, t3]
 
+        if op_name == collective_ops.allgather:
+            expected_result = [
+                torch.tensor([1, 11, 4, 44], device="cuda"),
+                torch.tensor([1, 11, 4, 44], device="cuda"),
+                t2,
+                t3,
+            ]
+        elif op_name == collective_ops.allreduce:
+            expected_result = [
+                torch.tensor([5, 55], device="cuda"),
+                torch.tensor([5, 55], device="cuda"),
+                t2,
+                t3,
+            ]
+        elif op_name == collective_ops.reducescatter:
+            expected_result = [
+                torch.tensor([5], device="cuda"),
+                torch.tensor([55], device="cuda"),
+                t2,
+                t3,
+            ]
+        else:
+            raise ValueError(f"Unknown op_name: {op_name}")
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_reduce_scatter(ray_start_regular):
-    """
-    Test basic reduce-scatter.
-    """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    with InputNode() as inp:
-        computes = [
-            worker.compute_with_tuple_args.bind(inp, i)
-            for i, worker in enumerate(workers)
-        ]
-        collectives = collective_ops.reducescatter.bind(computes, ReduceScatterOp())
-        recvs = [
-            worker.recv_tensor.bind(collective)
-            for worker, collective in zip(workers, collectives)
-        ]
-        dag = MultiOutputNode(recvs)
-
-    compiled_dag = dag.experimental_compile()
-
-    for i in range(3):
-        i += 1
-        shape = (num_workers * i, i)
-        dtype = torch.float16
-        ref = compiled_dag.execute(
-            [(shape, dtype, i + idx) for idx in range(num_workers)]
-        )
-        result = ray.get(ref)
-        reduced_val = sum(i + idx for idx in range(num_workers))
-        for tensor in result:
-            tensor = tensor.to("cpu")
-            expected_tensor_val = torch.ones((i, i), dtype=dtype) * reduced_val
-            assert torch.equal(tensor, expected_tensor_val)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_reduce_scatter_scheduling(ray_start_regular):
-    """
-    Test scheduling avoids potential deadlocks raised from reduce-scatter operations.
-
-    inp --> x(0) --> +----------------+
-        |            | reduce-scatter |
-        --> y(1) --> +----------------+
-        |
-        --> t(0) --> recv(1)
-
-    In the above graph, x, y, t are tensors, and the numbers inside parentheses
-    identify the actors. If actor 1 launches an reduce-scatter with tensor y while
-    actor 0 starts sending t, then actor 1 waits for actor 0 to join the reduce-scatter
-    while actor 1 waits for actor 0 to receive t.
-    """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    shape = (10,)
-    dtype = torch.float16
-    with InputNode() as inp:
-        # Tensors in the reduce-scatter.
-        x = workers[0].send.bind(shape, dtype, inp)
-        y = workers[1].send.bind(shape, dtype, inp)
-
-        # Tensor to be sent from workes[0] to workers[1].
-        t = workers[0].send.bind(shape, dtype, inp)
-        t.with_tensor_transport(transport="nccl")
-
-        collectives = collective_ops.reducescatter.bind([x, y], ReduceScatterOp())
-        recv = workers[1].recv.bind(t)
-        dag = MultiOutputNode([collectives[0], collectives[1], recv])
-
-    compiled_dag = dag.experimental_compile()
-
-    value = 10
-    ref = compiled_dag.execute(value)
-    result = ray.get(ref)
-    reduced_value = value * 2
-    expected_tensor_val = torch.ones((5,), dtype=dtype) * reduced_value
-    assert torch.equal(result[0], expected_tensor_val)
-    assert torch.equal(result[1], expected_tensor_val)
-    assert result[2] == (value, shape, dtype)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_gather(ray_start_regular):
-    """
-    Test basic all-gather.
-    """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    with InputNode() as inp:
-        computes = [
-            worker.compute_with_tuple_args.bind(inp, i)
-            for i, worker in enumerate(workers)
-        ]
-        collectives = collective_ops.allgather.bind(computes, AllGatherOp())
-        recvs = [
-            worker.recv_tensor.bind(collective)
-            for worker, collective in zip(workers, collectives)
-        ]
-        dag = MultiOutputNode(recvs)
-
-    compiled_dag = dag.experimental_compile()
-
-    for i in range(3):
-        i += 1
-        shape = (i, i)
-        dtype = torch.float16
-        value = i
-        ref = compiled_dag.execute([(shape, dtype, value) for _ in range(num_workers)])
-        result = ray.get(ref)
-        for tensor in result:
-            tensor = tensor.to("cpu")
-            expected_tensor_val = torch.ones((num_workers * i, i), dtype=dtype) * value
-            assert torch.equal(tensor, expected_tensor_val)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_gather_scheduling(ray_start_regular):
-    """
-    Test scheduling avoids potential deadlocks raised from all-gather operations.
-
-    inp --> x(0) --> +------------+
-        |            | all-gather |
-        --> y(1) --> +------------+
-        |
-        --> t(0) --> recv(1)
-
-    In the above graph, x, y, t are tensors, and the numbers inside parentheses
-    identify the actors. If actor 1 launches an all-gather with tensor y while
-    actor 0 starts sending t, then actor 1 waits for actor 0 to join the all-gather
-    while actor 1 waits for actor 0 to receive t.
-    """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    shape = (10,)
-    dtype = torch.float16
-    with InputNode() as inp:
-        # Tensors in the all-gather.
-        x = workers[0].send.bind(shape, dtype, inp)
-        y = workers[1].send.bind(shape, dtype, inp)
-
-        # Tensor to be sent from workes[0] to workers[1].
-        t = workers[0].send.bind(shape, dtype, inp)
-        t.with_tensor_transport(transport="nccl")
-
-        collectives = collective_ops.allgather.bind([x, y], AllGatherOp())
-        recv = workers[1].recv.bind(t)
-        dag = MultiOutputNode([collectives[0], collectives[1], recv])
-
-    compiled_dag = dag.experimental_compile()
-
-    value = 10
-    ref = compiled_dag.execute(value)
-    result = ray.get(ref)
-    expected_tensor_val = torch.ones((20,), dtype=dtype) * value
-    assert torch.equal(result[0], expected_tensor_val)
-    assert torch.equal(result[1], expected_tensor_val)
-    assert result[2] == (value, shape, dtype)
+        assert all(torch.equal(r, e) for r, e in zip(result, expected_result))
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
