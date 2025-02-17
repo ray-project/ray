@@ -93,15 +93,11 @@ def gpu_type():
 
         print(f"{torch.version.cuda=}", flush=True)
         name = torch.cuda.get_device_name()
-        if name.startswith("NVIDIA"):
-            type_name = name.split(" ")[-1]
-            print(f"GPU type: {type_name}", flush=True)
-            yield type_name
-        else:
-            raise ValueError(name)
+        # The name of the GPU is in the format of "NVIDIA L4" or "Tesla T4".
+        _, type_name = name.split(" ")
+        print(f"GPU type: {type_name}", flush=True)
+        yield type_name
     except ImportError:
         print("Failed to import torch to get GPU type", flush=True)
     except ValueError as err:
-        print(
-            f"Failed to convert the GPU type to Ray supported type: {err}", flush=True
-        )
+        print(f"Failed to get the GPU type: {err}", flush=True)
