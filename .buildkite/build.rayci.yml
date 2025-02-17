@@ -36,6 +36,7 @@ steps:
       - oss
     instance_type: medium
     commands:
+      - export PYTHON3_BIN_PATH=$(which python3)
       - ./ci/build/build-manylinux-ray.sh
       - ./ci/build/build-manylinux-jar.sh
       - ./ci/build/copy_build_artifacts.sh jar
