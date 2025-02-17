@@ -94,7 +94,7 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
   if (language_ == Language::PYTHON) {
     if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
       PyGILState_STATE gstate;
-      executor->Post([this, &gstate]() {
+      executor->Post([&gstate]() {
         // `PyGILState_Ensure()` makes this C++ thread appear as a Python thread
         // from the perspective of the Python interpreter, regardless of whether
         // the thread is executing Python code (i.e., Ray tasks or actors) or not.
@@ -103,8 +103,8 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
         // control plane logic.
         PyEval_SaveThread();
       });
-      return [this, &gstate, &executor]() {
-        executor->Post([this, &gstate]() { PyGILState_Release(gstate); });
+      return [&gstate, &executor]() {
+        executor->Post([&gstate]() { PyGILState_Release(gstate); });
       };
     }
     // TODO: Consider whether we need to handle FiberState or using BoundedExecutor for
