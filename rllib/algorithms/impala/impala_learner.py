@@ -7,6 +7,7 @@ from typing import Any, Dict, Union
 import ray
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.utils.annotations import (
@@ -106,6 +107,7 @@ class IMPALALearner(Learner):
         batch: Any,
         *,
         timesteps: Dict[str, Any],
+        return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
         global _CURRENT_GLOBAL_TIMESTEPS
@@ -134,13 +136,31 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
+        result = {}
         with self._num_updates_lock:
             count = self._num_updates
         if count >= 100:
             with self._num_updates_lock:
                 self._num_updates = 0
-            return self.metrics.reduce()
-        return {}
+            result = self.metrics.reduce()
+
+        if return_state and result:
+            learner_state = self.get_state(
+                # Only return the state of those RLModules that actually
+                # returned results and thus got probably updated.
+                components=[
+                    COMPONENT_RL_MODULE + "/" + mid
+                    for mid in result
+                    if mid != ALL_MODULES
+                ],
+                inference_only=True,
+            )
+            learner_state[COMPONENT_RL_MODULE] = ray.put(
+                learner_state[COMPONENT_RL_MODULE]
+            )
+            result["_rl_module_state_after_update"] = learner_state
+
+        return result
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:

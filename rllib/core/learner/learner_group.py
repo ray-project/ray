@@ -546,7 +546,9 @@ class LearnerGroup(Checkpointable):
                 # Send out new request(s), if there is still capacity on the actors
                 # (each actor is allowed only some number of max in-flight requests
                 # at the same time).
-                num_sent_requests = self._worker_manager.foreach_actor_async(partials)
+                num_sent_requests = self._worker_manager.foreach_actor_async(
+                    partials
+                )
 
                 # Some requests were dropped, record lost ts/data.
                 if num_sent_requests != len(self._workers):
