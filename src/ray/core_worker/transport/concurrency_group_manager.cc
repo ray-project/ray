@@ -95,7 +95,12 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
     if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
       PyGILState_STATE gstate;
       executor->Post([this, &gstate]() {
+        // `PyGILState_Ensure()` makes this C++ thread appear as a Python thread
+        // from the perspective of the Python interpreter, regardless of whether
+        // the thread is executing Python code (i.e., Ray tasks or actors) or not.
         gstate = PyGILState_Ensure();
+        // Release the GIL so the main thread can acquire it to execute the
+        // control plane logic.
         PyEval_SaveThread();
       });
       return [this, &gstate, &executor]() {
