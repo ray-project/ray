@@ -60,6 +60,9 @@ def serve_config_separate_model_config_files(download_model_ckpt):
 
 
 class TestBuildOpenaiApp:
+    @pytest.mark.parametrize(
+        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
+    )
     def test_build_openai_app(
         self, get_llm_serve_args, shutdown_ray_and_serve, use_mock_vllm_engine
     ):
@@ -71,6 +74,9 @@ class TestBuildOpenaiApp:
         assert isinstance(app, serve.Application)
         serve.run(app)
 
+    @pytest.mark.parametrize(
+        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
+    )
     def test_build_openai_app_with_config(
         self,
         serve_config_separate_model_config_files,
@@ -97,6 +103,9 @@ class TestBuildOpenaiApp:
 
 
 class TestBuildVllmDeployment:
+    @pytest.mark.parametrize(
+        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
+    )
     def test_build_vllm_deployment(
         self,
         llm_config,

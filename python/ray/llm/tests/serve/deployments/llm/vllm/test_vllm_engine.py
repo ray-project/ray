@@ -95,6 +95,9 @@ class TestVLLMEngine:
     """Test the VLLMEngine."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
+    )
     async def test_vllm_engine(self, llm_config):
         expected_out = ["hi ", "i ", "am ", "vllm."]
         vllm_engine, req, engine_mock = get_fake_engine_and_request(
@@ -122,6 +125,9 @@ class TestVLLMEngine:
         engine_mock.abort.assert_called_once_with("req_id")
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
+    )
     async def test_vllm_engine_error_in_caller(self, llm_config):
         expected_out = ["hi ", "i ", "am ", "vllm."]
         vllm_engine, req, engine_mock = get_fake_engine_and_request(
@@ -137,6 +143,9 @@ class TestVLLMEngine:
         engine_mock.abort.assert_called_once_with("req_id")
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
+    )
     async def test_vllm_engine_caller_cancellation(self, llm_config):
         expected_out = ["hi ", "i ", "am ", "vllm.", "and more"] * 10  # many tokens
         vllm_engine, req, engine_mock = get_fake_engine_and_request(
@@ -160,6 +169,9 @@ class TestVLLMEngine:
             vllm_engine.engine.num_generated <= 4
         ), "We should have generated not more than 4 tokens"
 
+    @pytest.mark.parametrize(
+        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
+    )
     @pytest.mark.parametrize("enable_json_mode", [True, False])
     def test_parse_sampling_params_json_mode(
         self, llm_config: LLMConfig, enable_json_mode: bool

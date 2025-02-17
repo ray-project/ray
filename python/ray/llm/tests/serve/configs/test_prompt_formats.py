@@ -17,12 +17,14 @@ def hf_prompt_format(download_model_ckpt):
     return hf_prompt_format
 
 
+@pytest.mark.parametrize("download_model_ckpt_model", ["mistral-community-pixtral-12b"])
 def test_hf_prompt_format_on_string_message(hf_prompt_format):
     messages = Prompt(prompt="This is a test message.")
     with pytest.raises(ValueError):
         hf_prompt_format.generate_prompt(messages=messages)
 
 
+@pytest.mark.parametrize("download_model_ckpt_model", ["mistral-community-pixtral-12b"])
 def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
     messages = Prompt(
         prompt=[
@@ -69,6 +71,7 @@ def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
     assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
 
 
+@pytest.mark.parametrize("download_model_ckpt_model", ["mistral-community-pixtral-12b"])
 def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
     messages = [
         Message(role="system", content="You are a helpful assistant."),
