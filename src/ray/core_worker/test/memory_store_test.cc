@@ -217,6 +217,118 @@ TEST(TestMemoryStore, TestObjectAllocator) {
   ASSERT_EQ(max_rounds * hello.size(), mock_buffer_manager.GetBuferPressureInBytes());
 }
 
+TEST(TestMemoryStore, TestWaitNoWaiting) {
+  // SETUP
+  InstrumentedIOContextWithThread io_context("TestWait");
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  WorkerContext ctx =
+      WorkerContext(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
+  const std::string buffer = "hello";
+  std::vector<rpc::ObjectReference> nested_refs;
+  auto memory_store_object =
+      ray::RayObject{MakeLocalMemoryBufferFromString(buffer), nullptr, nested_refs, true};
+  auto plasma_store_object = ray::RayObject{rpc::ErrorType::OBJECT_IN_PLASMA};
+
+  // Object 0 is ready in memory store
+  // Object 1 is in plasma
+  // Object 2 is in plasma
+  // Object 3 is ready in memory store
+  // num_objects is 2 (expect any two in ready, 1 and 2 in plasma_object_ids)
+  std::vector<ObjectID> object_ids = {ObjectID::FromRandom(),
+                                      ObjectID::FromRandom(),
+                                      ObjectID::FromRandom(),
+                                      ObjectID::FromRandom()};
+  absl::flat_hash_set<ObjectID> object_ids_set = {object_ids.begin(), object_ids.end()};
+  int num_objects = 2;
+
+  memory_store->Put(memory_store_object, object_ids[0]);
+  memory_store->Put(plasma_store_object, object_ids[1]);
+  memory_store->Put(plasma_store_object, object_ids[2]);
+  memory_store->Put(memory_store_object, object_ids[3]);
+
+  // DO WAIT
+  const auto status_or_results =
+      memory_store->Wait(object_ids_set, num_objects, 1000, ctx);
+  const auto &[ready, plasma_object_ids] = status_or_results.value();
+
+  // ASSERTIONS
+  ASSERT_TRUE(status_or_results.ok());
+  ASSERT_EQ(ready.size(), 2);
+  ASSERT_EQ(plasma_object_ids.size(), 2);
+  ASSERT_TRUE(plasma_object_ids.contains(object_ids[1]) &&
+              plasma_object_ids.contains(object_ids[2]));
+}
+
+TEST(TestMemoryStore, TestWaitWithWaiting) {
+  // SETUP
+  InstrumentedIOContextWithThread io_context("TestWait");
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  WorkerContext ctx =
+      WorkerContext(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
+  const std::string buffer = "hello";
+  std::vector<rpc::ObjectReference> nested_refs;
+  auto memory_store_object =
+      ray::RayObject{MakeLocalMemoryBufferFromString(buffer), nullptr, nested_refs, true};
+  auto plasma_store_object = ray::RayObject{rpc::ErrorType::OBJECT_IN_PLASMA};
+
+  // Object 0 is ready in memory store
+  // Object 1 is in plasma
+  // Object 2 will be in plasma after 500ms
+  // num_objects is 3 (expect 0 and 1 in ready immediately, 2 added to ready after)
+  std::vector<ObjectID> object_ids = {
+      ObjectID::FromRandom(), ObjectID::FromRandom(), ObjectID::FromRandom()};
+  absl::flat_hash_set<ObjectID> object_ids_set = {object_ids.begin(), object_ids.end()};
+  int num_objects = 3;
+
+  memory_store->Put(memory_store_object, object_ids[0]);
+  memory_store->Put(plasma_store_object, object_ids[1]);
+
+  // DO WAIT AND ADD OBJECT 2
+  auto future = std::async(std::launch::async,
+                           [&memory_store, &object_ids, &plasma_store_object]() {
+                             std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                             memory_store->Put(plasma_store_object, object_ids[2]);
+                           });
+  const auto status_or_results =
+      memory_store->Wait(object_ids_set, num_objects, 1000, ctx);
+  const auto &[ready, plasma_object_ids] = status_or_results.value();
+  future.get();
+
+  // ASSERTIONS
+  ASSERT_TRUE(status_or_results.ok());
+  ASSERT_EQ(ready.size(), 3);
+  ASSERT_EQ(plasma_object_ids.size(), 2);
+  ASSERT_TRUE(plasma_object_ids.contains(object_ids[1]) &&
+              plasma_object_ids.contains(object_ids[2]));
+}
+
+TEST(TestMemoryStore, TestWaitTimeout) {
+  // SETUP
+  InstrumentedIOContextWithThread io_context("TestWait");
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
+      std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
+  WorkerContext ctx =
+      WorkerContext(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(1));
+  absl::flat_hash_set<ObjectID> object_ids_set = {ObjectID::FromRandom()};
+  auto plasma_store_object = ray::RayObject{rpc::ErrorType::OBJECT_IN_PLASMA};
+
+  // ONE OBJECT IN PLASMA, WAITING FOR TWO
+  memory_store->Put(plasma_store_object, *object_ids_set.begin());
+  int num_objects = 2;
+
+  // DO WAIT
+  const auto status_or_results =
+      memory_store->Wait(object_ids_set, num_objects, 100, ctx);
+  const auto &[ready, plasma_object_ids] = status_or_results.value();
+
+  // ASSERTIONS
+  ASSERT_TRUE(status_or_results.ok());
+  ASSERT_EQ(object_ids_set, ready);
+  ASSERT_EQ(object_ids_set, plasma_object_ids);
+}
+
 }  // namespace core
 }  // namespace ray
 
