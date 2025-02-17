@@ -62,7 +62,7 @@ class CircularBuffer:
     def sample(self):
         # Only initially, the buffer may be empty -> Just wait for some time.
         while not self._indices:
-            time.sleep(0.001)
+            time.sleep(0.0001)
 
         # Sample a random buffer index.
         with self._lock:
