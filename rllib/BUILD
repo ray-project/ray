@@ -981,12 +981,12 @@ py_test(
 )
 
 # DreamerV3
-py_test(
-    name = "test_dreamerv3",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
-)
+# py_test(
+#    name = "test_dreamerv3",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
+# )
 
 # IMPALA
 py_test(

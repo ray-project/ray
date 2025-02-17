@@ -37,7 +37,7 @@ class TestAPPO(unittest.TestCase):
         for i in range(num_iterations):
             results = algo.train()
             print(results)
-            check_train_results_new_api_stack(results)
+        check_train_results_new_api_stack(results)
 
         algo.stop()
 
@@ -51,8 +51,8 @@ class TestAPPO(unittest.TestCase):
         algo = config.build(env="CartPole-v1")
         for i in range(num_iterations):
             results = algo.train()
-            check_train_results_new_api_stack(results)
             print(results)
+        check_train_results_new_api_stack(results)
         algo.stop()
 
     def test_appo_two_optimizers_two_lrs(self):

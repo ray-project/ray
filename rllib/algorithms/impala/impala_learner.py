@@ -138,7 +138,7 @@ class IMPALALearner(Learner):
 
         with self._num_updates_lock:
             count = self._num_updates
-        if count >= 100:
+        if count >= 10:
             with self._num_updates_lock:
                 self._num_updates = 0
             return self.metrics.reduce()
