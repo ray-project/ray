@@ -8,6 +8,8 @@ COPY python/requirements_*.txt ./
 RUN <<EOF
 #!/bin/bash
 
+set -euo pipefail
+
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 
 if [[ "${PYTHON_CODE}" != "py311" ]]; then
@@ -15,7 +17,7 @@ if [[ "${PYTHON_CODE}" != "py311" ]]; then
     exit 1
 fi
 
-pip install --no-deps -r "python/requirements_compiled_rayllm_py${PYTHON_CODE}.txt"
+pip install --no-deps -r "requirements_compiled_rayllm_${PYTHON_CODE}.txt"
 
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
