@@ -14,9 +14,9 @@
 
 #pragma once
 
-#include <vector>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
