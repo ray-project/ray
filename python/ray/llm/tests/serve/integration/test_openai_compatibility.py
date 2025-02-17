@@ -17,7 +17,6 @@ class TestOpenAICompatibility:
     def test_models(self, testing_model):  # noqa: F811
         client, model = testing_model
         models = client.models.list()
-        assert False
         assert len(models.data) == 1, "Only the test model should be returned"
         assert models.data[0].id == model, "The test model id should match"
         assert models.data[0].rayllm_metadata["input_modality"] == "text"

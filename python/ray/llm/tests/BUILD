@@ -47,10 +47,20 @@ py_test_module_list(
   files = [
     "serve/builders/test_application_builders.py",
     "serve/deployments/llm/multiplex/test_lora_deployment_base_client.py",
-    "serve/integration/test_openai_compatibility.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "medium",
   tags = ["exclusive", "cpu", "team:llm"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+# Large tests
+py_test_module_list(
+  files = [
+    "serve/integration/test_openai_compatibility.py",
+  ],
+  data = glob(["serve/**/*.yaml"]),
+  size = "large",
+  tags = ["exclusive", "gpu", "team:llm"],
   deps = ["//:ray_lib", ":conftest"],
 )

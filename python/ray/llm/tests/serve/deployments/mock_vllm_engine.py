@@ -44,6 +44,14 @@ class MockVLLMEngine:
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
 
+        # Try to set up prompt_format when applied.
+        try:
+            self.llm_config.prompt_format.set_processor(
+                self.llm_config.model_loading_config.model_source
+            )
+        except OSError:
+            pass
+
         self._stats = VLLMEngineStatTracker()
 
     @staticmethod
@@ -64,13 +72,7 @@ class MockVLLMEngine:
             yield i
             await asyncio.sleep(0.0)
 
-    def lazy_set_processor(self):
-        self.llm_config.prompt_format.set_processor(
-            self.llm_config.model_loading_config.model_source
-        )
-
     async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
-        self.lazy_set_processor()
         sampling_params = self._parse_sampling_params(
             vllm_engine_request.sampling_params
         )
