@@ -4,8 +4,8 @@
 #
 #    pip-compile --constraint=python/requirements_compiled_rayllm_test_py311.txt --generate-hashes --output-file=python/requirements_compiled_rayllm_py311.txt --strip-extras --unsafe-package=ray python/requirements.txt python/requirements/llm/llm-requirements.txt
 #
---extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
+--extra-index-url https://download.pytorch.org/whl/cu121
+--find-links https://data.pyg.org/whl/torch-2.5.1+cu121.html
 
 aiohttp==3.9.5 \
     --hash=sha256:0605cc2c0088fcaae79f01c913a38611ad09ba68ff482402d3410bf59039bfb8 \
@@ -2746,7 +2746,7 @@ tokenizers==0.21.0 \
     #   -c python/requirements_compiled_rayllm_test_py311.txt
     #   transformers
     #   vllm
-torch==2.5.1+cpu \
+torch==2.5.1+cu121 \
     --hash=sha256:07d7c9e069123d5af08b0cf0013d74f680b2d8be7d9e2cf561a52c90c55d9409 \
     --hash=sha256:2ebd0b6135dc60b96ce51349c92c9757b2b9634a6b90045dfab3eb4921a4d62f \
     --hash=sha256:4856f9d6925121d13c2df07aa7580b767f449dfe71ae5acde9c27535d5da4840 \
@@ -2765,7 +2765,7 @@ torch==2.5.1+cpu \
     #   vllm
     #   xformers
     #   xgrammar
-torchaudio==2.5.1+cpu \
+torchaudio==2.5.1+cu121 \
     --hash=sha256:209f8e7efff818d2066f49c27c8097f2246f8bf6fd743c69bcf8dce80c63ee80 \
     --hash=sha256:63518869ddb6bbf37a305bb0c085552c230e130ea4640fd71db17b6689586aa5 \
     --hash=sha256:68b58c1dae7bb738df8a36f0d147d2c9c69e56a35ff40dedb84ac30aff2e59e1 \
@@ -2777,7 +2777,7 @@ torchaudio==2.5.1+cpu \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311.txt
     #   vllm
-torchvision==0.20.1+cpu \
+torchvision==0.20.1+cu121 \
     --hash=sha256:17bbc073920e429bf23a290472d51edc75e7b9809b81a93503d10d8edb6f3a6d \
     --hash=sha256:58773dc7110425ff3ffa462ed32d5522deaed81179b24780136ebc493fb94feb \
     --hash=sha256:5f46c7ac7f00a065cb40bfb1e1bfc4ba16a35f5d46b3fe70cca6b3cea7f822f7 \
