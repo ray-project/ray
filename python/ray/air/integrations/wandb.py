@@ -468,8 +468,7 @@ class WandbLoggerCallback(LoggerCallback):
 
             import random
 
-            from ray import train, tune
-            from ray.train import RunConfig
+            from ray import tune
             from ray.air.integrations.wandb import WandbLoggerCallback
 
 
@@ -487,7 +486,7 @@ class WandbLoggerCallback(LoggerCallback):
                     "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
                     "epochs": 10,
                 },
-                run_config=RunConfig(
+                run_config=tune.RunConfig(
                     callbacks=[WandbLoggerCallback(project="Optimization_Project")]
                 ),
             )
