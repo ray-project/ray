@@ -15,6 +15,15 @@ What is Ray Core?
 
 Ray Core provides a small number of core primitives (i.e., tasks, actors, objects) for building and scaling distributed applications. Below we'll walk through simple examples that show you how to turn your functions and classes easily into Ray tasks and actors, and how to work with Ray objects.
 
+.. note::
+
+    Other than the classic APIs described in this section, Ray Core also offers a new API 
+    called Ray Compiled Graph. While the classic Ray Core API is highly flexible,
+    Ray Compiled Graph is more suitable for static, high-performance and multi-GPU
+    workloads.
+    
+    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
+
 Getting Started
 ---------------
 

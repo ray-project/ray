@@ -18,6 +18,16 @@ computation graph.
      2) Build libraries on top of the Ray DAG APIs.
 
 
+.. note::
+    
+    Ray DAG API is different from Ray Compiled Graph. Ray Compiled Graph
+    is a new Ray Core API built on top of Ray DAG API. It heavily reuses the Ray DAG API,
+    and additionally **compiles** the DAG, i.e., pre-allocates resources and reuses them
+    across multiple executions.
+
+    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
+
+
 When ``.bind()`` is called on a ``ray.remote`` decorated class or function, it will
 generate an intermediate representation (IR) node that act as backbone and
 building blocks of the DAG that is statically holding the computation graph
