@@ -715,7 +715,7 @@ class ExecutableTask:
         # wrap and save the exception.
         with _device_context_manager():
             with self.stream:
-                self.exec_operation(class_handle, overlap_gpu_communication)
+                return self.exec_operation(class_handle, overlap_gpu_communication)
 
     def exec_operation(
         self,
@@ -764,6 +764,7 @@ class ExecutableTask:
         if input_exc is not None:
             try:
                 self.output_writer.write(input_exc)
+                return False
             except RayChannelError:
                 return True
 
