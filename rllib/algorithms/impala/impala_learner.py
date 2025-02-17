@@ -136,9 +136,11 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
+        # TODO (sven): Find a better way to limit the number of (mostly) unnecessary
+        #  metrics reduces.
         with self._num_updates_lock:
             count = self._num_updates
-        if count >= 10:
+        if count >= 20:
             with self._num_updates_lock:
                 self._num_updates = 0
             return self.metrics.reduce()
