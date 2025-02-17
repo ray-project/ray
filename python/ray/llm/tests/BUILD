@@ -26,7 +26,7 @@ py_test_module_list(
 # Serve test
 py_test_module_list(
   files = glob(["serve/**/test_*.py"]),
-  data = glob(["serve/**.yaml"]),
+  data = glob(["serve/**/*.yaml"]),
   size = "small",
   tags = ["exclusive", "cpu", "team:llm"],
   deps = ["//:ray_lib", ":conftest"],
