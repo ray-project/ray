@@ -33,10 +33,8 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
 )
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    should_stop,
-)
+from ray.rllib.utils.test_utils import add_rllib_example_script_args, should_stop
+
 from ray.tune.logger.unified import UnifiedLogger
 
 
@@ -55,7 +53,7 @@ class DecodeObservations(ConnectorV2):
 
         Note, `rl_unplugged`'s stored observations are framestacked with
         four frames per observation. This connector returns therefore
-        decoded observations of shape `(84, 84, 4)`.
+        decoded observations of shape `(64, 64, 4)`.
 
         Args:
             multi_agent: Whether this is a connector operating on a multi-agent
@@ -73,6 +71,14 @@ class DecodeObservations(ConnectorV2):
         self._as_learner_connector = as_learner_connector
 
     @override(ConnectorV2)
+    def recompute_output_observation_space(
+        self, input_observation_space, input_action_space
+    ):
+        return gym.spaces.Box(
+            -1.0, 1.0, (64, 64, 4), float
+        )  # <- to keep it simple hardcoded to a fixed space
+
+    @override(ConnectorV2)
     def __call__(
         self,
         *,
@@ -87,7 +93,7 @@ class DecodeObservations(ConnectorV2):
         for sa_episode in self.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
         ):
-            # Map encoded PNGs into arrays of shape (84, 84, 4).
+            # Map encoded PNGs into arrays of shape (64, 64, 4).
             def _map_fn(s):
                 # Preallocate the result array with shape (64, 64, 4)
                 result = np.empty((64, 64, 4), dtype=np.uint8)
@@ -99,7 +105,7 @@ class DecodeObservations(ConnectorV2):
                     # Resize the image to 64x64 using an efficient interpolation method
                     resized = cv2.resize(img, (64, 64), interpolation=cv2.INTER_AREA)
                     result[:, :, i] = resized
-                return result.astype(np.float32) / 255.0
+                return (result.astype(np.float32) / 128.0) - 1.0
 
             # Add the observations for t.
             self.add_n_batch_items(
@@ -122,7 +128,7 @@ class DecodeObservations(ConnectorV2):
                 items_to_add=[
                     _map_fn(
                         sa_episode.get_observations(slice(1, len(sa_episode) + 1))[0],
-                    ).astype(np.float32)
+                    )
                 ],
                 num_items=len(sa_episode),
                 single_agent_episode=sa_episode,
@@ -226,7 +232,7 @@ config = (
     )
     # Evaluate in the actual environment online.
     .evaluation(
-        evaluation_interval=3,
+        evaluation_interval=1,
         evaluation_num_env_runners=1,
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
@@ -262,7 +268,8 @@ config = (
         # Increase the parallelism in transforming batches, such that while
         # training, new batches are transformed while others are used in updating.
         map_batches_kwargs={
-            "concurrency": 16,
+            "concurrency": 24,
+            "num_cpus": 1,
         },
         # When iterating over batches in the dataset, prefetch at least 4
         # batches per learner.
@@ -278,12 +285,13 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008
+        lr=0.005
         * max(
             1,
             (args.num_learners if args.num_learners and args.num_learners > 1 else 1)
             ** 0.5,
         ),
+        bc_logstd_coeff=0.2,
         train_batch_size_per_learner=2048,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,
