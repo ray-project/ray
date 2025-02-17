@@ -61,6 +61,6 @@ py_test_module_list(
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "large",
-  tags = ["exclusive", "gpu", "team:llm"],
+  tags = ["exclusive", "cpu", "team:llm"],
   deps = ["//:ray_lib", ":conftest"],
 )
