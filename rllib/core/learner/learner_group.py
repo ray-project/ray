@@ -420,16 +420,24 @@ class LearnerGroup(Checkpointable):
                 elif isinstance(batch[0], ray.data.DataIterator):
                     batch = batch[0]
 
-            results = [
-                _learner_update(
-                    _learner=self._learner,
-                    _batch_shard=batch,
-                    _episodes_shard=episodes,
-                    _timesteps=timesteps,
-                    _return_state=return_state,
-                    **kwargs,
+            if episodes is not None:
+                return self._learner.update_from_episodes(
+                    episodes=episodes,
+                    timesteps=timesteps,
+                    return_state=return_state,
+                    num_epochs=num_epochs,
+                    minibatch_size=minibatch_size,
+                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
                 )
-            ]
+            else:
+                return self._learner.update_from_batch(
+                    batch=batch,
+                    timesteps=timesteps,
+                    return_state=return_state,
+                    num_epochs=num_epochs,
+                    minibatch_size=minibatch_size,
+                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+                )
         # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
         # equal if multi-agent AND episodes) and send each Learner worker one of these
         # shards.
@@ -455,17 +463,8 @@ class LearnerGroup(Checkpointable):
                     for i, iterator in enumerate(batch)
                 ]
             elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
-                assert len(batch) == len(self._workers)
-                partials = [
-                    partial(
-                        _learner_update,
-                        _batch_shard=batch_shard,
-                        _timesteps=timesteps,
-                        _return_state=(return_state and i == 0),
-                        **kwargs,
-                    )
-                    for i, batch_shard in enumerate(batch)
-                ]
+                pass
+
             elif batch is not None:
                 partials = [
                     partial(
@@ -546,7 +545,15 @@ class LearnerGroup(Checkpointable):
                 # (each actor is allowed only some number of max in-flight requests
                 # at the same time).
                 num_sent_requests = self._worker_manager.foreach_actor_async(
-                    partials
+                    "update_from_batch",
+                    kwargs=[
+                        {
+                            "batch": batch_shard,
+                            "timesteps": timesteps,
+                            "return_state": (return_state and i == 0)
+                        }
+                        for i, batch_shard in enumerate(batch)
+                    ],
                 )
 
                 # Some requests were dropped, record lost ts/data.
