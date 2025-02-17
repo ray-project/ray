@@ -354,17 +354,17 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
         )
 
     def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
-        assert hasattr(
-            self, "_processor"
-        ), "HuggingFacePromptFormat's processor is not set."
-
         if isinstance(messages, Prompt):
             if isinstance(messages.prompt, str):
                 if not messages.use_prompt_format:
-                    return EngineInput(text=self.bos + messages.prompt)
+                    return EngineInput(text=messages.prompt)
 
                 raise ValueError("String prompts are not supported.")
             messages = messages.prompt
+
+        assert hasattr(
+            self, "_processor"
+        ), "HuggingFacePromptFormat's processor is not set."
 
         conversation = []
         images = []
