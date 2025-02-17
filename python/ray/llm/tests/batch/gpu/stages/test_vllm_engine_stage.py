@@ -52,7 +52,7 @@ def mock_vllm_wrapper():
         yield mock_wrapper
 
 
-def test_vllm_engine_stage_post_init(model_opt_125m):
+def test_vllm_engine_stage_post_init(gpu_type, model_opt_125m):
     stage = vLLMEngineStage(
         fn_constructor_kwargs=dict(
             model=model_opt_125m,
@@ -68,7 +68,7 @@ def test_vllm_engine_stage_post_init(model_opt_125m):
             zero_copy_batch=True,
             concurrency=1,
             max_concurrency=4,
-            accelerator_type="L4",
+            accelerator_type=gpu_type,
         ),
     )
 
@@ -87,7 +87,7 @@ def test_vllm_engine_stage_post_init(model_opt_125m):
         "zero_copy_batch": True,
         "concurrency": 1,
         "max_concurrency": 4,
-        "accelerator_type": "L4",
+        "accelerator_type": gpu_type,
         "num_gpus": 0,
     }
     scheduling_strategy = ray_remote_args_fn()["scheduling_strategy"]
@@ -96,7 +96,7 @@ def test_vllm_engine_stage_post_init(model_opt_125m):
     bundle_specs = scheduling_strategy.placement_group.bundle_specs
     assert len(bundle_specs) == 8
     for bundle_spec in bundle_specs:
-        assert bundle_spec["accelerator_type:L4"] == 0.001
+        assert bundle_spec[f"accelerator_type:{gpu_type}"] == 0.001
         assert bundle_spec["CPU"] == 1.0
         assert bundle_spec["GPU"] == 1.0
 

@@ -23,7 +23,8 @@ def download_model_from_s3(
     Yields:
         The path to the downloaded model checkpoint and tokenizer.
     """
-    with tempfile.TemporaryDirectory() as checkpoint_dir:
+    with tempfile.TemporaryDirectory(prefix="ray-llm-test-model") as checkpoint_dir:
+        print(f"Downloading model from {remote_url} to {checkpoint_dir}", flush=True)
         for file_name in file_list:
             response = requests.get(remote_url + file_name)
             with open(os.path.join(checkpoint_dir, file_name), "wb") as fp:
@@ -81,3 +82,26 @@ def model_pixtral_12b():
         "tokenizer.json",
     ]
     yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
+
+
+@pytest.fixture(scope="session")
+def gpu_type():
+    """Get the GPU type used for testing."""
+
+    try:
+        import torch
+
+        print(f"{torch.version.cuda=}", flush=True)
+        name = torch.cuda.get_device_name()
+        if name.startswith("NVIDIA"):
+            type_name = name.split(" ")[-1]
+            print(f"GPU type: {type_name}", flush=True)
+            yield type_name
+        else:
+            raise ValueError(name)
+    except ImportError:
+        print("Failed to import torch to get GPU type", flush=True)
+    except ValueError as err:
+        print(
+            f"Failed to convert the GPU type to Ray supported type: {err}", flush=True
+        )

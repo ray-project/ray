@@ -8,11 +8,8 @@ from ray.llm._internal.batch.processor.vllm_engine_proc import (
     vLLMEngineProcessorConfig,
 )
 
-# The GPU type used in the CI.
-ACCELERATOR_TYPE = "T4"
 
-
-def test_vllm_engine_processor(model_opt_125m):
+def test_vllm_engine_processor(gpu_type, model_opt_125m):
     config = vLLMEngineProcessorConfig(
         model=model_opt_125m,
         engine_kwargs=dict(
@@ -23,7 +20,7 @@ def test_vllm_engine_processor(model_opt_125m):
                 RANDOM_ENV_VAR="12345",
             ),
         ),
-        accelerator_type=ACCELERATOR_TYPE,
+        accelerator_type=gpu_type,
         concurrency=4,
         batch_size=64,
         max_pending_requests=111,
@@ -59,12 +56,12 @@ def test_vllm_engine_processor(model_opt_125m):
         "zero_copy_batch": True,
         "concurrency": 4,
         "max_concurrency": 4,
-        "accelerator_type": ACCELERATOR_TYPE,
+        "accelerator_type": gpu_type,
         "num_gpus": 1,
     }
 
 
-def test_generation_model(model_opt_125m):
+def test_generation_model(gpu_type, model_opt_125m):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
     chat_template = """
@@ -99,7 +96,7 @@ def test_generation_model(model_opt_125m):
             enforce_eager=True,
         ),
         batch_size=16,
-        accelerator_type=ACCELERATOR_TYPE,
+        accelerator_type=gpu_type,
         concurrency=1,
         apply_chat_template=True,
         chat_template=chat_template,
@@ -134,7 +131,7 @@ def test_generation_model(model_opt_125m):
     assert all("resp" in out for out in outs)
 
 
-def test_embedding_model(model_opt_125m):
+def test_embedding_model(gpu_type, model_opt_125m):
     processor_config = vLLMEngineProcessorConfig(
         model=model_opt_125m,
         task_type="embed",
@@ -146,7 +143,7 @@ def test_embedding_model(model_opt_125m):
             enforce_eager=True,
         ),
         batch_size=16,
-        accelerator_type=ACCELERATOR_TYPE,
+        accelerator_type=gpu_type,
         concurrency=1,
         apply_chat_template=True,
         chat_template="",
@@ -178,7 +175,7 @@ def test_embedding_model(model_opt_125m):
     assert all("prompt" in out for out in outs)
 
 
-def test_vision_model(model_llava_354m):
+def test_vision_model(gpu_type, model_llava_354m):
     processor_config = vLLMEngineProcessorConfig(
         model=model_llava_354m,
         task_type="generate",
@@ -196,7 +193,7 @@ def test_vision_model(model_llava_354m):
         tokenize=False,
         detokenize=False,
         batch_size=16,
-        accelerator_type=ACCELERATOR_TYPE,
+        accelerator_type=gpu_type,
         concurrency=1,
     )
 

@@ -21,4 +21,8 @@ py_test_module_list(
   size = "large",
   tags = ["exclusive", "gpu", "team:llm"],
   deps = ["//:ray_lib", ":conftest"],
+  env = {
+    "VLLM_FLASH_ATTN_VERSION": "2",
+  }
+  capture = "no",
 )
