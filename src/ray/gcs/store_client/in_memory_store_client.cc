@@ -66,9 +66,9 @@ Status InMemoryStoreClient::AsyncMultiGet(
   auto table = GetTable(table_name);
   if (table != nullptr) {
     for (const auto &key : keys) {
-      auto valueOpt = table->Get(key);
-      if (valueOpt.has_value()) {
-        result.emplace(key, *valueOpt);
+      auto value = table->Get(key);
+      if (value.has_value()) {
+        result.emplace(key, *value);
       }
     }
   }

@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/util/mutex_protected.h"
 
@@ -50,7 +54,8 @@ class ConcurrentFlatMap {
   }
 
   // Returns true if key existed and visitor was called.
-  // Write-only overload.
+  // Visitor is called under a write lock so should not be heavy, otherwise prefer Get
+  // followed by InsertOrAssign.
   template <typename KeyLike>
   bool WriteVisit(const KeyLike &key, const std::function<void(ValueType &)> &visitor) {
     auto write_lock = map_.LockForWrite();
@@ -64,6 +69,8 @@ class ConcurrentFlatMap {
   }
 
   // Returns true if key existed and visitor was called.
+  // Calls function under read lock so should not be heavy, otherwise prefer Get to copy
+  // out.
   template <typename KeyLike>
   bool ReadVisit(const KeyLike &key,
                  const std::function<void(const ValueType &)> &visitor) const {
@@ -78,6 +85,7 @@ class ConcurrentFlatMap {
   }
 
   // Applies visitor to all values in the map.
+  // Calls under read lock so should not be heavy, otherwise prefer GetMapClone to copy.
   void ReadVisitAll(
       const std::function<void(const KeyType &, const ValueType &)> &visitor) const {
     auto read_lock = map_.LockForRead();
@@ -120,7 +128,7 @@ class ConcurrentFlatMap {
   }
 
   /// Returns the number of keys erased.
-  int64_t EraseKeys(const absl::Span<KeyType> &keys) {
+  int64_t EraseKeys(absl::Span<KeyType> keys) {
     auto write_lock = map_.LockForWrite();
     int64_t num_erased = 0;
     for (const auto &key : keys) {
