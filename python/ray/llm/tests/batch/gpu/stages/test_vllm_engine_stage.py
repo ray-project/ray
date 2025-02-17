@@ -1,7 +1,7 @@
 import asyncio
-import sys
 import pytest
 import math
+import sys
 from unittest.mock import MagicMock, AsyncMock, patch
 
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
