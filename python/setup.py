@@ -361,7 +361,12 @@ if setup_spec.type == SetupType.RAY:
     #
     # Keep this in sync with python/requirements/llm/llm-requirements.txt
     #
-    setup_spec.extras["llm"] = list(set(["vllm>=0.7.2"] + setup_spec.extras["data"]))
+    setup_spec.extras["llm"] = list(
+        set(
+            ["vllm>=0.7.2", "asyncache==0.3.1", "jsonref==1.1.0"]
+            + setup_spec.extras["data"]
+        )
+    )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
