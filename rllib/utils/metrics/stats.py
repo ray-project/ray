@@ -725,7 +725,7 @@ class Stats:
                     reduced = values[0]
                 else:
                     reduce_meth = getattr(torch, "nan" + self._reduce_method)
-                    reduce_in = torch.stack(values)
+                    reduce_in = torch.stack(list(values))
                     if self._reduce_method == "mean":
                         reduce_in = reduce_in.float()
                     reduced = reduce_meth(reduce_in)
