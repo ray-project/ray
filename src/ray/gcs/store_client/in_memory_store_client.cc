@@ -52,7 +52,7 @@ Status InMemoryStoreClient::AsyncGetAll(
   auto result = absl::flat_hash_map<std::string, std::string>();
   auto table = GetTable(table_name);
   if (table != nullptr) {
-    result = table->GetMapCopy();
+    result = table->GetMapClone();
   }
   std::move(callback).Post("GcsInMemoryStore.GetAll", std::move(result));
   return Status::OK();

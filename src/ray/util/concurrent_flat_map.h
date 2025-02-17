@@ -93,27 +93,34 @@ class ConcurrentFlatMap {
     return read_lock.Get().contains(key);
   }
 
+  /// Will insert the key value pair if the key does not exist.
+  /// Will replace the value if the key already exists.
   template <typename KeyLike, typename... Args>
-  void InsertOrAssign(KeyLike &&keyArg, Args &&...args) {
+  void InsertOrAssign(KeyLike &&key, Args &&...args) {
     auto write_lock = map_.LockForWrite();
-    write_lock.Get().insert_or_assign(std::forward<KeyLike>(keyArg),
+    write_lock.Get().insert_or_assign(std::forward<KeyLike>(key),
                                       ValueType(std::forward<Args>(args)...));
   }
 
+  /// Returns a bool for whether the key/value was emplaced.
+  /// Note: This will not overwrite an existing key.
   template <typename KeyLike, typename... Args>
-  bool Emplace(KeyLike &&keyArg, Args &&...args) {
+  bool Emplace(KeyLike &&key, Args &&...args) {
     auto write_lock = map_.LockForWrite();
     const auto [_, inserted] = write_lock.Get().emplace(
-        std::forward<KeyLike>(keyArg), ValueType(std::forward<Args>(args)...));
+        std::forward<KeyLike>(key), ValueType(std::forward<Args>(args)...));
     return inserted;
   }
 
-  bool Erase(const KeyType &key) {
+  /// Returns a bool identifying whether the key was found and erased.
+  template <typename KeyLike>
+  bool Erase(const KeyLike &key) {
     auto write_lock = map_.LockForWrite();
     return write_lock.Get().erase(key) > 0;
   }
 
-  int64_t EraseKeys(const std::vector<KeyType> &keys) {
+  /// Returns the number of keys erased.
+  int64_t EraseKeys(const absl::Span<KeyType> &keys) {
     auto write_lock = map_.LockForWrite();
     int64_t num_erased = 0;
     for (const auto &key : keys) {
@@ -122,7 +129,8 @@ class ConcurrentFlatMap {
     return num_erased;
   }
 
-  absl::flat_hash_map<KeyType, ValueType> GetMapCopy() const {
+  /// Returns a copy of the underlying flat_hash_map.
+  absl::flat_hash_map<KeyType, ValueType> GetMapClone() const {
     auto read_lock = map_.LockForRead();
     return read_lock.Get();
   }
