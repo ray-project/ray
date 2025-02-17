@@ -9,6 +9,7 @@ from ray.llm._internal.serve.configs.server_models import (
 )
 from ray.llm._internal.serve.builders.application_builders import (
     build_openai_app,
+    build_vllm_deployment,
 )
 import subprocess
 import yaml
@@ -89,6 +90,7 @@ class TestBuildOpenaiApp:
         self, get_llm_serve_args, shutdown_ray_and_serve, use_mock_vllm_engine
     ):
         """Test `build_openai_app` can build app and run it with Serve."""
+
         app = build_openai_app(
             llm_serving_args=get_llm_serve_args,
         )
@@ -101,9 +103,9 @@ class TestBuildOpenaiApp:
         shutdown_ray_and_serve,
         use_mock_vllm_engine,
     ):
-        """Test `build_openai_app` can be used with serve config."""
+        """Test `build_openai_app` can be used in serve config."""
 
-        def num_live_deployments():
+        def deployments_healthy():
             status_response = subprocess.check_output(["serve", "status"])
             serve_status = yaml.safe_load(status_response)["applications"][
                 "llm-endpoint"
@@ -114,11 +116,21 @@ class TestBuildOpenaiApp:
             return True
 
         p = subprocess.Popen(["serve", "run", serve_config_separate_model_config_files])
-        wait_for_condition(num_live_deployments, timeout=30)
+        wait_for_condition(deployments_healthy, timeout=30)
 
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
 
 
 class TestBuildVllmDeployment:
-    pass
+    def test_build_vllm_deployment(
+        self,
+        llm_config,
+        shutdown_ray_and_serve,
+        use_mock_vllm_engine,
+    ):
+        """Test `build_vllm_deployment` can build a VLLM deployment."""
+
+        app = build_vllm_deployment(llm_config)
+        assert isinstance(app, serve.Application)
+        serve.run(app)

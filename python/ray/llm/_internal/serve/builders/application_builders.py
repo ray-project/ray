@@ -97,7 +97,7 @@ def get_serve_deployment_args(
 def build_vllm_deployment(
     llm_config: LLMConfig,
     deployment_kwargs: Optional[dict] = None,
-):
+) -> Application:
     if deployment_kwargs is None:
         deployment_kwargs = {}
 
