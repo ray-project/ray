@@ -1,6 +1,6 @@
 import jsonref
 from fastapi import status
-from ray.llm._internal.serve.deployments.openai_utils import OpenAIHTTPException
+from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
 import json
 from jsonschema import Draft202012Validator, SchemaError, ValidationError
 from typing import (

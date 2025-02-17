@@ -61,7 +61,7 @@ class MockVLLMEngine:
     @staticmethod
     async def async_range(count):
         for i in range(count):
-            yield (i,)
+            yield i
             await asyncio.sleep(0.0)
 
     def lazy_set_processor(self):
