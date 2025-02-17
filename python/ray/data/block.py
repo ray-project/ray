@@ -2,7 +2,7 @@ import collections
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -133,6 +133,11 @@ def _apply_batch_size(
 
 
 @DeveloperAPI
+def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
+    return [m.to_stats() for m in metas]
+
+
+@DeveloperAPI
 class BlockExecStats:
     """Execution stats for this block.
 
@@ -204,28 +209,47 @@ class _BlockExecStatsBuilder:
 
 @DeveloperAPI
 @dataclass
-class BlockMetadata:
-    """Metadata about the block."""
+class BlockStats:
+    """Statistics about the block produced"""
 
     #: The number of rows contained in this block, or None.
     num_rows: Optional[int]
     #: The approximate size in bytes of this block, or None.
     size_bytes: Optional[int]
+    #: Execution stats for this block.
+    exec_stats: Optional[BlockExecStats]
+
+    def __post_init__(self):
+        if self.size_bytes is not None:
+            # Require size_bytes to be int, ray.util.metrics objects
+            # will not take other types like numpy.int64
+            assert isinstance(self.size_bytes, int)
+
+
+_BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
+
+
+@DeveloperAPI
+@dataclass
+class BlockMetadata(BlockStats):
+    """Metadata about the block."""
+
     #: The pyarrow schema or types of the block elements, or None.
     schema: Optional[Union[type, "pyarrow.lib.Schema"]]
     #: The list of file paths used to generate this block, or
     #: the empty list if indeterminate.
     input_files: Optional[List[str]]
-    #: Execution stats for this block.
-    exec_stats: Optional[BlockExecStats]
+
+    def to_stats(self):
+        return BlockStats(
+            **{k: v for k, v in asdict(self).items() if k in _BLOCK_STATS_FIELD_NAMES}
+        )
 
     def __post_init__(self):
+        super().__post_init__()
+
         if self.input_files is None:
             self.input_files = []
-        if self.size_bytes is not None:
-            # Require size_bytes to be int, ray.util.metrics objects
-            # will not take other types like numpy.int64
-            assert isinstance(self.size_bytes, int)
 
 
 @DeveloperAPI
@@ -254,8 +278,8 @@ class BlockAccessor:
         """Return a slice of this block.
 
         Args:
-            start: The starting index of the slice.
-            end: The ending index of the slice.
+            start: The starting index of the slice (inclusive).
+            end: The ending index of the slice (exclusive).
             copy: Whether to perform a data copy for the slice.
 
         Returns:
@@ -452,13 +476,17 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
+    def sort(self, sort_key: "SortKey") -> "Block":
+        """Returns new block sorted according to provided `sort_key`"""
+        raise NotImplementedError
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -470,8 +498,11 @@ class BlockAccessor:
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(
-        blocks: List[Block], sort_key: "SortKey", aggs: Tuple["AggregateFn"]
+    def _combine_aggregated_blocks(
+        blocks: List[Block],
+        sort_key: "SortKey",
+        aggs: Tuple["AggregateFn"],
+        finalize: bool = True,
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
@@ -479,3 +510,100 @@ class BlockAccessor:
     def block_type(self) -> BlockType:
         """Return the block type of this block."""
         raise NotImplementedError
+
+    def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
+        """
+        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+
+        Compute boundaries of the groups within a block based on provided
+        key (a column or a list of columns)
+
+        NOTE: In each column, NaNs/None are considered to be the same group.
+
+        Args:
+            block: sorted block for which grouping of rows will be determined
+                    based on provided key
+            keys: list of columns determining the key for every row based on
+                    which the block will be grouped
+
+        Returns:
+            A list of starting indices of each group and an end index of the last
+            group, i.e., there are ``num_groups + 1`` entries and the first and last
+            entries are 0 and ``len(array)`` respectively.
+        """
+
+        if keys:
+            # Convert key columns to Numpy (to perform vectorized
+            # ops on them)
+            projected_block = self.to_numpy(keys)
+
+            return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+
+        # If no keys are specified, whole block is considered a single group
+        return np.array([0, self.num_rows()])
+
+
+def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
+    # There are 3 categories: general, numerics with NaN, and categorical with None.
+    # We only needed to check the last element for NaNs/None, as they are assumed to
+    # be sorted.
+    general_arrays = []
+    num_arrays_with_nan = []
+    cat_arrays_with_none = []
+    for arr in columns:
+        if np.issubdtype(arr.dtype, np.number) and np.isnan(arr[-1]):
+            num_arrays_with_nan.append(arr)
+        elif not np.issubdtype(arr.dtype, np.number) and arr[-1] is None:
+            cat_arrays_with_none.append(arr)
+        else:
+            general_arrays.append(arr)
+
+    # Compute the difference between each pair of elements. Handle the cases
+    # where neighboring elements are both NaN or None. Output as a list of
+    # boolean arrays.
+    diffs = []
+    if len(general_arrays) > 0:
+        diffs.append(
+            np.vstack([arr[1:] != arr[:-1] for arr in general_arrays]).any(axis=0)
+        )
+    if len(num_arrays_with_nan) > 0:
+        # Two neighboring numeric elements belong to the same group when they are
+        # 1) both finite and equal
+        # or 2) both np.nan
+        diffs.append(
+            np.vstack(
+                [
+                    (arr[1:] != arr[:-1])
+                    & (np.isfinite(arr[1:]) | np.isfinite(arr[:-1]))
+                    for arr in num_arrays_with_nan
+                ]
+            ).any(axis=0)
+        )
+    if len(cat_arrays_with_none) > 0:
+        # Two neighboring str/object elements belong to the same group when they are
+        # 1) both finite and equal
+        # or 2) both None
+        diffs.append(
+            np.vstack(
+                [
+                    (arr[1:] != arr[:-1])
+                    & ~(np.equal(arr[1:], None) & np.equal(arr[:-1], None))
+                    for arr in cat_arrays_with_none
+                ]
+            ).any(axis=0)
+        )
+
+    # A series of vectorized operations to compute the boundaries:
+    # - column_stack: stack the bool arrays into a single 2D bool array
+    # - any() and nonzero(): find the indices where any of the column diffs are True
+    # - add 1 to get the index of the first element of the next group
+    # - hstack(): include the 0 and last indices to the boundaries
+    boundaries = np.hstack(
+        [
+            [0],
+            (np.column_stack(diffs).any(axis=1).nonzero()[0] + 1),
+            [len(columns[0])],
+        ]
+    ).astype(int)
+
+    return boundaries

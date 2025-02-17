@@ -8,6 +8,7 @@ from typing import Iterable, Optional
 import pyarrow.parquet as pq
 
 import ray
+from ray.data._internal.datasource import bigquery_datasource
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
@@ -39,13 +40,12 @@ class BigQueryDatasink(Datasink[None]):
 
     def on_write_start(self) -> None:
         from google.api_core import exceptions
-        from google.cloud import bigquery
 
         if self.project_id is None or self.dataset is None:
             raise ValueError("project_id and dataset are required args")
 
         # Set up datasets to write
-        client = bigquery.Client(project=self.project_id)
+        client = bigquery_datasource._create_client(project_id=self.project_id)
         dataset_id = self.dataset.split(".", 1)[0]
         try:
             client.get_dataset(dataset_id)
@@ -77,7 +77,7 @@ class BigQueryDatasink(Datasink[None]):
 
             block = BlockAccessor.for_block(block).to_arrow()
 
-            client = bigquery.Client(project=project_id)
+            client = bigquery_datasource._create_client(project=project_id)
             job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND

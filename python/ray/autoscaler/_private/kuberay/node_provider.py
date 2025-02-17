@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -54,6 +55,8 @@ KUBERNETES_HOST = f"{KUBERNETES_SERVICE_HOST}:{KUBERNETES_SERVICE_PORT}"
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
 
+TOKEN_REFRESH_PERIOD = datetime.timedelta(minutes=1)
+
 # Design:
 
 # Each modification the autoscaler wants to make is posted to the API server goal state
@@ -77,8 +80,6 @@ REPLICA_INDEX_KEY = "replicaIndex"
 
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
-
-provider_exists = False
 
 
 def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
@@ -266,7 +267,19 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
     def __init__(self, namespace: str, kuberay_crd_version: str = KUBERAY_CRD_VER):
         self._kuberay_crd_version = kuberay_crd_version
         self._namespace = namespace
-        self._headers, self._verify = load_k8s_secrets()
+        self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
+        self._headers, self._verify = None, None
+
+    def _get_refreshed_headers_and_verify(self):
+        if (datetime.datetime.now() >= self._token_expires_at) or (
+            self._headers is None or self._verify is None
+        ):
+            logger.info("Refreshing K8s API client token and certs.")
+            self._headers, self._verify = load_k8s_secrets()
+            self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
+            return self._headers, self._verify
+        else:
+            return self._headers, self._verify
 
     def get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers.
@@ -285,11 +298,13 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
+
+        headers, verify = self._get_refreshed_headers_and_verify()
         result = requests.get(
             url,
-            headers=self._headers,
+            headers=headers,
             timeout=KUBERAY_REQUEST_TIMEOUT_S,
-            verify=self._verify,
+            verify=verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -313,11 +328,12 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
+        headers, verify = self._get_refreshed_headers_and_verify()
         result = requests.patch(
             url,
             json.dumps(payload),
-            headers={**self._headers, "Content-type": "application/json-patch+json"},
-            verify=self._verify,
+            headers={**headers, "Content-type": "application/json-patch+json"},
+            verify=verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -329,7 +345,6 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
-        _allow_multiple: bool = False,
     ):
         logger.info("Creating KubeRayNodeProvider.")
         self.namespace = provider_config["namespace"]
@@ -340,9 +355,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
         ), f"To use KubeRayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
-        BatchingNodeProvider.__init__(
-            self, provider_config, cluster_name, _allow_multiple
-        )
+        BatchingNodeProvider.__init__(self, provider_config, cluster_name)
 
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         """Queries K8s for pods in the RayCluster. Converts that pod data into a

@@ -203,7 +203,7 @@ def validate_aws_config(aws_config: Dict[str, Any]) -> Optional[str]:
         if not ebs:
             continue
 
-        if not ebs.get("DeleteOnTermination", False) is True:
+        if ebs.get("DeleteOnTermination", False) is not True:
             return "Ebs volume does not have `DeleteOnTermination: true` set"
     return None
 

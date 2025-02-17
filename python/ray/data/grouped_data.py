@@ -1,39 +1,21 @@
 from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
-from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data.aggregate import AggregateFn
-from ray.data.block import BlockAccessor, CallableClass, UserDefinedFunction
-from ray.data.dataset import DataBatch, Dataset
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.block import (
+    BlockAccessor,
+    CallableClass,
+    DataBatch,
+    UserDefinedFunction,
+)
+from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
 
 CDS_API_GROUP = "Computations or Descriptive Stats"
 FA_API_GROUP = "Function Application"
-
-
-class _MultiColumnSortedKey:
-    """Represents a tuple of group keys with a ``__lt__`` method
-
-    This is a simple implementation to support multi-column groupby.
-    While a 1D array of tuples suffices to maintain the lexicographical
-    sorted order, a comparison method is also needed in ``np.searchsorted``
-    (for computing the group key boundaries).
-    """
-
-    __slots__ = ("data",)
-
-    def __init__(self, *args):
-        self.data = tuple(args)
-
-    def __lt__(self, obj: "_MultiColumnSortedKey") -> bool:
-        return self.data < obj.data
-
-    def __repr__(self) -> str:
-        """Print as T(1, 2)"""
-        return "T" + self.data.__repr__()
 
 
 class GroupedData:
@@ -45,15 +27,18 @@ class GroupedData:
     def __init__(
         self,
         dataset: Dataset,
-        key: Union[str, List[str]],
+        key: Optional[Union[str, List[str]]],
+        *,
+        num_partitions: Optional[int],
     ):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
-        self._dataset = dataset
-        self._key = key
+        self._dataset: Dataset = dataset
+        self._key: Optional[Union[str, List[str]]] = key
+        self._num_partitions: Optional[int] = num_partitions
 
     def __repr__(self) -> str:
         return (
@@ -79,6 +64,7 @@ class GroupedData:
             self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
+            num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
@@ -118,6 +104,7 @@ class GroupedData:
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
+        memory: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -188,6 +175,7 @@ class GroupedData:
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
+            memory: The heap memory in bytes to reserve for each parallel map worker.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
@@ -204,39 +192,28 @@ class GroupedData:
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        def get_key_boundaries(block_accessor: BlockAccessor) -> List[int]:
-            """Compute block boundaries based on the key(s)"""
-
-            import numpy as np
-
-            # Get the keys of the batch in numpy array format
-            keys = block_accessor.to_numpy(self._key)
-
-            if isinstance(keys, dict):
-                # For multiple keys, we generate a separate tuple column
-                convert_to_multi_column_sorted_key = np.vectorize(_MultiColumnSortedKey)
-                keys: np.ndarray = convert_to_multi_column_sorted_key(*keys.values())
-
-            boundaries = []
-            start = 0
-            while start < keys.size:
-                end = start + np.searchsorted(keys[start:], keys[start], side="right")
-                boundaries.append(end)
-                start = end
-            return boundaries
-
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
-            if self._key:
-                boundaries = get_key_boundaries(block_accessor)
+
+            if self._key is None:
+                keys = []
+            elif isinstance(self._key, str):
+                keys = [self._key]
+            elif isinstance(self._key, List):
+                keys = self._key
             else:
-                boundaries = [block_accessor.num_rows()]
-            start = 0
-            for end in boundaries:
-                group_block = block_accessor.slice(start, end)
+                raise ValueError(
+                    f"Group-by keys are expected to either be a single column (str) "
+                    f"or a list of columns (got '{self._key}')"
+                )
+
+            boundaries = block_accessor._get_group_boundaries_sorted(keys)
+
+            for start, end in zip(boundaries[:-1], boundaries[1:]):
+                group_block = block_accessor.slice(start, end, copy=False)
                 group_block_accessor = BlockAccessor.for_block(group_block)
                 # Convert block of each group to batch format here, because the
                 # block format here can be different from batch format
@@ -244,7 +221,6 @@ class GroupedData:
                 group_batch = group_block_accessor.to_batch_format(batch_format)
                 applied = udf(group_batch, *args, **kwargs)
                 yield applied
-                start = end
 
         if isinstance(fn, CallableClass):
 
@@ -281,6 +257,7 @@ class GroupedData:
             fn_constructor_kwargs=fn_constructor_kwargs,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            memory=memory,
             concurrency=concurrency,
             ray_remote_args_fn=None,
             **ray_remote_args,
@@ -313,14 +290,14 @@ class GroupedData:
             >>> import ray
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3)  # doctest: +SKIP
             ...     .sum(lambda x: x[2]) # doctest: +SKIP
             >>> ray.data.range(100).groupby("id").sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .sum(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -351,15 +328,15 @@ class GroupedData:
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped min aggregation.
+        r"""Compute grouped min aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -390,15 +367,15 @@ class GroupedData:
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped max aggregation.
+        r"""Compute grouped max aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -429,15 +406,15 @@ class GroupedData:
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped mean aggregation.
+        r"""Compute grouped mean aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -471,15 +448,15 @@ class GroupedData:
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Dataset:
-        """Compute grouped standard deviation aggregation.
+        r"""Compute grouped standard deviation aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style

@@ -21,6 +21,7 @@
 
 #include "ray/common/status.h"
 #include "ray/thirdparty/aligned_alloc.h"
+#include "ray/util/logging.h"
 
 #define BUFFER_ALIGNMENT 64
 

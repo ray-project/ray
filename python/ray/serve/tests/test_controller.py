@@ -183,6 +183,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                 },
                             },
                             "target_num_replicas": 1,
+                            "required_resources": {"CPU": 1},
                             "replicas": [
                                 {
                                     "node_id": node_id,

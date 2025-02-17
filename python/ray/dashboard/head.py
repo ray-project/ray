@@ -44,10 +44,7 @@ RAY_DASHBOARD_DASHBOARD_HEAD_TPE_MAX_WORKERS = env_integer(
 
 
 def initialize_grpc_port_and_server(grpc_ip, grpc_port):
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     import ray._private.tls_utils
 
@@ -260,16 +257,16 @@ class DashboardHead:
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
-        gcs_client = GcsClient(
+        self.gcs_client = GcsClient(
             address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
         )
-        gcs_aio_client = GcsAioClient(
+        self.gcs_aio_client = GcsAioClient(
             address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
         )
-        internal_kv._initialize_internal_kv(gcs_client)
+        internal_kv._initialize_internal_kv(self.gcs_client)
 
         if not self.minimal:
-            self.metrics = await self._setup_metrics(gcs_aio_client)
+            self.metrics = await self._setup_metrics(self.gcs_aio_client)
 
         try:
             assert internal_kv._internal_kv_initialized()
@@ -320,13 +317,13 @@ class DashboardHead:
         # This could be done better in the future, including
         # removing the polling on the Ray side, by communicating the
         # server address to Ray via stdin / stdout or a pipe.
-        gcs_client.internal_kv_put(
+        self.gcs_client.internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS.encode(),
             f"{dashboard_http_host}:{http_port}".encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
-        gcs_client.internal_kv_put(
+        self.gcs_client.internal_kv_put(
             dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
             f"{self.ip}:{self.grpc_port}".encode(),
             True,

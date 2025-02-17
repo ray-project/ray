@@ -1,6 +1,4 @@
-# flake8: noqa E501
-import dataclasses
-from typing import Dict
+# ruff: noqa: E501
 
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,

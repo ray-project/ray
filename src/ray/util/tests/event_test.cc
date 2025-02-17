@@ -14,16 +14,24 @@
 
 #include "ray/util/event.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <boost/range.hpp>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <memory>
 #include <set>
+#include <string>
 #include <thread>
+#include <vector>
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/event_label.h"
+#include "ray/util/random.h"
+#include "ray/util/string_utils.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 using json = nlohmann::json;
@@ -32,14 +40,14 @@ namespace ray {
 
 class TestEventReporter : public BaseEventReporter {
  public:
-  virtual void Init() override {}
-  virtual void Report(const rpc::Event &event, const json &custom_fields) override {
+  void Init() override {}
+  void Report(const rpc::Event &event, const json &custom_fields) override {
     event_list.push_back(event);
   }
-  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override {}
-  virtual void Close() override {}
-  virtual ~TestEventReporter() {}
-  virtual std::string GetReporterKey() override { return "test.event.reporter"; }
+  void ReportExportEvent(const rpc::ExportEvent &export_event) override {}
+  void Close() override {}
+  ~TestEventReporter() override {}
+  std::string GetReporterKey() override { return "test.event.reporter"; }
 
  public:
   static std::vector<rpc::Event> event_list;
@@ -529,6 +537,32 @@ TEST_F(EventTest, TestExportEvent) {
   json raylet_event_as_json = json::parse(vc1[0]);
   EXPECT_EQ(raylet_event_as_json["source_type"].get<std::string>(), "RAYLET");
   EXPECT_EQ(raylet_event_as_json["message"].get<std::string>(), "test warning");
+}
+
+TEST_F(EventTest, TestIsExportAPIEnabledSourceType) {
+  EXPECT_EQ(
+      IsExportAPIEnabledSourceType(
+          "EXPORT_TASK", false, std::vector<std::string>{"EXPORT_TASK", "EXPORT_ACTOR"}),
+      true);
+  EXPECT_EQ(
+      IsExportAPIEnabledSourceType(
+          "EXPORT_TASK", true, std::vector<std::string>{"EXPORT_TASK", "EXPORT_ACTOR"}),
+      true);
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", false, std::vector<std::string>{"EXPORT_ACTOR"}),
+            false);
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", true, std::vector<std::string>{"EXPORT_ACTOR"}),
+            true);
+
+  EXPECT_EQ(IsExportAPIEnabledSourceType(
+                "EXPORT_TASK", false, std::vector<std::string>{"invalid resource type"}),
+            false);
+
+  const std::string input = "EXPORT_TASK,EXPORT_ACTOR";
+  const std::vector<std::string> expected_output{"EXPORT_TASK", "EXPORT_ACTOR"};
+  auto output = ConvertValue<std::vector<std::string>>("std::vector<std::string>", input);
+  ASSERT_EQ(output, expected_output);
 }
 
 TEST_F(EventTest, TestRayCheckAbort) {

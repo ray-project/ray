@@ -830,7 +830,7 @@ class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
       : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
-        worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
+        worker_client_(std::make_shared<MockWorkerClient>()),
         dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
@@ -982,6 +982,7 @@ int main(int argc, char **argv) {
       argv[0],
       ray::RayLogLevel::INFO,
       ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);

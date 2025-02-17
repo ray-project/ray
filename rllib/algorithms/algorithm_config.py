@@ -76,6 +76,7 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
+from ray.util import log_once
 
 Space = gym.Space
 
@@ -325,6 +326,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
+        self.episodes_to_numpy = True
         self.max_requests_in_flight_per_env_runner = 1
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
@@ -354,7 +356,9 @@ class AlgorithmConfig(_Config):
         # `self.learners()`
         self.num_learners = 0
         self.num_gpus_per_learner = 0
-        self.num_cpus_per_learner = 1
+        self.num_cpus_per_learner = "auto"
+        self.num_aggregator_actors_per_learner = 0
+        self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
@@ -531,13 +535,6 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
-        # TODO (sven): Remove these settings again in the future. We only need them
-        #  to debug a quite complex, production memory leak, possibly related to
-        #  evaluation in parallel (when `training_step` is getting called inside a
-        #  thread). It's also possible that the leak is not caused by RLlib itself,
-        #  but by Ray core, but we need more data to narrow this down.
-        self._run_training_always_in_thread = False
-        self._evaluation_parallel_to_training_wo_thread = False
 
         # `self.fault_tolerance()`
         self.restart_failed_env_runners = True
@@ -635,11 +632,11 @@ class AlgorithmConfig(_Config):
         # Worst naming convention ever: NEVER EVER use reserved key-words...
         if "lambda_" in config:
             assert hasattr(self, "lambda_")
-            config["lambda"] = getattr(self, "lambda_")
+            config["lambda"] = self.lambda_
             config.pop("lambda_")
         if "input_" in config:
             assert hasattr(self, "input_")
-            config["input"] = getattr(self, "input_")
+            config["input"] = self.input_
             config.pop("input_")
 
         # Convert `policies` (PolicySpecs?) into dict.
@@ -967,6 +964,7 @@ class AlgorithmConfig(_Config):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
+            AddTimeDimToBatchAndZeroPad,
             AgentToModuleMapping,
             BatchIndividualItems,
             EnvToModulePipeline,
@@ -1020,7 +1018,9 @@ class AlgorithmConfig(_Config):
         if self.add_default_connectors_to_env_to_module_pipeline:
             # Append OBS handling.
             pipeline.append(AddObservationsFromEpisodesToBatch())
-            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            # Append time-rank handler.
+            pipeline.append(AddTimeDimToBatchAndZeroPad())
+            # Append STATE_IN/STATE_OUT handler.
             pipeline.append(AddStatesFromEpisodesToBatch())
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent:
@@ -1142,6 +1142,7 @@ class AlgorithmConfig(_Config):
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
+            AddTimeDimToBatchAndZeroPad,
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
@@ -1186,7 +1187,9 @@ class AlgorithmConfig(_Config):
             )
             # Append all other columns handling.
             pipeline.append(AddColumnsFromEpisodesToTrainBatch())
-            # Append STATE_IN/STATE_OUT (and time-rank) handler.
+            # Append time-rank handler.
+            pipeline.append(AddTimeDimToBatchAndZeroPad(as_learner_connector=True))
+            # Append STATE_IN/STATE_OUT handler.
             pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent:
@@ -1758,6 +1761,7 @@ class AlgorithmConfig(_Config):
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         explore: Optional[bool] = NotProvided,
+        episodes_to_numpy: Optional[bool] = NotProvided,
         # @OldAPIStack settings.
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -1910,6 +1914,10 @@ class AlgorithmConfig(_Config):
             explore: Default exploration behavior, iff `explore=None` is passed into
                 compute_action(s). Set to False for no exploration behavior (e.g.,
                 for evaluation).
+            episodes_to_numpy: Whether to numpy'ize episodes before
+                returning them from an EnvRunner. False by default. If True, EnvRunners
+                call `to_numpy()` on those episode (chunks) to be returned by
+                `EnvRunners.sample()`.
             exploration_config: A dict specifying the Exploration object's config.
             remote_worker_envs: If using num_envs_per_env_runner > 1, whether to create
                 those new envs in remote processes instead of in the same worker.
@@ -2034,6 +2042,10 @@ class AlgorithmConfig(_Config):
             self.batch_mode = batch_mode
         if explore is not NotProvided:
             self.explore = explore
+        if episodes_to_numpy is not NotProvided:
+            self.episodes_to_numpy = episodes_to_numpy
+
+        # @OldAPIStack
         if exploration_config is not NotProvided:
             # Override entire `exploration_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
@@ -2124,8 +2136,10 @@ class AlgorithmConfig(_Config):
         self,
         *,
         num_learners: Optional[int] = NotProvided,
-        num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        num_aggregator_actors_per_learner: Optional[int] = NotProvided,
+        max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
     ):
@@ -2140,14 +2154,24 @@ class AlgorithmConfig(_Config):
                 1 GPU: `num_learners=4; num_gpus_per_learner=1` OR 4 GPUs total and
                 model requires 2 GPUs: `num_learners=2; num_gpus_per_learner=2`).
             num_cpus_per_learner: Number of CPUs allocated per Learner worker.
+                If "auto" (default), use 1 if `num_gpus_per_learner=0`, otherwise 0.
                 Only necessary for custom processing pipeline inside each Learner
-                requiring multiple CPU cores. Ignored if `num_learners=0`.
+                requiring multiple CPU cores.
+                If `num_learners=0`, RLlib creates only one local Learner instance and
+                the number of CPUs on the main process is
+                `max(num_cpus_per_learner, num_cpus_for_main_process)`.
             num_gpus_per_learner: Number of GPUs allocated per Learner worker. If
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
-                the training on main process CPUs. If `num_gpus_per_learner` is > 0,
-                then you shouldn't change `num_cpus_per_learner` (from its default
-                value of 1).
+                the training on main process CPUs.
+            num_aggregator_actors_per_learner: The number of aggregator actors per
+                Learner (if num_learners=0, one local learner is created). Must be at
+                least 1. Aggregator actors perform the task of a) converting episodes
+                into a train batch and b) move that train batch to the same GPU that
+                the corresponding learner is located on. Good values are 1 or 2, but
+                this strongly depends on your setup and `EnvRunner` throughput.
+            max_requests_in_flight_per_aggregator_actor: How many in-flight requests
+                are allowed per aggregator actor before new requests are dropped?
             local_gpu_idx: If `num_gpus_per_learner` > 0, and
                 `num_learners` < 2, then RLlib uses this GPU index for training. This is
                 an index into the available
@@ -2172,6 +2196,12 @@ class AlgorithmConfig(_Config):
             self.num_cpus_per_learner = num_cpus_per_learner
         if num_gpus_per_learner is not NotProvided:
             self.num_gpus_per_learner = num_gpus_per_learner
+        if num_aggregator_actors_per_learner is not NotProvided:
+            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
+        if max_requests_in_flight_per_aggregator_actor is not NotProvided:
+            self.max_requests_in_flight_per_aggregator_actor = (
+                max_requests_in_flight_per_aggregator_actor
+            )
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
         if max_requests_in_flight_per_learner is not NotProvided:
@@ -2200,6 +2230,8 @@ class AlgorithmConfig(_Config):
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         # Deprecated args.
+        num_aggregator_actors_per_learner=DEPRECATED_VALUE,
+        max_requests_in_flight_per_aggregator_actor=DEPRECATED_VALUE,
         num_sgd_iter=DEPRECATED_VALUE,
         max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
@@ -2294,6 +2326,23 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if num_aggregator_actors_per_learner != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.training(num_aggregator_actors_per_learner=..)",
+                new="config.learners(num_aggregator_actors_per_learner=..)",
+                error=False,
+            )
+            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
+        if max_requests_in_flight_per_aggregator_actor != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.training(max_requests_in_flight_per_aggregator_actor=..)",
+                new="config.learners(max_requests_in_flight_per_aggregator_actor=..)",
+                error=False,
+            )
+            self.max_requests_in_flight_per_aggregator_actor = (
+                max_requests_in_flight_per_aggregator_actor
+            )
+
         if num_sgd_iter != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config.training(num_sgd_iter=..)",
@@ -3331,8 +3380,6 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-        _run_training_always_in_thread: Optional[bool] = NotProvided,
-        _evaluation_parallel_to_training_wo_thread: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -3351,15 +3398,6 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials have
                 identical results. This makes experiments reproducible.
-            _run_training_always_in_thread: Runs the n `training_step()` calls per
-                iteration always in a separate thread (just as we would do with
-                `evaluation_parallel_to_training=True`, but even without evaluation
-                going on and even without evaluation workers being created in the
-                Algorithm).
-            _evaluation_parallel_to_training_wo_thread: Only relevant if
-                `evaluation_parallel_to_training` is True. Then, in order to achieve
-                parallelism, RLlib doesn't use a thread pool (as it usually does in
-                this situation).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3376,12 +3414,6 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
-        if _run_training_always_in_thread is not NotProvided:
-            self._run_training_always_in_thread = _run_training_always_in_thread
-        if _evaluation_parallel_to_training_wo_thread is not NotProvided:
-            self._evaluation_parallel_to_training_wo_thread = (
-                _evaluation_parallel_to_training_wo_thread
-            )
 
         return self
 
@@ -3771,6 +3803,17 @@ class AlgorithmConfig(_Config):
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
             return default_rl_module_spec
+
+    @property
+    def train_batch_size_per_learner(self):
+        # If not set explicitly, try to infer the value.
+        if self._train_batch_size_per_learner is None:
+            return self.train_batch_size // (self.num_learners or 1)
+        return self._train_batch_size_per_learner
+
+    @train_batch_size_per_learner.setter
+    def train_batch_size_per_learner(self, value):
+        self._train_batch_size_per_learner = value
 
     @property
     def train_batch_size_per_learner(self) -> int:
@@ -4420,7 +4463,10 @@ class AlgorithmConfig(_Config):
             "\nTo suppress all validation errors, set "
             "`config.experimental(_validate_config=False)` at your own risk."
         )
-        raise ValueError(msg)
+        if self._validate_config:
+            raise ValueError(msg)
+        else:
+            logger.warning(errmsg)
 
     def _validate_env_runner_settings(self) -> None:
         allowed_vectorize_modes = set(
@@ -4512,20 +4558,7 @@ class AlgorithmConfig(_Config):
 
     def _validate_resources_settings(self):
         """Checks, whether resources related settings make sense."""
-
-        # TODO @Avnishn: This is a short-term work around due to
-        #  https://github.com/ray-project/ray/issues/35409
-        #  Remove this once we are able to specify placement group bundle index in RLlib
-        if self.num_cpus_per_learner > 1 and self.num_gpus_per_learner > 0:
-            self._value_error(
-                "Can't set both `num_cpus_per_learner` > 1 and "
-                " `num_gpus_per_learner` > 0! Either set "
-                "`num_cpus_per_learner` > 1 (and `num_gpus_per_learner`"
-                "=0) OR set `num_gpus_per_learner` > 0 (and leave "
-                "`num_cpus_per_learner` at its default value of 1). "
-                "This is due to issues with placement group fragmentation. See "
-                "https://github.com/ray-project/ray/issues/35409 for more details."
-            )
+        pass
 
     def _validate_multi_agent_settings(self):
         """Checks, whether multi-agent related settings make sense."""
@@ -4680,14 +4713,15 @@ class AlgorithmConfig(_Config):
             return
 
         # Warn about new API stack on by default.
-        logger.warning(
-            f"You are running {self.algo_class.__name__} on the new API stack! "
-            "This is the new default behavior for this algorithm. If you don't "
-            "want to use the new API stack, set `config.api_stack("
-            "enable_rl_module_and_learner=False,"
-            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-        )
+        if log_once(f"{self.algo_class.__name__}_on_new_api_stack"):
+            logger.warning(
+                f"You are running {self.algo_class.__name__} on the new API stack! "
+                "This is the new default behavior for this algorithm. If you don't "
+                "want to use the new API stack, set `config.api_stack("
+                "enable_rl_module_and_learner=False,"
+                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
 
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
