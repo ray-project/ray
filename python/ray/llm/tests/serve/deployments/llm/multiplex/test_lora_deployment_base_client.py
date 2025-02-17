@@ -56,7 +56,6 @@ VLLM_APP = LLMConfig.parse_yaml(VLLM_APP_DEF)
 # cloud.
 
 
-@pytest.mark.parametrize("download_model_ckpt_model", ["mistral-community-pixtral-12b"])
 def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     llm_deployments = []
     for llm_config in llm_configs:
