@@ -24,5 +24,4 @@ py_test_module_list(
   env = {
     "VLLM_FLASH_ATTN_VERSION": "2",
   }
-  capture = "no",
 )
