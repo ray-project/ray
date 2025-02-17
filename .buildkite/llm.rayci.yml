@@ -16,7 +16,7 @@ steps:
       - oss-ci-base_gpu-multipy
     env:
       IMAGE_TO: "llmgpubuild"
-      IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_gpu-py3.11"
+      IMAGE_FROM: "cr.ray.io/rayproject/ray-llm.py3.11.cu12.4.1-cudnn.base"
 
   - label: "llm cpu tests"
     key: "llm-cpu-tests"

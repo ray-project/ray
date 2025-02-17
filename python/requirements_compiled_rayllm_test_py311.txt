@@ -4,8 +4,8 @@
 #
 #    pip-compile --constraint=python/requirements_compiled_ray_test_py311.txt --generate-hashes --output-file=python/requirements_compiled_rayllm_test_py311.txt --strip-extras --unsafe-package=ray python/requirements.txt python/requirements/base-test-requirements.txt python/requirements/llm/llm-requirements.txt python/requirements/llm/llm-test-requirements.txt
 #
---extra-index-url https://download.pytorch.org/whl/cu121
---find-links https://data.pyg.org/whl/torch-2.5.1+cu121.html
+--extra-index-url https://download.pytorch.org/whl/cpu
+--find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 
 aiohttp==3.9.5 \
     --hash=sha256:0605cc2c0088fcaae79f01c913a38611ad09ba68ff482402d3410bf59039bfb8 \
@@ -2689,7 +2689,16 @@ tokenizers==0.21.0 \
     # via
     #   transformers
     #   vllm
-torch==2.5.1+cu121
+torch==2.5.1+cpu \
+    --hash=sha256:07d7c9e069123d5af08b0cf0013d74f680b2d8be7d9e2cf561a52c90c55d9409 \
+    --hash=sha256:2ebd0b6135dc60b96ce51349c92c9757b2b9634a6b90045dfab3eb4921a4d62f \
+    --hash=sha256:4856f9d6925121d13c2df07aa7580b767f449dfe71ae5acde9c27535d5da4840 \
+    --hash=sha256:5dbbdf83caa90d0bcaa50e4933ca424889133b35226db79000877d4ec5d9ea37 \
+    --hash=sha256:7f91a2200e352745d70e22396bd501448e28350fbdbd8d8b1c83037e25451150 \
+    --hash=sha256:81531d4d5ca74163dc9574b87396531e546a60cceb6253303c7db6a21e867fdf \
+    --hash=sha256:a3ad26468abc5ee601aba49ff02f72387ae734b0900aa589b890c80d72b7b26b \
+    --hash=sha256:a6b720410350765d3d77c01a5ce098a6c45af446284e45e87a98b8a16e7d564d \
+    --hash=sha256:df93157482b672892d29134d3fae9d38ba3219702faedd79f407eb36774c56ce
     # via
     #   compressed-tensors
     #   outlines
@@ -2698,9 +2707,25 @@ torch==2.5.1+cu121
     #   vllm
     #   xformers
     #   xgrammar
-torchaudio==2.5.1+cu121
+torchaudio==2.5.1+cpu \
+    --hash=sha256:209f8e7efff818d2066f49c27c8097f2246f8bf6fd743c69bcf8dce80c63ee80 \
+    --hash=sha256:63518869ddb6bbf37a305bb0c085552c230e130ea4640fd71db17b6689586aa5 \
+    --hash=sha256:68b58c1dae7bb738df8a36f0d147d2c9c69e56a35ff40dedb84ac30aff2e59e1 \
+    --hash=sha256:8904a77ad311992d3dd3dae6556ea023fbb291b10b8698fecd1dec10bc189d6c \
+    --hash=sha256:b7fbd9c264dcbe28efb061364c76d3770eb13ae692d2982949b583edfb9ed7f5 \
+    --hash=sha256:c64af43548713e5abc3e9e3b5f33a2a47c57122ee953e0b0cb102f7855f8d017 \
+    --hash=sha256:e08047b9f1997bd303ea6528e5b8009719665a55516a49b6acc359dac20c474d \
+    --hash=sha256:ea2c7fd25311ea47fd78abf0ee6ffbc4820d785773d0bc5ac87f82912851643f
     # via vllm
-torchvision==0.20.1+cu121
+torchvision==0.20.1+cpu \
+    --hash=sha256:17bbc073920e429bf23a290472d51edc75e7b9809b81a93503d10d8edb6f3a6d \
+    --hash=sha256:58773dc7110425ff3ffa462ed32d5522deaed81179b24780136ebc493fb94feb \
+    --hash=sha256:5f46c7ac7f00a065cb40bfb1e1bfc4ba16a35f5d46b3fe70cca6b3cea7f822f7 \
+    --hash=sha256:64832095b9b8b8185f24788f1a531ae96c937bf797cd3474a2ea7511852e5cd7 \
+    --hash=sha256:7470316f50404e5036fbdc820bacdebeb662bb0baa9601320dcdaecef7cba3a8 \
+    --hash=sha256:a4153bcc9f6219596c65761aa00588704e91e3db91d911c251e614f6140ed047 \
+    --hash=sha256:a476464e8b3d4d1d7207a943e2c6a2f5c71219cd808167acde5731725280ae2a \
+    --hash=sha256:ebdeb19a49da0b5d11cc512a76b24a43971e17cfb9c1ec42564d0e300670d5fa
     # via vllm
 tqdm==4.67.1 \
     --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
