@@ -21,39 +21,37 @@ def create_output_node(
     transport: Optional[Union[str, Communicator]] = None,
 ):
     if transport is None:
-            transport = TorchTensorType.NCCL
+        transport = TorchTensorType.NCCL
     collective_op = _CollectiveOperation(input_nodes, op, transport)
     collective_output_nodes: List[CollectiveOutputNode] = []
-    
+
     for input_node in input_nodes:
-            actor_handle: Optional[
-                "ray.actor.ActorHandle"
-            ] = input_node._get_actor_handle()
-            if actor_handle is None:
-                raise ValueError("Expected an actor handle from the input node")
+        actor_handle: Optional["ray.actor.ActorHandle"] = input_node._get_actor_handle()
+        if actor_handle is None:
+            raise ValueError("Expected an actor handle from the input node")
 
-            if isinstance(op, AllReduceOp):
-                method_name = f"allreduce.{op.reduceOp}"
-            elif isinstance(op, ReduceScatterOp):
-                method_name = f"reducescatter.{op.reduceOp}"
-            elif isinstance(op, AllGatherOp):
-                method_name = "allgather"
-            else:
-                raise ValueError(f"Unexpected operation: {op}.")
+        if isinstance(op, AllReduceOp):
+            method_name = f"allreduce.{op.reduceOp}"
+        elif isinstance(op, ReduceScatterOp):
+            method_name = f"reducescatter.{op.reduceOp}"
+        elif isinstance(op, AllGatherOp):
+            method_name = "allgather"
+        else:
+            raise ValueError(f"Unexpected operation: {op}.")
 
-            collective_output_node = CollectiveOutputNode(
-                method_name=method_name,
-                method_args=(input_node,),
-                method_kwargs=dict(),
-                method_options=dict(),
-                other_args_to_resolve={
-                    PARENT_CLASS_NODE_KEY: actor_handle,
-                    BIND_INDEX_KEY: actor_handle._ray_dag_bind_index,
-                    COLLECTIVE_OPERATION_KEY: collective_op,
-                },
-            )
-            actor_handle._ray_dag_bind_index += 1
-            collective_output_nodes.append(collective_output_node)
+        collective_output_node = CollectiveOutputNode(
+            method_name=method_name,
+            method_args=(input_node,),
+            method_kwargs=dict(),
+            method_options=dict(),
+            other_args_to_resolve={
+                PARENT_CLASS_NODE_KEY: actor_handle,
+                BIND_INDEX_KEY: actor_handle._ray_dag_bind_index,
+                COLLECTIVE_OPERATION_KEY: collective_op,
+            },
+        )
+        actor_handle._ray_dag_bind_index += 1
+        collective_output_nodes.append(collective_output_node)
     return collective_output_nodes
 
 

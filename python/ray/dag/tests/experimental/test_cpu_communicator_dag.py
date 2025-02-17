@@ -114,7 +114,9 @@ def test_allreduce_basic(ray_start_cluster):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+        collectives = collective_ops.allreduce.bind(
+            computes, op=AllReduceOp(), transport=cpu_group
+        )
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -160,7 +162,9 @@ def test_allreduce_get_partial(ray_start_cluster):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+        collectives = collective_ops.allreduce.bind(
+            computes, op=AllReduceOp(), transport=cpu_group
+        )
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([recv, tensor, collectives[1]])
@@ -206,7 +210,9 @@ def test_allreduce_wrong_shape(ray_start_cluster):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+        collectives = collective_ops.allreduce.bind(
+            computes, op=AllReduceOp(), transport=cpu_group
+        )
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -277,7 +283,9 @@ def test_allreduce_scheduling(ray_start_cluster):
         t = workers[0].send.bind(shape, dtype, inp)
         t = t.with_tensor_transport(transport=cpu_group)
 
-        collectives = collective_ops.allreduce.bind([x, y], op=AllReduceOp(), transport=cpu_group)
+        collectives = collective_ops.allreduce.bind(
+            [x, y], op=AllReduceOp(), transport=cpu_group
+        )
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
@@ -320,7 +328,9 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
             ValueError,
             match="Expected unique actor handles for a collective operation",
         ):
-            collective_ops.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+            collective_ops.allreduce.bind(
+                computes, op=AllReduceOp(), transport=cpu_group
+            )
 
     with InputNode() as inp:
         compute = worker.return_tensor.bind(inp)
@@ -329,7 +339,9 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
             ValueError,
             match="Expected unique input nodes for a collective operation",
         ):
-            collective_ops.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+            collective_ops.allreduce.bind(
+                computes, op=AllReduceOp(), transport=cpu_group
+            )
 
 
 @pytest.mark.parametrize(
@@ -358,7 +370,9 @@ def test_allreduce_wrong_actors(ray_start_cluster):
             ValueError,
             match="Expected actor handles to match the custom NCCL group",
         ):
-            collective_ops.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+            collective_ops.allreduce.bind(
+                computes, op=AllReduceOp(), transport=cpu_group
+            )
 
 
 if __name__ == "__main__":

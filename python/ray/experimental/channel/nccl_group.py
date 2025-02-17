@@ -249,7 +249,7 @@ class _NcclGroup(Communicator):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
         return buf
-    
+
     def allgather(
         self,
         send_buf: "torch.Tensor",

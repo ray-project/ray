@@ -12,10 +12,7 @@ from ray.experimental.collective.conftest import (
     check_nccl_group_teardown,
 )
 from ray.experimental.util.types import (
-    ReduceOp,
-    AllGatherOp,
     AllReduceOp,
-    ReduceScatterOp,
 )
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
@@ -90,7 +87,10 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers]
         # There are two all-reduces, each on one actor.
-        collectives = [collective_ops.allreduce.bind([compute], AllReduceOp()) for compute in computes]
+        collectives = [
+            collective_ops.allreduce.bind([compute], AllReduceOp())
+            for compute in computes
+        ]
         # collective[0] is the only CollectiveOutputNode for each all-reduce.
         dag = MultiOutputNode([collective[0] for collective in collectives])
 
@@ -204,7 +204,9 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     comm = AbstractNcclGroup(workers)
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers]
-        collectives = collective_ops.allreduce.bind(computes, AllReduceOp(), transport=comm)
+        collectives = collective_ops.allreduce.bind(
+            computes, AllReduceOp(), transport=comm
+        )
         collectives = collective_ops.allreduce.bind(collectives, AllReduceOp())
         dag = workers[0].recv.bind(
             collectives[1].with_tensor_transport(transport="nccl")
@@ -257,7 +259,9 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
 
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
-        allreduce = collective_ops.allreduce.bind(tensors, AllReduceOp(), transport=comm)
+        allreduce = collective_ops.allreduce.bind(
+            tensors, AllReduceOp(), transport=comm
+        )
         dag = workers[0].recv.bind(allreduce[1].with_tensor_transport(transport=comm))
         dag = MultiOutputNode([dag, allreduce[0]])
 
@@ -276,8 +280,12 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
 
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
-        allreduce1 = collective_ops.allreduce.bind(tensors, AllReduceOp(), transport=comm_1)
-        allreduce2 = collective_ops.allreduce.bind(allreduce1, AllReduceOp(), transport=comm_2)
+        allreduce1 = collective_ops.allreduce.bind(
+            tensors, AllReduceOp(), transport=comm_1
+        )
+        allreduce2 = collective_ops.allreduce.bind(
+            allreduce1, AllReduceOp(), transport=comm_2
+        )
         dag = workers[0].recv.bind(
             allreduce2[1].with_tensor_transport(transport=comm_3)
         )

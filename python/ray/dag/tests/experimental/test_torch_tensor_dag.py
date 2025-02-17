@@ -1351,7 +1351,9 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective_ops.allreduce.bind(computes, AllReduceOp(), transport=nccl_group)
+        collectives = collective_ops.allreduce.bind(
+            computes, AllReduceOp(), transport=nccl_group
+        )
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
