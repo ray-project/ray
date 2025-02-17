@@ -2,7 +2,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 
 py_library(
     name = "gpu_conftest",
-    srcs = ["gpu/conftest.py"]
+    srcs = ["../conftest.py"]
 )
 
 py_test_module_list(

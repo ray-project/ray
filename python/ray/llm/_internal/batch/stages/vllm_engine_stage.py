@@ -18,7 +18,7 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-vllm = try_import("vllm")
+vllm = try_import("vllm", warning=True)
 
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ class vLLMEngineWrapper:
         kwargs["task"] = self.task_type.value
 
         if vllm is None:
-            raise ImportError("vLLM is not installed")
+            raise ImportError("vLLM is not installed or failed to import")
 
         # Construct PoolerConfig if override_pooler_config is specified.
         if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
