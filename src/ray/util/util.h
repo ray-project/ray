@@ -172,10 +172,6 @@ struct EnumClassHash {
   }
 };
 
-/// unordered_map for enum class type.
-template <typename Key, typename T>
-using EnumUnorderedMap = absl::flat_hash_map<Key, T, EnumClassHash>;
-
 namespace ray {
 
 /// Return true if the raylet is failed. This util function is only meant to be used by
