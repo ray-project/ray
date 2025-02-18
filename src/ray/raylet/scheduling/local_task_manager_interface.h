@@ -21,6 +21,10 @@
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/internal.h"
 
+#include <memory>
+#include <string>
+#include <deque>
+
 namespace ray {
 namespace raylet {
 

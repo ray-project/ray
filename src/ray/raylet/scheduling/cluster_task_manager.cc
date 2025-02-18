@@ -21,6 +21,11 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
+#include <deque>
+#include <utility>
+#include <string>
+#include <memory>
+
 namespace ray {
 namespace raylet {
 

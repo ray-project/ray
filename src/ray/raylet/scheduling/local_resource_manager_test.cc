@@ -18,6 +18,9 @@
 
 #include "gtest/gtest.h"
 
+#include <string>
+#include <memory>
+
 namespace ray {
 
 class LocalResourceManagerTest : public ::testing::Test {

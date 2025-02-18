@@ -15,6 +15,9 @@
 #include "ray/raylet/scheduling/scheduling_policy.h"
 
 #include <functional>
+#include <vector>
+#include <algorithm>
+#include <utility>
 
 #include "ray/util/container_util.h"
 

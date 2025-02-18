@@ -26,6 +26,10 @@
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
 
+#include <string>
+#include <memory>
+#include <deque>
+
 namespace ray {
 namespace raylet {
 
@@ -55,7 +59,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<void(const RayTask &)> announce_infeasible_task,
       ILocalTaskManager &local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
-        return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
+        return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6);
       });
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.

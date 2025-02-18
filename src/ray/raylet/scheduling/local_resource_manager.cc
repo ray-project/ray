@@ -16,6 +16,11 @@
 
 #include <boost/algorithm/string.hpp>
 #include <csignal>
+#include <memory>
+#include <vector>
+#include <algorithm>
+#include <utility>
+#include <string>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"

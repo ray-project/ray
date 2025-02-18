@@ -20,6 +20,9 @@
 #include "ray/common/task/task_common.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
+#include <memory>
+#include <utility>
+
 namespace ray::raylet::internal {
 
 enum class WorkStatus {

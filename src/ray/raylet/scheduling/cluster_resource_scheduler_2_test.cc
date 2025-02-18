@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include <memory>
+#include <utility>
+#include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"

@@ -20,6 +20,8 @@
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
 
+#include <deque>
+
 namespace ray {
 namespace raylet {
 

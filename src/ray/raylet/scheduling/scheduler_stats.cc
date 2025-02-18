@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/scheduling/scheduler_stats.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/stats/metric_defs.h"
+
+#include <utility>
+#include <deque>
+#include <string>
 
 namespace ray {
 namespace raylet {
@@ -40,7 +45,7 @@ void SchedulerStats::ComputeStats() {
   size_t num_infeasible_tasks =
       std::accumulate(cluster_task_manager_.infeasible_tasks_.begin(),
                       cluster_task_manager_.infeasible_tasks_.end(),
-                      (size_t)0,
+                      static_cast<size_t>(0),
                       accumulator);
 
   // TODO(sang): Normally, the # of queued tasks are not large, so this is less likley to
@@ -87,12 +92,12 @@ void SchedulerStats::ComputeStats() {
   size_t num_tasks_to_schedule =
       std::accumulate(cluster_task_manager_.tasks_to_schedule_.begin(),
                       cluster_task_manager_.tasks_to_schedule_.end(),
-                      (size_t)0,
+                      static_cast<size_t>(0),
                       per_work_accumulator);
   size_t num_tasks_to_dispatch =
       std::accumulate(local_task_manager_.GetTaskToDispatch().begin(),
                       local_task_manager_.GetTaskToDispatch().end(),
-                      (size_t)0,
+                      static_cast<size_t>(0),
                       per_work_accumulator);
 
   /// Update the internal states.

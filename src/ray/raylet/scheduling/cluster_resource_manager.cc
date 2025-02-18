@@ -20,6 +20,10 @@
 #include "ray/common/ray_config.h"
 #include "ray/util/container_util.h"
 
+#include <utility>
+#include <vector>
+#include <string>
+
 namespace ray {
 
 ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)

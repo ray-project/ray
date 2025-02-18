@@ -19,6 +19,8 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <string>
+#include <memory>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
