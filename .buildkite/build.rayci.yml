@@ -36,8 +36,9 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - sleep 80000
-      - export PYTHON3_BIN_PATH=$(which python3)
+      # Set PYTHON3_BIN_PATH to the default Ray Python version.
+      # This is necessary for the build to find the Python C API.
+      - export PYTHON3_BIN_PATH=$(which python3.9)
       - ./ci/build/build-manylinux-ray.sh
       - ./ci/build/build-manylinux-jar.sh
       - ./ci/build/copy_build_artifacts.sh jar
