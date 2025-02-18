@@ -25,7 +25,12 @@ class TokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+        self.tokenizer = get_cached_tokenizer(
+            AutoTokenizer.from_pretrained(
+                model,
+                trust_remote_code=True,
+            )
+        )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -58,10 +63,6 @@ class TokenizeStage(StatefulStage):
     """
 
     fn: Type[StatefulStageUDF] = TokenizeUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
 
 
 class DetokenizeUDF(StatefulStageUDF):
@@ -80,7 +81,12 @@ class DetokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+        self.tokenizer = get_cached_tokenizer(
+            AutoTokenizer.from_pretrained(
+                model,
+                trust_remote_code=True,
+            )
+        )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -116,7 +122,3 @@ class DetokenizeStage(StatefulStage):
     """
 
     fn: Type[StatefulStageUDF] = DetokenizeUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )

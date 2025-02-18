@@ -68,7 +68,7 @@ checkpoint_path = train_ppo_model()
 You can hide cells, so that they will toggle when you click on the cell header.
 You can use different `:tags:` like `hide-cell`, `hide-input`, or `hide-output` to hide cell content,
 and you can use `remove-cell`, `remove-input`, or `remove-output` to remove the cell completely when rendered.
-Those cells will still show up in the notebook itself, e.g. when you launch it in binder.
+Those cells will still show up in the notebook itself.
 
 ```{code-cell} python3
 :tags: [hide-cell]
