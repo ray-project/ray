@@ -67,7 +67,7 @@ and run the following command:
     RAY_CGRAPH_VISUALIZE_SCHEDULE=1 python3 example.py
 
 When Ray executes ``experimental_compile``, it generates a PNG image named ``compiled_graph_schedule.png`` and
-saves it in the current working directory. The visualization for the preceding code is shown below:
+saves it in the current working directory. The following is the visualization for the preceding code:
 
 .. image:: ../../images/compiled_graph_schedule.png
     :alt: Visualization of Execution Schedule
