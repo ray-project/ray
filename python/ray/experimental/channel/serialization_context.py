@@ -32,6 +32,8 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
+        # Caching GPU futures ensures CUDA events inside the futures are destroyed
+        # controllably instead of by garbage collection.
         self.gpu_futures: Dict[int, "GPUFuture"] = {}
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:

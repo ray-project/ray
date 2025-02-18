@@ -305,7 +305,7 @@ class ActorMethod:
                     {
                         BIND_INDEX_KEY: node._get_bind_index(),
                         IS_CLASS_METHOD_OUTPUT_KEY: True,
-                        PARENT_CLASS_NODE_KEY: actor
+                        PARENT_CLASS_NODE_KEY: actor,
                     },
                 )
                 output_nodes.append(output_node)

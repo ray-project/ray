@@ -367,8 +367,6 @@ class CompiledTask:
         """
         self.idx = idx
         self.dag_node = dag_node
-        # Whether the task contributes to the DAG output.
-        self.is_dag_output: bool = False
 
         # Dict from task index to actor handle for immediate downstream tasks.
         self.downstream_task_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
@@ -481,7 +479,6 @@ class ExecutableTask:
         self.output_idxs = task.output_idxs
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
-        self.is_dag_output = task.is_dag_output
 
         # The NCCL operation (type) of the task. It can be a NCCL read, write, or
         # collective operation.
@@ -912,9 +909,9 @@ class CompiledDAG:
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         # Mapping from actor handle to its GPU IDs.
         # This is used for type hint resolution for with_tensor_transport("auto").
         self.actor_to_gpu_ids: Dict["ray.actor.ActorHandle", List[str]] = {}
@@ -1320,11 +1317,6 @@ class CompiledDAG:
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
 
-                # If the node is a MultiOutputNode, update the upstream task since it
-                # contributes to the DAG output.
-                if isinstance(dag_node, MultiOutputNode):
-                    upstream_task.is_dag_output = True
-
         # Check that all specified input attributes, e.g., InputNode()["x"],
         # are used in the DAG.
         _check_unused_dag_input_attributes(output_node, input_attributes)
@@ -1398,9 +1390,9 @@ class CompiledDAG:
                 self._custom_communicator_p2p,
                 self._overlap_gpu_communication,
             )
-            custom_communicator_to_id[self._custom_communicator_p2p] = (
-                self._communicator_id_p2p
-            )
+            custom_communicator_to_id[
+                self._custom_communicator_p2p
+            ] = self._communicator_id_p2p
             actors = frozenset(nccl_actors_p2p)
             actors_to_communicator_id[actors] = self._communicator_id_p2p
 
