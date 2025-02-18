@@ -205,7 +205,7 @@ StatusOr<absl::flat_hash_set<ObjectID>> RayletClient::Wait(
   for (size_t i = 0; i < found->size(); i++) {
     result.insert(ObjectID::FromBinary(found->Get(i)->str()));
   }
-  return Status::OK();
+  return result;
 }
 
 Status RayletClient::WaitForDirectActorCallArgs(
