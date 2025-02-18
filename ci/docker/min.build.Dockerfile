@@ -16,7 +16,7 @@ RUN <<EOF
 set -euo pipefail
 
 # minimal dependencies
-MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION}; if [ "$PYTHON" = "3.13" ]; then ci/env/install-uv.sh; else ci/env/install-dependencies.sh; fi
+MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION}; if [ "$PYTHON" = "3.13" ]; then ci/env/install-uv.sh; source $HOME/.local/bin/env; else ci/env/install-dependencies.sh; fi
 rm -rf python/ray/thirdparty_files
 
 # install test requirements
