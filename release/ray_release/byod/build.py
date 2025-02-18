@@ -23,6 +23,7 @@ BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
+REQUIREMENTS_LLM_BYOD = "requirements_llm_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 
 
@@ -124,6 +125,8 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
             py_version = test.get_python_version()
             if test.use_byod_ml_image():
                 byod_requirements = f"{REQUIREMENTS_ML_BYOD}_{py_version}.txt"
+            elif test.use_byod_llm_image():
+                byod_requirements = f"{REQUIREMENTS_LLM_BYOD}_{py_version}.txt"
             else:
                 byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
 

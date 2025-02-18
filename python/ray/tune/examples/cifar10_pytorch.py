@@ -17,8 +17,8 @@ from filelock import FileLock
 from torch.utils.data import random_split
 
 import ray
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 
 # __import_end__
@@ -94,8 +94,8 @@ def train_cifar(config):
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
     # Load existing checkpoint through `get_checkpoint()` API.
-    if train.get_checkpoint():
-        loaded_checkpoint = train.get_checkpoint()
+    if tune.get_checkpoint():
+        loaded_checkpoint = tune.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             model_state, optimizer_state = torch.load(
                 os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
@@ -180,7 +180,7 @@ def train_cifar(config):
                 (net.state_dict(), optimizer.state_dict()), path
             )
             checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
-            train.report(
+            tune.report(
                 {"loss": (val_loss / val_steps), "accuracy": correct / total},
                 checkpoint=checkpoint,
             )

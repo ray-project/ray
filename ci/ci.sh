@@ -95,7 +95,7 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/cloud-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \

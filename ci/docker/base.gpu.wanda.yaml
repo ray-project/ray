@@ -4,23 +4,11 @@ dockerfile: ci/docker/base.gpu.Dockerfile
 srcs:
   - .bazelrc
   - .bazelversion
-  - ci/ci.sh
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
   - ci/env/install-bazel.sh
   - ci/env/install-miniconda.sh
   - ci/suppress_output
-  - python/requirements.txt
-  - python/requirements_compiled.txt
-  - python/requirements/test-requirements.txt
-  - python/requirements/ml/rllib-requirements.txt
-  - python/requirements/ml/rllib-test-requirements.txt
-  - python/requirements/ml/train-requirements.txt
-  - python/requirements/ml/train-test-requirements.txt
-  - python/requirements/ml/tune-requirements.txt
-  - python/requirements/ml/tune-test-requirements.txt
-  - python/requirements/ml/dl-cpu-requirements.txt
-  - python/requirements/ml/core-requirements.txt
 build_args:
   - REMOTE_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
   - PYTHON

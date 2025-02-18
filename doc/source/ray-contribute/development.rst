@@ -195,7 +195,7 @@ After that, you can now move back to the top level Ray directory:
 
 .. code-block:: shell
 
-  cd ../..
+  cd -
 
 
 Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment you could be using as described above.
@@ -306,7 +306,7 @@ You can tweak the build with the following environment variables (when running `
 - ``BAZEL_ARGS``: If set, pass a space-separated set of arguments to Bazel. This can be useful
   for restricting resource usage during builds, for example. See https://bazel.build/docs/user-manual
   for more information about valid arguments.
-- ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
+- ``IS_AUTOMATED_BUILD``: Used in conda-forge CI to tweak the build for the managed CI machines
 - ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
   ``None`` which is ``cwd()``
 - ``BAZEL_SH``: used on Windows to find a ``bash.exe``, see below

@@ -221,7 +221,7 @@ All Ray loggers are automatically configured in ``ray._private.ray_logging``. To
 import logging
 
 logger = logging.getLogger("ray")
-logger # Modify the Ray logging config
+logger.setLevel(logging.WARNING) # Modify the Ray logging config
 ```
 Similarly, to modify the logging configuration for Ray libraries, specify the appropriate logger name:
 
@@ -242,12 +242,9 @@ ray_data_logger.setLevel(logging.WARNING)
 # Here's how to add an aditional file handler for Ray Tune:
 ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ```
-(structured-logging)=
-## Structured logging
-Implement structured logging to enable downstream users and applications to consume the logs efficiently.
 
-### Application logs
-A Ray app includes both driver and worker processes. For Python apps, use Python loggers to format and structure your logs.
+### Using Ray logger for application logs
+A Ray app includes both driver and worker processes. For Python apps, use Python loggers to format your logs.
 As a result, you need to set up Python loggers for both driver and worker processes.
 
 ::::{tab-set}
@@ -265,7 +262,7 @@ Set up the Python logger for driver and worker processes separately:
 
 ![Set up python loggers](../images/setup-logger-application.png)
 
-If you want to control the logger for particular actors or tasks, view [customizing logger for individual worker process](#customizing-worker-process-loggers)
+If you want to control the logger for particular actors or tasks, view the following [customizing logger for individual worker process](#customizing-worker-process-loggers).
 
 :::
 
@@ -275,38 +272,202 @@ If you are using any of the Ray libraries, follow the instructions provided in t
 
 ::::
 
-### System logs
-Most of Ray’s system or component logs are structured by default. <br />
+### Customizing worker process loggers
 
-Logging format for Python logs <br />
+Ray executes Tasks and Actors remotely in Ray's worker processes. To provide your own logging configuration for the worker processes, customize the worker loggers with the instructions below:
+::::{tab-set}
+
+:::{tab-item} Ray Core: individual worker process
+Customize the logger configuration when you define the Tasks or Actors.
+```python
+import ray
+import logging
+# Initiate a driver.
+ray.init()
+
+@ray.remote
+class Actor:
+    def __init__(self):
+        # Basic config automatically configures logs to
+        # stream to stdout and stderr.
+        # Set the severity to INFO so that info logs are printed to stdout.
+        logging.basicConfig(level=logging.INFO)
+
+    def log(self, msg):
+        logger = logging.getLogger(__name__)
+        logger.info(msg)
+
+actor = Actor.remote()
+ray.get(actor.log.remote("A log message for an actor."))
+
+@ray.remote
+def f(msg):
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.info(msg)
+
+ray.get(f.remote("A log message for a task."))
+```
+
 ```bash
-%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s
+(Actor pid=179641) INFO:__main__:A log message for an actor.
+(f pid=177572) INFO:__main__:A log message for a task.
 ```
-
-Example: <br />
-```
-2023-06-01 09:15:34,601	INFO job_manager.py:408 -- Submitting job with RAY_ADDRESS = 10.0.24.73:6379
-```
-
-
-Logging format for CPP logs <br />
-
-```bash
-[year-month-day, time, pid, thread_id] (component) [file]:[line] [message]
-```
-
-Example: <br />
-
-```bash
-[2023-06-01 08:47:47,457 I 31009 225171] (gcs_server) gcs_node_manager.cc:42: Registering node info, node id = 8cc65840f0a332f4f2d59c9814416db9c36f04ac1a29ac816ad8ca1e, address = 127.0.0.1, node name = 127.0.0.1
-```
-
-:::{note}
-Some system component logs are not structured as suggested above as of 2.5. The migration of system logs to structured logs is ongoing.
 :::
 
-### Add metadata to structured logs
-If you need additional metadata to make logs more structured, fetch the metadata of Jobs, Tasks or Actors with Ray’s {py:obj}`ray.runtime_context.get_runtime_context` API.
+:::{tab-item} Ray Core: all worker processes of a job
+
+```{admonition} Caution
+:class: caution
+This is an experimental feature. The semantic of the API is subject to change.
+It doesn't support [Ray Client](ray-client-ref) yet.
+```
+
+Use `worker_process_setup_hook` to apply the new logging configuration to all worker processes within a job.
+
+```python
+# driver.py
+def logging_setup_func():
+    logger = logging.getLogger("ray")
+    logger.setLevel(logging.DEBUG)
+    warnings.simplefilter("always")
+
+ray.init(runtime_env={"worker_process_setup_hook": logging_setup_func})
+
+logging_setup_func()
+```
+:::
+
+:::{tab-item} Ray libraries
+If you use any of the Ray libraries, follow the instructions provided in the documentation for the library.
+:::
+
+::::
+
+(structured-logging)=
+## Structured logging
+Implement structured logging to enable downstream users and applications to consume the logs efficiently.
+
+### Application logs
+
+Ray enables users to configure the Python logging library to output logs in a structured format. This setup standardizes log entries, making them easier to handle.
+
+#### Configure structured logging for Ray Core
+
+```{admonition} Ray libraries
+If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
+```
+
+The following methods are ways to configure Ray Core's structure logging format:
+
+##### Method 1: Configure structured logging with `ray.init`
+```python
+ray.init(
+    log_to_driver=False,
+    logging_config=ray.LoggingConfig(encoding="JSON", log_level="INFO")
+)
+```
+
+You can configure the following parameters:
+
+* `encoding`: The encoding format for the logs. The default is `TEXT` for plain text logs.
+The other option is `JSON` for structured logs.
+In both `TEXT` and `JSON` encoding formats, the logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, and `task_id`, if available.
+
+* `log_level`: The log level for the driver process. The default is `INFO`.
+Available log levels are defined in the [Python logging library](https://docs.python.org/3/library/logging.html#logging-levels).
+
+When you set up `logging_config` in `ray.init`, it configures the root loggers for the driver process, Ray actors, and Ray tasks.
+
+```{admonition} note
+The `log_to_driver` parameter is set to `False` to disable logging to the driver
+process as the redirected logs to the driver will include prefixes that made the logs
+not JSON parsable.
+```
+
+##### Method 2: Configure structured logging with an environment variable
+
+You can set the `RAY_LOGGING_CONFIG_ENCODING` environment variable to `TEXT` or `JSON` to set the encoding format for the logs.
+Note that the environment variable needs to be set before `import ray`.
+
+```python
+import os
+os.environ["RAY_LOGGING_CONFIG_ENCODING"] = "JSON"
+
+import ray
+import logging
+
+ray.init(log_to_driver=False)
+# Use the root logger to print log messages.
+```
+#### Example
+
+The following example configures the `LoggingConfig` to output logs in a structured JSON format and sets the log level to `INFO`.
+It then logs messages with the root loggers in the driver process, Ray tasks, and Ray actors.
+The logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, and `task_id`.
+
+```python
+import ray
+import logging
+
+ray.init(
+    log_to_driver=False,
+    logging_config=ray.LoggingConfig(encoding="JSON", log_level="INFO", additional_log_standard_attrs=['name'])
+)
+
+def init_logger():
+    """Get the root logger"""
+    return logging.getLogger()
+
+logger = logging.getLogger()
+logger.info("Driver process")
+
+@ray.remote
+def f():
+    logger = init_logger()
+    logger.info("A Ray task")
+
+@ray.remote
+class actor:
+    def print_message(self):
+        logger = init_logger()
+        logger.info("A Ray actor")
+
+task_obj_ref = f.remote()
+ray.get(task_obj_ref)
+
+actor_instance = actor.remote()
+ray.get(actor_instance.print_message.remote())
+
+"""
+{"asctime": "2024-07-15 19:06:06,469", "levelname": "INFO", "message": "Driver process", "filename": "test.py", "lineno": 12, "job_id": "03000000", "worker_id": "03000000ffffffffffffffffffffffffffffffffffffffffffffffff", "node_id": "824f9d7c6a82a0faf42b91f07b42667df0831034a713f04f28ba84b9"}
+(f pid=4871) {"asctime": "2024-07-15 19:06:07,435", "levelname": "INFO", "message": "A Ray task", "filename": "test.py", "lineno": 17, "job_id": "03000000", "worker_id": "f8f84d811683e5d9e03744a4386b26a5cd6f6ca09fc5cdc8e1dbe5a3", "node_id": "824f9d7c6a82a0faf42b91f07b42667df0831034a713f04f28ba84b9", "task_id": "fa31b89f94899135ffffffffffffffffffffffff03000000"}
+(actor pid=4939) {"asctime": "2024-07-15 19:06:08,700", "levelname": "INFO", "message": "A Ray actor", "filename": "test.py", "lineno": 23, "job_id": "03000000", "worker_id": "51d62f87e3867cdcad9aecd7b431068ea433b3104c8cc4ed1db6eef7", "node_id": "824f9d7c6a82a0faf42b91f07b42667df0831034a713f04f28ba84b9", "actor_id": "4a03b12afe5598a00eadcf9503000000", "task_id": "0ab01f2d6283d7194a03b12afe5598a00eadcf9503000000"}
+"""
+```
+
+#### Add metadata to structured logs
+
+Add extra fields to the log entries by using the `extra` parameter in the `logger.info` method.
+
+```python
+import ray
+import logging
+
+ray.init(
+    log_to_driver=False,
+    logging_config=ray.LoggingConfig(encoding="JSON", log_level="INFO")
+)
+
+logger = logging.getLogger()
+logger.info("Driver process with extra fields", extra={"username": "anyscale"})
+
+# The log entry includes the extra field "username" with the value "anyscale".
+
+# {"asctime": "2024-07-17 21:57:50,891", "levelname": "INFO", "message": "Driver process with extra fields", "filename": "test.py", "lineno": 9, "username": "anyscale", "job_id": "04000000", "worker_id": "04000000ffffffffffffffffffffffffffffffffffffffffffffffff", "node_id": "76cdbaa32b3938587dcfa278201b8cef2d20377c80ec2e92430737ae"}
+```
+
+If needed, you can fetch the metadata of Jobs, Tasks, or Actors with Ray’s {py:obj}`ray.runtime_context.get_runtime_context` API.
 ::::{tab-set}
 
 :::{tab-item} Ray Job
@@ -382,77 +543,34 @@ If you need node IP, use {py:obj}`ray.nodes` API to fetch all nodes and map the 
 
 ::::
 
-## Customizing worker process loggers
+### System logs
+Ray structures most system or component logs by default. <br />
 
-When using Ray, Tasks and Actors are executed remotely in Ray's worker processes. To provide your own logging configuration for the worker processes, customize the worker loggers with the instructions below:
-::::{tab-set}
-
-:::{tab-item} Ray Core: individual worker process
-Customize the logger configuration when you define the Tasks or Actors.
-```python
-import ray
-import logging
-# Initiate a driver.
-ray.init()
-
-@ray.remote
-class Actor:
-    def __init__(self):
-        # Basic config automatically configures logs to
-        # stream to stdout and stderr.
-        # Set the severity to INFO so that info logs are printed to stdout.
-        logging.basicConfig(level=logging.INFO)
-
-    def log(self, msg):
-        logger = logging.getLogger(__name__)
-        logger.info(msg)
-
-actor = Actor.remote()
-ray.get(actor.log.remote("A log message for an actor."))
-
-@ray.remote
-def f(msg):
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    logger.info(msg)
-
-ray.get(f.remote("A log message for a task."))
+Logging format for Python logs <br />
+```bash
+%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s
 ```
+
+Example: <br />
+```
+2023-06-01 09:15:34,601	INFO job_manager.py:408 -- Submitting job with RAY_ADDRESS = 10.0.24.73:6379
+```
+
+Logging format for c++ logs <br />
 
 ```bash
-(Actor pid=179641) INFO:__main__:A log message for an actor.
-(f pid=177572) INFO:__main__:A log message for a task.
-```
-:::
-
-:::{tab-item} Ray Core: all worker processes of a job
-
-```{admonition} Caution
-:class: caution
-This is an experimental feature. The semantic of the API is subject to change.
-It doesn't support [Ray Client](ray-client-ref) yet.
+[year-month-day, time, pid, thread_id] (component) [file]:[line] [message]
 ```
 
-Use `worker_process_setup_hook` to apply the new logging configuration to all worker processes within a job.
+Example: <br />
 
-```python
-# driver.py
-def logging_setup_func():
-    logger = logging.getLogger("ray")
-    logger.setLevel(logging.DEBUG)
-    warnings.simplefilter("always")
-
-ray.init(runtime_env={"worker_process_setup_hook": logging_setup_func})
-
-logging_setup_func()
+```bash
+[2023-06-01 08:47:47,457 I 31009 225171] (gcs_server) gcs_node_manager.cc:42: Registering node info, node id = 8cc65840f0a332f4f2d59c9814416db9c36f04ac1a29ac816ad8ca1e, address = 127.0.0.1, node name = 127.0.0.1
 ```
-:::
 
-:::{tab-item} Ray libraries
-If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
+:::{note}
+Some system component logs aren't structured as suggested preceding as of 2.5. The migration of system logs to structured logs is ongoing.
 :::
-
-::::
 
 (log-rotation)=
 ## Log rotation

@@ -35,11 +35,7 @@ struct redisContext;
 struct redisAsyncContext;
 struct redisSSLContext;
 
-namespace ray {
-
-namespace gcs {
-
-using rpc::TablePrefix;
+namespace ray::gcs {
 
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
@@ -190,6 +186,4 @@ class RedisContext {
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
 };
 
-}  // namespace gcs
-
-}  // namespace ray
+}  // namespace ray::gcs

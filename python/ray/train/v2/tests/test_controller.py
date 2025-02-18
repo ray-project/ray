@@ -33,12 +33,10 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
-    WorkerGroupPollStatus,
-    WorkerStatus,
-)
-from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
+    WorkerGroupPollStatus,
     WorkerGroupState,
+    WorkerStatus,
 )
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -48,7 +46,14 @@ class DummyWorkerGroup(WorkerGroup):
 
     _start_failure = None
 
-    def __init__(self, *args, **kwargs):
+    # TODO: Clean this up and use Mocks instead.
+    def __init__(
+        self,
+        train_run_context: TrainRunContext,
+        worker_group_context: WorkerGroupContext,
+        callbacks=None,
+    ):
+        self._num_workers = worker_group_context.num_workers
         self._worker_group_state = None
         self._worker_statuses = {}
 
@@ -57,8 +62,8 @@ class DummyWorkerGroup(WorkerGroup):
             worker_statuses=self._worker_statuses,
         )
 
-    def _start(self, worker_group_context: WorkerGroupContext):
-        num_workers = worker_group_context.num_workers
+    def _start(self):
+        num_workers = self._num_workers
         if self._start_failure:
             raise self._start_failure
 
@@ -103,7 +108,9 @@ class MockScalingPolicy(ScalingPolicy):
         return NoopDecision()
 
     def make_decision_for_running_worker_group(
-        self, worker_group_status: WorkerGroupPollStatus
+        self,
+        worker_group_state: WorkerGroupState,
+        worker_group_status: WorkerGroupPollStatus,
     ) -> ScalingDecision:
         if self._monitor_decision_queue:
             return self._monitor_decision_queue.pop(0)
@@ -354,7 +361,6 @@ def test_controller_callback():
         def before_controller_execute_failure_decision(
             self,
             failure_decision: FailureDecision,
-            worker_group_status: WorkerGroupPollStatus,
         ):
             self.failure_decision_called = True
 

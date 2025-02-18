@@ -86,21 +86,47 @@ class ExternalStorage(metaclass=abc.ABCMeta):
     """
 
     HEADER_LENGTH = 24
+    CORE_WORKER_INIT_GRACE_PERIOD_S = 1
+
+    def __init__(self):
+        # NOTE(edoakes): do not access this field directly. Use the `core_worker`
+        # property instead to handle initialization race conditions.
+        self._core_worker: Optional["ray._raylet.CoreWorker"] = None
+
+    @property
+    def core_worker(self) -> "ray._raylet.CoreWorker":
+        """Get the core_worker initialized in this process.
+
+        In rare cases, the core worker may not be fully initialized by the time an I/O
+        worker begins to execute an operation because there is no explicit flag set to
+        indicate that the Python layer is ready to execute tasks.
+        """
+        if self._core_worker is None:
+            worker = ray._private.worker.global_worker
+            start = time.time()
+            while not worker.connected:
+                time.sleep(0.001)
+                if time.time() - start > self.CORE_WORKER_INIT_GRACE_PERIOD_S:
+                    raise RuntimeError(
+                        "CoreWorker didn't initialize within grace period of "
+                        f"{self.CORE_WORKER_INIT_GRACE_PERIOD_S}s."
+                    )
+
+            self._core_worker = worker.core_worker
+
+        return self._core_worker
 
     def _get_objects_from_store(self, object_refs):
-        worker = ray._private.worker.global_worker
         # Since the object should always exist in the plasma store before
         # spilling, it can directly get the object from the local plasma
         # store.
         # issue: https://github.com/ray-project/ray/pull/13831
-        ray_object_pairs = worker.core_worker.get_if_local(object_refs)
-        return ray_object_pairs
+        return self.core_worker.get_if_local(object_refs)
 
     def _put_object_to_store(
         self, metadata, data_size, file_like, object_ref, owner_address
     ):
-        worker = ray._private.worker.global_worker
-        worker.core_worker.put_file_like_object(
+        self.core_worker.put_file_like_object(
             metadata, data_size, file_like, object_ref, owner_address
         )
 
@@ -257,6 +283,8 @@ class FileSystemStorage(ExternalStorage):
         directory_path: Union[str, List[str]],
         buffer_size: Optional[int] = None,
     ):
+        super().__init__()
+
         # -- A list of directory paths to spill objects --
         self._directory_paths = []
         # -- Current directory to spill objects --
@@ -380,6 +408,8 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
         # Override the storage config for unit tests.
         _force_storage_for_testing: Optional[str] = None,
     ):
+        super().__init__()
+
         from ray._private import storage
 
         if _force_storage_for_testing:
@@ -477,6 +507,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
         override_transport_params: dict = None,
         buffer_size=1024 * 1024,  # For remote spilling, at least 1MB is recommended.
     ):
+        super().__init__()
+
         try:
             from smart_open import open  # noqa
         except ModuleNotFoundError as e:
@@ -603,7 +635,7 @@ class UnstableFileStorage(FileSystemStorage):
         failed = r < self._failure_rate
         partial_failed = r < self._partial_failure_ratio
         if failed:
-            raise IOError("Spilling object failed")
+            raise IOError("Spilling object failed intentionally for testing.")
         elif partial_failed:
             i = random.choice(range(len(object_refs)))
             return super().spill_objects(object_refs[:i], owner_addresses)

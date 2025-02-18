@@ -39,22 +39,22 @@ An actor can be in one of the following states:
 
 - **4**: When the actor is successfully reconstructed, GCS will update its state to `ALIVE` in the database.
 
-- **5**:  
+- **5**:
 
   1) If the actor is restarting, GCS detects that its worker or node is dead and its remaining restarts number is 0, it will update its state to `DEAD` in database.
-  
+
   2) If an actor is non-detached, when GCS detects that its owner is dead, it will update its state to `DEAD` in the database.
 
-- **6**: 
-  
+- **6**:
+
   1) When GCS detected that an actor is dead and its remaining restarts number is 0, it will update its state to `DEAD` in database.
-  
+
   2) If the actor is non-detached, when GCS detects that its owner is dead, it will update its state to `DEAD` in the database.
 
 - **7**: If the actor is non-detached, when GCS detects that its owner is dead, it will update its state to `DEAD` in the database.
 
-- **8**: 
-  
+- **8**:
+
   1) For both detached and non-detached actors, when GCS detects that an actor's creator is dead, it will update its state to `DEAD`. Because in this case, the actor can never be created.
-  
+
   2) If the actor is non-detached, when GCS detects that its owner is dead, it will update its state to `DEAD` in the database.

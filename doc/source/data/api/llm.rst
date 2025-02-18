@@ -32,3 +32,4 @@ Processor Configs
 
     ~ProcessorConfig
     ~HttpRequestProcessorConfig
+    ~vLLMEngineProcessorConfig

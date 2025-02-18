@@ -1313,11 +1313,7 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     import grpc
-
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     from ray._private.tls_utils import load_certs_from_env
 

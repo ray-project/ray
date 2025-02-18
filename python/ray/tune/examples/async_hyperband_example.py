@@ -3,7 +3,7 @@
 import argparse
 import time
 
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
@@ -20,7 +20,7 @@ def easy_objective(config):
         # Iterative training function - can be an arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        tune.report({"iterations": step, "mean_loss": intermediate_score})
 
 
 if __name__ == "__main__":
@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         tune.with_resources(easy_objective, {"cpu": 1, "gpu": 0}),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="asynchyperband_test",
             stop=stopping_criteria,
             verbose=1,

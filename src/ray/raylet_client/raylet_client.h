@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -289,7 +292,7 @@ class RayletClient : public RayletClientInterface {
   /// Connect to the raylet via grpc only.
   ///
   /// \param grpc_client gRPC client to the raylet.
-  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+  explicit RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't

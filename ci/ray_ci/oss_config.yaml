@@ -2,6 +2,7 @@ release_byod:
   ray_ecr: rayproject
   ray_cr_repo: ray
   ray_ml_cr_repo: ray-ml
+  ray_llm_cr_repo: ray-llm
   byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
@@ -15,7 +16,7 @@ ci_pipeline:
     - 018e0f94-ccb6-45c2-b072-1e624fe9a404  # postmerge-macos
     - 018af6d3-58e1-463f-90ec-d9aa4a4f57f1  # release
     - 018773ff-b5db-4dcb-8a49-1c6492b4d0f4  # bisect
-  buildkite_secret: ray_ci_buildkite_token 
+  buildkite_secret: ray_ci_buildkite_token
 state_machine:
   pr:
     aws_bucket: ray-ci-pr-results

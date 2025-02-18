@@ -50,6 +50,12 @@ DEFAULT_SHUFFLE_TARGET_MAX_BLOCK_SIZE = 1024 * 1024 * 1024
 # blocks larger than this threshold.
 MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
+# We will attempt to slice blocks whose size exceeds this factor *
+# target_num_rows_per_block. We will warn the user if slicing fails and we produce
+# blocks with more rows than this threshold.
+MAX_SAFE_ROWS_PER_BLOCK_FACTOR = 1.5
+
+
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
 # This default appears to work well with most file sizes on remote storage systems,

@@ -4,7 +4,7 @@
     :target: http://docs.ray.io/en/master/?badge=master
 
 .. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
-    :target: https://forms.gle/9TSdDYUgxYs8SA9e8
+    :target: https://www.ray.io/join-slack
 
 .. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
     :target: https://discuss.ray.io/
