@@ -256,6 +256,7 @@ enum ErrorType {
   // ACTOR_DIED is that the actor may still be alive and may become available again
   // after some retries.
   ACTOR_UNAVAILABLE = 25;
+  OBJECT_IN_ACTOR = 26;
 }
 
 /// The information per ray error type.

@@ -3382,6 +3382,10 @@ Status CoreWorker::ExecuteTask(
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects());
 
+
+  // Python part is done. Return objects should be either a local memory buffer
+  // or a buffer in Plasma store.
+
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
   // the caller. This will notify the caller of any IDs that we (or a nested

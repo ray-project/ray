@@ -4362,6 +4362,8 @@ cdef class CoreWorker:
         task_output_inlined_bytes = 0
         i = -1
         for i, output in enumerate(outputs):
+            import torch
+
             if num_returns >= 0 and i >= num_returns:
                 raise ValueError(
                     "Task returned more than num_returns={} objects.".format(
@@ -4389,6 +4391,14 @@ cdef class CoreWorker:
                 continue
 
             context = worker.get_serialization_context()
+
+            if isinstance(output, torch.Tensor):
+                assert False
+
+                # TODO:
+                # - Skip serialization
+                # - store in Python actor store.
+                # - Return OBJECT_IN_ACTOR value.
 
             serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
