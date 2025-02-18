@@ -26,6 +26,10 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
+#include <string>
+#include <vector>
+#include <memory>
+
 namespace ray {
 namespace stats {
 
