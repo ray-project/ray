@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from unittest.mock import AsyncMock, patch
 from ray.llm._internal.batch.stages.http_request_stage import HttpRequestUDF
@@ -87,3 +89,7 @@ async def test_http_request_udf_with_qps():
 
         assert len(results) == 2
         assert mock_sleep.called  # Should have called sleep for QPS limiting
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -239,10 +239,12 @@ class StatefulStage(BaseModel):
         description="The well-optimized stateful UDF for this stage."
     )
     fn_constructor_kwargs: Dict[str, Any] = Field(
-        description="The keyword arguments of the UDF constructor."
+        default_factory=dict,
+        description="The keyword arguments of the UDF constructor.",
     )
     map_batches_kwargs: Dict[str, Any] = Field(
-        description="The arguments of .map_batches()."
+        default_factory=lambda: {"concurrency": 1},
+        description="The arguments of .map_batches(). Default {'concurrency': 1}.",
     )
 
     def get_dataset_map_batches_kwargs(

@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from PIL import Image
@@ -160,3 +162,7 @@ async def test_prepare_image_udf_invalid_image_type(mock_image_processor):
     with pytest.raises(ValueError, match="Cannot handle image type"):
         async for _ in udf(batch):
             pass
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

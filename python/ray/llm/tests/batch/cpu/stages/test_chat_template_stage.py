@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from unittest.mock import patch, MagicMock
 from ray.llm._internal.batch.stages.chat_template_stage import ChatTemplateUDF
@@ -5,13 +7,10 @@ from ray.llm._internal.batch.stages.chat_template_stage import ChatTemplateUDF
 
 @pytest.fixture
 def mock_tokenizer_setup():
-    with patch(
-        "ray.llm._internal.batch.stages.chat_template_stage.get_cached_tokenizer"
-    ) as mock_get_tokenizer, patch("transformers.AutoTokenizer") as mock_auto_tokenizer:
-        mock_tokenizer = MagicMock()
-        mock_get_tokenizer.return_value = mock_tokenizer
-        mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
-        yield mock_tokenizer
+    with patch("transformers.AutoProcessor") as mock_auto_processor:
+        mock_processor = MagicMock()
+        mock_auto_processor.from_pretrained.return_value = mock_processor
+        yield mock_processor
 
 
 @pytest.mark.asyncio
@@ -93,3 +92,7 @@ def test_chat_template_udf_expected_input_keys(mock_tokenizer_setup):
         model="test-model",
     )
     assert udf.expected_input_keys == ["messages"]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

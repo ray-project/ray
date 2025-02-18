@@ -1,6 +1,7 @@
 import asyncio
 import pytest
 import math
+import sys
 from unittest.mock import MagicMock, AsyncMock, patch
 
 from ray.llm._internal.batch.stages.vllm_engine_stage import (
@@ -8,6 +9,7 @@ from ray.llm._internal.batch.stages.vllm_engine_stage import (
     vLLMEngineStageUDF,
     vLLMEngineWrapper,
 )
+from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -50,29 +52,29 @@ def mock_vllm_wrapper():
         yield mock_wrapper
 
 
-def test_vllm_engine_stage_post_init(download_model_ckpt):
+def test_vllm_engine_stage_post_init(gpu_type, model_opt_125m):
     stage = vLLMEngineStage(
         fn_constructor_kwargs=dict(
-            model=download_model_ckpt,
+            model=model_opt_125m,
             engine_kwargs=dict(
                 tensor_parallel_size=4,
                 pipeline_parallel_size=2,
                 distributed_executor_backend="ray",
             ),
-            task_type="generate",
+            task_type=vLLMTaskType.GENERATE,
             max_pending_requests=10,
         ),
         map_batches_kwargs=dict(
             zero_copy_batch=True,
             concurrency=1,
             max_concurrency=4,
-            accelerator_type="L4",
+            accelerator_type=gpu_type,
         ),
     )
 
     assert stage.fn_constructor_kwargs == {
-        "model": download_model_ckpt,
-        "task_type": "generate",
+        "model": model_opt_125m,
+        "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 10,
         "engine_kwargs": {
             "tensor_parallel_size": 4,
@@ -85,9 +87,8 @@ def test_vllm_engine_stage_post_init(download_model_ckpt):
         "zero_copy_batch": True,
         "concurrency": 1,
         "max_concurrency": 4,
-        "accelerator_type": "L4",
+        "accelerator_type": gpu_type,
         "num_gpus": 0,
-        "runtime_env": {},
     }
     scheduling_strategy = ray_remote_args_fn()["scheduling_strategy"]
     assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
@@ -95,30 +96,30 @@ def test_vllm_engine_stage_post_init(download_model_ckpt):
     bundle_specs = scheduling_strategy.placement_group.bundle_specs
     assert len(bundle_specs) == 8
     for bundle_spec in bundle_specs:
-        assert bundle_spec["accelerator_type:L4"] == 0.001
+        assert bundle_spec[f"accelerator_type:{gpu_type}"] == 0.001
         assert bundle_spec["CPU"] == 1.0
         assert bundle_spec["GPU"] == 1.0
 
 
 @pytest.mark.asyncio
-async def test_vllm_engine_udf_basic(mock_vllm_wrapper, download_model_ckpt):
+async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_opt_125m):
     # Create UDF instance - it will use the mocked wrapper
     udf = vLLMEngineStageUDF(
         data_column="__data",
-        model=download_model_ckpt,
-        task_type="generate",
+        model=model_opt_125m,
+        task_type=vLLMTaskType.GENERATE,
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
             # Test that this should be overridden by the stage.
-            "task": "random-task",
+            "task": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
         },
     )
 
-    assert udf.model == download_model_ckpt
-    assert udf.task_type == "generate"
-    assert udf.engine_kwargs["task"] == "generate"
+    assert udf.model == model_opt_125m
+    assert udf.task_type == vLLMTaskType.GENERATE
+    assert udf.engine_kwargs["task"] == vLLMTaskType.GENERATE
     assert udf.engine_kwargs["max_num_seqs"] == 100
     assert udf.max_pending_requests == math.ceil(100 * 1.1)
 
@@ -144,17 +145,17 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, download_model_ckpt):
 
     # Verify the wrapper was constructed with correct arguments
     mock_vllm_wrapper.assert_called_once_with(
-        model=download_model_ckpt,
+        model=model_opt_125m,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=111,
-        task="generate",
+        task=vLLMTaskType.GENERATE,
         max_num_seqs=100,
     )
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_semaphore(download_model_ckpt):
+async def test_vllm_wrapper_semaphore(model_opt_125m):
     from vllm.outputs import RequestOutput, CompletionOutput
 
     max_pending_requests = 2
@@ -203,7 +204,7 @@ async def test_vllm_wrapper_semaphore(download_model_ckpt):
 
         # Create wrapper with max 2 pending requests
         wrapper = vLLMEngineWrapper(
-            model=download_model_ckpt,
+            model=model_opt_125m,
             idx_in_batch_column="__idx_in_batch",
             disable_log_stats=True,
             max_pending_requests=max_pending_requests,
@@ -223,19 +224,19 @@ async def test_vllm_wrapper_semaphore(download_model_ckpt):
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_generate(download_model_ckpt):
+async def test_vllm_wrapper_generate(model_opt_125m):
     # TODO: Test v1 engine. The issue is once vLLM is imported with v0,
     # we cannot configure it to use v1, so we need a separate test for v1.
 
     wrapper = vLLMEngineWrapper(
-        model=download_model_ckpt,
+        model=model_opt_125m,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
         gpu_memory_utilization=0.3,
-        task="generate",
+        task=vLLMTaskType.GENERATE,
     )
 
     batch = [
@@ -269,16 +270,16 @@ async def test_vllm_wrapper_generate(download_model_ckpt):
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_embed(download_model_ckpt):
+async def test_vllm_wrapper_embed(model_opt_125m):
     wrapper = vLLMEngineWrapper(
-        model=download_model_ckpt,
+        model=model_opt_125m,
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
         gpu_memory_utilization=0.3,
-        task="embed",
+        task=vLLMTaskType.EMBED,
     )
 
     batch = [
@@ -291,3 +292,7 @@ async def test_vllm_wrapper_embed(download_model_ckpt):
     for resp in asyncio.as_completed(tasks):
         _, output = await resp
         assert output["embeddings"].shape == (768,)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
