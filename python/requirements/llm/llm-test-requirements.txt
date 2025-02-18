@@ -1,4 +1,3 @@
 pytest
 aiohttp
 pillow
-httpx==0.27.2
