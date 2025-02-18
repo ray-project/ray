@@ -750,7 +750,7 @@ class ExecutableTask:
         # Write the output. Wrap the output in a GPU future if overlapping GPU
         # communication.
         if self.output_writer is not None:
-            if overlap_gpu_communication:
+            if overlap_gpu_communication and self.nccl_op is not None:
                 output_val = GPUFuture(output_val)
                 # Cache the future so that the CUDA event it tracks can be
                 # destroyed properly upon DAG teardown.
