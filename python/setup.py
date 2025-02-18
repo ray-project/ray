@@ -369,6 +369,7 @@ if setup_spec.type == SetupType.RAY:
                 "jsonref==1.1.0",
                 "aiobotocore",
                 "boto3",
+                "async_timeout",
             ]
             + setup_spec.extras["data"]
         )
