@@ -476,6 +476,35 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
+    def count(self, on: str) -> Optional[U]:
+        """Returns a count of the distinct values in the provided column"""
+        raise NotImplementedError
+
+    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a sum of the values in the provided column"""
+        raise NotImplementedError
+
+    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a min of the values in the provided column"""
+        raise NotImplementedError
+
+    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a max of the values in the provided column"""
+        raise NotImplementedError
+
+    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        """Returns a mean of the values in the provided column"""
+        raise NotImplementedError
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        on: str,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+    ) -> Optional[U]:
+        """Returns a sum of diffs (from mean) squared for the provided column"""
+        raise NotImplementedError
+
     def sort(self, sort_key: "SortKey") -> "Block":
         """Returns new block sorted according to provided `sort_key`"""
         raise NotImplementedError
