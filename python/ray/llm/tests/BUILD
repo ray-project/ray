@@ -57,13 +57,13 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
-# Large tests
+# Large GPU tests
 py_test_module_list(
   files = [
     "serve/integration/test_openai_compatibility.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "large",
-  tags = ["exclusive", "cpu", "team:llm"],
+  tags = ["exclusive", "gpu", "team:llm"],
   deps = ["//:ray_lib", ":conftest"],
 )
