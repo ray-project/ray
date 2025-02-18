@@ -446,6 +446,8 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   const auto nested_refs =
       VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
 
+  RAY_LOG(WARNING) << "Task return object " << object_id << (return_object.in_plasma() ? " stored in plasma " : " inlined");
+
   if (return_object.in_plasma()) {
     // NOTE(swang): We need to add the location of the object before marking
     // it as local in the in-memory store so that the data locality policy
@@ -476,6 +478,11 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     }
 
     RayObject object(data_buffer, metadata_buffer, nested_refs);
+
+    rpc::ErrorType error_type;
+    if (object.IsException(&error_type)) {
+      RAY_LOG(WARNING) << "Task return object " << object_id << " has error type: " << error_type;
+    }
     if (store_in_plasma) {
       put_in_local_plasma_callback_(object, object_id);
     } else {

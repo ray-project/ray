@@ -18,6 +18,9 @@ import torch.distributed as dist
 # 4. In pyx execute_task handler, replace OBJECT_IN_ACTOR_STORE args
 # with object from python actor state. Error if not found.
 
+# Driver needs to store:
+# - which actor holds the object
+# - the shape and dtype for the object
 # On driver:
 # 1. On initial task submission with the decorator call, put
 # OBJECT_IN_ACTOR_STORE in local object store.
@@ -70,28 +73,30 @@ if __name__ == "__main__":
     shape = (100, )
 
     ref = actors[0].randn.remote(shape)
+    print("ObjectRef:", ref)
+    print(ray.get(ref))
 
-    # After getting response from actor A, driver will now have in its local
-    # heap object store:
-    # ObjRef(xxx) -> OBJECT_IN_ACTOR, A.address
+    ## After getting response from actor A, driver will now have in its local
+    ## heap object store:
+    ## ObjRef(xxx) -> OBJECT_IN_ACTOR, A.address
 
-    # TODO: On task submission to actor B, driver looks up arguments to the task. 
-    # driver:
-    # - Driver sees that `ref` argument is on actor A.
-    # - Driver submits A.send, B.recv tasks. Include ObjRef.
-    # - Then, driver submits actual B.sum task.
-    # B:
-    # - Execute recv. B will have the tensor in its local actor store.
-    # - Execute sum. When looking up arguments, it sees OBJECT_IN_ACTOR, so it
-    # gets the actual value from its local actor store (which we know is
-    # already there).
-    s = ray.get(actors[1].sum.remote(ref))
-    t = ray.get(ref)
-    assert t.sum() == s
+    ## TODO: On task submission to actor B, driver looks up arguments to the task. 
+    ## driver:
+    ## - Driver sees that `ref` argument is on actor A.
+    ## - Driver submits A.send, B.recv tasks. Include ObjRef.
+    ## - Then, driver submits actual B.sum task.
+    ## B:
+    ## - Execute recv. B will have the tensor in its local actor store.
+    ## - Execute sum. When looking up arguments, it sees OBJECT_IN_ACTOR, so it
+    ## gets the actual value from its local actor store (which we know is
+    ## already there).
+    #s = ray.get(actors[1].sum.remote(ref))
+    #t = ray.get(ref)
+    #assert t.sum() == s
 
-    # Instead of calling send/recv manually, we would like to do it
-    # automatically, using the above API.
-    actors[0].send.remote(1, ref)
-    recved = actors[1].recv.remote(0, shape)
-    s = ray.get(actors[1].sum.remote(recved))
-    assert t.sum() == s
+    ## Instead of calling send/recv manually, we would like to do it
+    ## automatically, using the above API.
+    #actors[0].send.remote(1, ref)
+    #recved = actors[1].recv.remote(0, shape)
+    #s = ray.get(actors[1].sum.remote(recved))
+    #assert t.sum() == s

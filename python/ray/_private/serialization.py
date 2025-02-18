@@ -435,6 +435,12 @@ class SerializationContext:
                 else:
                     actor_id = None
                 return ActorUnavailableError(error_info.error_message, actor_id)
+            elif error_type == ErrorType.Value(
+                "OBJECT_IN_ACTOR"
+            ):
+                # TODO: Look up the actual object from our local Python object
+                # store. Hopefully it's actually there.
+                assert False, "SUCCESS"
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:

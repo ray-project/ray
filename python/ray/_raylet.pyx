@@ -266,6 +266,16 @@ async_task_function_name = contextvars.ContextVar('async_task_function_name',
                                                   default=None)
 
 
+
+class RayActorObjectMetadata:
+    """
+    Metadata for an object stored in a Ray actor's local Python store.
+    """
+    def __init__(self, shape, dtype):
+        self.shape = shape
+        self.dtype = dtype
+
+
 class DynamicObjectRefGenerator:
     def __init__(self, refs):
         # TODO(swang): As an optimization, can also store the generator
@@ -4393,16 +4403,23 @@ cdef class CoreWorker:
             context = worker.get_serialization_context()
 
             if isinstance(output, torch.Tensor):
-                assert False
-
+                output = RayActorObjectMetadata(output.shape, output.dtype)
+                serialized_object = context.serialize(output)
+                # metadata = b"PYTHON"
+                # Replace with OBJECT_IN_ACTOR metadata, so that the driver can
+                # see that this object is actually stored on the actor.
+                metadata_str = str(ray.core.generated.common_pb2.ErrorType.OBJECT_IN_ACTOR)
                 # TODO:
                 # - Skip serialization
                 # - store in Python actor store.
                 # - Return OBJECT_IN_ACTOR value.
+                #   - Metadata: OBJECT_IN_ACTOR value
+                #   - Data: RayActorObjectMetadata(tensor shape, tensor dtype, actor address?)
+            else:
+                serialized_object = context.serialize(output)
+                metadata_str = serialized_object.metadata
 
-            serialized_object = context.serialize(output)
             data_size = serialized_object.total_bytes
-            metadata_str = serialized_object.metadata
             if ray._private.worker.global_worker.debugger_get_breakpoint:
                 breakpoint = (
                     ray._private.worker.global_worker.debugger_get_breakpoint)
