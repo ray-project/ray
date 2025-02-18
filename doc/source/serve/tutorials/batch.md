@@ -108,7 +108,7 @@ also for being able to create a new handle to the app.
 
 ### Option 2: Deploying with the Python API
 
-Alternatively, you can deploy the application using the Python API using the `serve.run` function. 
+Alternatively, you can deploy the app using the Python API using the `serve.run` function. 
 This returns a handle that you can use to query the deployment.
 
 ```python
