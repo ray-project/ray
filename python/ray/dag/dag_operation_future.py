@@ -36,6 +36,7 @@ class GPUFuture:
         if stream is None:
             stream = cp.cuda.get_current_stream()
 
+        self.ready: bool = False
         self._buf = buf
         self._event = cp.cuda.Event()
         self._event.record(stream)
@@ -54,6 +55,10 @@ class GPUFuture:
             Result from the GPU operation. The returned result is immediately
             ready to use iff blocking.
         """
+        if self.ready:
+            return self._buf
+        self.ready = True
+
         import cupy as cp
 
         current_stream = cp.cuda.get_current_stream()

@@ -540,6 +540,41 @@ def test_torch_tensor_nccl_send_overlap_result_across_actors(
             assert torch.equal(expected, actual.cpu())
 
 
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_tensor_nccl_same_future_multiple_waits(
+    ray_start_regular, overlap_gpu_communication
+):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 1
+    ), "This test requires at least 1 GPU"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    worker = actor_cls.remote()
+
+    dtype = torch.float16
+    coll_shape = (1000,)
+    with InputNode() as inp:
+        coll_input = [worker.send.bind(coll_shape, dtype, inp)]
+        coll_value = collective.allreduce.bind(coll_input)[0]
+        # Waiting multiple times on the same GPU future should not error.
+        coll_outputs = [worker.recv.bind(coll_value), worker.recv.bind(coll_value)]
+        dag = MultiOutputNode(coll_outputs)
+
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    for i in range(5):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == [(i, coll_shape, dtype), (i, coll_shape, dtype)]
+
+    compiled_dag.teardown()
+
+
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     """
     Check that the driver cannot participate in the NCCL group, i.e. DAG input
