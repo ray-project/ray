@@ -183,11 +183,12 @@ def test_vision_model(gpu_type, model_llava_354m):
             # Skip CUDA graph capturing to reduce startup time.
             enforce_eager=True,
         ),
-        runtime_env=dict(
-            env_vars=dict(
-                VLLM_USE_V1="1",
-            ),
-        ),
+        # CI uses T4 GPU which is not supported by vLLM v1 FlashAttn.
+        # runtime_env=dict(
+        #     env_vars=dict(
+        #         VLLM_USE_V1="1",
+        #     ),
+        # ),
         apply_chat_template=True,
         has_image=True,
         tokenize=False,
