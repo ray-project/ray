@@ -99,7 +99,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         if self._local_channel is None and num_local_readers > 0:
             # There are some local readers which are the same worker process as
             # the writer. Create a local channel for the writer and the local readers.
-            assert typ.num_local_readers > 0
+            #
+            # Use num_readers = 1 when creating the local channel,
+            # because we have channel cache to support reading
+            # from the same channel multiple times.
             self._local_channel = IntraProcessChannel(num_readers=1)
 
         assert len(remote_reader_and_node_list) > 0, (

@@ -1073,14 +1073,8 @@ class CompiledDAG:
                 )
 
             send_node = node_to_p2p_send_node[arg]
-            send_actor_handle: "ray.actor.ActorHandle" = send_node._get_actor_handle()
             recv_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
             assert recv_actor_handle is not None, "Expected an actor handle"
-
-            if recv_actor_handle == send_actor_handle:
-                assert isinstance(send_node.type_hint, TorchTensorType)
-                send_node.type_hint.increment_num_local_readers()
-
             recv_node = _P2PRecvNode(
                 method_args=(send_node,),
                 other_args_to_resolve={

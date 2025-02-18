@@ -90,8 +90,6 @@ class TorchTensorType(ChannelOutputType):
                 "`transport` is TorchTensorType.AUTO (default)."
             )
 
-        self._num_local_readers = 0
-
     @property
     def static_shape(self):
         return self._static_shape
@@ -99,13 +97,6 @@ class TorchTensorType(ChannelOutputType):
     @property
     def direct_return(self):
         return self._direct_return
-
-    def increment_num_local_readers(self) -> None:
-        self._num_local_readers += 1
-
-    @property
-    def num_local_readers(self) -> int:
-        return self._num_local_readers
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()
