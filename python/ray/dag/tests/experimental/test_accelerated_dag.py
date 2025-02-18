@@ -185,7 +185,7 @@ def test_asyncio_capacity(ray_start_regular):
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
 
     async def main(i):
-        # asyncio.sleep(i)
+        await asyncio.sleep(i * 0.1)
         # if i != 0:
         futs = await compiled_dag.execute_async(i)
         assert len(futs) == 2
@@ -193,9 +193,9 @@ def test_asyncio_capacity(ray_start_regular):
         assert result == i
         # print(f"{i} {futs[1]._dag._max_finished_execution_index=}")
         # del futs
-        # asyncio.sleep(0)
+        await asyncio.sleep(0)
 
-    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(6)]))
+    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(12)]))
     # del loop
 
 

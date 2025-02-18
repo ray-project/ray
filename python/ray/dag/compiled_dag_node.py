@@ -2229,7 +2229,9 @@ class CompiledDAG:
         # execution index and channel index combination will not be requested multiple
         # times and therefore self._result_buffer will always have execution_index as
         # a key, we still do a sanity check to avoid misuses.
-        assert execution_index in self._result_buffer
+        assert (
+            execution_index in self._result_buffer
+        ), f"{execution_index=} {self._result_buffer=}"
 
         if channel_index is None:
             # Convert results stored in self._result_buffer back to original
@@ -2269,18 +2271,22 @@ class CompiledDAG:
             None
         }:
             logger.info(
-                f"releasing result buffers for execution index {execution_index}"
+                f"releasing result buffers for execution index {execution_index}",
+                stack_info=False,
             )
-            self._result_buffer.pop(execution_index)
+            # if execution_index in self._result_buffer:
+            self._result_buffer.pop(execution_index, set())
             self._destructed_ref_idxs.pop(execution_index, set())
             self._got_ref_idxs.pop(execution_index, set())
-            self._max_finished_execution_index += 1
+            # self._max_finished_execution_index += 1
             return True
         return False
 
     def _try_release_native_buffer(
         self, idx_to_release: int, timeout: Optional[float] = None
     ) -> bool:
+        if idx_to_release != self._max_finished_execution_index + 1:
+            return False
         # logger.info(f"checking execution index {idx_to_release}", stack_info=True)
         # logger.info(f"self._destructed_ref_idxs {self._destructed_ref_idxs}")
         # logger.info(f"self._got_ref_idxs {self._got_ref_idxs}")
@@ -2289,7 +2295,8 @@ class CompiledDAG:
             range(len(self.dag_output_channels))
         ) or self._destructed_ref_idxs.get(idx_to_release, set()) == {None}:
             logger.info(
-                f"releasing native buffers for execution index {idx_to_release}"
+                f"releasing native buffers for execution index {idx_to_release}",
+                stack_info=False,
             )
             try:
                 self._dag_output_fetcher.release_channel_buffers(timeout)
@@ -2303,6 +2310,7 @@ class CompiledDAG:
                 ) from e
             self._destructed_ref_idxs.pop(idx_to_release)
             assert idx_to_release not in self._result_buffer
+            self._max_finished_execution_index += 1
             return True
         else:
             return False
@@ -2310,9 +2318,10 @@ class CompiledDAG:
     def _try_release_once(
         self, idx_to_release: int, timeout: Optional[float] = None
     ) -> bool:
-        return self._try_release_native_buffer(
+        released = self._try_release_native_buffer(
             idx_to_release, timeout
         ) or self._try_release_result_buffer(idx_to_release)
+        return released
 
     def _try_release_buffers(self):
         """
@@ -2328,7 +2337,6 @@ class CompiledDAG:
                 self._max_finished_execution_index + 1, timeout
             ):
                 break
-            self._max_finished_execution_index += 1
 
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
@@ -2384,12 +2392,16 @@ class CompiledDAG:
                 if not self._try_release_native_buffer(
                     self._max_finished_execution_index + 1, timeout
                 ):
+                    logger.info(
+                        f"getting results for execution index {self._max_finished_execution_index + 1}",
+                        stack_info=False,
+                    )
                     result = self._dag_output_fetcher.read(timeout)
                     self._cache_execution_results(
                         self._max_finished_execution_index + 1,
                         result,
                     )
-                self._max_finished_execution_index += 1
+                    self._max_finished_execution_index += 1
             except RayChannelTimeoutError as e:
                 raise RayChannelTimeoutError(
                     "If the execution is expected to take a long time, increase "

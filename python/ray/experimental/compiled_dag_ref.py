@@ -102,7 +102,10 @@ class CompiledDAGRef:
         # to the dag's _destructed_ref_idxs, and try to release any buffers we
         # can based on the dag's current max_finished_execution_index.
         # if not self._ray_get_called:
-        self._dag._destructed_ref_idxs[self._execution_index].add(self._channel_index)
+        if not self._ray_get_called:
+            self._dag._destructed_ref_idxs[self._execution_index].add(
+                self._channel_index
+            )
         self._dag._try_release_once(self._execution_index)
         self._dag._try_release_buffers()
 
@@ -235,6 +238,9 @@ class CompiledDAGFuture:
             )
         )
         if self._dag.is_teardown:
+            return
+
+        if self._fut is None:
             return
         self._dag._destructed_ref_idxs[self._execution_index].add(self._channel_index)
         self._dag._try_release_once(self._execution_index)
