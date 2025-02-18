@@ -102,10 +102,6 @@ You can deploy your app in two ways:
 $ serve run tutorial_batch:generator --name "Text-Completion-App"
 ```
 
-Note that the `--name` argument is optional. If you don't specify a name, the app is named `default`.
- Naming the app is useful if you are running multiple apps on the same machine, and 
-also for being able to create a new handle to the app.
-
 ### Option 2: Deploying with the Python API
 
 Alternatively, you can deploy the app using the Python API using the `serve.run` function. 
@@ -119,12 +115,6 @@ handle: DeploymentHandle = serve.run(generator, name="Text-Completion-App")
 
 You can now use this handle to query the model. See the [Querying the Model](#querying-the-model) section below.
 
-Give the app a name to create a new handle to the app by running the 
-following:
-
-```python
-handle = serve.get_deployment_handle("BatchTextGenerator", app_name="Text-Completion-App")
-```
 
 ## Querying the Model
 
