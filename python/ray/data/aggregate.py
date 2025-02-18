@@ -103,7 +103,7 @@ class AggregateFn:
 
 
 @PublicAPI(stability="alpha")
-class AggregateFnV2(AggregateFn, Generic[AggType]):
+class AggregateFnV2(AggregateFn):
     """Provides an interface to implement efficient aggregations to be applied
     to the dataset.
 
