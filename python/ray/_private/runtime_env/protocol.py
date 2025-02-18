@@ -41,7 +41,7 @@ class ProtocolsProvider:
         protocol: str,
         source_uri: str,
         dest_file: str,
-        runtime_env: Optional["RuntimeEnv"] = None,
+        runtime_env: Optional["RuntimeEnv"] = None,  # noqa: F821
     ):
         """Download file from remote URI to dest file"""
         assert protocol in cls.get_remote_protocols()
