@@ -438,9 +438,12 @@ class SerializationContext:
             elif error_type == ErrorType.Value(
                 "OBJECT_IN_ACTOR"
             ):
-                # TODO: Look up the actual object from our local Python object
+                # Look up the actual object from our local Python object
                 # store. Hopefully it's actually there.
-                assert False, "SUCCESS"
+                meta = self._deserialize_msgpack_data(data, [ray_constants.OBJECT_METADATA_TYPE_PYTHON])
+                worker = ray._private.worker.global_worker
+                assert meta.obj_id in worker.in_actor_object_store
+                return worker.in_actor_object_store[meta.obj_id]
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:

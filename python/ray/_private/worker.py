@@ -442,6 +442,7 @@ class Worker:
         self.node = None
         self.mode = None
         self.actors = {}
+        self.in_actor_object_store : Dict[ObjectRef, torch.Tensor] = {}
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.

@@ -271,7 +271,8 @@ class RayActorObjectMetadata:
     """
     Metadata for an object stored in a Ray actor's local Python store.
     """
-    def __init__(self, shape, dtype):
+    def __init__(self, obj_id, shape, dtype):
+        self.obj_id = obj_id
         self.shape = shape
         self.dtype = dtype
 
@@ -1869,7 +1870,6 @@ cdef void execute_task(
                             args = (ray._private.worker.global_worker
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
-
                     for arg in args:
                         raise_if_dependency_failed(arg)
                     args, kwargs = ray._private.signature.recover_args(args)
@@ -4403,7 +4403,11 @@ cdef class CoreWorker:
             context = worker.get_serialization_context()
 
             if isinstance(output, torch.Tensor):
-                output = RayActorObjectMetadata(output.shape, output.dtype)
+                # Put the actual value in our local in-actor object store.
+                ray._private.worker.global_worker.in_actor_object_store[return_id.Hex()] = output
+                # Replace it with the tensor metadata and the OBJECT_IN_ACTOR
+                # metadata.
+                output = RayActorObjectMetadata(return_id.Hex(), output.shape, output.dtype)
                 serialized_object = context.serialize(output)
                 # metadata = b"PYTHON"
                 # Replace with OBJECT_IN_ACTOR metadata, so that the driver can

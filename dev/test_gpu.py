@@ -49,7 +49,7 @@ class Actor:
         return torch.randn(shape)
 
     def sum(self, tensor):
-        return tensor.sum()
+        return tensor.sum().item()
 
     def send(self, dst_rank, t):
         dist.send(t, dst_rank)
@@ -74,6 +74,7 @@ if __name__ == "__main__":
 
     ref = actors[0].randn.remote(shape)
     print("ObjectRef:", ref)
+    ref = actors[0].sum.remote(ref)
     print(ray.get(ref))
 
     ## After getting response from actor A, driver will now have in its local
