@@ -46,6 +46,12 @@ enum class ObjectState : int {
   PLASMA_SEALED = 2,
 };
 
+constexpr std::string_view corruptedRequestErrorMessage =
+    "This could be due to "
+    "process forking in core worker or driver code which results in multiple processes "
+    "sharing the same Plasma store socket. Please ensure that there are no "
+    "process forking in any of the application core worker or driver code.";
+
 // Represents a chunk of allocated memory.
 struct Allocation {
   /// Pointer to the allocated memory.

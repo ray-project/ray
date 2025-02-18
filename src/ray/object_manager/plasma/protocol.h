@@ -41,12 +41,26 @@ using flatbuf::MessageType;
 using flatbuf::ObjectSource;
 using flatbuf::PlasmaError;
 
+constexpr std::string_view DEBUG_STRING = "debug_string";
+constexpr std::string_view OBJECT_ID = "object_id";
+constexpr std::string_view OBJECT_IDS = "object_ids";
+constexpr std::string_view OWNER_RAYLET_ID = "owner_raylet_id";
+constexpr std::string_view OWNER_IP_ADDRESS = "owner_ip_address";
+constexpr std::string_view OWNER_WORKER_ID = "owner_worker_id";
+
 Status PlasmaErrorStatus(flatbuf::PlasmaError plasma_error);
 
 template <class T>
 bool VerifyFlatbuffer(T *object, uint8_t *data, size_t size) {
   flatbuffers::Verifier verifier(data, size);
   return object->Verify(verifier);
+}
+
+template <class T>
+void VerifyNotNullPtr(T *object, std::string_view obj_name, MessageType msg_type) {
+  RAY_CHECK(object != nullptr) << "Corrupted " << EnumNameMessageType(msg_type)
+                               << " message: " << obj_name << " is null. "
+                               << corruptedRequestErrorMessage;
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
