@@ -159,7 +159,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :nosignatures:
    :toctree: doc/
 
-   serve.llm.deployments.LLMModelRouterDeployment
+   serve.llm.deployments.VLLMDeployment
 
 ```
 

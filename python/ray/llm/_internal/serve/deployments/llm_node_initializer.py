@@ -5,8 +5,9 @@ from typing import Any, Dict, NamedTuple, Optional
 
 import ray
 from ray.util.placement_group import PlacementGroup
-from torch.hub import _get_torch_home
-from transformers import AutoTokenizer
+
+from ray.llm._internal.utils import try_import
+
 
 from ray.llm._internal.serve.observability.logging import get_logger
 
@@ -18,6 +19,9 @@ from ray.llm._internal.serve.configs.server_models import (
     S3MirrorConfig,
 )
 from ray.llm._internal.serve.deployments.server_utils import make_async
+
+torch = try_import("torch")
+transformers = try_import("transformers")
 
 logger = get_logger(__name__)
 
@@ -87,7 +91,7 @@ def download_model_files(
     # Create the torch cache kernels directory if it doesn't exist.
     # This is a workaround for a torch issue, where the kernels directory
     # cannot be created by torch if the parent directory doesn't exist.
-    torch_cache_home = _get_torch_home()
+    torch_cache_home = torch.hub._get_torch_home()
     os.makedirs(os.path.join(torch_cache_home, "kernels"), exist_ok=True)
     model_path_or_id = None
 
@@ -260,7 +264,7 @@ def _initialize_local_node(
     if not isinstance(local_path, str) or not os.path.exists(local_path):
         logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
 
-    _ = AutoTokenizer.from_pretrained(
+    _ = transformers.AutoTokenizer.from_pretrained(
         engine_config.actual_hf_model_id,
         trust_remote_code=engine_config.trust_remote_code,
     )
