@@ -127,29 +127,20 @@ See the [model composition guide](serve-model-composition) for how to update cod
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/autopydantic.rst
 
-   ~serve.llm.LLMConfig
+   ~serve.llm.configs.LLMConfig
+   ~serve.llm.configs.LLMServingArgs
+   ~serve.llm.configs.ModelLoadingConfig
+   ~serve.llm.configs.S3MirrorConfig
+   ~serve.llm.configs.S3AWSCredentials
+   ~serve.llm.configs.GCSMirrorConfig
+   ~serve.llm.configs.LoraConfig
+   ~serve.llm.configs.DeploymentConfig
+   ~serve.llm.configs.AutoscalingConfig
+
 ```
 
-##### Deployments
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   serve.llm.VLLMDeployment
-   serve.llm.LLMModelRouterDeployment
-```
-
-##### Builders
-```{eval-rst}
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   serve.llm.build_vllm_deployment
-   serve.llm.build_openai_app
-```
 
 (serve-cli)=
 

@@ -4,7 +4,6 @@ import os
 
 from enum import Enum
 from abc import ABC, abstractmethod
-from vllm.sampling_params import GuidedDecodingParams
 import json
 from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
 
@@ -20,6 +19,7 @@ from typing import (
     Tuple,
     Sequence,
     Set,
+    TYPE_CHECKING,
 )
 import time
 from pydantic import (
@@ -49,6 +49,9 @@ from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
     HuggingFacePromptFormat,
 )
+
+if TYPE_CHECKING:
+    from vllm.sampling_params import GuidedDecodingParams
 
 GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -241,7 +244,7 @@ class InputModality(str, Enum):
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
-    VLLM = "VLLM"
+    VLLM = "vllm"
 
 
 class JSONModeOptions(BaseModelExtended):
@@ -290,7 +293,6 @@ class LoraConfig(BaseModelExtended):
 
 class ModelLoadingConfig(BaseModelExtended):
     model_id: str = Field(
-        default=...,
         description="The ID that should be used by end users to access this model.",
     )
     model_source: Optional[Union[str, S3MirrorConfig, GCSMirrorConfig]] = Field(
@@ -332,8 +334,8 @@ class LLMConfig(BaseModelExtended):
         description="The settings for how to download and expose the model."
     )
 
-    llm_engine: LLMEngine = Field(
-        default=LLMEngine.VLLM,
+    llm_engine: str = Field(
+        default=LLMEngine.VLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -347,7 +349,7 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    accelerator_type: GPUType = Field(
+    accelerator_type: str = Field(
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
@@ -408,9 +410,20 @@ class LLMConfig(BaseModelExtended):
     def validate_accelerator_type(cls, value: str):
         # Ensure A10 is converted to A10G.
         if value == "A10":
-            return "A10G"
+            value = "A10G"
 
+        if value not in [t.value for t in GPUType]:
+            raise ValueError(f"Unsupported accelerator type: {value}")
+        
         return value
+    
+    @model_validator(mode="after")
+    def validate_llm_engine(self) -> "LLMConfig":
+        try:
+            self.llm_engine = LLMEngine(self.llm_engine)
+        except ValueError as e:
+            raise ValueError(f"Unsupported engine: {self.llm_engine}") from e
+        return self
 
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
@@ -549,7 +562,7 @@ class ResponseFormat(BaseModel, ABC):
     model_config = ConfigDict(extra="forbid")
 
     @abstractmethod
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
         """Convert the response format to a vLLM guided decoding params.
 
         Args:
@@ -564,7 +577,7 @@ class ResponseFormat(BaseModel, ABC):
 class ResponseFormatText(ResponseFormat):
     type: Literal["text"]
 
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
         return None
 
 
@@ -603,7 +616,9 @@ class ResponseFormatJsonObject(JSONSchemaBase):
     def json_schema_str(self) -> str:
         return json.dumps(self.json_schema)
 
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
+        from vllm.sampling_params import GuidedDecodingParams
+        
         kwargs = {}
 
         if self.json_schema:
@@ -630,7 +645,9 @@ class ResponseFormatGrammar(ResponseFormat):
     type: Literal["grammar", "grammar_gbnf"]
     grammar: str
 
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
+        from vllm.sampling_params import GuidedDecodingParams
+        
         return GuidedDecodingParams.from_optional(
             backend=backend,
             grammar=self.grammar,
