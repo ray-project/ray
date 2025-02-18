@@ -45,14 +45,12 @@ def _get_commit_range():
 
 
 _ALL_TAGS = set(
-    " ".join(
-        [
-            "lint python cpp core_cpp java workflow accelerated_dag dashboard",
-            "data serve ml tune train llm rllib rllib_gpu rllib_directly",
-            "linux_wheels macos_wheels docker doc python_dependencies tools",
-            "release_tests compiled_python",
-        ]
-    ).split()
+    """
+    lint python cpp core_cpp java workflow accelerated_dag dashboard
+    data serve ml tune train llm rllib rllib_gpu rllib_directly
+    linux_wheels macos_wheels docker doc python_dependencies tools
+    release_tests compiled_python
+    """.split()
 )
 
 if __name__ == "__main__":
@@ -65,7 +63,7 @@ if __name__ == "__main__":
 
     tags.add("lint")
 
-    def x(line: str):
+    def _emit(line: str):
         tags.update(line.split())
 
     if _is_pull_request():
@@ -84,13 +82,13 @@ if __name__ == "__main__":
 
         for changed_file in files:
             if changed_file.startswith("python/ray/air"):
-                x("ml train tune data linux_wheels macos_wheels")
+                _emit("ml train tune data linux_wheels macos_wheels")
             elif (
                 changed_file.startswith("python/ray/llm")
                 or changed_file == ".buildkite/llm.rayci.yml"
                 or changed_file == "ci/docker/llm.build.Dockerfile"
             ):
-                x("llm")
+                _emit("llm")
             elif (
                 changed_file.startswith("python/ray/data")
                 or changed_file == ".buildkite/data.rayci.yml"
@@ -100,13 +98,13 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/data9.build.wanda.yaml"
                 or changed_file == "ci/docker/datal.build.wanda.yaml"
             ):
-                x("data ml train linux_wheels macos_wheels")
+                _emit("data ml train linux_wheels macos_wheels")
             elif changed_file.startswith("python/ray/workflow"):
-                x("workflow linux_wheels macos_wheels")
+                _emit("workflow linux_wheels macos_wheels")
             elif changed_file.startswith("python/ray/tune"):
-                x("ml train tune linux_wheels macos_wheels")
+                _emit("ml train tune linux_wheels macos_wheels")
             elif changed_file.startswith("python/ray/train"):
-                x("ml train linux_wheels macos_wheels")
+                _emit("ml train linux_wheels macos_wheels")
             elif (
                 changed_file == ".buildkite/ml.rayci.yml"
                 or changed_file == ".buildkite/pipeline.test.yml"
@@ -118,62 +116,62 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/min.build.Dockerfile"
                 or changed_file == "ci/docker/min.build.wanda.yaml"
             ):
-                x("ml train tune")
+                _emit("ml train tune")
             elif (
                 re.match("^(python/ray/)?rllib/", changed_file)
                 or changed_file == "ray_ci/rllib.tests.yml"
                 or changed_file == ".buildkite/rllib.rayci.yml"
             ):
-                x("rllib rllib_gpu rllib_directly linux_wheels macos_wheels")
+                _emit("rllib rllib_gpu rllib_directly linux_wheels macos_wheels")
             elif (
                 changed_file.startswith("python/ray/serve")
                 or changed_file == ".buildkite/serve.rayci.yml"
                 or changed_file == "ci/docker/serve.build.Dockerfile"
             ):
-                x("serve linux_wheels macos_wheels java")
+                _emit("serve linux_wheels macos_wheels java")
             elif changed_file.startswith("python/ray/dashboard"):
-                x("dashboard linux_wheels macos_wheels")
+                _emit("dashboard linux_wheels macos_wheels")
             elif changed_file.startswith("python/"):
-                x("ml tune train serve workflow data")
+                _emit("ml tune train serve workflow data")
 
                 # Python changes might impact cross language stack in Java.
                 # Java also depends on Python CLI to manage processes.
-                x("python dashboard linux_wheels macos_wheels java")
+                _emit("python dashboard linux_wheels macos_wheels java")
                 if (
                     changed_file.startswith("python/setup.py")
                     or re.match(r".*requirements.*\.txt", changed_file)
                     or changed_file == "python/requirements_compiled.txt"
                 ):
-                    x("python_dependencies")
+                    _emit("python_dependencies")
 
                 # Some accelerated DAG tests require GPUs so we only run them
                 # if Ray DAGs or experimental.channels were affected.
                 if changed_file.startswith("python/ray/dag") or changed_file.startswith(
                     "python/ray/experimental/channel"
                 ):
-                    x("accelerated_dag")
+                    _emit("accelerated_dag")
 
             elif changed_file == ".buildkite/core.rayci.yml":
-                x("python core_cpp")
+                _emit("python core_cpp")
             elif changed_file == ".buildkite/serverless.rayci.yml":
-                x("python")
+                _emit("python")
             elif (
                 changed_file.startswith("java/")
                 or changed_file == ".buildkite/others.rayci.yml"
             ):
-                x("java")
+                _emit("java")
             elif (
                 changed_file.startswith("cpp/")
                 or changed_file == ".buildkite/pipeline.build_cpp.yml"
             ):
-                x("cpp")
+                _emit("cpp")
             elif (
                 changed_file.startswith("docker/")
                 or changed_file == ".buildkite/pipeline.build_release.yml"
             ):
-                x("docker linux_wheels")
+                _emit("docker linux_wheels")
             elif changed_file == ".readthedocs.yaml":
-                x("doc")
+                _emit("doc")
             elif changed_file.startswith("doc/"):
                 if (
                     changed_file.endswith(".py")
@@ -181,7 +179,7 @@ if __name__ == "__main__":
                     or changed_file.endswith("BUILD")
                     or changed_file.endswith(".rst")
                 ):
-                    x("doc")
+                    _emit("doc")
                 # Else, this affects only a rst file or so. In that case,
                 # we pass, as the flag RAY_CI_DOC_AFFECTED is only
                 # used to indicate that tests/examples should be run
@@ -202,7 +200,7 @@ if __name__ == "__main__":
                     ".md"
                 ):
                     # Do not run on config changes
-                    x("release_tests")
+                    _emit("release_tests")
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
@@ -211,14 +209,14 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/lint.rayci.yml"
             ):
                 # Linter will always be run
-                x("tools")
+                _emit("tools")
             elif (
                 changed_file == ".buildkite/macos.rayci.yml"
                 or changed_file == ".buildkite/pipeline.macos.yml"
                 or changed_file == "ci/ray_ci/macos/macos_ci.sh"
                 or changed_file == "ci/ray_ci/macos/macos_ci_build.sh"
             ):
-                x("macos_wheels")
+                _emit("macos_wheels")
             elif (
                 changed_file.startswith("ci/pipeline")
                 or changed_file.startswith("ci/build")
@@ -231,7 +229,7 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/hooks/post-command"
             ):
                 # These scripts are always run as part of the build process
-                x("tools")
+                _emit("tools")
             elif (
                 changed_file == ".buildkite/base.rayci.yml"
                 or changed_file == ".buildkite/build.rayci.yml"
@@ -246,13 +244,13 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/windows.build.Dockerfile"
                 or changed_file == "ci/docker/windows.build.wanda.yaml"
             ):
-                x("docker linux_wheels tools")
+                _emit("docker linux_wheels tools")
             elif changed_file.startswith("ci/run") or changed_file == "ci/ci.sh":
-                x("tools")
+                _emit("tools")
             elif changed_file.startswith("src/"):
-                x("ml tune train serve core_cpp cpp")
-                x("java python linux_wheels macos_wheels")
-                x("dashboard release_tests accelerated_dag")
+                _emit("ml tune train serve core_cpp cpp")
+                _emit("java python linux_wheels macos_wheels")
+                _emit("dashboard release_tests accelerated_dag")
             elif changed_file.startswith(".github/"):
                 pass
             else:
@@ -263,12 +261,12 @@ if __name__ == "__main__":
                     file=sys.stderr,
                 )
 
-                x("ml tune train data serve core_cpp cpp java python doc")
-                x("linux_wheels macos_wheels dashboard tools release_tests")
+                _emit("ml tune train data serve core_cpp cpp java python doc")
+                _emit("linux_wheels macos_wheels dashboard tools release_tests")
     else:
-        x("ml tune train rllib rllib_directly serve")
-        x("cpp core_cpp java python doc linux_wheels macos_wheels docker")
-        x("dashboard tools workflow data release_tests")
+        _emit("ml tune train rllib rllib_directly serve")
+        _emit("cpp core_cpp java python doc linux_wheels macos_wheels docker")
+        _emit("dashboard tools workflow data release_tests")
 
     # Log the modified environment variables visible in console.
     output_string = " ".join(list(tags))
