@@ -6,7 +6,6 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray._private.utils import binary_to_hex
-from ray.autoscaler._private.constants import AUTOSCALER_UPSCALING_INITIAL_NUM_NODES
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.config import (
     AutoscalingConfig,
@@ -829,7 +828,7 @@ class Reconciler:
 
             # Enforce the max allowed pending nodes based on current running nodes
             num_desired_to_upscale = max(
-                AUTOSCALER_UPSCALING_INITIAL_NUM_NODES,
+                1,
                 math.ceil(upscaling_speed * len(running_instances_for_type)),
             )
 
