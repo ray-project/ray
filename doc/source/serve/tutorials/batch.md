@@ -70,7 +70,7 @@ class BatchingDeployment:
 
 :::{note}
 Ray Serve uses *opportunistic batching* by default - executing requests as 
-soon as they arrive without waiting for a full batch. You can adjust this using 
+soon as they arrive without waiting for a full batch. You can adjust this behavior using 
 `batch_wait_timeout_s` in the `@serve.batch` decorator to trade increased latency
 for increased throughput (defaults to 0). Increasing this value may improve throughput
 at the cost of latency under low load.
