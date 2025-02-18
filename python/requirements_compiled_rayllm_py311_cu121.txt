@@ -5,7 +5,9 @@
 #    pip-compile --constraint=python/requirements_compiled_rayllm_test_py311_cu121.txt --extra-index-url=https://download.pytorch.org/whl/cu121 --find-links=https://data.pyg.org/whl/torch-2.3.0+cu121.html --generate-hashes --output-file=python/requirements_compiled_rayllm_py311_cu121.txt --strip-extras --unsafe-package=ray python/requirements.txt python/requirements/llm/llm-requirements.txt
 #
 --extra-index-url https://download.pytorch.org/whl/cu121
+--extra-index-url https://download.pytorch.org/whl/cpu
 --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
+--find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 
 aiohttp==3.9.5 \
     --hash=sha256:0605cc2c0088fcaae79f01c913a38611ad09ba68ff482402d3410bf59039bfb8 \
@@ -128,7 +130,6 @@ anyio==3.7.1 \
     --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   httpcore
     #   httpx
     #   openai
     #   starlette
@@ -139,6 +140,12 @@ astor==0.8.1 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   depyf
+asyncache==0.3.1 \
+    --hash=sha256:9a1e60a75668e794657489bdea6540ee7e3259c483517b934670db7600bf5035 \
+    --hash=sha256:ef20a1024d265090dd1e0785c961cf98b9c32cc7d9478973dcf25ac1b80011f5
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -247,6 +254,7 @@ cachetools==5.3.2 \
     --hash=sha256:861f35a13a451f94e301ce2bec7cac63e881232ccce7ed67fab9b5df4d3beaa1
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   asyncache
     #   google-auth
 certifi==2023.11.17 \
     --hash=sha256:9b469f3a900bf28dc19b8cfbf8019bf47f7fdd1a65a1d4ffb98fc14166beb4d1 \
@@ -863,16 +871,16 @@ gymnasium==1.0.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   -r python/requirements.txt
-h11==0.12.0 \
-    --hash=sha256:36a3cb8c0a032f56e2da7084577878a035d3b61d104230d4bd49c0c6b555a9c6 \
-    --hash=sha256:47222cb6067e4a307d535814917cd98fd0a57b6788ce715755fa2b6c28b56042
+h11==0.14.0 \
+    --hash=sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d \
+    --hash=sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   httpcore
     #   uvicorn
-httpcore==0.15.0 \
-    --hash=sha256:1105b8b73c025f23ff7c36468e4432226cbb959176eab66864b8e31c4ee27fa6 \
-    --hash=sha256:18b68ab86a3ccf3e7dc0f43598eaddcf472b602aba29f9aa6ab85fe2ada3980b
+httpcore==1.0.7 \
+    --hash=sha256:8551cb62a169ec7162ac7be8d4817d561f60e08eaa485234898414bb5a8a0b4c \
+    --hash=sha256:a3fff8f43dc260d5bd363d9f9cf1830fa3a458b332856f34282de498ed420edd
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   httpx
@@ -923,9 +931,9 @@ httptools==0.6.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   uvicorn
-httpx==0.25.1 \
-    --hash=sha256:fec7d6cc5c27c578a391f7e87b9aa7d3d8fbcd034f6399f9f79b45bcc12a866a \
-    --hash=sha256:ffd96d5cf901e63863d9f1b4b6807861dbea4d301613415d9e6e57ead15fc5d0
+httpx==0.27.2 \
+    --hash=sha256:7bb2708e112d8fdd7829cd4243970f0c223274051cb35ee80c03301ee29a3df0 \
+    --hash=sha256:f7c2be1d2f3c3c3160d441802406b206c2b76f5947b11115e6df10c6c65e66c2
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   openai
@@ -1059,6 +1067,12 @@ jiter==0.8.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   openai
+jsonref==1.1.0 \
+    --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
+    --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 jsonschema==4.23.0 \
     --hash=sha256:d71497fef26351a33265337fa77ffeb82423f3ea21283cd9467bb03999266bc4 \
     --hash=sha256:fbadb6f8b144a8f8cf9f0b89ba94501d143e50411a1278633f56a7acf7fd5566
@@ -2725,7 +2739,6 @@ sniffio==1.3.1 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   anyio
-    #   httpcore
     #   httpx
     #   openai
 starlette==0.36.3 \
