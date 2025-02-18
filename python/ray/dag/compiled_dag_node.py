@@ -2233,9 +2233,7 @@ class CompiledDAG:
         # execution index and channel index combination will not be requested multiple
         # times and therefore self._result_buffer will always have execution_index as
         # a key, we still do a sanity check to avoid misuses.
-        assert (
-            execution_index in self._result_buffer
-        ), f"{execution_index=} {self._result_buffer=}"
+        assert execution_index in self._result_buffer
 
         if channel_index is None:
             # Convert results stored in self._result_buffer back to original
@@ -2285,7 +2283,8 @@ class CompiledDAG:
         got_channel_idxs = self._got_ref_idxs.get(execution_index, set())
         if None in got_channel_idxs:
             assert len(got_channel_idxs) == 1, (
-                "channel_idx=None (all channels) cannot coexist with other channel_idxs",
+                "when None exists in got_channel_idxs, it means all channels, and "
+                "it should be the only value in the set",
             )
             should_release = True
         else:
@@ -2327,7 +2326,8 @@ class CompiledDAG:
         should_release = False
         if None in destructed_channel_idxs:
             assert len(destructed_channel_idxs) == 1, (
-                "channel_idx=None (all channels) cannot coexist with other channel_idxs",
+                "when None exists in destructed_channel_idxs, it means all channels, "
+                "and it should be the only value in the set",
             )
             should_release = True
         elif len(destructed_channel_idxs) == len(self.dag_output_channels):
