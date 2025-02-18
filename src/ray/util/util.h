@@ -185,11 +185,6 @@ bool IsRayletFailed(const std::string &raylet_pid);
 /// Teriminate the process without cleaning up the resources.
 void QuickExit();
 
-/// \param value the value to be formatted to string
-/// \param precision the precision to format the value to
-/// \return the foramtted value
-std::string FormatFloat(float value, int32_t precision);
-
 /// Converts a timeout in milliseconds to a timeout point.
 /// \param[in] timeout_ms The timeout in milliseconds.
 /// \return The timeout point, or std::nullopt if timeout_ms is -1.
