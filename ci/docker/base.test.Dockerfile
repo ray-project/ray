@@ -50,5 +50,5 @@ WORKDIR /ray
 
 COPY . .
 
-RUN if [ "$PYTHON" = "3.13" ]; then ./ci/env/install-uv.sh; else ./ci/env/install-miniconda.sh; fi
+RUN ./ci/env/install-miniconda.sh
 RUN ./ci/env/install-bazel.sh
