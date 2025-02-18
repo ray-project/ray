@@ -13,7 +13,7 @@ from ray.llm._internal.serve.configs.prompt_formats import (
 
 @pytest.fixture
 def hf_prompt_format(model_pixtral_12b):
-    hf_prompt_format = HuggingFacePromptFormat(use_hugging_face_chat_template=True)
+    hf_prompt_format = HuggingFacePromptFormat()
     hf_prompt_format.set_processor(model_id_or_path=model_pixtral_12b)
     return hf_prompt_format
 
