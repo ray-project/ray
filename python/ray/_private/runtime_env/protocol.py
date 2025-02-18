@@ -1,5 +1,6 @@
 import enum
 from ray._private.runtime_env.default_impl import get_protocols_provider
+from typing import Optional
 
 
 class ProtocolsProvider:
@@ -35,7 +36,13 @@ class ProtocolsProvider:
         return {"https", "s3", "gs", "file"}
 
     @classmethod
-    def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
+    def download_remote_uri(
+        cls,
+        protocol: str,
+        source_uri: str,
+        dest_file: str,
+        runtime_env: Optional["RuntimeEnv"] = None,
+    ):
         """Download file from remote URI to dest file"""
         assert protocol in cls.get_remote_protocols()
 
@@ -56,7 +63,18 @@ class ProtocolsProvider:
                     "You must `pip install smart_open[s3]` "
                     "to fetch URIs in s3 bucket. " + cls._MISSING_DEPENDENCIES_WARNING
                 )
-            tp = {"client": boto3.client("s3")}
+            s3_kwargs = {}
+            if runtime_env:
+                env_vars = runtime_env.env_vars()
+                if "AWS_ENDPOINT_URL" in env_vars:
+                    s3_kwargs["endpoint_url"] = env_vars["AWS_ENDPOINT_URL"]
+                if "AWS_ACCESS_KEY_ID" in env_vars:
+                    s3_kwargs["aws_access_key_id"] = env_vars["AWS_ACCESS_KEY_ID"]
+                if "AWS_SECRET_ACCESS_KEY" in env_vars:
+                    s3_kwargs["aws_secret_access_key"] = env_vars[
+                        "AWS_SECRET_ACCESS_KEY"
+                    ]
+            tp = {"client": boto3.client("s3", **s3_kwargs)}
         elif protocol == "gs":
             try:
                 from google.cloud import storage  # noqa: F401
@@ -102,8 +120,10 @@ def _remote_protocols(cls):
 Protocol.remote_protocols = _remote_protocols
 
 
-def _download_remote_uri(self, source_uri, dest_file):
-    return _protocols_provider.download_remote_uri(self.value, source_uri, dest_file)
+def _download_remote_uri(self, source_uri, dest_file, runtime_env):
+    return _protocols_provider.download_remote_uri(
+        self.value, source_uri, dest_file, runtime_env
+    )
 
 
 Protocol.download_remote_uri = _download_remote_uri
