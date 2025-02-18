@@ -750,7 +750,7 @@ class Reconciler:
                 queued_instances.append(instance)
             elif instance.status == IMInstance.REQUESTED:
                 requested_instances.append(instance)
-            elif instance.status == IMInstance.RUNNING:
+            elif instance.status == IMInstance.RAY_RUNNING:
                 running_instances.append(instance)
 
         if not queued_instances:
