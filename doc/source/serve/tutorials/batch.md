@@ -119,7 +119,7 @@ handle: DeploymentHandle = serve.run(generator, name="Text-Completion-App")
 
 This handle can now be used to query the model-- see the [Querying the Model](#querying-the-model) section below.
 
-Giving the app a name makes it easier to create a new handle to the app by running the 
+Give the app a name to create a new handle to the app by running the 
 following:
 
 ```python
