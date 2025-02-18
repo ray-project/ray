@@ -11,9 +11,6 @@ from ray.llm._internal.serve.configs.constants import (
 class TestOpenAICompatibility:
     """Test that the rayllm are compatible with the OpenAI API"""
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_models(self, testing_model):  # noqa: F811
         client, model = testing_model
         models = client.models.list()
@@ -21,9 +18,6 @@ class TestOpenAICompatibility:
         assert models.data[0].id == model, "The test model id should match"
         assert models.data[0].rayllm_metadata["input_modality"] == "text"
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_completions(self, testing_model):  # noqa: F811
         client, model = testing_model
         completion = client.completions.create(
@@ -35,9 +29,6 @@ class TestOpenAICompatibility:
         assert completion.model
         assert completion.choices[0].text == "test_0 test_1 "
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_chat(self, testing_model):  # noqa: F811
         client, model = testing_model
         # create a chat completion
@@ -51,9 +42,6 @@ class TestOpenAICompatibility:
         assert isinstance(chat_completion.choices, list)
         assert chat_completion.choices[0].message.content
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_chat_logprobs(self, testing_model):
         client, model = testing_model
         num_tokens = 5
@@ -118,9 +106,6 @@ class TestOpenAICompatibility:
                     top_logprobs=top_logprobs,
                 )
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_completions_bad_request(self, testing_model):  # noqa: F811
         client, model = testing_model
         with pytest.raises(openai.BadRequestError) as exc_info:
@@ -131,9 +116,6 @@ class TestOpenAICompatibility:
             )
         assert "temperature" in str(exc_info.value)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_chat_bad_request(self, testing_model):  # noqa: F811
         client, model = testing_model
         with pytest.raises(openai.BadRequestError) as exc_info:
@@ -151,9 +133,6 @@ class TestOpenAICompatibility:
             )
         assert "least 1 item" in str(exc_info.value)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_completions_missing_model(self, testing_model):  # noqa: F811
         client, _ = testing_model
         with pytest.raises(openai.NotFoundError) as exc_info:
@@ -163,9 +142,6 @@ class TestOpenAICompatibility:
             )
         assert "Could not find" in str(exc_info.value)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_chat_missing_model(self, testing_model):  # noqa: F811
         client, _ = testing_model
         with pytest.raises(openai.NotFoundError) as exc_info:
@@ -175,9 +151,6 @@ class TestOpenAICompatibility:
             )
         assert "Could not find" in str(exc_info.value)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_completions_stream(self, testing_model):  # noqa: F811
         client, model = testing_model
         i = 0
@@ -193,9 +166,6 @@ class TestOpenAICompatibility:
             assert isinstance(completion.choices[0].text, str)
         assert i > 4
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_chat_stream(self, testing_model):  # noqa: F811
         client, model = testing_model
         i = 0
@@ -226,9 +196,6 @@ class TestOpenAICompatibility:
         assert chat_completion.choices[0].finish_reason
         assert i > 4
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_completions_stream_bad_request(self, testing_model):  # noqa: F811
         client, model = testing_model
         with pytest.raises(openai.BadRequestError) as exc_info:
@@ -241,9 +208,6 @@ class TestOpenAICompatibility:
                 pass
         assert "temperature" in str(exc_info.value)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_chat_stream_bad_request(self, testing_model):  # noqa: F811
         client, model = testing_model
         with pytest.raises(openai.BadRequestError) as exc_info:
@@ -265,9 +229,6 @@ class TestOpenAICompatibility:
                 pass
         assert "least 1 item" in str(exc_info.value)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_completions_stream_missing_model(self, testing_model):  # noqa: F811
         client, _ = testing_model
         with pytest.raises(openai.NotFoundError) as exc_info:
@@ -279,9 +240,6 @@ class TestOpenAICompatibility:
                 pass
         assert "Could not find" in str(exc_info.value)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_chat_stream_missing_model(self, testing_model):  # noqa: F811
         client, _ = testing_model
         with pytest.raises(openai.NotFoundError) as exc_info:
