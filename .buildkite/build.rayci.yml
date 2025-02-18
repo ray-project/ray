@@ -36,6 +36,7 @@ steps:
       - oss
     instance_type: medium
     commands:
+      - sleep 80000
       - export PYTHON3_BIN_PATH=$(which python3)
       - ./ci/build/build-manylinux-ray.sh
       - ./ci/build/build-manylinux-jar.sh
