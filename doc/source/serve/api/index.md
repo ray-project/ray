@@ -122,6 +122,18 @@ See the [model composition guide](serve-model-composition) for how to update cod
 
 #### Large Language Model (LLM) Serving APIs
 
+
+##### Builders
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.builders.build_vllm_deployment
+   serve.llm.builders.build_openai_app
+```
+
+
 ##### Configs
 ```{eval-rst}
 .. autosummary::
@@ -129,15 +141,15 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
    :template: autosummary/autopydantic.rst
 
-   ~serve.llm.configs.LLMConfig
-   ~serve.llm.configs.LLMServingArgs
-   ~serve.llm.configs.ModelLoadingConfig
-   ~serve.llm.configs.S3MirrorConfig
-   ~serve.llm.configs.S3AWSCredentials
-   ~serve.llm.configs.GCSMirrorConfig
-   ~serve.llm.configs.LoraConfig
-   ~serve.llm.configs.DeploymentConfig
-   ~serve.llm.configs.AutoscalingConfig
+   serve.llm.configs.LLMConfig
+   serve.llm.configs.LLMServingArgs
+   serve.llm.configs.ModelLoadingConfig
+   serve.llm.configs.S3MirrorConfig
+   serve.llm.configs.S3AWSCredentials
+   serve.llm.configs.GCSMirrorConfig
+   serve.llm.configs.LoraConfig
+   serve.llm.configs.DeploymentConfig
+   serve.llm.configs.AutoscalingConfig
 
 ```
 
