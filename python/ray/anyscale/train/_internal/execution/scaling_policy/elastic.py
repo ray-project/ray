@@ -23,7 +23,6 @@ from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 class ElasticScalingPolicy(ScalingPolicy):
@@ -125,7 +124,7 @@ class ElasticScalingPolicy(ScalingPolicy):
             logger.debug(
                 "Skipping resize decision due to the latest resizing consideration "
                 "happening too recently: "
-                "%.2f < ScalingConfig(elastic_resize_monitor_interval_s=%.2f.",
+                "%.2f seconds < ScalingConfig(elastic_resize_monitor_interval_s=%.2f seconds).",
                 time_since_latest_consideration,
                 self.scaling_config.elastic_resize_monitor_interval_s,
             )
@@ -237,13 +236,8 @@ class ElasticScalingPolicy(ScalingPolicy):
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         max_workers = self.scaling_config.max_workers
         logger.info(
-            "Attempting to request resources to fit the maximum number of workers: "
-            f"{resources_per_worker} * {max_workers}\n"
-            "Ensure that your cluster's available node types are configured "
-            "so that this autoscaling request is feasible. "
-            "For example, if you request {'GPU': 1} * 4, but your cluster "
-            "only allows a maximum of 2 single GPU nodes for upscaling, "
-            "no nodes will spin up."
+            "Requesting resources to fit the maximum number of workers: "
+            f"{resources_per_worker} * {max_workers}"
         )
         self._maybe_send_resource_request()
 
