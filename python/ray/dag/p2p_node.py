@@ -19,30 +19,60 @@ class _P2POperation(_NcclOperation):
     def __init__(self):
         super().__init__()
 
-        self.send_ch: Optional[ChannelInterface] = None
-        self.recv_ch: Optional[ChannelInterface] = None
-
-    def execute(self, op: P2POp, data: Optional["torch.Tensor"] = None) -> Any:
+    def execute(self, *args, **kwargs) -> Any:
         """
-        Execute the NCCL P2P operation. If it is a NCCL send, write the data to the
-        output channel. If it is a NCCL recv, read the data from the input channel.
+        Execute the P2P operation.
+        """
+        raise NotImplementedError(
+            "Abstract P2P operations are only used when scheduling "
+            "and cannot be executed."
+        )
+
+
+class _P2PSendOperation(_P2POperation):
+    """
+    Represent an executable NCCL P2P send operation.
+    """
+
+    def __init__(self, send_ch: ChannelInterface):
+        """
+        Args:
+            send_ch: A channel that sends the data during execution.
+        """
+        super().__init__()
+        self.send_ch: ChannelInterface = send_ch
+
+    def execute(self, data: Any) -> None:
+        """
+        Execute the NCCL P2P send operation. Write the data via the NCCL channel.
 
         Args:
-            op: The type of the P2P operation.
-            data: The data of the P2P operation. If it is a NCCL send, this is the
-                data to send. If it is a NCCL recv, this is None.
-
-        Returns:
-            If it is a NCCL send, return None. If it is a NCCL recv, return the
-            received data.
+            data: The data to send.
         """
-        if op == P2POp.SEND:
-            assert self.send_ch is not None
-            assert data is not None
-            self.send_ch.write(data)
-        elif op == P2POp.RECV:
-            assert self.recv_ch is not None
-            return self.recv_ch.read()
+        self.send_ch.write(data)
+
+
+class _P2PRecvOperation(_P2POperation):
+    """
+    Represent an executable NCCL P2P recv operation.
+    """
+
+    def __init__(self, recv_ch: ChannelInterface):
+        """
+        Args:
+            recv_ch: A channel that receives data during execution.
+        """
+        super().__init__()
+        self.recv_ch: ChannelInterface = recv_ch
+
+    def execute(self) -> Any:
+        """
+        Execute the NCCL P2P recv operation. Read the data from the NCCL channel.
+
+        Return:
+            Data read from the NCCL channel.
+        """
+        return self.recv_ch.read()
 
 
 class _P2PNode(ClassMethodNode):

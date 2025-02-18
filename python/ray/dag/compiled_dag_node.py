@@ -527,23 +527,28 @@ class ExecutableTask:
             assert not isinstance(val, ChannelInterface)
 
         # Input reader to read input data from upstream DAG nodes.
-        self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
+        self.input_reader: Optional[ReaderInterface] = None
+        # NCCL P2P recv uses the NCCL channel instead of the input reader.
+        if not self.requires_nccl_read:
+            self.input_reader = SynchronousReader(self.input_channels)
         # Output writer to write output data to downstream DAG nodes.
-        self.output_writer: WriterInterface = SynchronousWriter(
-            self.output_channels, self.output_idxs
-        )
+        self.output_writer: Optional[WriterInterface] = None
+        # NCCL P2P send uses the NCCL channel instead of the output writer.
+        if not self.requires_nccl_write:
+            self.output_writer = SynchronousWriter(
+                self.output_channels, self.output_idxs
+            )
 
-        # The NCCL channel for the NCCL P2P operation.
+        # NCCL channel for P2P send/recv.
+        self.nccl_ch: Optional[ChannelInterface] = None
         if self.requires_nccl_read:
             assert isinstance(self.nccl_op, _P2POperation)
             assert len(self.input_channels) == 1
-            nccl_ch = self.input_channels[0]
-            self.nccl_op.recv_ch = nccl_ch
+            self.nccl_ch = self.input_channels[0]
         elif self.requires_nccl_write:
             assert isinstance(self.nccl_op, _P2POperation)
             assert len(self.output_channels) == 1
-            nccl_ch = self.output_channels[0]
-            self.nccl_op.send_ch = nccl_ch
+            self.nccl_ch = self.output_channels[0]
 
     @property
     def requires_nccl_read(self) -> bool:
@@ -563,8 +568,12 @@ class ExecutableTask:
         depends on the type of channel. Typically, it will release the resources
         used by the channels.
         """
-        self.input_reader.close()
-        self.output_writer.close()
+        if self.input_reader is not None:
+            self.input_reader.close()
+        if self.output_writer is not None:
+            self.output_writer.close()
+        if self.nccl_ch is not None:
+            self.nccl_ch.close()
 
     def destroy_cuda_event(self):
         from ray.experimental.channel.common import ChannelContext
@@ -582,12 +591,25 @@ class ExecutableTask:
                 computation during DAG execution to improve performance
         """
         from ray.dag.collective_node import _CollectiveOperation
+        from ray.dag.p2p_node import _P2PSendOperation, _P2PRecvOperation
 
         for typ_hint in self.input_type_hints:
             typ_hint.register_custom_serializer()
         self.output_type_hint.register_custom_serializer()
-        self.input_reader.start()
-        self.output_writer.start()
+        if self.input_reader is not None:
+            self.input_reader.start()
+        if self.output_writer is not None:
+            self.output_writer.start()
+
+        # Convert the abstract P2P operation used in scheduling to executable
+        # send/recv operation.
+        if self.requires_nccl_read:
+            assert self.nccl_ch is not None
+            self.nccl_op = _P2PRecvOperation(self.nccl_ch)
+        elif self.requires_nccl_write:
+            assert self.nccl_ch is not None
+            self.nccl_ch.ensure_registered_as_writer()
+            self.nccl_op = _P2PSendOperation(self.nccl_ch)
 
         # Set up the execution stream when overlap_gpu_communication is configured.
         self.stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
@@ -672,14 +694,7 @@ class ExecutableTask:
         input_exc = None
         output_val = None
 
-        if self.requires_nccl_read:
-            # [TODO] Remove args of P2POp.
-            # Concrete _P2POperation when constructing the task.
-            input_values = [P2POp.RECV]
-        else:
-            if self.requires_nccl_write:
-                input_values = [P2POp.SEND]
-
+        if self.input_reader is not None:
             try:
                 input_data = self.input_reader.read()
             except RayChannelError:
@@ -700,7 +715,7 @@ class ExecutableTask:
                 input_exc = exc
 
             if input_exc is not None and self.requires_nccl_write:
-                input_values = [P2POp.SEND, input_exc]
+                input_values = [input_exc]
                 input_exc = None
 
         if input_exc is not None:
@@ -725,8 +740,7 @@ class ExecutableTask:
             else:
                 output_val = _wrap_exception(exc)
 
-        # [TODO:P1] Change to use `self.output_writer`. Set it to None or empty list.
-        if not self.requires_nccl_write:
+        if self.output_writer is not None:
             if overlap_gpu_communication:
                 output_val = GPUFuture(output_val)
                 output_val.cache(self.task_idx)

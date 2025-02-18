@@ -100,7 +100,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             # There are some local readers which are the same worker process as
             # the writer. Create a local channel for the writer and the local readers.
             assert typ.num_local_readers > 0
-            self._local_channel = IntraProcessChannel(num_readers=typ.num_local_readers)
+            self._local_channel = IntraProcessChannel(num_readers=1)
 
         assert len(remote_reader_and_node_list) > 0, (
             "All readers are from the same actor. "

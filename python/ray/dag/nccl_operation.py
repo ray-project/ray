@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Set
+from typing import List, Set, Any
 
 
 class _NcclOperation(ABC):
@@ -24,7 +24,7 @@ class _NcclOperation(ABC):
         return len(self.ready_task_idxs) == len(self.task_idxs)
 
     @abstractmethod
-    def execute(self, *args, **kwargs) -> None:
+    def execute(self, *args, **kwargs) -> Any:
         """
         Execute the NCCL operation in `ExecutableTask`.
         """
