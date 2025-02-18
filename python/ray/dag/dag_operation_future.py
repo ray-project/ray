@@ -64,10 +64,18 @@ class GPUFuture:
         from ray.experimental.channel.common import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        ctx.pop_gpu_future(self._fut_id, destroy_event=True)
+        # This GPU future is no longer needed. Destroy the CUDA event it contains.
+        ctx.pop_gpu_future(self._fut_id)
         return self._buf
 
     def cache(self, fut_id: int) -> None:
+        """
+        Cache the future inside the actor's channel context so that the CUDA
+        event it contains can be destroyed controllably.
+
+        Args:
+            fut_id: The id of this future, which is the corresponding task's index.
+        """
         from ray.experimental.channel.common import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
@@ -75,6 +83,9 @@ class GPUFuture:
         self._fut_id = fut_id
 
     def destroy_event(self) -> None:
+        """
+        Destroys the CUDA event contained in this future.
+        """
         if self._event is None:
             return
 

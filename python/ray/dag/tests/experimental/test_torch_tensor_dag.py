@@ -504,6 +504,7 @@ def test_torch_tensor_nccl_send_overlap_result_across_actors(
         coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
         coll_values = collective.allreduce.bind(coll_inputs)
         coll_outputs = [
+            # Collective results are sent across actors.
             workers[0].recv.bind(coll_values[1]),
             workers[1].recv.bind(coll_values[0]),
         ]
@@ -523,6 +524,7 @@ def test_torch_tensor_nccl_send_overlap_result_across_actors(
     with InputNode() as inp:
         coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
         coll_values = collective.allreduce.bind(coll_inputs)
+        # Collective results are read by the driver.
         dag = MultiOutputNode(coll_values)
 
     compiled_dag = dag.experimental_compile(

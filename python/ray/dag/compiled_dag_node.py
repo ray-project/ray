@@ -294,6 +294,7 @@ def do_profile_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
+    # CUDA events need to be destroyed before other CUDA resources.
     for task in tasks:
         task.destroy_cuda_event()
     for task in tasks:
@@ -576,10 +577,15 @@ class ExecutableTask:
             self.nccl_ch.close()
 
     def destroy_cuda_event(self):
+        """
+        If this executable task has produced a GPU future that is not yet waited,
+        that future is in the channel context cache. Pop the future from the cache
+        and destroy the CUDA event it contains.
+        """
         from ray.experimental.channel.common import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
-        ctx.pop_gpu_future(self.task_idx, destroy_event=True)
+        ctx.pop_gpu_future(self.task_idx)
 
     def prepare(self, overlap_gpu_communication: bool = False):
         """
@@ -643,57 +649,46 @@ class ExecutableTask:
 
     def exec_operation_in_contexts(
         self,
-        class_handle,
+        class_handle: "ray.actor.ActorHandle",
         overlap_gpu_communication: bool = False,
     ) -> bool:
         """
-        An ExecutableTask corresponds to a DAGNode. It consists of three
-        operations: read, compute, and write, which should be executed in
-        order to ensure that each operation can read the correct intermediate
-        result.
+        Execute this task in the proper CUDA device and stream contexts.
+
         Args:
             class_handle: The handle of the class to which the actor belongs.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution to improve performance.
+
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
-        # [TODO:P1] This function should have structure like this:
-        # with self._stream:
-        #     try:
-        #         # Get args.
-
-        #         # Call .wait() on args if needed.
-        #         val = val.wait()
-        #     except Exception as e:
-        #         exc = e
-
-        #     # Execute the task.
-        #     output_val = _exec_task(..., (args, exc))
-
-        #     if self.output_writer is not None:
-        #         self.output_writer.write(output_val)
-
-        # [TODO:P1] overlap_gpu_communication should only be used in two places:
-        # - deciding how many streams to create
-        # - in wrap_and_set_intermediate_future: when deciding whether
-        #   to produce a GPUFuture or a ResolvedFuture
-
-        # Read and resolve input values from input channels. If an exception occurs,
-        # wrap and save the exception.
         with _device_context_manager():
             with self.stream:
                 return self.exec_operation(class_handle, overlap_gpu_communication)
 
     def exec_operation(
         self,
-        class_handle,
+        class_handle: "ray.actor.ActorHandle",
         overlap_gpu_communication: bool,
     ) -> bool:
+        """
+        An ExecutableTask corresponds to a DAGNode. When executed, it first reads
+        the inputs, then computes, and lastly writes the output.
+
+        Args:
+            class_handle: The handle of the class to which the actor belongs.
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution to improve performance.
+
+        Returns:
+            True if the next operation should not be executed; otherwise, False.
+        """
         input_values = []
         input_exc = None
         output_val = None
 
+        # Read the inputs. There may be exceptions from upstream tasks.
         if self.input_reader is not None:
             try:
                 input_data = self.input_reader.read()
@@ -704,6 +699,7 @@ class ExecutableTask:
                 _process_return_vals(input_data, return_single_output=False)
                 input_data_ready = []
                 for val in input_data:
+                    # The input is a GPU future. Wait on it.
                     if isinstance(val, GPUFuture):
                         val = val.wait()
                         if isinstance(val, RayTaskError):
@@ -714,17 +710,28 @@ class ExecutableTask:
             except Exception as exc:
                 input_exc = exc
 
+            # A NCCL P2P send operation does not have an output writer.
+            # Pass the exception to the downstream task.
             if input_exc is not None and self.requires_nccl_write:
                 input_values = [input_exc]
                 input_exc = None
 
+        # If an exception occurs, pass it to the downstream task.
         if input_exc is not None:
             try:
+                # The output writer always exists because:
+                # 1. Only NCCL send operations do not have output writers.
+                # 2. If the input to a NCCL send operation is an exception,
+                #    the exception is treated as an input value and written
+                #    to the downstream task by the NCCL send operation and
+                #    the input exception is reset to None.
+                assert self.output_writer is not None
                 self.output_writer.write(input_exc)
                 return False
             except RayChannelError:
                 return True
 
+        # There are no input exceptions. Execute the task.
         if self.nccl_op is not None:
             method = self.nccl_op.execute
         else:
@@ -740,9 +747,13 @@ class ExecutableTask:
             else:
                 output_val = _wrap_exception(exc)
 
+        # Write the output. Wrap the output in a GPU future if overlapping GPU
+        # communication.
         if self.output_writer is not None:
             if overlap_gpu_communication:
                 output_val = GPUFuture(output_val)
+                # Cache the future so that the CUDA event it tracks can be
+                # destroyed properly upon DAG teardown.
                 output_val.cache(self.task_idx)
 
             try:

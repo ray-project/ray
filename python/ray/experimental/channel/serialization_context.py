@@ -81,18 +81,15 @@ class _SerializationContext:
         ), f"GPUFuture with id={fut_id} is already cached."
         self.gpu_futures[fut_id] = fut
 
-    def pop_gpu_future(self, fut_id: int, destroy_event: bool) -> None:
+    def pop_gpu_future(self, fut_id: int) -> None:
         """
-        Remove the cached GPU future. If specified, also destroy its event.
+        Remove the cached GPU future and destroy the CUDA event it contains.
 
         Args:
             fut_id: ID of the GPU future.
-            destroy_event: Whether to destroy the future's event.
         """
         if fut_id in self.gpu_futures:
-            fut = self.gpu_futures.pop(fut_id)
-            if destroy_event:
-                fut.destroy_event()
+            self.gpu_futures.pop(fut_id).destroy_event()
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self._use_external_transport = use_external_transport
