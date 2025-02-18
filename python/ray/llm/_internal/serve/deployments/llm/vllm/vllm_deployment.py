@@ -579,7 +579,7 @@ class VLLMDeploymentImpl(LLMDeployment):
             A Ray Serve deployment.
         """
         deployment_options = deployment_options or {}
-        return serve.deployment(**deployment_options)(cls)
+        return VLLMDeployment.options(**deployment_options)
 
 
 @serve.deployment(

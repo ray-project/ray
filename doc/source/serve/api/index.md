@@ -160,6 +160,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
 
    serve.llm.deployments.VLLMDeploymentImpl
+   serve.llm.deployments.LLMModelRouterDeploymentImpl
 
 ```
 
