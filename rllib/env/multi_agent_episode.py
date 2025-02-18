@@ -1697,13 +1697,6 @@ class MultiAgentEpisode:
         Returns: An integer defining the length of the episode or an
             error if the episode has not yet started.
         """
-        # assert (
-        #     sum(len(agent_map) for agent_map in self.env_t_to_agent_t.values()) > 0
-        # ), (
-        #     "ERROR: Cannot determine length of episode that hasn't started, yet!"
-        #     "Call `MultiAgentEpisode.add_env_reset(observations=)` "
-        #     "first (after which `len(MultiAgentEpisode)` will be 0)."
-        # )
         return self.env_t - self.env_t_started
 
     def __repr__(self):
