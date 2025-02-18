@@ -977,30 +977,30 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "raylet_client_lib",
-    srcs = [
-        "src/ray/raylet_client/raylet_client.cc",
-        "src/ray/raylet_client/raylet_connection.cc",
-    ],
-    hdrs = [
-        "src/ray/raylet_client/raylet_client.h",
-        "src/ray/raylet_client/raylet_connection.h",
-    ],
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
-    }),
+    name = "raylet_client_connection_lib",
+    srcs = ["src/ray/raylet_client/raylet_connection.cc"],
+    hdrs = ["src/ray/raylet_client/raylet_connection.h"],
     deps = [
-        ":node_manager_fbs",
-        ":node_manager_rpc",
-        ":ray_common",
+        "//src/ray/common:asio",
         "//src/ray/common:network",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util",
-        "@boost//:asio",
+    ],
+)
+
+ray_cc_library(
+    name = "raylet_client_lib",
+    srcs = ["src/ray/raylet_client/raylet_client.cc"],
+    hdrs = ["src/ray/raylet_client/raylet_client.h"],
+    deps = [
+        ":raylet_client_connection_lib",
+        ":node_manager_rpc",
+        "//src/ray/common:id",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
+        "//src/ray/common:network",
+        "//src/ray/common:task_common",
+        "//src/ray/util:logging",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 

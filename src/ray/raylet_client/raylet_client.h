@@ -29,7 +29,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet_client/raylet_connection.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
