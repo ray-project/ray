@@ -20,10 +20,9 @@ computation graph.
 
 .. note::
     
-    Ray DAG API is different from Ray Compiled Graph. Ray Compiled Graph
-    is a new Ray Core API built on top of Ray DAG API. It heavily reuses the Ray DAG API,
-    and additionally **compiles** the DAG, i.e., pre-allocates resources and reuses them
-    across multiple executions.
+    Ray has introduced an experimental API for high-performance workloads that is
+    especially well suited for applications using multiple GPUs. This API is built on top of
+    the Ray DAG API.
 
     See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
 
