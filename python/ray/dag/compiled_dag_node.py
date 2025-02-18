@@ -1018,12 +1018,16 @@ class CompiledDAG:
         self._proxy_actor = _create_proxy_actor()
         # Set to True when `teardown` API is called.
         self._is_teardown = False
-        # execution indices -> set of channel indices of destructed CompiledDAGRefs
-        # When a CompiledDagRef is destructed and its result has not been cached and
-        # ray.get has not been called on it, we will add it to this dict, so that
-        # we can lazily release the native buffers
-        self._destructed_ref_idxs: Dict[int, Set[Optional[int]]] = defaultdict(set)
-        self._got_ref_idxs: Dict[int, Set[Optional[int]]] = defaultdict(set)
+        # Execution index to set of channel indices for CompiledDAGRefs
+        # or CompiledDAGFuture whose destructor has been called. A "None"
+        # channel index means all channels, and when that happens, "None"
+        # should be the only value in the set.
+        self._destructed_ref_idxs: Dict[int, Set[Optional[int]]] = dict()
+        # Execution index to set of channel indices for CompiledDAGRefs
+        # or CompiledDAGFuture whose get() has been called. A "None"
+        # channel index means all channels, and when that happens, "None"
+        # should be the only value in the set.
+        self._got_ref_idxs: Dict[int, Set[Optional[int]]] = dict()
 
     @property
     def is_teardown(self) -> bool:
@@ -2246,94 +2250,139 @@ class CompiledDAG:
             assert execution_index not in self._result_buffer
         else:
             result = [self._result_buffer[execution_index].pop(channel_index)]
+
+        if execution_index not in self._got_ref_idxs:
+            self._got_ref_idxs[execution_index] = set()
         self._got_ref_idxs[execution_index].add(channel_index)
+        self._clean_up_buffers(execution_index)
         return result
 
-    def _next_execution_can_be_released(self) -> bool:
+    def _delete_execution_results(self, execution_index: int, channel_index: int):
         """
-        Check if the next buffers for the next execution which will be completed
-        can be released. The next execution can be released if the next
-        execution index is in _destructed_ref_idxs and the number of destructed
-        channel indices is equal to the number of output channels.
+        Delete the execution results for the given execution index and channel index.
+        This method should be called when a CompiledDAGRef or CompiledDAGFuture is
+        destructed.
+
+        Note that this method maintains metadata for the deleted execution results,
+        and only actually deletes the buffers lazily when the buffer is not needed
+        anymore.
+
+        Args:
+            execution_index: The execution index to destruct results from.
+            channel_index: The index of the output channel corresponding to the result.
         """
-        return (
-            self._max_finished_execution_index + 1 in self._destructed_ref_idxs
-            and len(self._destructed_ref_idxs[self._max_finished_execution_index + 1])
-            == len(self.dag_output_channels)
-        )
+        if execution_index not in self._destructed_ref_idxs:
+            self._destructed_ref_idxs[execution_index] = set()
+        self._destructed_ref_idxs[execution_index].add(channel_index)
+        self._clean_up_buffers(execution_index)
 
     def _try_release_result_buffer(self, execution_index: int):
-        if self._got_ref_idxs.get(execution_index, set()).union(
-            self._destructed_ref_idxs.get(execution_index, set())
-        ) == set(range(len(self.dag_output_channels))) or self._got_ref_idxs.get(
-            execution_index, set()
-        ) == {
-            None
-        }:
-            logger.info(
-                f"releasing result buffers for execution index {execution_index}",
-                stack_info=False,
+        """
+        Try to release the result buffer for the given execution index.
+        """
+
+        should_release = False
+        got_channel_idxs = self._got_ref_idxs.get(execution_index, set())
+        if None in got_channel_idxs:
+            assert len(got_channel_idxs) == 1, (
+                "channel_idx=None (all channels) cannot coexist with other channel_idxs",
             )
-            # if execution_index in self._result_buffer:
-            self._result_buffer.pop(execution_index, set())
-            self._destructed_ref_idxs.pop(execution_index, set())
-            self._got_ref_idxs.pop(execution_index, set())
-            # self._max_finished_execution_index += 1
-            return True
-        return False
+            should_release = True
+        else:
+            destructed_channel_idxs = self._destructed_ref_idxs.get(
+                execution_index, set()
+            )
+            processed_channel_idxs = got_channel_idxs.union(destructed_channel_idxs)
+            # No more processing is needed for this execution index.
+            should_release = processed_channel_idxs == set(
+                range(len(self.dag_output_channels))
+            )
+
+        if not should_release:
+            return False
+
+        self._result_buffer.pop(execution_index, set())
+        self._destructed_ref_idxs.pop(execution_index, set())
+        self._got_ref_idxs.pop(execution_index, set())
+        return True
 
     def _try_release_native_buffer(
         self, idx_to_release: int, timeout: Optional[float] = None
     ) -> bool:
+        """
+        Try to release the native buffer for the given execution index.
+
+        Args:
+            idx_to_release: The execution index to release buffers from.
+            timeout: The maximum time in seconds to wait for the release.
+
+        Returns:
+            Whether the buffers have been released.
+        """
         if idx_to_release != self._max_finished_execution_index + 1:
-            return False
-        # logger.info(f"checking execution index {idx_to_release}", stack_info=True)
-        # logger.info(f"self._destructed_ref_idxs {self._destructed_ref_idxs}")
-        # logger.info(f"self._got_ref_idxs {self._got_ref_idxs}")
-        # logger.info(f"self._result_buffer {self._result_buffer}")
-        if self._destructed_ref_idxs.get(idx_to_release, set()) == set(
-            range(len(self.dag_output_channels))
-        ) or self._destructed_ref_idxs.get(idx_to_release, set()) == {None}:
-            logger.info(
-                f"releasing native buffers for execution index {idx_to_release}",
-                stack_info=False,
-            )
-            try:
-                self._dag_output_fetcher.release_channel_buffers(timeout)
-            except RayChannelTimeoutError as e:
-                raise RayChannelTimeoutError(
-                    "Releasing native buffers corresponding to a stale CompiledDAGRef "
-                    "is taking a long time. If this is expected, increase "
-                    f"RAY_CGRAPH_get_timeout which is currently {self._get_timeout} "
-                    "seconds. Otherwise, this may indicate that the execution "
-                    "is hanging."
-                ) from e
-            self._destructed_ref_idxs.pop(idx_to_release)
-            assert idx_to_release not in self._result_buffer
-            self._max_finished_execution_index += 1
-            return True
-        else:
+            # Native buffer can only be released for the next execution index.
             return False
 
-    def _try_release_once(
+        destructed_channel_idxs = self._destructed_ref_idxs.get(idx_to_release, set())
+        should_release = False
+        if None in destructed_channel_idxs:
+            assert len(destructed_channel_idxs) == 1, (
+                "channel_idx=None (all channels) cannot coexist with other channel_idxs",
+            )
+            should_release = True
+        elif len(destructed_channel_idxs) == len(self.dag_output_channels):
+            should_release = True
+
+        if not should_release:
+            return False
+
+        assert idx_to_release not in self._result_buffer
+        try:
+            self._dag_output_fetcher.release_channel_buffers(timeout)
+        except RayChannelTimeoutError as e:
+            raise RayChannelTimeoutError(
+                "Releasing native buffers corresponding to a stale CompiledDAGRef "
+                "is taking a long time. If this is expected, increase "
+                f"RAY_CGRAPH_get_timeout which is currently {self._get_timeout} "
+                "seconds. Otherwise, this may indicate that the execution "
+                "is hanging."
+            ) from e
+        self._destructed_ref_idxs.pop(idx_to_release)
+        # Releasing native buffer means the corresponding execution result
+        # is consumed (and discarded).
+        self._max_finished_execution_index += 1
+        return True
+
+    def _try_release_buffer(
         self, idx_to_release: int, timeout: Optional[float] = None
     ) -> bool:
-        released = self._try_release_native_buffer(
+        """
+        Try to release the buffer for the given execution index.
+        First try to release the native buffer, then try to release the result buffer.
+
+        Args:
+            idx_to_release: The execution index to release buffers from.
+            timeout: The maximum time in seconds to wait for the release.
+
+        Returns:
+            Whether the native buffer or result buffer has been released.
+        """
+        return self._try_release_native_buffer(
             idx_to_release, timeout
         ) or self._try_release_result_buffer(idx_to_release)
-        return released
 
     def _try_release_buffers(self):
         """
-        This will try to repeatedly release channel buffers as long as
-        max_finished_execution_index + 1 is in the set of destructed indices.
-        We should be checking to release buffers any time we are incrementing
-        or checking the max_finished_execution_index or the _destructed_ref_idxs.
+        Repeatedly release buffer if possible.
+
+        This method starts from _max_finished_execution_index + 1 and tries to release
+        as many buffers as possible. If a native buffer is released,
+        _max_finished_execution_index will be incremented.
         """
         timeout = self._get_timeout
         while True:
             start_time = time.monotonic()
-            if not self._try_release_once(
+            if not self._try_release_buffer(
                 self._max_finished_execution_index + 1, timeout
             ):
                 break
@@ -2341,6 +2390,26 @@ class CompiledDAG:
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
+
+    def _clean_up_buffers(self, idx_to_release: int):
+        """
+        Clean up native and result buffers.
+
+        This method:
+        1. Tries to release the buffer for the given execution index.
+           This index is the specific one that requires a clean up,
+           e.g., right after get() is called or a CompiledDAGRef/CompiledDAGFuture
+           is destructed.
+        2. Tries to release all buffers starting from _max_finished_execution_index + 1.
+           This step is to clean up buffers that are no longer needed.
+
+        Args:
+            idx_to_release: The execution index that requires a clean up,
+                e.g., right after get() is called or a CompiledDAGRef/CompiledDAGFuture
+                is destructed.
+        """
+        self._try_release_buffer(idx_to_release)
+        self._try_release_buffers()
 
     def _execute_until(
         self,

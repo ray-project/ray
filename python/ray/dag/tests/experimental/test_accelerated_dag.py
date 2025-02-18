@@ -175,30 +175,6 @@ def test_basic(ray_start_regular):
         del result
 
 
-def test_asyncio_capacity(ray_start_regular):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    with InputNode() as i:
-        dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
-
-    loop = get_or_create_event_loop()
-    compiled_dag = dag.experimental_compile(enable_asyncio=True)
-
-    async def main(i):
-        await asyncio.sleep(i * 0.1)
-        # if i != 0:
-        futs = await compiled_dag.execute_async(i)
-        assert len(futs) == 2
-        result = await futs[0]
-        assert result == i
-        # print(f"{i} {futs[1]._dag._max_finished_execution_index=}")
-        # del futs
-        await asyncio.sleep(0)
-
-    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(12)]))
-    # del loop
-
-
 class TestDAGRefDestruction:
     def test_basic_destruction(self, ray_start_regular):
         a = Actor.remote(0)
@@ -302,6 +278,26 @@ class TestDAGRefDestruction:
         ray.get(ref_list)
         # Test that that ref1 doesn't stay in result_buffer
         assert len(compiled_dag._result_buffer) == 0
+
+    def test_asyncio_destruction(self, ray_start_regular):
+        a = Actor.remote(0)
+        b = Actor.remote(0)
+        with InputNode() as i:
+            dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
+
+        loop = get_or_create_event_loop()
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main(i):
+            # use asyncio.sleep to give back control so GC has
+            # a chance to run
+            await asyncio.sleep(i * 0.1)
+            futs = await compiled_dag.execute_async(i)
+            assert len(futs) == 2
+            result = await futs[0]
+            assert result == i
+
+        loop.run_until_complete(asyncio.gather(*[main(i) for i in range(12)]))
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])

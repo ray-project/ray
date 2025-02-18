@@ -97,17 +97,11 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If we've already cached the result in the buffer, get it to remove it
-        # from the buffer. Else add this CompiledDAGRef's execution and channel indices
-        # to the dag's _destructed_ref_idxs, and try to release any buffers we
-        # can based on the dag's current max_finished_execution_index.
-        # if not self._ray_get_called:
-        if not self._ray_get_called:
-            self._dag._destructed_ref_idxs[self._execution_index].add(
-                self._channel_index
-            )
-        self._dag._try_release_once(self._execution_index)
-        self._dag._try_release_buffers()
+        if self._ray_get_called:
+            # get() was already called, no further cleanup is needed.
+            return
+
+        self._dag._delete_execution_results(self._execution_index, self._channel_index)
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
@@ -124,8 +118,6 @@ class CompiledDAGRef:
             return_vals = self._dag._get_execution_results(
                 self._execution_index, self._channel_index
             )
-            self._dag._try_release_once(self._execution_index)
-            self._dag._try_release_buffers()
         except RayChannelTimeoutError:
             raise
         except RayChannelError as channel_error:
@@ -203,7 +195,6 @@ class CompiledDAGFuture:
         raise ValueError("CompiledDAGFuture cannot be pickled.")
 
     def __await__(self):
-        print(f"__await__ {self._execution_index}, {self._channel_index}")
         if self._fut is None:
             raise ValueError(
                 "CompiledDAGFuture can only be awaited upon once, and it has "
@@ -216,32 +207,22 @@ class CompiledDAGFuture:
         fut = self._fut
         self._fut = None
 
-        print(f"__await__ fut {self._execution_index}, {self._channel_index}")
-
         if not self._dag._has_execution_results(self._execution_index):
             result = yield from fut.__await__()
             self._dag._max_finished_execution_index += 1
             self._dag._cache_execution_results(self._execution_index, result)
 
-        print(f"__await__ result{self._execution_index}, {self._channel_index}")
-
         return_vals = self._dag._get_execution_results(
             self._execution_index, self._channel_index
         )
-        self._dag._try_release_buffers()
         return _process_return_vals(return_vals, True)
 
     def __del__(self):
-        print(
-            "CompiledDAGFuture __del__ for execution_index {} and channel_index {}".format(
-                self._execution_index, self._channel_index
-            )
-        )
         if self._dag.is_teardown:
             return
 
         if self._fut is None:
+            # await() was already called, no further cleanup is needed.
             return
-        self._dag._destructed_ref_idxs[self._execution_index].add(self._channel_index)
-        self._dag._try_release_once(self._execution_index)
-        self._dag._try_release_buffers()
+
+        self._dag._delete_execution_results(self._execution_index, self._channel_index)
