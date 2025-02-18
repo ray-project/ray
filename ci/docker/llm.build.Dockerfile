@@ -19,8 +19,4 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 
 pip install --no-deps -r python/requirements_compiled_rayllm_test_py311_$RAY_CUDA_CODE.txt
 
-# FIXME(comaniac)
-pip uninstall -y torch
-pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
-
 EOF
