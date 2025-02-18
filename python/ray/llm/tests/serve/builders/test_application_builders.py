@@ -24,7 +24,7 @@ def get_llm_serve_args(llm_config):
 
 
 @pytest.fixture()
-def serve_config_separate_model_config_files(download_model_ckpt):
+def serve_config_separate_model_config_files(model_pixtral_12b):
     with tempfile.TemporaryDirectory() as config_dir:
         serve_config_filename = "llm_app_separate_model_config_files.yaml"
         config_root = os.path.join(os.path.dirname(__file__), "test_config_files")
@@ -44,9 +44,7 @@ def serve_config_separate_model_config_files(download_model_ckpt):
 
                 with open(llm_config_src, "r") as f:
                     llm_config_yaml = yaml.safe_load(f)
-                llm_config_yaml["model_loading_config"][
-                    "model_id"
-                ] = download_model_ckpt
+                llm_config_yaml["model_loading_config"]["model_id"] = model_pixtral_12b
 
                 os.makedirs(os.path.dirname(llm_config_dst), exist_ok=True)
                 with open(llm_config_dst, "w") as f:
@@ -61,9 +59,6 @@ def serve_config_separate_model_config_files(download_model_ckpt):
 
 
 class TestBuildOpenaiApp:
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_build_openai_app(
         self, get_llm_serve_args, shutdown_ray_and_serve, use_mock_vllm_engine
     ):
@@ -75,9 +70,6 @@ class TestBuildOpenaiApp:
         assert isinstance(app, serve.Application)
         serve.run(app)
 
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_build_openai_app_with_config(
         self,
         serve_config_separate_model_config_files,
@@ -104,9 +96,6 @@ class TestBuildOpenaiApp:
 
 
 class TestBuildVllmDeployment:
-    @pytest.mark.parametrize(
-        "download_model_ckpt_model", ["mistral-community-pixtral-12b"]
-    )
     def test_build_vllm_deployment(
         self,
         llm_config,

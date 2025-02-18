@@ -32,7 +32,7 @@ from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_lora_model_ids,
     get_lora_model_metadata,
 )
-from ray.llm._internal.serve.configs.llm_models import (
+from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatCompletionStreamResponse,
@@ -41,22 +41,22 @@ from ray.llm._internal.serve.configs.llm_models import (
     CompletionStreamResponse,
     LLMChatResponse,
     LLMCompletionsResponse,
+    OpenAIHTTPException,
+    to_model_metadata,
+)
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
+    ErrorResponse,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    ErrorResponse,
     LLMConfig,
     ModelData,
     Model,
-)
-from ray.llm._internal.serve.deployments.openai_utils import (
-    OpenAIHTTPException,
-    to_model_metadata,
 )
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
-from ray.llm._internal.serve.deployments.server_utils import replace_prefix
+from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
 
 logger = get_logger(__name__)
 

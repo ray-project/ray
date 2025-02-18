@@ -8,11 +8,13 @@ from PIL import Image
 from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
 
 from ray.llm._internal.serve.configs.error_handling import ValidationError
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
+    ResponseFormatJsonObject,
+)
 from ray.llm._internal.serve.configs.server_models import (
     FinishReason,
     LogProb,
     LogProbs,
-    ResponseFormatJsonObject,
     DiskMultiplexConfig,
     LLMConfig,
     LLMRawResponse,
@@ -25,7 +27,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from ray.llm._internal.serve.deployments.llm_node_initializer import (
+from ray.llm._internal.serve.deployments.utils.node_initialization_utils import (
     InitializeNodeOutput,
 )
 
@@ -41,6 +43,14 @@ class MockVLLMEngine:
             llm_config, LLMConfig
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
         self.llm_config = llm_config
+
+        # Try to set up prompt_format when applied.
+        try:
+            self.llm_config.prompt_format.set_processor(
+                self.llm_config.model_loading_config.model_source
+            )
+        except OSError:
+            pass
 
         self._stats = VLLMEngineStatTracker()
 
@@ -59,16 +69,10 @@ class MockVLLMEngine:
     @staticmethod
     async def async_range(count):
         for i in range(count):
-            yield (i,)
+            yield i
             await asyncio.sleep(0.0)
 
-    def lazy_set_processor(self):
-        self.llm_config.prompt_format.set_processor(
-            self.llm_config.model_loading_config.model_source
-        )
-
     async def generate(self, vllm_engine_request: VLLMGenerationRequest, stream: bool):
-        self.lazy_set_processor()
         sampling_params = self._parse_sampling_params(
             vllm_engine_request.sampling_params
         )

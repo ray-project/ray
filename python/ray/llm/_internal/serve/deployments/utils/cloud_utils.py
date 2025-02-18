@@ -1,3 +1,4 @@
+# TODO (genesu): clean up these utils.
 from typing import List, Optional, Tuple, Union, Dict
 import os
 import boto3
@@ -335,7 +336,7 @@ def download_model_from_gcs(
     for blob in bucket.list_blobs(prefix=prefix):
         if blob.name == f"{prefix}hash":
             blob.download_to_filename("./hash")
-            with open(os.path.join(".", "hash"), "r") as f:
+            with open(os.path.join("..", "hash"), "r") as f:
                 f_hash = f.read().strip()
             logger.info(
                 f"Detected hash file in GCS bucket {bucket_uri}. "
@@ -465,8 +466,8 @@ def download_model_from_s3(
     s3_sync_args = s3_sync_args or []
 
     # Make sure the hash file is not present in the local directory
-    if os.path.exists(os.path.join(".", "hash")):
-        os.remove(os.path.join(".", "hash"))
+    if os.path.exists(os.path.join("..", "hash")):
+        os.remove(os.path.join("..", "hash"))
 
     s3_hash_file_path = os.path.join(bucket_uri, "hash")
     try:
@@ -482,13 +483,13 @@ def download_model_from_s3(
             f"{s3_hash_file_path} to the working directory ({os.getcwd()})."
         )
 
-    if not os.path.exists(os.path.join(".", "hash")):
+    if not os.path.exists(os.path.join("..", "hash")):
         f_hash = "0000000000000000000000000000000000000000"
         logger.warning(
             f"hash file does not exist in {bucket_uri}. Using {f_hash} as the hash."
         )
     else:
-        with open(os.path.join(".", "hash"), "r") as f:
+        with open(os.path.join("..", "hash"), "r") as f:
             f_hash = f.read().strip()
 
     target_path = os.path.join(path, "snapshots", f_hash)

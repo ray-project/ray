@@ -13,19 +13,17 @@ from ray.llm._internal.serve.configs.prompt_formats import (
 
 @pytest.fixture
 def hf_prompt_format(model_pixtral_12b):
-    hf_prompt_format = HuggingFacePromptFormat(use_hugging_face_chat_template=True)
+    hf_prompt_format = HuggingFacePromptFormat()
     hf_prompt_format.set_processor(model_id_or_path=model_pixtral_12b)
     return hf_prompt_format
 
 
-@pytest.mark.parametrize("download_model_ckpt_model", ["mistral-community-pixtral-12b"])
 def test_hf_prompt_format_on_string_message(hf_prompt_format):
     messages = Prompt(prompt="This is a test message.")
     with pytest.raises(ValueError):
         hf_prompt_format.generate_prompt(messages=messages)
 
 
-@pytest.mark.parametrize("download_model_ckpt_model", ["mistral-community-pixtral-12b"])
 def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
     messages = Prompt(
         prompt=[
@@ -72,7 +70,6 @@ def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
     assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
 
 
-@pytest.mark.parametrize("download_model_ckpt_model", ["mistral-community-pixtral-12b"])
 def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
     messages = [
         Message(role="system", content="You are a helpful assistant."),

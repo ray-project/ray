@@ -10,7 +10,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
-from ray.llm._internal.serve.deployments.streaming_error_handler import (
+from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
     StreamingErrorHandler,
 )
 from ray.llm._internal.serve.configs.error_handling import (
@@ -26,7 +26,7 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
     VLLMGenerationRequest,
     VLLMSamplingParams,
 )
-from ray.llm._internal.serve.configs.llm_models import (
+from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
     ChatCompletionLogProbs,
     ChatCompletionLogProbsContent,
@@ -46,14 +46,16 @@ from ray.llm._internal.serve.configs.llm_models import (
     LLMCompletionsResponse,
     UsageInfo,
 )
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
+    ErrorResponse,
+)
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
-    ErrorResponse,
     LLMConfig,
     LLMRawResponse,
 )
 from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
-from ray.llm._internal.serve.deployments.server_utils import (
+from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_model_request_id,
     get_response_for_error,
     get_serve_request_id,

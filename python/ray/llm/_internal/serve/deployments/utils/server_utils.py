@@ -5,10 +5,12 @@ import traceback
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve
 
-from ray.llm._internal.serve.deployments.openai_utils import OpenAIHTTPException
+from ray.llm._internal.serve.configs.openai_api_models import OpenAIHTTPException
 from ray.llm._internal.serve.configs.server_models import (
-    ErrorResponse,
     LLMRawResponse,
+)
+from ray.llm._internal.serve.configs.openai_api_models_patch import (
+    ErrorResponse,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 import asyncio

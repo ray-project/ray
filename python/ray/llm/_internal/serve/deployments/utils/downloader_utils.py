@@ -6,7 +6,7 @@ from typing import List
 from filelock import FileLock
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.cloud_utils import (
+from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     download_files_from_gcs,
     download_files_from_s3,
     download_model_from_gcs,
