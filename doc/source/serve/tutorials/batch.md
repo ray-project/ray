@@ -117,7 +117,7 @@ from ray.serve.handle import DeploymentHandle
 handle: DeploymentHandle = serve.run(generator, name="Text-Completion-App")
 ```
 
-This handle can now be used to query the model-- see the [Querying the Model](#querying-the-model) section below.
+You can now use this handle to query the model. See the [Querying the Model](#querying-the-model) section below.
 
 Give the app a name to create a new handle to the app by running the 
 following:
