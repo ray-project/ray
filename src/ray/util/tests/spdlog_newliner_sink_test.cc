@@ -73,9 +73,13 @@ TEST(NewlinerSinkTest, AppendAndFlushTest) {
 
     testing::internal::CaptureStdout();
     logger->log(spdlog::level::info, kContent);
-    logger->flush();
-    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
+
+    testing::internal::CaptureStdout();
+    logger->flush();
+    stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_TRUE(stdout_content.empty());
   }
 
   // Case-2: string with no newliner at the end.
@@ -103,9 +107,13 @@ TEST(NewlinerSinkTest, AppendAndFlushTest) {
 
     testing::internal::CaptureStdout();
     logger->log(spdlog::level::info, kContent);
-    logger->flush();
-    const std::string stdout_content = testing::internal::GetCapturedStdout();
+    std::string stdout_content = testing::internal::GetCapturedStdout();
     EXPECT_EQ(stdout_content, kContent);
+
+    testing::internal::CaptureStdout();
+    logger->flush();
+    stdout_content = testing::internal::GetCapturedStdout();
+    EXPECT_TRUE(stdout_content.empty());
   }
 
   // Case-4: newliner in the middle, without trailing newliner.
