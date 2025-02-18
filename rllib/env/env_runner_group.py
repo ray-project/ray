@@ -494,13 +494,9 @@ class EnvRunnerGroup:
                 config.num_env_runners or 1
             )
 
-        # Update the rl_module component of the EnvRunner states, if necessary:
-        if rl_module_state:
-            env_runner_states.update(rl_module_state)
-
         # If we do NOT want remote EnvRunners to get their Connector states updated,
-        # only update the local worker here (with all state components) and then remove
-        # the connector components.
+        # only update the local worker here (with all state components, except the model
+        # weights) and then remove the connector components.
         if not config.update_worker_filter_stats:
             self.local_env_runner.set_state(env_runner_states)
             env_runner_states.pop(COMPONENT_ENV_TO_MODULE_CONNECTOR, None)
@@ -509,21 +505,32 @@ class EnvRunnerGroup:
         # If there are components in the state left -> Update remote workers with these
         # state components (and maybe the local worker, if it hasn't been updated yet).
         if env_runner_states:
+            # Update the local EnvRunner, but NOT with the weights. If used at all for
+            # evaluation (through the user calling `self.evaluate`), RLlib would update
+            # the weights up front either way.
+            if config.update_worker_filter_stats:
+                self.local_env_runner.set_state(env_runner_states)
+
+            # Do send all model weights to all remote EnvRunners.
+            if rl_module_state:
+                env_runner_states.update(rl_module_state)
+
             # Put the state dictionary into Ray's object store to avoid having to make n
             # pickled copies of the state dict.
             ref_env_runner_states = ray.put(env_runner_states)
 
-            def _update(_env_runner: EnvRunner) -> None:
-                _env_runner.set_state(ray.get(ref_env_runner_states))
+            #def _update(_env_runner: EnvRunner) -> None:
+            #    _env_runner.set_state(ray.get(ref_env_runner_states))
 
             # Broadcast updated states back to all workers.
             self.foreach_env_runner(
-                _update,
+                "set_state",
+                kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
-                local_env_runner=config.update_worker_filter_stats,
+                local_env_runner=False,
                 timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
-
+            
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
@@ -714,6 +721,7 @@ class EnvRunnerGroup:
         self,
         func: Callable[[EnvRunner], T],
         *,
+        kwargs=None,
         local_env_runner: bool = True,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
@@ -755,13 +763,18 @@ class EnvRunnerGroup:
 
         local_result = []
         if local_env_runner and self.local_env_runner is not None:
-            local_result = [func(self.local_env_runner)]
+            assert kwargs is None
+            if isinstance(func, str):
+                local_result = [getattr(self.local_env_runner, func)]
+            else:
+                local_result = [func(self.local_env_runner)]
 
         if not self._worker_manager.actor_ids():
             return local_result
 
         remote_results = self._worker_manager.foreach_actor(
             func,
+            kwargs=kwargs,
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,

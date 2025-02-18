@@ -445,7 +445,8 @@ class FaultTolerantActorManager:
         """
         remote_actor_ids = remote_actor_ids or self.actor_ids()
         if healthy_only:
-            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
+            # TODO (sven): send in kwargs
+            func, _, remote_actor_ids = self._filter_by_state(
                 func, remote_actor_ids
             )
 
@@ -471,10 +472,11 @@ class FaultTolerantActorManager:
     def foreach_actor_async(
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
-        tag: str = None,
+        tag: Optional[str] = None,
         *,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         healthy_only: bool = True,
-        remote_actor_ids: List[int] = None,
+        remote_actor_ids: Optional[List[int]] = None,
     ) -> int:
         """Calls given functions against each actors without waiting for results.
 
@@ -521,19 +523,24 @@ class FaultTolerantActorManager:
             # Update our round-robin pointer.
             self._current_actor_id += len(func)
             self._current_actor_id %= self.num_actors()
+            if kwargs is None:
+                kwargs = [{} for _ in range(len(func))]
+        elif kwargs is None:
+            kwargs = {}
 
         if healthy_only:
-            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
-                func, remote_actor_ids
+            func, kwargs, remote_actor_ids = self._filter_by_state(
+                func, remote_actor_ids, kwargs=kwargs
             )
 
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
         # Drop calls to actors that are too busy.
         if isinstance(func, list):
-            assert len(func) == len(remote_actor_ids)
+            assert len(func) == len(kwargs) == len(remote_actor_ids)
             limited_func = []
+            limited_kwargs = []
             limited_remote_actor_ids = []
-            for i, f in zip(remote_actor_ids, func):
+            for i, k, f in zip(remote_actor_ids, kwargs, func):
                 num_outstanding_reqs = self._remote_actor_states[
                     i
                 ].num_in_flight_async_requests
@@ -543,9 +550,11 @@ class FaultTolerantActorManager:
                 ):
                     num_calls_to_make[i] += 1
                     limited_func.append(f)
+                    limited_kwargs.append(k)
                     limited_remote_actor_ids.append(i)
         else:
             limited_func = func
+            limited_kwargs = kwargs
             limited_remote_actor_ids = []
             for i in remote_actor_ids:
                 num_outstanding_reqs = self._remote_actor_states[
@@ -560,6 +569,7 @@ class FaultTolerantActorManager:
 
         remote_calls = self._call_actors(
             func=limited_func,
+            kwargs=limited_kwargs,
             remote_actor_ids=limited_remote_actor_ids,
         )
 
@@ -717,6 +727,7 @@ class FaultTolerantActorManager:
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]], str, List[str]],
         *,
+        kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         remote_actor_ids: List[int] = None,
     ) -> List[ray.ObjectRef]:
         """Apply functions on a list of remote actors.
@@ -736,23 +747,36 @@ class FaultTolerantActorManager:
             assert len(remote_actor_ids) == len(
                 func
             ), "Funcs must have the same number of callables as actor indices."
+            if kwargs is not None:
+                assert len(kwargs) == len(remote_actor_ids), (
+                    f"`kwargs` ({kwargs}) must have the same length as actor indices "
+                    f"({remote_actor_ids})!"
+                )
+            else:
+                kwargs = [{} for _ in range(len(remote_actor_ids))]
+        elif kwargs is None:
+            kwargs = {}
 
         if remote_actor_ids is None:
             remote_actor_ids = self.actor_ids()
 
         calls = []
         if isinstance(func, list):
-            for i, f in zip(remote_actor_ids, func):
+            for i, (actor_id, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
-                    calls.append(getattr(self._actors[i], f).remote())
+                    calls.append(getattr(self._actors[actor_id], f).remote(**kwargs[i]))
                 else:
                     calls.append(self._actors[i].apply.remote(f))
         elif isinstance(func, str):
-            for i in remote_actor_ids:
-                calls.append(getattr(self._actors[i], func).remote())
+            for i, actor_id in enumerate(remote_actor_ids):
+                calls.append(
+                    getattr(self._actors[actor_id], func).remote(
+                        **kwargs[i] if isinstance(kwargs, list) else kwargs
+                    )
+                )
         else:
-            for i in remote_actor_ids:
-                calls.append(self._actors[i].apply.remote(func))
+            for actor_id in remote_actor_ids:
+                calls.append(self._actors[actor_id].apply.remote(func))
 
         return calls
 
@@ -855,10 +879,12 @@ class FaultTolerantActorManager:
 
         return readies, remote_results
 
-    def _filter_func_and_remote_actor_id_by_state(
+    def _filter_by_state(
         self,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
         remote_actor_ids: List[int],
+        *,
+        kwargs: Optional[Union[List[Any], List[List[Any]]]] = None,
     ):
         """Filter out func and remote worker ids by actor state.
 
@@ -877,17 +903,22 @@ class FaultTolerantActorManager:
             # Need to filter the functions together with worker IDs.
             temp_func = []
             temp_remote_actor_ids = []
-            for f, i in zip(func, remote_actor_ids):
+            temp_kwargs = []
+            if kwargs is None:
+                kwargs = [{} for _ in range(len(func))]
+            for f, k, i in zip(func, kwargs, remote_actor_ids):
                 if self.is_actor_healthy(i):
                     temp_func.append(f)
+                    temp_kwargs.append(k)
                     temp_remote_actor_ids.append(i)
             func = temp_func
+            kwargs = temp_kwargs
             remote_actor_ids = temp_remote_actor_ids
         else:
             # Simply filter the worker IDs.
             remote_actor_ids = [i for i in remote_actor_ids if self.is_actor_healthy(i)]
 
-        return func, remote_actor_ids
+        return func, kwargs, remote_actor_ids
 
     def _filter_calls_by_tag(
         self, tags: Union[str, List[str], Tuple[str]]
