@@ -9,6 +9,7 @@ steps:
     env:
       IMAGE_TO: "llmbuild"
       IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_build-py3.11"
+      RAY_CUDA_CODE: "cpu"
 
   - name: llmgpubuild
     wanda: ci/docker/llm.build.wanda.yaml
@@ -17,6 +18,7 @@ steps:
     env:
       IMAGE_TO: "llmgpubuild"
       IMAGE_FROM: "cr.ray.io/rayproject/oss-ci-base_gpu-py3.11"
+      RAY_CUDA_CODE: "cu121"
 
   - label: "llm cpu tests"
     key: "llm-cpu-tests"
