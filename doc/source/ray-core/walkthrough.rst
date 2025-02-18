@@ -17,10 +17,9 @@ Ray Core provides a small number of core primitives (i.e., tasks, actors, object
 
 .. note::
 
-    Other than the classic APIs described in this section, Ray Core also offers a new API 
-    called Ray Compiled Graph. While the classic Ray Core API is highly flexible,
-    Ray Compiled Graph is more suitable for static, high-performance and multi-GPU
-    workloads.
+    Ray has introduced an experimental API for high-performance workloads that is
+    especially well suited for applications using multiple GPUs.
+    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
     
     See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
 
