@@ -70,8 +70,7 @@ class TorchTensorWorker:
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
-        # [TODO: andyub] change back to tensor[0] after debugging
-        return (tensor[-1].item(), tensor.shape, tensor.dtype)
+        return (tensor[0].item(), tensor.shape, tensor.dtype)
 
     def recv_and_matmul(self, two_d_tensor):
         """
@@ -484,13 +483,7 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize(
-    "overlap_gpu_communication",
-    [
-        False,
-        # True,
-    ],
-)
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
 def test_torch_tensor_nccl_send_overlap_result_across_actors(
     ray_start_regular, overlap_gpu_communication
 ):
@@ -506,46 +499,43 @@ def test_torch_tensor_nccl_send_overlap_result_across_actors(
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
     dtype = torch.float16
-    coll_shape = (100_000_000,)
-    comp_shape = (100_000,)
-    comp_repeat = 1_000
+    coll_shape = (1000,)
     with InputNode() as inp:
         coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
-        comp_inputs = [worker.send.bind(comp_shape, dtype, inp) for worker in workers]
-        comp_outputs = [
-            worker.compute_inc.bind(comp, comp_repeat)
-            for worker, comp in zip(workers, comp_inputs)
-        ]
         coll_values = collective.allreduce.bind(coll_inputs)
         coll_outputs = [
             workers[0].recv.bind(coll_values[1]),
             workers[1].recv.bind(coll_values[0]),
         ]
-        dag = MultiOutputNode(coll_outputs + comp_outputs)
+        dag = MultiOutputNode(coll_outputs)
 
     compiled_dag = dag.experimental_compile(
         _overlap_gpu_communication=overlap_gpu_communication
     )
 
-    elapses = []
-    start = time.monotonic()
     for i in range(5):
-        start = time.monotonic()
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
-        duration = time.monotonic() - start
-        elapses.append(duration)
-        assert (
-            result
-            == [(i * num_workers, coll_shape, dtype)] * num_workers
-            + [(i + comp_repeat, comp_shape, dtype)] * num_workers
-        )
-    duration = time.monotonic() - start
-    print(f"{overlap_gpu_communication=}, {duration=}")
-    for i, elapse in enumerate(elapses):
-        print(f"iteration {i=}, {elapse=}")
+        assert result == [(i * num_workers, coll_shape, dtype)] * num_workers
 
     compiled_dag.teardown()
+
+    with InputNode() as inp:
+        coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
+        coll_values = collective.allreduce.bind(coll_inputs)
+        dag = MultiOutputNode(coll_values)
+
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    for i in range(5):
+        ref = compiled_dag.execute(i)
+        results = ray.get(ref)
+        expected_value = i * num_workers
+        expected = torch.ones(coll_shape) * expected_value
+        for actual in results:
+            assert torch.equal(expected, actual.cpu())
 
 
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):

@@ -41,15 +41,25 @@ class GPUFuture:
         self._event.record(stream)
         self._fut_id: Optional[int] = None
 
-    def wait(self) -> Any:
+    def wait(self, blocking: bool = False) -> Any:
         """
-        Wait for the future on the current CUDA stream and return the result from
-        the GPU operation. This operation does not block CPU.
+        Wait for the future on the current CUDA stream. Future operations on the
+        current CUDA stream will not begin until the GPU operation captured
+        by this future finishes.
+
+        Args:
+            blocking: Whether this operation blocks CPU.
+
+        Return:
+            Result from the GPU operation. The returned result is immediately
+            ready to use iff blocking.
         """
         import cupy as cp
 
         current_stream = cp.cuda.get_current_stream()
         current_stream.wait_event(self._event)
+        if blocking:
+            current_stream.synchronize()
 
         from ray.experimental.channel.common import ChannelContext
 

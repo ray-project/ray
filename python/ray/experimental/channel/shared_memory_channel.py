@@ -442,9 +442,12 @@ class Channel(ChannelInterface):
 
         from ray.dag.dag_operation_future import GPUFuture
 
-        # [TODO] We do not send a GPU future across actors.
         if isinstance(value, GPUFuture):
-            value = value.wait()
+            logger.warning(
+                "Sending the result of an asynchronous NCCL operation across actors. "
+                "This will block the CPU while waiting for the NCCL operation to finish."
+            )
+            value = value.wait(blocking=True)
 
         if not isinstance(value, SerializedObject):
             try:
