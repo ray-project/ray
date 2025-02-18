@@ -29,6 +29,7 @@ Processor Configs
 .. autosummary::
     :nosignatures:
     :toctree: doc/
+    :template: autosummary/autopydantic.rst
 
     ~ProcessorConfig
     ~HttpRequestProcessorConfig
