@@ -11,7 +11,7 @@ import aiohttp.web
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
-from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
+from ray._common.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.storage import _load_class
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 

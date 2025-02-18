@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Union
 import pytest
 
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (

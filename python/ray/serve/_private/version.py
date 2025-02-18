@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from zlib import crc32
 
-from ray._private.pydantic_compat import BaseModel
+from ray._common.pydantic_compat import BaseModel
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_string
 from ray.serve.config import AutoscalingConfig
