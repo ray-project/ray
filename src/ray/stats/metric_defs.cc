@@ -16,8 +16,6 @@
 
 #include "ray/util/size_literals.h"
 
-using namespace ray::literals;
-
 namespace ray::stats {
 
 /// The definitions of metrics that you can use everywhere.
@@ -165,7 +163,7 @@ DEFINE_stats(operation_active_count,
 DEFINE_stats(grpc_server_req_process_time_ms,
              "Request latency in grpc server",
              ("Method"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ({0.1, 1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 DEFINE_stats(grpc_server_req_new,
              "New request number in grpc server",
@@ -276,7 +274,7 @@ DEFINE_stats(scheduler_placement_time_s,
              "be placed. This is the time from when the tasks dependencies are "
              "resolved to when it actually reserves resources on a node to run.",
              ("WorkloadType"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ({0.1, 1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 
 /// Local Object Manager
@@ -306,7 +304,7 @@ DEFINE_stats(spill_manager_throughput_mb,
 DEFINE_stats(gcs_storage_operation_latency_ms,
              "Time to invoke an operation on Gcs storage",
              ("Operation"),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ({0.1, 1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 DEFINE_stats(gcs_storage_operation_count,
              "Number of operations invoked on Gcs storage",
@@ -322,14 +320,14 @@ DEFINE_stats(gcs_storage_operation_count,
 DEFINE_stats(gcs_placement_group_creation_latency_ms,
              "end to end latency of placement group creation",
              (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ({0.1, 1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 // The time from placement group scheduling has started
 // <-> Placement group creation succeeds.
 DEFINE_stats(gcs_placement_group_scheduling_latency_ms,
              "scheduling latency of placement groups",
              (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ({0.1, 1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 DEFINE_stats(gcs_placement_group_count,
              "Number of placement groups broken down by state in {Registered, Pending, "

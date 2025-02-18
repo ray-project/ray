@@ -18,6 +18,7 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "gmock/gmock.h"
@@ -90,7 +91,7 @@ class StatsTest : public ::testing::Test {
     MockExporter::Register();
   }
 
-  virtual void TearDown() override { Shutdown(); }
+  void TearDown() override { Shutdown(); }
 
   void Shutdown() { ray::stats::Shutdown(); }
 };
@@ -178,7 +179,8 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
     threads.emplace_back([global_tags]() {
       for (int i = 0; i < 5; i++) {
         unsigned int upper_bound = 100;
-        unsigned int init_or_shutdown = (rand() % upper_bound);
+        unsigned int seed = time(NULL);
+        unsigned int init_or_shutdown = (rand_r(&seed) % upper_bound);
         if (init_or_shutdown >= (upper_bound / 2)) {
           ray::stats::Init(global_tags, MetricsAgentPort, WorkerID::Nil());
         } else {

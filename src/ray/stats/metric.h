@@ -21,6 +21,8 @@
 #include <tuple>
 #include <unordered_map>
 #include <utility>  // std::pair
+#include <string>
+#include <vector>
 
 #include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
@@ -141,7 +143,6 @@ class Metric {
 
   // For making sure thread-safe to all of metric registrations.
   static absl::Mutex registration_mutex_;
-
 };  // class Metric
 
 class Gauge : public Metric {
@@ -154,7 +155,6 @@ class Gauge : public Metric {
 
  private:
   void RegisterView() override;
-
 };  // class Gauge
 
 class Histogram : public Metric {
@@ -171,7 +171,6 @@ class Histogram : public Metric {
 
  private:
   std::vector<double> boundaries_;
-
 };  // class Histogram
 
 class Count : public Metric {
@@ -184,7 +183,6 @@ class Count : public Metric {
 
  private:
   void RegisterView() override;
-
 };  // class Count
 
 class Sum : public Metric {
@@ -197,7 +195,6 @@ class Sum : public Metric {
 
  private:
   void RegisterView() override;
-
 };  // class Sum
 
 enum StatsType : int { COUNT, SUM, GAUGE, HISTOGRAM };
