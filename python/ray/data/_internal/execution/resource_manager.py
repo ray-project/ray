@@ -12,12 +12,10 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-    update_object_store_usage,
-)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
@@ -95,7 +93,24 @@ class ResourceManager:
             )
         )
 
-    def _estimate_object_store_memory(self, op, state) -> int:
+    def update_object_store_usage(
+        self, op: "PhysicalOperator", op_usage: "ExecutionResources", state: "OpState"
+    ) -> None:
+        # Update operator's object store usage, which is used by
+        # DatasetStats and updated on the Ray Data dashboard.
+        op._metrics.obj_store_mem_used = op_usage.object_store_memory
+
+        # Update the per node metrics
+        if op.data_context.enable_per_node_metrics:
+            memory_usage_per_node = self._estimate_object_store_memory_per_node(
+                op, state
+            )
+            for node_id, usage in memory_usage_per_node.items():
+                op._metrics._per_node_metrics[node_id].obj_store_mem_used = usage
+
+    def _estimate_object_store_memory(
+        self, op: "PhysicalOperator", state: "OpState"
+    ) -> int:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
@@ -119,6 +134,50 @@ class ResourceManager:
         self._mem_op_outputs[op] = mem_op_outputs
 
         return mem_op_internal + mem_op_outputs
+
+    def _estimate_object_store_memory_per_node(
+        self, op: "PhysicalOperator", state: "OpState"
+    ) -> Dict[str, int]:
+        usage_per_node = defaultdict(int)
+        # Don't count input refs towards dynamic memory usage, as they have been
+        # pre-created already outside this execution.
+        if isinstance(op, InputDataBuffer):
+            return usage_per_node
+
+        # Pending task outputs.
+        # TODO(mowen): We need something akin to op.metrics.obj_store_mem_pending_task_outputs
+        # here. Without the number of tasks running per node, this will be difficult to estimate.
+        # See: https://github.com/ray-project/ray/blob/b5bb747696300febb443c88a44938ac803103c25/python/ray/data/_internal/execution/interfaces/op_runtime_metrics.py#L390
+
+        # Op's internal output buffers, iterate through internal outqueue
+        for (
+            node_id,
+            size,
+        ) in op.metrics._internal_outqueue.estimate_size_bytes_per_node().items():
+            usage_per_node[node_id] += size
+
+        # Op's external output buffer, iterate over outqueues in state.outqueue
+        for node_id, size in state.outqueue.memory_usage_per_node().items():
+            usage_per_node[node_id] += size
+
+        # Input buffers of the downstream operators.
+        for next_op in op.output_dependencies:
+            for (
+                node_id,
+                size,
+            ) in (
+                next_op.metrics._internal_inqueue.estimate_size_bytes_per_node().items()
+            ):
+                usage_per_node[node_id] += size
+            for (
+                node_id,
+                size,
+            ) in (
+                next_op.metrics._pending_task_inputs.estimate_size_bytes_per_node().items()
+            ):
+                usage_per_node[node_id] += size
+
+        return usage_per_node
 
     def update_usages(self):
         """Recalculate resource usages."""
@@ -175,7 +234,7 @@ class ResourceManager:
                 op
             ] = self._global_usage.object_store_memory
 
-            update_object_store_usage(op, op_usage, state)
+            self.update_object_store_usage(op, op_usage, state)
 
         if self._op_resource_allocator is not None:
             self._op_resource_allocator.update_usages()

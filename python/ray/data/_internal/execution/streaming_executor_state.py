@@ -68,6 +68,20 @@ class OpBufferQueue:
                 for split_queue in self._outputs_by_split.values()
             )
 
+    def memory_usage_per_node(self) -> Dict[str, int]:
+        """The total memory usage of the queue in bytes per node."""
+        with self._lock:
+            # The split queues contain bundles popped from the main queue. So, a bundle
+            # will either be in the main queue or in one of the split queues, and we
+            # don't need to worry about double counting.
+            usage_per_node = self._queue.estimate_size_bytes_per_node()
+            for split_queue in self._outputs_by_split.values():
+                usage_per_node_per_split = split_queue.estimate_size_bytes_per_node()
+                for node_id, size in usage_per_node_per_split.items():
+                    usage_per_node[node_id] += size
+
+            return usage_per_node
+
     @property
     def num_blocks(self) -> int:
         """The total number of blocks in the queue."""
