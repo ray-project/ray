@@ -102,7 +102,7 @@ You can deploy your app in two ways:
 $ serve run tutorial_batch:generator --name "Text-Completion-App"
 ```
 
-Note that the `--name` argument is optional. If you do not specify a name, the app will be named `default`.
+Note that the `--name` argument is optional. If you don't specify a name, the app is named `default`.
  Naming the app is useful if you are running multiple apps on the same machine, and 
 also for being able to create a new handle to the app.
 
