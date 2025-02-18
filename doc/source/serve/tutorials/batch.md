@@ -95,7 +95,7 @@ the maximum possible batch size that Ray Serve executes at once.
 
 ## Deployment Options
 
-You can deploy your application in two ways:
+You can deploy your app in two ways:
 
 ### Option 1: Deploying with the Serve CLI
 ```console
