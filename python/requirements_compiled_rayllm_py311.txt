@@ -247,6 +247,12 @@ blake3==1.0.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311.txt
     #   vllm
+botocore==1.36.22 \
+    --hash=sha256:59520247d5a479731724f97c995d5a1c2aae3b303b324f39d99efcfad1d3019e \
+    --hash=sha256:75d6b34acb0686ee4d54ff6eb285e78ccfe318407428769d1e3e13351714d890
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 cachetools==5.3.2 \
     --hash=sha256:086ee420196f7b2ab9ca2db2520aca326318b68fe5ba8bc4d49cca91add450f2 \
     --hash=sha256:861f35a13a451f94e301ce2bec7cac63e881232ccce7ed67fab9b5df4d3beaa1
@@ -1064,6 +1070,12 @@ jiter==0.8.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311.txt
     #   openai
+jmespath==1.0.1 \
+    --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
+    --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311.txt
+    #   botocore
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
     --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
@@ -2078,6 +2090,7 @@ python-dateutil==2.8.2 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
     #   -c python/requirements_compiled_rayllm_test_py311.txt
+    #   botocore
     #   pandas
 python-dotenv==1.0.1 \
     --hash=sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca \
@@ -2847,6 +2860,7 @@ urllib3==1.26.19 \
     --hash=sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429
     # via
     #   -c python/requirements_compiled_rayllm_test_py311.txt
+    #   botocore
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \

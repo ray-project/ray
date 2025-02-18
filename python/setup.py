@@ -363,7 +363,7 @@ if setup_spec.type == SetupType.RAY:
     #
     setup_spec.extras["llm"] = list(
         set(
-            ["vllm>=0.7.2", "asyncache==0.3.1", "jsonref==1.1.0"]
+            ["vllm>=0.7.2", "asyncache==0.3.1", "jsonref==1.1.0", "botocore"]
             + setup_spec.extras["data"]
         )
     )
