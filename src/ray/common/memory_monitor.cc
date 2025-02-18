@@ -410,7 +410,7 @@ const std::string MemoryMonitor::TopNMemoryDebugString(uint32_t top_n,
     auto [pid, memory_used_bytes] = entry;
     auto pid_string = std::to_string(pid);
     auto memory_usage_gb = absl::StrFormat(
-        ".2f", static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024);
+        "%.2f", static_cast<float>(memory_used_bytes) / 1024 / 1024 / 1024);
     auto commandline = MemoryMonitor::TruncateString(
         MemoryMonitor::GetCommandLineForPid(pid, proc_dir), 100);
     debug_string += "\n" + pid_string + "\t" + memory_usage_gb + "\t" + commandline;

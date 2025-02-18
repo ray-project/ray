@@ -3092,9 +3092,9 @@ const std::string NodeManager::CreateOomKillMessageDetails(
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
   std::string used_bytes_gb = absl::StrFormat(
-      ".2f", static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024);
+      "%.2f", static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024);
   std::string total_bytes_gb = absl::StrFormat(
-      ".2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
+      "%.2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
   std::stringstream oom_kill_details_ss;
 
   auto pid = worker->GetProcess().GetId();
@@ -3108,7 +3108,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
         << "Can't find memory usage for PID, reporting zero. PID: " << pid;
   }
   std::string process_used_bytes_gb =
-      absl::StrFormat(".2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
+      absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
