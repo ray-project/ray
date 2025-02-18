@@ -4,16 +4,19 @@
 # )
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import (
-    VLLMDeploymentImpl as _VLLMDeployment,
+    VLLMDeploymentImpl as _VLLMDeploymentImpl,
 )
+
 
 from ray.util.annotations import PublicAPI
 
-
-
 @PublicAPI(stability="alpha")
-class VLLMDeployment(_VLLMDeployment):
-    """The LLM deployment implementation to use vllm and the inferencing engine.
+class VLLMDeploymentImpl(_VLLMDeploymentImpl):
+    """The implementation of the VLLM engine deployment.
+    
+    To build a VLLMDeployment object you should use `build_vllm_deployment` function.
+    We also expose a lower level API for more control over the deployment class
+    through `as_deployment` method.
     
     Examples:
         .. testcode::
@@ -39,10 +42,11 @@ class VLLMDeployment(_VLLMDeployment):
                 ),
             )
 
-            # Build the deployment
-            vllm_deployment = VLLMDeployment.options(**llm_config.get_serve_options()).bind(llm_config)
+            # Build the deployment directly
+            VLLMDeployment = VLLMDeploymentImpl.as_deployment(llm_config.get_serve_options())
+            vllm_app = VLLMDeployment.bind(llm_config)
             
-            model_handle = serve.run(vllm_deployment)
+            model_handle = serve.run(vllm_app)
             
             # Query the model via `chat` api
             from ray.serve.llm.models import ChatCompletionRequest
