@@ -9,7 +9,12 @@ PYTHON_CUDA_CODE="${PYTHON_CODE}_${CUDA_CODE}"
 echo "--- Compile dependencies for ${PYTHON_CODE}"
 
 PIP_COMPILE=(
-	pip-compile -v --generate-hashes --strip-extras --unsafe-package ray
+	pip-compile -v --generate-hashes --strip-extras
+	--unsafe-package ray
+	# The version we use on python 3.9 is not installable on python 3.11
+	--unsafe-package grpcio-tools
+	# setuptools should not be pinned.
+	--unsafe-package setuptools
 	--extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 	--find-links "https://data.pyg.org/whl/torch-2.3.0+${CUDA_CODE}.html"
 )
@@ -29,6 +34,7 @@ echo "--- Compile ray base test dependencies"
 "${PIP_COMPILE[@]}" \
 	-c "/tmp/ray-deps/requirements_compiled.txt" \
 	"python/requirements.txt" \
+	"python/requirements/cloud-requirements.txt" \
 	"python/requirements/base-test-requirements.txt" \
 	-o "python/requirements_compiled_ray_test_${PYTHON_CUDA_CODE}.txt"
 
@@ -37,6 +43,7 @@ echo "--- Compile LLM test dependencies"
 "${PIP_COMPILE[@]}" \
 	-c "python/requirements_compiled_ray_test_${PYTHON_CUDA_CODE}.txt" \
 	"python/requirements.txt" \
+	"python/requirements/cloud-requirements.txt" \
 	"python/requirements/base-test-requirements.txt" \
 	"python/requirements/llm/llm-requirements.txt" \
 	"python/requirements/llm/llm-test-requirements.txt" \
