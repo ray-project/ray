@@ -17,7 +17,7 @@ set -euo pipefail
 
 # minimal dependencies
 if [ "$PYTHON_VERSION" = "3.13" ]; then
-  ci/env/install-uv.sh; source $HOME/.local/bin/env;
+  ci/env/install-uv.sh;
 else
   MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} ci/env/install-dependencies.sh;
 fi
@@ -25,7 +25,7 @@ rm -rf python/ray/thirdparty_files
 
 # install test requirements
 if [ "$PYTHON_VERSION" = "3.13" ]; then
-  uv pip install -U pytest==7.0.1 pip-tools==7.3.0;
+  $HOME/.local/bin/uv pip install -U pytest==7.0.1 pip-tools==7.3.0;
 else
   python -m pip install -U pytest==7.0.1 pip-tools==7.3.0;
 fi

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 
-curl -LsSf https://astral.sh/uv/0.6.0/install.sh | sh
-source $HOME/.local/bin/env
-uv python install "${PYTHON}"
+curl -LsSf https://astral.sh/uv/0.6.1/install.sh | env UV_UNMANAGED_INSTALL="$HOME/.local/bin" sh
+$HOME/.local/bin/uv python install "${PYTHON}"
