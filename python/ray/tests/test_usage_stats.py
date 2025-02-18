@@ -1420,6 +1420,7 @@ def test_lib_used_from_driver(monkeypatch, ray_start_cluster, reset_usage_stats)
         cluster.add_node(num_cpus=3)
         ray.init(address=cluster.address)
 
+        # XXX! `from ray import train` imports data.
         script = """
 import ray
 import os
