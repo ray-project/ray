@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
+import math
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
@@ -823,9 +824,18 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        # To mimic the old API stack behavior, we'll use `window` here for
-        # these particular stats (instead of the default EMA).
-        win = self.config.metrics_num_episodes_for_smoothing
+        # Use the configured window, but factor in the parallelism of the EnvRunners.
+        # As a result, we only log the last `window / num_env_runners` steps here,
+        # b/c everything gets parallel-merged in the Algorithm process.
+        win = max(
+            1,
+            int(
+                math.ceil(
+                    self.config.metrics_num_episodes_for_smoothing
+                    / (self.config.num_env_runners or 1)
+                )
+            ),
+        )
         self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
         self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
         self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
