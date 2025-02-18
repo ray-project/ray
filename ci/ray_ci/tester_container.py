@@ -34,6 +34,7 @@ class TesterContainer(Container):
         shard_ids: Optional[List[int]] = None,
         skip_ray_installation: bool = False,
         build_type: Optional[str] = None,
+        install_mask: Optional[str] = None,
     ) -> None:
         """
         :param gpu: Number of gpus to use in the container. If 0, used all gpus.
@@ -50,7 +51,7 @@ class TesterContainer(Container):
         self.gpus = gpus
 
         if not skip_ray_installation:
-            self.install_ray(build_type)
+            self.install_ray(build_type, install_mask)
 
     def _create_bazel_log_mount(self, tmp_dir: Optional[str] = None) -> Tuple[str, str]:
         """
