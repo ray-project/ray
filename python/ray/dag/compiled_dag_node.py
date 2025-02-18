@@ -2975,10 +2975,15 @@ class CompiledDAG:
             # Add the node to the graph with attributes
             dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
             channel_type_str = (
-                type(dag_node.type_hint).__name__
-                if dag_node.type_hint
-                else "UnknownType"
-            ) + "\n"
+                (
+                    type(dag_node.type_hint).__name__
+                    if dag_node.type_hint
+                    else "UnknownType"
+                )
+                + "\n"
+                if channel_details
+                else None
+            )
 
             # This logic is built on the assumption that there will only be multiple
             # output channels if the task has multiple returns
@@ -2986,8 +2991,9 @@ class CompiledDAG:
             if len(task.output_channels) == 1:
                 for downstream_node in task.dag_node._downstream_nodes:
                     downstream_idx = self.dag_node_to_idx[downstream_node]
-                    edge_label = channel_type_str
+                    edge_label = None
                     if channel_details:
+                        edge_label = channel_type_str
                         edge_label += self.get_channel_details(
                             task.output_channels[0],
                             (
@@ -3003,8 +3009,9 @@ class CompiledDAG:
                 for output_channel, downstream_idx in zip(
                     task.output_channels, task.output_node_idxs
                 ):
-                    edge_label = channel_type_str
+                    edge_label = None
                     if channel_details:
+                        edge_label = channel_type_str
                         edge_label += self.get_channel_details(
                             output_channel,
                             task.dag_node._get_actor_handle()._actor_id.hex(),

@@ -40,15 +40,15 @@ on the graph.
     compiled_dag.visualize()
 
 By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
-Note that this requires ``graphviz`` to be installed.
+Note that this requires you to install ``graphviz``.
 
-The visualization for the preceding code is shown below:
+The following is the visualization for the preceding code:
 
 .. image:: ../../images/compiled_graph.png
     :alt: Visualization of Graph Structure
     :align: center
 
-Note that tasks of the same actor are shown in the same color.
+Note that the visualization shows tasks of the same actor as the same color.
 
 .. _execution-schedule:
 
@@ -67,7 +67,7 @@ and run the following command:
     RAY_CGRAPH_VISUALIZE_SCHEDULE=1 python3 example.py
 
 When Ray executes ``experimental_compile``, it generates a PNG image named ``compiled_graph_schedule.png`` and
-saves it in the current working directory. The visualization for the preceding code is shown below:
+saves it in the current working directory. The following is the visualization for the preceding code:
 
 .. image:: ../../images/compiled_graph_schedule.png
     :alt: Visualization of Execution Schedule
