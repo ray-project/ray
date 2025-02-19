@@ -205,6 +205,16 @@ Optuna (tune.search.optuna.OptunaSearch)
 
     optuna.OptunaSearch
 
+.. _vizier:
+
+Vizier (tune.search.vizier.VizierSearch)
+----------------------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    vizier.VizierSearch
 
 .. _zoopt:
 
