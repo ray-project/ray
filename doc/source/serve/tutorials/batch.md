@@ -9,11 +9,11 @@ orphan: true
 This tutorial shows how to deploy a text generator that processes multiple queries simultaneously using batching. 
 Learn how to:
 
-- How to implement a Ray Serve deployment that handles batched requests
-- How to configure and optimize batch processing
-- How to query the model from HTTP and Python
+- Implement a Ray Serve deployment that handles batched requests
+- Configure and optimize batch processing
+- Query the model from HTTP and Python
 
-Batching can significantly improve performance when your model supports parallel processing (like GPU acceleration or vectorized operations).
+Batching can significantly improve performance when your model supports parallel processing like GPU acceleration or vectorized operations.
 It increases both throughput and hardware utilization by processing multiple requests together.
 
 :::{note}
@@ -174,5 +174,5 @@ results = [r.result() for r in responses]
 
 ## Performance Considerations
 
-- Increase `max_batch_size` if you have sufficient memory and want higher throughput (possibly at the cost of increased latency)
+- Increase `max_batch_size` if you have sufficient memory and want higher throughput - this may increase latency
 - Increase `batch_wait_timeout_s` if throughput is more important than latency
