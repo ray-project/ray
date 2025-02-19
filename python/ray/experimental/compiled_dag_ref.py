@@ -97,20 +97,18 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If we've already cached the result in the buffer, get it to remove it
-        # from the buffer. Else add this CompiledDAGRef's execution and channel indices
-        # to the dag's _destructed_ref_idxs, and try to release any buffers we
-        # can based on the dag's current max_finished_execution_index.
-        if not self._ray_get_called:
-            if self._execution_index in self._dag._result_buffer:
-                self._dag._get_execution_results(
-                    self._execution_index, self._channel_index
-                )
-            else:
-                self._dag._destructed_ref_idxs[self._execution_index].add(
-                    self._channel_index
-                )
-                self._dag._try_release_buffers()
+        if self._ray_get_called:
+            return
+
+        if self._execution_index > self._dag._max_finished_execution_index:
+            # Execute and buffer results until self._execution_index - 1
+            self._dag._execute_until(self._execution_index, self._channel_index - 1)
+            # Release native buffer for self._execution_index, this skips
+            # python-based deserialization as the value is not used.
+            self._dag._release_native_buffer(self._execution_index)
+        else:
+            # If the execution index is already finished, just get the results
+            self._dag._get_execution_results(self._execution_index, self._channel_index)
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
@@ -216,12 +214,39 @@ class CompiledDAGFuture:
         fut = self._fut
         self._fut = None
 
-        if not self._dag._has_execution_results(self._execution_index):
+        if not fut.done() and not self._dag._has_execution_results(self._execution_index):
             result = yield from fut.__await__()
             self._dag._max_finished_execution_index += 1
             self._dag._cache_execution_results(self._execution_index, result)
 
+        print(f"__await__ _get_execution_results {self._execution_index}, {self._channel_index}")
         return_vals = self._dag._get_execution_results(
             self._execution_index, self._channel_index
         )
         return _process_return_vals(return_vals, True)
+
+    def __del__(self):
+        print(f"CompiledDAGFuture.__del__ {self._execution_index}, {self._channel_index}")
+        if self._fut is None:
+            raise ValueError(
+                "CompiledDAGFuture can only be awaited upon once, and it has "
+                "already been awaited upon."
+            )
+
+        # NOTE(swang): If the object is zero-copy deserialized, then it will
+        # stay in scope as long as this future is in scope. Therefore, we
+        # delete self._fut here before we return the result to the user.
+        fut = self._fut
+        self._fut = None
+
+        if not fut.done() and not self._dag._has_execution_results(self._execution_index):
+            result = yield from fut.__await__()
+            self._dag._max_finished_execution_index += 1
+            self._dag._cache_execution_results(self._execution_index, result)
+            
+        print(f"__del__ _get_execution_results {self._execution_index}, {self._channel_index}")
+
+        return_vals = self._dag._get_execution_results(
+            self._execution_index, self._channel_index
+        )
+        print(f"CompiledDAGFuture.__del__ {self._execution_index}, {self._channel_index} done")
