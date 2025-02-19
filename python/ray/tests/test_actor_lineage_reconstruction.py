@@ -4,6 +4,8 @@ import sys
 import signal
 
 import pytest
+import numpy as np
+import time
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -117,6 +119,33 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
         return True
 
     wait_for_condition(lambda: verify3())
+
+
+def test_actor_reconstruction_relies_on_plasma_object(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)  # head
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1, max_restarts=1)
+    class Actor:
+        def __init__(self, config):
+            print(config)
+            self.config = ray.get(config)
+
+        def ping(self):
+            return self.config
+
+    worker1 = cluster.add_node(num_cpus=2)
+    ref = ray.put(np.zeros(100 * 1024 * 1024, dtype=np.uint8))
+    actor = Actor.remote(ref)
+    del ref
+    ray.get(actor.ping.remote())
+
+    cluster.add_node(num_cpus=2)  # new worker
+    cluster.remove_node(worker1, allow_graceful=True)
+    time.sleep(1)
+
+    assert ray.get(actor.ping.remote()) == np.zeros(100 * 1024 * 1024, dtype=np.uint8)
 
 
 if __name__ == "__main__":
