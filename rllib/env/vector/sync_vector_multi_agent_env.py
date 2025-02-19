@@ -121,7 +121,8 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         # Is any sub-environment terminated or truncated?
         self._autoreset_envs = np.logical_or(
             np.array([t["__all__"] for t in self._terminations]),
-            np.array([t["__all__"] for t in self._truncations]),
+            # Note, some environments just return `terminated`.
+            np.array([t.get("__all__", False) for t in self._truncations]),
         )
 
         return (

@@ -279,10 +279,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         ):
             # Act randomly.
             if random_actions:
-                # Only act (randomly) for those agents that had an observation.
                 to_env = {
                     Columns.ACTIONS: [
                         {
+                            # Only act (randomly) for those agents that had an observation.
                             aid: self.env.envs[i]
                             .unwrapped.get_action_space(aid)
                             .sample()
@@ -291,6 +291,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         for i in range(self.num_envs)
                     ]
                 }
+
+                # to_env = defaultdict(lambda: {Columns.ACTIONS: []})
+                # for i in range(self.num_envs):
+                #     for aid in self._episodes[i].get_agents_to_act():
+
+                #         to_env[aid][Columns.ACTIONS].append(self.env.envs[i].unwrapped.get_action_space(aid).sample())
+
             # Compute an action using the RLModule.
             else:
                 # Env-to-module connector (already cached).
@@ -392,6 +399,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         extra_model_outputs=extra_model_outputs,
                     )
 
+            done_episodes_to_run_env_to_module = []
             for env_index in range(self.num_envs):
                 # Call `on_episode_start()` callback (always after reset).
                 if env_index in call_on_episode_start:
@@ -423,6 +431,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     self._prune_zero_len_sa_episodes(episodes[env_index])
 
                     done_episodes_to_return.append(episodes[env_index])
+                    # Run a last time the `env_to_module` pipeline for these episodes
+                    # to postprocess artifacts (e.g. observations to one-hot).
+                    done_episodes_to_run_env_to_module.append(episodes[env_index])
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
                     if eps == num_episodes:
@@ -441,13 +452,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # forward pass only in the next `while`-iteration).
             # Note, performing the forward pass here ensures that we are not executing
             # forward passes for agents that have died. This increases performance in
-            # case of environemnts in which 1000's of agents exist. Because the
+            # case of environments in which 1000's of agents exist. Because the
             # `VectorMultiAgentEnv` calls `reset()` for any terminated/truncated sub-
             # environment `observations` and `infos` will always be returned for the
             # `MultiAgentEpisode.add_reset_step`.
             if self.module is not None:
                 self._cached_to_module = self._env_to_module(
-                    episodes=episodes,
+                    episodes=episodes + done_episodes_to_run_env_to_module,
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
@@ -462,6 +473,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 for episode in done_episodes_to_return:
                     # Any possibly compress observations.
                     episode.to_numpy()
+
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.

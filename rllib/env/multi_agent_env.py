@@ -1,3 +1,4 @@
+import copy
 import gymnasium as gym
 import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
@@ -389,7 +390,13 @@ def make_multi_agent(
             #  with data fields.
             if config is None:
                 config = {}
-            num = config.get("num_agents", 1)
+            else:
+                # Note the deepcopy is needed b/c (a) we need to remove the
+                # `num_agents` keyword and (b) with `num_envs > 0` in the
+                # `VectorMultiAgentEnv` all following environment creations
+                # need the same config again.
+                config = copy.deepcopy(config)
+            num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.envs = [gym.make(env_name_or_creator) for _ in range(num)]
             else:
