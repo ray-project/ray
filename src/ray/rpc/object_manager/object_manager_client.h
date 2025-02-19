@@ -18,7 +18,9 @@
 #include <grpcpp/resource_quota.h>
 #include <grpcpp/support/channel_arguments.h>
 
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"

@@ -17,9 +17,12 @@
 #include <grpcpp/grpcpp.h>
 
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"

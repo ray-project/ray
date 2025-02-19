@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"

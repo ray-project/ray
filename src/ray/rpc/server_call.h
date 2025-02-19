@@ -18,6 +18,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/instrumented_io_context.h"

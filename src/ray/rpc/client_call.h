@@ -19,6 +19,10 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_chaos.h"
