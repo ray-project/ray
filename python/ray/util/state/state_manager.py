@@ -401,10 +401,6 @@ class StateDataSourceClient:
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetObjectsInfoReply]:
         stub = self.get_raylet_stub(node_manager_ip, node_manager_port)
-        if not stub:
-            raise ValueError(
-                f"Can't connect to raylet at {node_manager_ip}:{node_manager_port}."
-            )
 
         reply = await stub.GetObjectsInfo(
             GetObjectsInfoRequest(limit=limit),

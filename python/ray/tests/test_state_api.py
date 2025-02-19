@@ -1643,22 +1643,16 @@ async def test_state_data_source_client(ray_start_cluster):
     """
     Test objects
     """
-    with pytest.raises(ValueError):
-        # Since we don't have this raylet stub, it should raise an exception.
-        result = await client.get_object_info("1.2.3.4", 10000)
-
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
-        node_id = node["NodeID"]
-        result = await client.get_object_info(node_id)
+        ip = node["NodeManagerAddress"]
+        port = node["NodeManagerPort"]
+        result = await client.get_object_info(ip, port)
         assert isinstance(result, GetObjectsInfoReply)
 
     """
     Test runtime env
     """
-    with pytest.raises(ValueError):
-        # Since we don't have this node ip, it should raise an exception.
-        result = await client.get_runtime_envs_info("1.2.3.4", 10000)
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
@@ -1777,6 +1771,11 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     cluster.add_node(num_cpus=8)
     ray.init(address=cluster.address)
     client = state_source_client(cluster.address)
+
+    nodes = ray.nodes()
+    assert len(nodes) == 1
+    ip = nodes[0]["NodeManagerAddress"]
+    port = int(nodes[0]["NodeManagerPort"])
     """
     Test objects
     """
@@ -1792,7 +1791,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     refs = [long_running_task.remote(obj) for obj in objs]
 
     async def verify():
-        result = await client.get_object_info(node_id, limit=2)
+        result = await client.get_object_info(ip, port, limit=2)
         # 4 objs (driver)
         # 4 refs (driver)
         # 4 pinned in memory for each task
