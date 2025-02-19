@@ -1080,7 +1080,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                  << " died.";
           const auto &err_msg = stream.str();
           RAY_LOG(INFO) << err_msg;
-          KillWorker(worker);
+          DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, err_msg);
         }
       } else if (owner_node_id == node_id) {
         // If the leased worker's owner was on the failed node, then kill the leased
@@ -1090,7 +1090,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                << " is killed because the owner node " << owner_node_id << " died.";
         const auto &err_msg = stream.str();
         RAY_LOG(INFO) << err_msg;
-        KillWorker(worker);
+        DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, err_msg);
       }
     }
   }
@@ -1234,11 +1234,14 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
+    if (registered_worker) {
+      ProcessDirectCallTaskBlocked(registered_worker, message_data);
+    }
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskUnblocked(worker);
+    if (registered_worker) {
+      HandleDirectCallTaskUnblocked(registered_worker);
+    }
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     // TODO(ekl) this is still used from core worker even in direct call mode to
@@ -1724,11 +1727,10 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 }
 
 void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<WorkerInterface> &worker, const uint8_t *message_data) {
   auto message =
       flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
   RAY_CHECK(message->release_resources());
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleDirectCallTaskBlocked(worker, true);
 }
 
@@ -2289,6 +2291,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
       !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
+
   local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }

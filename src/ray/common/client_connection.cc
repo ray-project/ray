@@ -551,29 +551,7 @@ std::string ClientConnection::RemoteEndpointInfo() {
 }
 
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
-  if (disconnected_) {
-    return;
-  }
-
-  if (!error) {
-    char buffer[1];
-    // boost::system::error_code ec;
-    ssize_t bytes = socket_.native_handle() >= 0
-        ? ::recv(socket_.native_handle(), buffer, sizeof(buffer), MSG_PEEK)
-        : -1;
-
-    if (bytes == 0) {
-      disconnected_ = true;
-      RAY_LOG(ERROR) << "Client disconnected (EOF detected)";
-    }
-  }
-  /*
-  } else if (bytes < 0 && ec != EAGAIN && ec != EWOULDBLOCK) {
-    RAY_LOG(ERROR) << "Socket error: " << strerror(errno);
-  }
-  */
-
-  if (error || disconnected_) {
+  if (error) {
     flatbuffers::FlatBufferBuilder fbb;
     const auto &disconnect_detail = fbb.CreateString(absl::StrCat(
         "Worker unexpectedly exits with a connection error code ",
