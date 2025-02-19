@@ -20,7 +20,6 @@
 #include <utility>
 
 #include "flatbuffers/flatbuffers.h"
-#include "protocol.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
