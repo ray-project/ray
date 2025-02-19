@@ -666,6 +666,9 @@ class EnvRunnerGroup:
                 validate_env=None,
                 worker_index=old_num_workers + i + 1,
                 num_workers=old_num_workers + num_workers,
+                # self._remote_config can be large
+                # and it's best practice to pass it by reference
+                # instead of value (https://docs.ray.io/en/latest/ray-core/patterns/pass-large-arg-by-value.html)
                 config=self._remote_config_obj_ref,
             )
             for i in range(num_workers)
