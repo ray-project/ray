@@ -1,4 +1,3 @@
-import yaml
 import pydantic
 import os
 
@@ -311,7 +310,6 @@ class LLMConfig(BaseModelExtended):
     # model_config is a Pydantic setting. This setting merges with
     # model_configs in parent classes.
     model_config = ConfigDict(
-        use_enum_values=True,
         extra="forbid",
     )
 
@@ -414,7 +412,7 @@ class LLMConfig(BaseModelExtended):
     def validate_llm_engine(self) -> "LLMConfig":
         """Converts the llm_engine to an enum."""
         try:
-            self.llm_engine = LLMEngine(self.llm_engine)
+            self.llm_engine = LLMEngine(self.llm_engine).value
         except ValueError as e:
             raise ValueError(f"Unsupported engine: {self.llm_engine}") from e
         return self
