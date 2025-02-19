@@ -14,8 +14,9 @@
 
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
+#include <gtest/gtest.h>
+
 #include "absl/synchronization/mutex.h"
-#include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/test_util.h"
 
