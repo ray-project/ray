@@ -12,13 +12,18 @@ def _is_column_extension_type(ca: "pyarrow.ChunkedArray") -> bool:
 
 
 def _concatenate_extension_column(
-    ca: "pyarrow.ChunkedArray", copy: bool = False
+    ca: "pyarrow.ChunkedArray", always_copy: bool = False
 ) -> "pyarrow.Array":
     """Concatenate chunks of an extension column into a contiguous array.
 
     This concatenation is required for creating copies and for .take() to work on
     extension arrays.
     See https://issues.apache.org/jira/browse/ARROW-16503.
+
+    Args:
+        ca: The chunked array representing the extension column to be concatenated.
+        always_copy: Skip copying when always_copy is False and there is exactly
+        1 chunk.
     """
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorArray,
@@ -34,8 +39,9 @@ def _concatenate_extension_column(
         # Create empty storage array.
         storage = pyarrow.array([], type=ca.type.storage_type)
     elif isinstance(ca.type, tensor_extension_types):
-        return ArrowTensorArray._concat_same_type(ca.chunks, copy)
-    elif not copy and len(ca.chunks) == 1:
+        return ArrowTensorArray._concat_same_type(ca.chunks, always_copy)
+    elif not always_copy and len(ca.chunks) == 1:
+        # Skip copying
         storage = ca.chunks[0].storage
     else:
         storage = pyarrow.concat_arrays([c.storage for c in ca.chunks])

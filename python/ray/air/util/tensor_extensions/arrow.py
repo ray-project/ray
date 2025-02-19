@@ -827,7 +827,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         to_concat: Sequence[
             Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
         ],
-        copy: bool = False,
+        always_copy: bool = False,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
         Concatenate multiple tensor arrays.
@@ -835,6 +835,11 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         If one or more of the tensor arrays in to_concat are variable-shaped and/or any
         of the tensor arrays have a different shape than the others, a variable-shaped
         tensor array will be returned.
+
+        Args:
+            to_concat: Tensor arrays to concat
+            always_copy: Skip copying when always_copy is False and there is exactly
+            1 chunk.
         """
         to_concat_types = [arr.type for arr in to_concat]
         if ArrowTensorType._need_variable_shaped_tensor_array(to_concat_types):
@@ -847,7 +852,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             return ArrowVariableShapedTensorArray.from_numpy(
                 [e for a in to_concat for e in a]
             )
-        elif not copy and len(to_concat) == 1:
+        elif not always_copy and len(to_concat) == 1:
+            # Skip copying
             storage = to_concat[0].storage
         else:
             storage = pa.concat_arrays([c.storage for c in to_concat])
