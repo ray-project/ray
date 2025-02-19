@@ -94,7 +94,7 @@ class EntityState {
 /// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
  public:
-  SubscriptionIndex(rpc::ChannelType channel_type);
+  explicit SubscriptionIndex(rpc::ChannelType channel_type);
   ~SubscriptionIndex() = default;
 
   SubscriptionIndex(SubscriptionIndex &&) noexcept = default;
