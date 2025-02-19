@@ -32,7 +32,11 @@ It contains the model name, the number of GPUs to use, and the number of shards 
 
     config = vLLMEngineProcessorConfig(
         model="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={"max_model_len": 20000},
+        engine_kwargs={
+            "enable_chunked_prefill": True,
+            "max_num_batched_tokens": 4096,
+            "max_model_len": 16384,
+        },
         concurrency=1,
         batch_size=64,
     )
