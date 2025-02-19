@@ -85,10 +85,8 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             reduce bubbles in the data pipeline. You can tune the batch size to balance
             the throughput and fault-tolerance based on your use case.
         engine_kwargs: The kwargs to pass to the vLLM engine. Default engine kwargs are
-            - pipeline_parallel_size: 1
-            - tensor_parallel_size: 1
-            - max_num_seqs: 128
-            - distributed_executor_backend: "mp"
+            pipeline_parallel_size: 1, tensor_parallel_size: 1, max_num_seqs: 128,
+            distributed_executor_backend: "mp".
         task_type: The task type to use. If not specified, will use 'generate' by default.
         runtime_env: The runtime environment to use for the vLLM engine. See
             :ref:`this doc <handling_dependencies>` for more details.
