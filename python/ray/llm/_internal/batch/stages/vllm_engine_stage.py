@@ -18,7 +18,7 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-vllm = try_import("vllm", warning=True)
+vllm = try_import("vllm", error=True)
 
 
 logger = logging.getLogger(__name__)
@@ -441,7 +441,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         return ret
 
     def __del__(self):
-        self.llm.shutdown()
+        if hasattr(self, "llm"):
+            self.llm.shutdown()
 
 
 def _ray_scheduling_strategy_fn(num_gpus_per_instance: int, accelerator_type: str):
