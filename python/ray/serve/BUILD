@@ -6,7 +6,7 @@ doctest(
         ["**/*.py"],
         exclude = [
             "tests/**",
-            # FIXME: Add them back under with different dependencies
+            # FIXME: Add the llm tests back with a diff tag.
             "llm/**",
             # FIXME: Failing on Windows
             "gradio_integrations.py",

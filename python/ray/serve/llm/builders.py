@@ -40,8 +40,6 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
     return build_openai_app(llm_serving_args=llm_serving_args)
 
-
-
     # Examples:
     #     .. testcode::
     #         :skipif: True
@@ -70,7 +68,6 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
     #         # # Deploy the application
     #         # serve.run(llm_app)
-
 
     # Examples:
     #     .. testcode::
