@@ -93,3 +93,6 @@ class Read(AbstractMap):
             input_files=input_files,
             exec_stats=None,
         )
+
+    def is_read(self) -> bool:
+        return True

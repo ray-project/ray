@@ -349,7 +349,7 @@ RAY_SERVE_ENABLE_TASK_EVENTS = (
 
 # Use compact instead of spread scheduling strategy
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
-    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "1") == "1"
 )
 
 # Feature flag to always override local_testing_mode to True in serve.run.
