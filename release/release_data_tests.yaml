@@ -419,3 +419,22 @@
   run:
     timeout: 5400
     script: python tpch_q1.py --sf 100
+
+##############
+# LLM
+##############
+
+- name: llm_hello
+  frequency: manual
+  python: "3.11"
+  group: llm
+  working_dir: llm_tests
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python llm_hello_world.py
