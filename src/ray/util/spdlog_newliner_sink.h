@@ -58,8 +58,8 @@ class spdlog_newliner_sink final : public spdlog::sinks::base_sink<Mutex> {
       spdlog::details::log_msg new_log_msg;
       new_log_msg.payload = std::string_view{cur_message.data(), cur_message.length()};
       internal_sink_->log(new_log_msg);
-      internal_sink_->flush();
     }
+    internal_sink_->flush();
 
     // If the last character for payload is already newliner, we've already flushed out
     // everything; otherwise need to keep left bytes in buffer.
