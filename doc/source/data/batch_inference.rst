@@ -183,7 +183,7 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
     .. tab-item:: LLM Inference
         :sync: vLLM
 
-        Ray Data offers native integration with vLLM, a high-performance inference engine for LLMs.
+        Ray Data offers native integration with vLLM, a high-performance inference engine for large language models (LLMs).
 
         .. testcode::
             :skipif: True

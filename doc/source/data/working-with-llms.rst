@@ -3,7 +3,7 @@
 Working with LLMs
 =================
 
-The `ray.data.llm` module integrates with key LLM engines and deployed models to enable LLM batch inference.
+The `ray.data.llm` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference.
 
 This guide shows you how to use `ray.data.llm` to:
 
@@ -22,7 +22,7 @@ logic for performing batch inference with LLMs on a Ray Data dataset.
 You can use the `build_llm_processor` API to construct a processor. In the following example, we use the `vLLMProcessorConfig` to construct a processor for the `meta-llama/Llama-3.1-8B-Instruct` model.
 
 The vLLMProcessorConfig is a configuration object for the vLLM engine.
-It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations. Upon execution, the Processor object will instantiate replicas of the vLLM engine (using `map_batches` under the hood).
+It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations. Upon execution, the Processor object instantiates replicas of the vLLM engine (using `map_batches` under the hood).
 
 .. testcode::
 
@@ -85,7 +85,7 @@ Use the `vLLMProcessorConfig` to configure the vLLM engine.
         batch_size=64,
     )
 
-For handling larger models, you will want to specify model parallelism.
+For handling larger models, specify model parallelism.
 
 .. testcode::
 
@@ -102,7 +102,7 @@ For handling larger models, you will want to specify model parallelism.
         batch_size=64,
     )
 
-The underlying `Processor` object will instantiate replicas of the vLLM engine and automatically
+The underlying `Processor` object instantiates replicas of the vLLM engine and automatically
 configure parallel workers to handle model parallelism (for tensor parallelism and pipeline parallelism,
 if specified).
 
