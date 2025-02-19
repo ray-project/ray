@@ -63,7 +63,7 @@ def take_table(
             if _is_column_extension_type(col) and col.num_chunks > 1:
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
-                col = _concatenate_extension_column(col)
+                col = _concatenate_extension_column(col, copy=True)
             new_cols.append(col.take(indices))
         table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
     else:
@@ -642,7 +642,7 @@ def combine_chunked_array(
     if _is_column_extension_type(array):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
-        return _concatenate_extension_column(array)
+        return _concatenate_extension_column(array, copy)
     elif len(array.chunks) == 0:
         # NOTE: In case there's no chunks, we need to explicitly create
         #       an empty array since calling into `combine_chunks` would fail

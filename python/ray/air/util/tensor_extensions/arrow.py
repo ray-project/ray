@@ -827,6 +827,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         to_concat: Sequence[
             Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]
         ],
+        copy: bool = False,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
         Concatenate multiple tensor arrays.
@@ -846,10 +847,12 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             return ArrowVariableShapedTensorArray.from_numpy(
                 [e for a in to_concat for e in a]
             )
+        elif not copy and len(to_concat) == 1:
+            storage = to_concat[0].storage
         else:
             storage = pa.concat_arrays([c.storage for c in to_concat])
 
-            return ArrowTensorArray.from_storage(to_concat[0].type, storage)
+        return ArrowTensorArray.from_storage(to_concat[0].type, storage)
 
     @classmethod
     def _chunk_tensor_arrays(
