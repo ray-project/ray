@@ -12,9 +12,6 @@ from ray.util.placement_group import (
 from vllm.lora.request import LoRARequest
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.configs.prompt_formats import (
-    HuggingFacePromptFormat,
-)
 from ray.llm._internal.serve.configs.server_models import (
     BaseModelExtended,
     DiskMultiplexConfig,
@@ -58,7 +55,6 @@ class VLLMEngineConfig(BaseModelExtended):
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
     runtime_env: Optional[Dict[str, Any]] = None
-    prompt_format: HuggingFacePromptFormat
     engine_kwargs: Dict[str, Any] = {}
 
     @property
@@ -113,7 +109,6 @@ class VLLMEngineConfig(BaseModelExtended):
             s3_mirror_config=s3_mirror_config,
             gcs_mirror_config=gcs_mirror_config,
             accelerator_type=llm_config.accelerator_type,
-            prompt_format=llm_config.prompt_format,
             engine_kwargs=llm_config.engine_kwargs,
             runtime_env=llm_config.runtime_env,
         )
