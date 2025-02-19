@@ -6,7 +6,8 @@ orphan: true
 
 # Serve a Text Generator with Request Batching
 
-This tutorial shows how to deploy a text generator that processes multiple queries simultaneously using batching. You'll learn:
+This tutorial shows how to deploy a text generator that processes multiple queries simultaneously using batching. 
+Learn how to:
 
 - How to implement a Ray Serve deployment that handles batched requests
 - How to configure and optimize batch processing
@@ -51,9 +52,9 @@ async def my_batch_handler(self, requests: List):
     return results
 ```
 
-The batch handler can then be called from another `async def` method in your deployment.
-These calls together are batched and executed together, but return an individual result as if
-they were a normal function call:
+You can call the batch handler from another `async def` method in your deployment.
+Ray Serve batches and executes these calls together, but returns individual results just like
+normal function calls:
 
 ```python
 class BatchingDeployment:
@@ -97,7 +98,7 @@ the maximum possible batch size that Ray Serve executes at once.
 
 You can deploy your app in two ways:
 
-### Option 1: Deploying with the Serve CLI
+### Option 1: Deploying with the Serve Command-Line Interface
 ```console
 $ serve run tutorial_batch:generator --name "Text-Completion-App"
 ```
