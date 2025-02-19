@@ -33,9 +33,6 @@
 #endif
 #endif
 
-#include <string>
-#include <utility>
-
 #include "ray/util/thread_checker.h"
 
 // Returns the TID of the calling thread.

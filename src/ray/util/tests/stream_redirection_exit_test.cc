@@ -18,7 +18,6 @@
 
 #include <chrono>
 #include <iostream>
-#include <string>
 #include <thread>
 
 #include "ray/common/test/testing.h"

@@ -16,7 +16,6 @@
 
 #include <gtest/gtest.h>
 
-#include <string>
 #include <string_view>
 
 #include "ray/common/status_or.h"

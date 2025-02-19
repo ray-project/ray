@@ -14,8 +14,6 @@
 
 // This file contains a few logging related util functions.
 
-#pragma once
-
 #include "ray/util/stream_redirection_options.h"
 
 namespace ray {

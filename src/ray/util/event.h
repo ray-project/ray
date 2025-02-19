@@ -24,8 +24,6 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
-#include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -82,8 +80,6 @@ namespace ray {
 // interface of event reporter
 class BaseEventReporter {
  public:
-  virtual ~BaseEventReporter() = default;
-
   virtual void Init() = 0;
 
   virtual void Report(const rpc::Event &event, const nlohmann::json &custom_fields) = 0;
@@ -105,11 +101,12 @@ class LogEventReporter : public BaseEventReporter {
                    int rotate_max_file_size = 100,
                    int rotate_max_file_num = 20);
 
-  ~LogEventReporter() override;
+  virtual ~LogEventReporter();
 
-  void Report(const rpc::Event &event, const nlohmann::json &custom_fields) override;
+  virtual void Report(const rpc::Event &event,
+                      const nlohmann::json &custom_fields) override;
 
-  void ReportExportEvent(const rpc::ExportEvent &export_event) override;
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
  private:
   virtual std::string replaceLineFeed(std::string message);
@@ -119,13 +116,13 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
-  void Init() override {}
+  virtual void Init() override {}
 
-  void Close() override {}
+  virtual void Close() override {}
 
   virtual void Flush();
 
-  std::string GetReporterKey() override { return "log.event.reporter"; }
+  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
   std::string log_dir_;
@@ -330,8 +327,7 @@ using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData
                                         std::shared_ptr<rpc::ExportDriverJobEventData>>;
 class RayExportEvent {
  public:
-  explicit RayExportEvent(ExportEventDataPtr event_data_ptr)
-      : event_data_ptr_(event_data_ptr) {}
+  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
 
   ~RayExportEvent();
 

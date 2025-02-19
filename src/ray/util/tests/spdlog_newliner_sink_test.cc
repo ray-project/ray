@@ -16,10 +16,7 @@
 
 #include <gtest/gtest.h>
 
-#include <memory>
-#include <string>
 #include <string_view>
-#include <utility>
 
 #include "ray/common/test/testing.h"
 #include "ray/util/compat.h"

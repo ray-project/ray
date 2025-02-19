@@ -14,9 +14,6 @@
 
 #include "ray/util/cmd_line_utils.h"
 
-#include <string>
-#include <vector>
-
 #include "ray/util/logging.h"
 #include "ray/util/string_utils.h"
 

@@ -17,7 +17,6 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
-#include <utility>
 #include <vector>
 
 #include "ray/util/compat.h"

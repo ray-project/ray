@@ -17,12 +17,9 @@
 #include <gtest/gtest.h>
 
 #include <future>
-#include <memory>
 #include <string>
 #include <thread>
 #include <type_traits>
-#include <utility>
-#include <vector>
 
 namespace ray::utils::container {
 
@@ -31,7 +28,7 @@ constexpr size_t kTestCacheSz = 1;
 
 class TestClassWithHashAndEq {
  public:
-  explicit TestClassWithHashAndEq(std::string data) : data_(std::move(data)) {}
+  TestClassWithHashAndEq(std::string data) : data_(std::move(data)) {}
   bool operator==(const TestClassWithHashAndEq &rhs) const { return data_ == rhs.data_; }
   template <typename H>
   friend H AbslHashValue(H h, const TestClassWithHashAndEq &obj) {

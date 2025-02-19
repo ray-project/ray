@@ -20,7 +20,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <future>
-#include <string>
 #include <string_view>
 
 #include "ray/common/test/testing.h"

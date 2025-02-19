@@ -16,9 +16,6 @@
 
 #include <gtest/gtest.h>
 
-#include <memory>
-#include <string>
-
 namespace ray {
 
 namespace {
@@ -53,7 +50,7 @@ TEST(SpdlogFdSinkTest, SinkWithFd) {
   const std::string stdout_content = testing::internal::GetCapturedStdout();
 
   EXPECT_EQ(stdout_content, "helloworld");
-}
+};
 
 }  // namespace
 

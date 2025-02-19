@@ -15,7 +15,6 @@
 #include "ray/util/temporary_directory.h"
 
 #include <cstdlib>
-#include <string>
 
 #include "ray/util/util.h"
 

@@ -14,9 +14,6 @@
 
 #include "ray/util/string_utils.h"
 
-#include <cstdio>
-#include <string>
-
 namespace ray {
 
 std::string StringToHex(const std::string &str) {

@@ -18,9 +18,7 @@
 
 #include <chrono>
 #include <iostream>
-#include <string>
 #include <thread>
-#include <vector>
 
 #include "ray/common/test/testing.h"
 #include "ray/util/filesystem.h"
