@@ -237,7 +237,10 @@ async def initialize_node(llm_config: LLMConfig) -> InitializeNodeOutput:
             download_extra_files=True,
         )
 
-    llm_config.apply_checkpoint_info(engine_config.actual_hf_model_id)
+    llm_config.apply_checkpoint_info(
+        engine_config.actual_hf_model_id,
+        trust_remote_code=engine_config.trust_remote_code,
+    )
 
     return InitializeNodeOutput(
         placement_group=pg, runtime_env=runtime_env, extra_init_kwargs=extra_init_kwargs
@@ -268,12 +271,6 @@ def _initialize_local_node(
         logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
 
     _ = transformers.AutoTokenizer.from_pretrained(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
-    prompt_format = engine_config.prompt_format
-    # Note (genesu): The prompt format is always loaded from HF.
-    prompt_format.set_processor(
         engine_config.actual_hf_model_id,
         trust_remote_code=engine_config.trust_remote_code,
     )
