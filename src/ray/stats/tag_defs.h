@@ -11,13 +11,18 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include <string>
-#include <vector>
 
 #pragma once
 
 /// The definitions of tag keys that you can use every where.
 /// You can follow these examples to define and register your tag keys.
+
+#include "opencensus/tags/tag_key.h"
+
+#include <string>
+#include <vector>
+#include <utility>
+
 
 using TagKeyType = opencensus::tags::TagKey;
 using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
