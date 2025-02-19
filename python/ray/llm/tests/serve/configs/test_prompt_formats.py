@@ -117,14 +117,14 @@ def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
 def test_validation_message():
     # check that message with assistant role can have content that
     # is a string or none, but nothing else
-    Message.model_validate({"role": "assistant", "content": "Hello, World!"})
+    Message.parse_obj({"role": "assistant", "content": "Hello, World!"})
 
-    Message.model_validate({"role": "assistant", "content": ""})
+    Message.parse_obj({"role": "assistant", "content": ""})
 
-    Message.model_validate({"role": "assistant", "content": None})
+    Message.parse_obj({"role": "assistant", "content": None})
 
     with pytest.raises(ValueError):
-        Message.model_validate(
+        Message.parse_obj(
             {
                 "role": "assistant",
                 "content": {
@@ -136,14 +136,14 @@ def test_validation_message():
     # Test system and user roles
     for role in ["system", "user"]:
         # this should pass
-        Message.model_validate({"role": role, "content": "Hello, World!"})
+        Message.parse_obj({"role": role, "content": "Hello, World!"})
 
-        Message.model_validate({"role": role, "content": ""})
+        Message.parse_obj({"role": role, "content": ""})
 
         # a non string content should raise an error
 
         with pytest.raises(ValueError):
-            Message.model_validate(
+            Message.parse_obj(
                 {
                     "role": role,
                     "content": {
@@ -153,7 +153,7 @@ def test_validation_message():
             )
 
         with pytest.raises(ValueError):
-            Message.model_validate({"role": role, "content": None})
+            Message.parse_obj({"role": role, "content": None})
 
     # test message with image.
     Message(

@@ -164,7 +164,7 @@ class LoraModelLoader:
         local_path = download_with_backoff(lora_mirror_config)
         # the lora_assigned_id is consistent for the lifetime of the disk cache entry
         # If the disk cache is cleared, a new id will be generated.
-        return DiskMultiplexConfig.model_validate(
+        return DiskMultiplexConfig.parse_obj(
             {
                 "model_id": lora_mirror_config.lora_model_id,
                 "max_total_tokens": lora_mirror_config.max_total_tokens,

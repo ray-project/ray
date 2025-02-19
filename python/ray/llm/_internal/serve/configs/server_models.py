@@ -18,21 +18,20 @@ from typing import (
     Set,
 )
 import time
-from pydantic import (
+from ray._private.pydantic_compat import (
     BaseModel,
-    ConfigDict,
     Field,
     PositiveInt,
     PrivateAttr,
-    field_validator,
-    model_validator,
+    validator,
+    root_validator,
+    Extra
 )
 
 from transformers import PretrainedConfig
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
-
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
@@ -49,7 +48,7 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatType,
 )
 
-GPUType = Enum("GPUType", vars(accelerators))
+GPUType = Enum("GPUType", vars(accelerators), type=str)
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
@@ -60,13 +59,12 @@ class BaseModelExtended(BaseModel):
     # namespace as not protected. This means we need to be careful about overriding
     # internal attributes starting with `model_`.
     # See: https://github.com/anyscale/ray-llm/issues/1425
-    model_config = ConfigDict(protected_namespaces=tuple())
 
     @classmethod
     def parse_yaml(cls: Type[ModelT], file, **kwargs) -> ModelT:
         kwargs.setdefault("Loader", yaml.SafeLoader)
         dict_args = yaml.load(file, **kwargs)
-        return cls.model_validate(dict_args)
+        return cls.parse_obj(dict_args)
 
 
 logger = get_logger(__name__)
@@ -86,9 +84,8 @@ class S3AWSCredentials(BaseModelExtended):
     create_aws_credentials_url: str
     auth_token_env_variable: Optional[str] = None
 
-
 class GCSMirrorConfig(MirrorConfig):
-    @field_validator("bucket_uri")
+    @validator("bucket_uri")
     @classmethod
     def check_uri_format(cls, value):
         if not value.startswith("gs://"):
@@ -103,7 +100,7 @@ class S3MirrorConfig(MirrorConfig):
     s3_sync_args: Optional[List[str]] = None
     s3_aws_credentials: Optional[S3AWSCredentials] = None
 
-    @field_validator("bucket_uri")
+    @validator("bucket_uri")
     @classmethod
     def check_uri_format(cls, value):
         if value and not value.startswith("s3://"):
@@ -114,7 +111,7 @@ class S3MirrorConfig(MirrorConfig):
         return value
 
 
-class AutoscalingConfig(BaseModel, extra="allow"):
+class AutoscalingConfig(BaseModel, extra=Extra.allow):
     """
     The model here provides reasonable defaults for llm model serving.
 
@@ -158,7 +155,7 @@ class AutoscalingConfig(BaseModel, extra="allow"):
         10.0, description="How long to wait before scaling up replicas, in seconds."
     )
 
-    @model_validator(mode="before")
+    @root_validator(pre=True)
     def sync_target_ongoing_requests(cls, values):
         target_ongoing_requests = values.get("target_ongoing_requests", None)
         target_num_ongoing_requests_per_replica = values.get(
@@ -215,7 +212,7 @@ class DeploymentConfig(BaseModelExtended):
         description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
     )  # XXX: hardcoded
 
-    @model_validator(mode="before")
+    @root_validator(pre=True)
     def populate_max_ongoing_requests(cls, values):
         max_ongoing_requests = values.get("max_ongoing_requests", None)
         max_concurrent_queries = values.get("max_concurrent_queries", None)
@@ -274,7 +271,7 @@ class LoraConfig(BaseModelExtended):
         description="The maximum number of download retries.",
     )
 
-    @field_validator("dynamic_lora_loading_path")
+    @validator("dynamic_lora_loading_path")
     def validate_dynamic_lora_loading_path(cls, value: Optional[str]):
         if value is None:
             return value
@@ -311,13 +308,9 @@ class ModelLoadingConfig(BaseModelExtended):
     )
 
 
-class LLMConfig(BaseModelExtended):
+class LLMConfig(BaseModelExtended, extra=Extra.forbid):
     # model_config is a Pydantic setting. This setting merges with
     # model_configs in parent classes.
-    model_config = ConfigDict(
-        use_enum_values=True,
-        extra="forbid",
-    )
 
     runtime_env: Optional[Dict[str, Any]] = Field(
         None,
@@ -403,7 +396,7 @@ class LLMConfig(BaseModelExtended):
     def max_request_context_length(self) -> Optional[int]:
         return self.engine_kwargs.get("max_model_len")
 
-    @field_validator("accelerator_type")
+    @validator("accelerator_type")
     def validate_accelerator_type(cls, value: str):
         # Ensure A10 is converted to A10G.
         if value == "A10":
@@ -511,10 +504,10 @@ def parse_args(
                     ) from e
         else:
             try:
-                llm_config = LLMConfig.model_validate(raw_model)
+                llm_config = LLMConfig.parse_obj(raw_model)
                 parsed_models = [llm_config]
             except pydantic.ValidationError:
-                parsed_models = [LLMConfig.model_validate(raw_model)]
+                parsed_models = [LLMConfig.parse_obj(raw_model)]
         models += parsed_models
 
     return models
@@ -547,7 +540,6 @@ TModel = TypeVar("TModel", bound="Model")
 
 
 class ModelData(BaseModel):
-    model_config = ConfigDict(protected_namespaces=tuple())
 
     id: str
     object: str
@@ -599,7 +591,7 @@ class LoraMirrorConfig(BaseModelExtended):
     max_total_tokens: Optional[int]
     sync_args: Optional[List[str]] = None
 
-    @field_validator("bucket_uri")
+    @validator("bucket_uri")
     @classmethod
     def validate_bucket_uri(cls, value: str):
         # TODO(tchordia): remove this. this is a short term fix.
@@ -714,8 +706,7 @@ class LLMRawResponse(ComputedPropertyMixin, BaseModelExtended):
     finish_reason: Optional[str] = None
     error: Optional[ErrorResponse] = None
 
-    @model_validator(mode="before")
-    @classmethod
+    @root_validator(pre=True)
     def text_or_error_or_finish_reason(cls, values):
         if (
             values.get("generated_text") is None
@@ -919,7 +910,7 @@ class SamplingParams(BaseModelExtended):
             kwargs["exclude"] = self._ignored_fields
         return super().model_dump(**kwargs)
 
-    @field_validator("stop", mode="before")
+    @validator("stop", pre=True)
     @classmethod
     def validate_stopping_sequences(cls, values):
         if not values:
@@ -944,7 +935,7 @@ class SamplingParams(BaseModelExtended):
         generate_kwargs["stop"] = set(generate_kwargs.get("stop", []))
         generate_kwargs["stop_tokens"] = set(generate_kwargs.get("stop_tokens", []))
 
-        return cls.model_validate(generate_kwargs)
+        return cls.parse_obj(generate_kwargs)
 
 
 class GenerationRequest(BaseModelExtended):

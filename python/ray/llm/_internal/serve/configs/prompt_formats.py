@@ -7,12 +7,12 @@ from typing import (
     Union,
 )
 
-from pydantic import (
+from ray._private.pydantic_compat import (
     BaseModel,
-    ConfigDict,
     PrivateAttr,
-    field_validator,
-    model_validator,
+    validator,
+    root_validator,
+    Extra
 )
 from transformers import AutoProcessor
 
@@ -38,7 +38,7 @@ class Image(BaseModel):
     field: str = "image_url"
     image_url: Dict
 
-    @field_validator("image_url")
+    @validator("image_url")
     @classmethod
     def check_image_url(cls, value):
         if "url" not in value or not value["url"] or not isinstance(value["url"], str):
@@ -57,20 +57,21 @@ class Message(BaseModel):
     content: Optional[Union[str, ContentList]] = None
 
     def __str__(self):
-        return self.model_dump_json()
+        return self.json()
 
-    @model_validator(mode="after")
-    def check_fields(self):
-        if self.role == "system":
-            if not isinstance(self.content, str):
+    @root_validator(pre=False)
+    def check_fields(cls, values):
+        content_or_none = values.get("content", None)
+        if values["role"] == "system":
+            if not isinstance(content_or_none, str):
                 raise ValueError("System content must be a string")
-        if self.role == "user" and self.content is None:
+        if values["role"] == "user" and content_or_none is None:
             raise ValueError("User content must not be None.")
-        if self.role == "assistant":
+        if values["role"] == "assistant":
             # passing a regular assistant message
-            if self.content is not None and not isinstance(self.content, str):
+            if content_or_none is not None and not isinstance(content_or_none, str):
                 raise ValueError("content must be a string or None")
-        return self
+        return values
 
 
 class Prompt(BaseModel):
@@ -78,15 +79,15 @@ class Prompt(BaseModel):
     use_prompt_format: bool = True
     parameters: Optional[Dict[str, Any]] = None
 
-    @field_validator("parameters", mode="before")
+    @validator("parameters", pre=True)
     @classmethod
     def parse_parameters(cls, value):
         if isinstance(value, BaseModel):
             # Use exclude_unset so that we can distinguish unset values from default values
-            return value.model_dump(exclude_unset=True)
+            return value.dict(exclude_unset=True)
         return value
 
-    @field_validator("prompt")
+    @validator("prompt")
     @classmethod
     def check_prompt(cls, value):
         if isinstance(value, list) and not value:
@@ -114,8 +115,7 @@ class EngineInput(BaseModel):
     image: Optional[List[ImageInput]] = None
 
 
-class AbstractPromptFormat(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class AbstractPromptFormat(BaseModel, extra=Extra.forbid):
 
     def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
         raise NotImplementedError()
@@ -153,7 +153,7 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
             if isinstance(message.content, list):
                 for c in message.content:
                     if isinstance(c, (Text, Content)):
-                        content.append(c.model_dump())
+                        content.append(c.dict())
                     elif isinstance(c, Image):
                         content.append({"type": "image"})
                         images.append(ImageInput(image_url=c.image_url["url"]))

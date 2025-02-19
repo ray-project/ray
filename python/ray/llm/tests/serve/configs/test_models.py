@@ -1,4 +1,4 @@
-import pydantic
+import ray._private.pydantic_compat as pydantic
 import pytest
 import sys
 
@@ -57,6 +57,7 @@ class TestModelConfig:
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
                 accelerator_type="L4",
                 generation_config="invalid_config",  # Should be a dictionary, not a string
+                stupid_field="stupid_value",
             )
 
 

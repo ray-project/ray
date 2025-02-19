@@ -20,10 +20,10 @@ logger = get_logger(__name__)
 
 
 def _set_deployment_placement_options(llm_config: LLMConfig) -> dict:
-    deployment_config = llm_config.deployment_config.model_copy(deep=True).model_dump()
+    deployment_config = llm_config.deployment_config.copy(deep=True).dict()
     engine_config = llm_config.get_engine_config()
 
-    ray_actor_options = deployment_config["ray_actor_options"] or {}
+    ray_actor_options = deployment_config.get("ray_actor_options", {})
     deployment_config["ray_actor_options"] = ray_actor_options
 
     replica_actor_resources = {
@@ -135,7 +135,7 @@ def _get_llm_deployments(
 
 
 def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
-    rayllm_args = LLMServingArgs.model_validate(llm_serving_args).parse_args()
+    rayllm_args = LLMServingArgs.parse_obj(llm_serving_args).parse_args()
 
     llm_configs = rayllm_args.llm_configs
     model_ids = {m.model_id for m in llm_configs}

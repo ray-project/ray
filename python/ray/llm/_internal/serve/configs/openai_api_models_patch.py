@@ -9,11 +9,11 @@ from typing import (
     Union,
     Literal,
 )
-from pydantic import (
+from ray._private.pydantic_compat import (
     BaseModel,
-    ConfigDict,
     Field,
-    model_validator,
+    root_validator,
+    Extra
 )
 from typing_extensions import Annotated
 
@@ -29,9 +29,8 @@ class ErrorResponse(BaseModel):
     original_exception: Annotated[Optional[Any], Field(exclude=True)] = None
 
 
-class ResponseFormat(BaseModel, ABC):
+class ResponseFormat(BaseModel, ABC, extra=Extra.forbid):
     # make allow extra fields false
-    model_config = ConfigDict(extra="forbid")
 
     @abstractmethod
     def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
@@ -64,8 +63,7 @@ class JSONSchemaBase(ResponseFormat, ABC):
         pass
 
 
-class ResponseFormatJsonObject(JSONSchemaBase):
-    model_config = ConfigDict(populate_by_name=True)
+class ResponseFormatJsonObject(JSONSchemaBase, allow_population_by_field_name=True):
 
     # Support either keywords because it makes it more robust.
     type: Literal["json_object", "json_schema"]
@@ -76,13 +74,13 @@ class ResponseFormatJsonObject(JSONSchemaBase):
         default={}, alias="schema", description="Schema for the JSON response format"
     )
 
-    @model_validator(mode="after")
-    def read_and_validate_json_schema(self):
+    @root_validator(pre=False)
+    def read_and_validate_json_schema(cls, values):
         from ray.llm._internal.serve.configs.json_mode_utils import try_load_json_schema
 
         # Make sure the json schema is valid and dereferenced.
-        self.json_schema = try_load_json_schema(self.json_schema)
-        return self
+        values["json_schema"] = try_load_json_schema(values["json_schema"])
+        return values
 
     @property
     def json_schema_str(self) -> str:

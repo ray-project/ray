@@ -77,7 +77,8 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
 @pytest.mark.asyncio
 async def test_lora_unavailable_base_model(shutdown_ray_and_serve):
     """Getting the handle for an unavailable model should return a 404."""
-    llm_config = VLLM_APP.model_copy(deep=True)
+    # llm_config = VLLM_APP.model_copy(deep=True)
+    llm_config = VLLM_APP.copy(deep=True)
     llm_deployments = get_mocked_llm_deployments([llm_config])
     router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
@@ -94,7 +95,7 @@ async def test_lora_get_model(shutdown_ray_and_serve):
 
     base_model_id = "meta-llama/Llama-2-7b-hf"
 
-    llm_config = VLLM_APP.model_copy(deep=True)
+    llm_config = VLLM_APP.copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
     router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
@@ -112,7 +113,7 @@ async def test_lora_get_model(shutdown_ray_and_serve):
     base_model_config = base_model_data["rayllm_metadata"]
 
     # Case 3: model has a multiplex config in the cloud.
-    llm_config = VLLM_APP.model_copy(deep=True)
+    llm_config = VLLM_APP.copy(deep=True)
     llm_config.lora_config = LoraConfig(dynamic_lora_loading_path="s3://base_path")
     lora_model = "meta-llama/Llama-2-7b-hf:suffix:1234"
     llm_deployments = get_mocked_llm_deployments([llm_config])
@@ -144,7 +145,7 @@ async def test_lora_get_model(shutdown_ray_and_serve):
 async def test_lora_list_base_model(shutdown_ray_and_serve):
     """Test model-listing behavior when only the base model is available."""
     base_model_id = "base_model"
-    llm_config = VLLM_APP.model_copy(deep=True)
+    llm_config = VLLM_APP.copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
     router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)

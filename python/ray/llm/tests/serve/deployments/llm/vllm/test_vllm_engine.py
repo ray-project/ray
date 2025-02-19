@@ -165,7 +165,7 @@ class TestVLLMEngine:
         self, llm_config: LLMConfig, enable_json_mode: bool
     ):
         # Make a deep copy to avoid modifying the session-scoped fixture
-        llm_config = llm_config.model_copy(deep=True)
+        llm_config = llm_config.copy(deep=True)
         vllm_engine = VLLMEngine(llm_config)
 
         # Mock model_config to avoid None errors
