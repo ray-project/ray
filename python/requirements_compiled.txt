@@ -235,9 +235,10 @@ cachetools==5.3.2
     # via
     #   aim
     #   google-auth
-certifi==2023.11.17
+certifi==2025.1.31
     # via
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   clickhouse-connect
     #   httpcore
     #   httpx
