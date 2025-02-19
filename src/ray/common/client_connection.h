@@ -131,6 +131,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
   /// Set the blocking flag of the underlying socket.
   Status SetNonBlocking(bool nonblocking) {
+    // XXX: need to configure this.
     boost::system::error_code ec;
     socket_.native_non_blocking(nonblocking, ec);
     return boost_to_ray_status(ec);
@@ -154,6 +155,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
   /// The socket connection to the server.
   local_stream_socket socket_;
+
+  bool disconnected_;
 
   /// Max number of messages to write out at once.
   const int async_write_max_messages_;
