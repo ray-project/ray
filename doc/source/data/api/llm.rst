@@ -28,6 +28,7 @@ Processor Configs
 
 .. autosummary::
     :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
     ~ProcessorConfig
