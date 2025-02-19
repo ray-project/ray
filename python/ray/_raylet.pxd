@@ -150,8 +150,7 @@ cdef class CoreWorker:
             worker, outputs,
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-            ref_generator_id=*, # CObjectID
-        )
+            CObjectID ref_generator_id=*)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref)
     cdef c_function_descriptors_to_python(
