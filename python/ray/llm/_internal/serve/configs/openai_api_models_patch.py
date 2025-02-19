@@ -20,7 +20,7 @@ from ray.llm._internal.utils import try_import
 
 if TYPE_CHECKING:
     from vllm.sampling_params import GuidedDecodingParams
-    
+
 vllm = try_import("vllm")
 
 
@@ -40,7 +40,9 @@ class ResponseFormat(BaseModel, ABC):
     model_config = ConfigDict(extra="forbid")
 
     @abstractmethod
-    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
         """Convert the response format to a vLLM guided decoding params.
 
         Args:
@@ -55,7 +57,9 @@ class ResponseFormat(BaseModel, ABC):
 class ResponseFormatText(ResponseFormat):
     type: Literal["text"]
 
-    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
         return None
 
 
@@ -94,7 +98,9 @@ class ResponseFormatJsonObject(JSONSchemaBase):
     def json_schema_str(self) -> str:
         return json.dumps(self.json_schema)
 
-    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
         kwargs = {}
 
         if self.json_schema:
@@ -121,7 +127,9 @@ class ResponseFormatGrammar(ResponseFormat):
     type: Literal["grammar", "grammar_gbnf"]
     grammar: str
 
-    def to_guided_decoding_params(self, backend: str) -> Optional["GuidedDecodingParams"]:
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
         return vllm.sampling_params.GuidedDecodingParams.from_optional(
             backend=backend,
             grammar=self.grammar,
