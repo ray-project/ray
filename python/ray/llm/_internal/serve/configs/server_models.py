@@ -25,7 +25,7 @@ from ray._private.pydantic_compat import (
     PrivateAttr,
     validator,
     root_validator,
-    Extra
+    Extra,
 )
 
 from transformers import PretrainedConfig
@@ -83,6 +83,7 @@ class MirrorConfig(BaseModelExtended):
 class S3AWSCredentials(BaseModelExtended):
     create_aws_credentials_url: str
     auth_token_env_variable: Optional[str] = None
+
 
 class GCSMirrorConfig(MirrorConfig):
     @validator("bucket_uri")

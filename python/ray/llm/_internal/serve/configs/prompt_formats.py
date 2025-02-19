@@ -12,7 +12,7 @@ from ray._private.pydantic_compat import (
     PrivateAttr,
     validator,
     root_validator,
-    Extra
+    Extra,
 )
 from transformers import AutoProcessor
 
@@ -116,7 +116,6 @@ class EngineInput(BaseModel):
 
 
 class AbstractPromptFormat(BaseModel, extra=Extra.forbid):
-
     def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
         raise NotImplementedError()
 

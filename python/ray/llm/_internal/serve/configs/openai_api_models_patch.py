@@ -9,12 +9,7 @@ from typing import (
     Union,
     Literal,
 )
-from ray._private.pydantic_compat import (
-    BaseModel,
-    Field,
-    root_validator,
-    Extra
-)
+from ray._private.pydantic_compat import BaseModel, Field, root_validator, Extra
 from typing_extensions import Annotated
 
 

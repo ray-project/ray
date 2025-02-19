@@ -4,6 +4,8 @@ import grpc
 
 from ray.util.annotations import PublicAPI
 from dataclasses import dataclass
+
+
 @dataclass
 @PublicAPI(stability="beta")
 class RayServegRPCContext:
