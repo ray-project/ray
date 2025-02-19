@@ -27,6 +27,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 
 using MessageType = ray::protocol::MessageType;
 

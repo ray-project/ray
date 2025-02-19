@@ -21,7 +21,6 @@
 #include <unordered_map>
 
 #include "ray/core_worker/common.h"
-#include "ray/util/process.h"
 
 namespace ray {
 namespace internal {
