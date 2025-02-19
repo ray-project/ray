@@ -1,3 +1,5 @@
+.. _ray-compiled-graph:
+
 Ray Compiled Graph
 ==================
 
