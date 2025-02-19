@@ -1,5 +1,3 @@
-
-
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import (
     VLLMDeploymentImpl as _VLLMDeploymentImpl,
 )
@@ -26,7 +24,7 @@ class VLLMDeploymentImpl(_VLLMDeploymentImpl):
             from ray.serve.config import AutoscalingConfig
             from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
             from ray.serve.llm.deployments import VLLMDeployment
-            from ray.serve.llm.api_models import ChatCompletionRequest
+            from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
             # Configure the model
             llm_config = LLMConfig(
@@ -49,7 +47,7 @@ class VLLMDeploymentImpl(_VLLMDeploymentImpl):
             model_handle = serve.run(vllm_app)
             
             # Query the model via `chat` api
-            from ray.serve.llm.models import ChatCompletionRequest
+            from ray.serve.llm.openai_api_models import ChatCompletionRequest
             request = ChatCompletionRequest(
                 model="llama-3.1-8b",
                 messages=[
@@ -88,7 +86,7 @@ class LLMModelRouterDeploymentImpl(_LLMModelRouterDeploymentImpl):
             from ray.serve.config import AutoscalingConfig
             from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
             from ray.serve.llm.deployments import VLLMDeployment
-            from ray.serve.llm.api_models import ChatCompletionRequest
+            from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
 
             llm_config1 = LLMConfig(

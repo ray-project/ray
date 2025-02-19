@@ -13,6 +13,7 @@ multi-app
 model-multiplexing
 configure-serve-deployment
 http-guide
+Serving LLMs <llms/index>
 Production Guide <production-guide/index>
 monitoring
 resource-allocation

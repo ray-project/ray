@@ -164,6 +164,9 @@ class AutoscalingConfig(BaseModel, extra="allow"):
 
     @model_validator(mode="before")
     def sync_target_ongoing_requests(cls, values):
+        """This is a temporary validator to sync the target_ongoing_requests 
+        and target_num_ongoing_requests_per_replica fields.
+        """
         target_ongoing_requests = values.get("target_ongoing_requests", None)
         target_num_ongoing_requests_per_replica = values.get(
             "target_num_ongoing_requests_per_replica", None
@@ -221,10 +224,15 @@ class DeploymentConfig(BaseModelExtended):
 
     @model_validator(mode="before")
     def populate_max_ongoing_requests(cls, values):
+        """Validate and populate the max_ongoing_requests field.
+        
+        max_concurrent_queries takes priority because users may have set this value
+        before max_ongoing_requests exists
+        
+        """
         max_ongoing_requests = values.get("max_ongoing_requests", None)
         max_concurrent_queries = values.get("max_concurrent_queries", None)
-        # max_concurrent_queries takes priority because users may have set this value
-        # before max_ongoing_requests exists
+
         final_value = (
             max_ongoing_requests
             or max_concurrent_queries
@@ -419,6 +427,7 @@ class LLMConfig(BaseModelExtended):
     
     @model_validator(mode="after")
     def validate_llm_engine(self) -> "LLMConfig":
+        """Converts the llm_engine to an enum."""
         try:
             self.llm_engine = LLMEngine(self.llm_engine)
         except ValueError as e:
