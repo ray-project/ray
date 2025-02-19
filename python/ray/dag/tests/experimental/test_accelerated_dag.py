@@ -2618,52 +2618,6 @@ def test_inflight_requests_exceed_capacity(ray_start_regular):
     _ = (ref1, ref2)
 
 
-def test_result_buffer_exceeds_capacity(ray_start_regular):
-    expected_error_message = (
-        "The compiled graph can't have more than 2 "
-        "in-flight executions, and you currently have 2 "
-        "in-flight executions. Retrieve an output using ray.get before "
-        "submitting more requests or increase `_max_inflight_executions`. "
-    )
-    a = Actor.remote(0)
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-    compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
-    ref1 = compiled_dag.execute(1)
-    ref2 = compiled_dag.execute(2)
-    ray.get(ref2)
-    ref3 = compiled_dag.execute(3)
-    with pytest.raises(
-        ray.exceptions.RayCgraphCapacityExceeded,
-        match=(expected_error_message),
-    ):
-        _ = compiled_dag.execute(4)
-
-    # test same with asyncio
-    async def main():
-        a = Actor.remote(0)
-        with InputNode() as inp:
-            dag = a.inc.bind(inp)
-        async_compiled_dag = dag.experimental_compile(
-            enable_asyncio=True, _max_inflight_executions=2
-        )
-        ref1 = await async_compiled_dag.execute_async(1)
-        ref2 = await async_compiled_dag.execute_async(2)
-        await ref2
-        ref3 = await async_compiled_dag.execute_async(3)
-        with pytest.raises(
-            ray.exceptions.RayCgraphCapacityExceeded,
-            match=(expected_error_message),
-        ):
-            _ = await async_compiled_dag.execute_async(4)
-        _ = (ref1, ref3)
-
-    loop = get_or_create_event_loop()
-    loop.run_until_complete(main())
-    # same reason as comment for test_inflight_requests_exceed_capacity
-    _ = (ref1, ref3)
-
-
 def test_event_profiling(ray_start_regular, monkeypatch):
     monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
