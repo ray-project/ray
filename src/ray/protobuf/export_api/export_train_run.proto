@@ -21,7 +21,7 @@ package ray.rpc;
 import "google/protobuf/timestamp.proto";
 
 // Metadata for a Ray Train run, including its details and status
-message TrainRun {
+message ExportTrainRun {
   // Enumeration of the possible statuses for a Train run
   enum RunStatus {
     // Default value required by proto3
