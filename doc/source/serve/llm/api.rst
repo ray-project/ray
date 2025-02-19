@@ -30,8 +30,4 @@ Configs
    configs.S3AWSCredentials
    configs.GCSMirrorConfig
    configs.LoraConfig
-   .. TODO: Remove this once we have a better way to handle the deployment config
-   
-   configs.DeploymentConfig  
-   configs.AutoscalingConfig
 

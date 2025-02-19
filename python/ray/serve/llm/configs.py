@@ -6,8 +6,6 @@ from ray.llm._internal.serve.configs.server_models import (
     S3MirrorConfig as _S3MirrorConfig,
     GCSMirrorConfig as _GCSMirrorConfig,
     LoraConfig as _LoraConfig,
-    DeploymentConfig as _DeploymentConfig,
-    AutoscalingConfig as _AutoscalingConfig,
 )
 
 from ray.util.annotations import PublicAPI
@@ -59,20 +57,5 @@ class GCSMirrorConfig(_GCSMirrorConfig):
 @PublicAPI(stability="alpha")
 class LoraConfig(_LoraConfig):
     """The configuration for loading an LLM model with LoRA."""
-
-    pass
-
-
-# TODO (Kourosh): Deploymentconfig and AutoscalingConfig should fallback to the one from serve.
-@PublicAPI(stability="alpha")
-class DeploymentConfig(_DeploymentConfig):
-    """The configuration for starting an LLM deployment."""
-
-    pass
-
-
-@PublicAPI(stability="alpha")
-class AutoscalingConfig(_AutoscalingConfig):
-    """The configuration for autoscaling an LLM deployment."""
 
     pass

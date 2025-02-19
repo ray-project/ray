@@ -11,7 +11,6 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
 )
 from ray.llm._internal.serve.configs.server_models import (
     AutoscalingConfig,
-    DeploymentConfig,
     LLMConfig,
     LLMEngine,
     LoraConfig,
@@ -48,7 +47,6 @@ def test_push_telemetry_report_for_all_models():
         ),
         llm_engine=LLMEngine.VLLM,
         accelerator_type="L4",
-        deployment_config=DeploymentConfig(),
     )
     llm_config_autoscale_model = LLMConfig(
         model_loading_config=ModelLoadingConfig(
@@ -56,7 +54,7 @@ def test_push_telemetry_report_for_all_models():
         ),
         llm_engine=LLMEngine.VLLM,
         accelerator_type="A10G",
-        deployment_config=DeploymentConfig(
+        deployment_config=dict(
             autoscaling_config=AutoscalingConfig(
                 initial_replicas=2,
                 min_replicas=1,
@@ -70,7 +68,6 @@ def test_push_telemetry_report_for_all_models():
         ),
         llm_engine=LLMEngine.VLLM,
         accelerator_type="A10G",
-        deployment_config=DeploymentConfig(),
     )
     llm_config_lora_model = LLMConfig(
         model_loading_config=ModelLoadingConfig(
@@ -79,7 +76,6 @@ def test_push_telemetry_report_for_all_models():
         llm_engine=LLMEngine.VLLM,
         accelerator_type="A10G",
         lora_config=LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path),
-        deployment_config=DeploymentConfig(),
     )
     all_models = [
         llm_config_model,
