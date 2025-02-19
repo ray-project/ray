@@ -41,6 +41,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         prompts = []
         for conversation in all_messages:
             add_generation_prompt = self._should_add_generation_prompt(conversation)
+            # If we don't add a generation prompt, we should continue the final message.
             continue_final_message = not add_generation_prompt
             prompts.append(
                 self.tokenizer.apply_chat_template(
