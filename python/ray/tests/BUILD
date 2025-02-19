@@ -105,7 +105,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client_proxy.py",
-    "test_client_compat.py",
     "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
@@ -187,6 +186,7 @@ py_test_module_list(
     "test_runtime_env_plugin.py",
     "test_runtime_env_setup_func.py",
     "test_runtime_env_strong_type.py",
+    "test_runtime_env_py_executable.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
@@ -225,15 +225,6 @@ py_test_module_list(
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "no_windows", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
-    "test_serve_ray_minimal.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "minimal", "team:serve"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -308,6 +299,7 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_widgets.py",
     "accelerators/test_accelerators.py",
+    "test_wait.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -573,6 +565,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_conda_and_pip_5.py",
     "test_runtime_env_uv.py",
+    "test_runtime_env_uv_run.py",
   ],
   size = "large",
   tags = ["exclusive", "post_wheel_build", "team:core"],
@@ -732,6 +725,7 @@ py_test_module_list(
     "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
+    "test_wait.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",

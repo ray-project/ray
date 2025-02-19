@@ -238,7 +238,7 @@ Inference of models or policies
 Learners
 ++++++++
 
-- `Custom loss function, simple <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__:
+- `Custom loss function, simple <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__:
    Implements a custom loss function for training, demonstrating how users can define tailored loss objectives for specific environments or
    behaviors.
 
@@ -253,6 +253,11 @@ Learners
 
 Metrics
 +++++++
+
+- `Logging custom metrics in Algorithm.training_step <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__:
+   Shows how to log custom metrics inside a custom :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` through overriding
+   the :py:meth:`` method and making calls to the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.log_value` method
+   of the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` instance.
 
 - `Logging custom metrics in EnvRunners <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__:
    Demonstrates adding custom metrics to :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors, providing a way to track specific

@@ -1,11 +1,13 @@
 from collections import defaultdict
 from functools import partial
+import math
 import logging
 import time
 from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.callbacks.utils import make_callback
 from ray.rllib.core import (
@@ -780,7 +782,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-                self.module.set_state(state[COMPONENT_RL_MODULE])
+                rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
+                self.module.set_state(rl_module_state)
 
             # Update weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
@@ -1036,6 +1041,20 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         agent_steps=None,
     ):
         # Log general episode metrics.
+
+        # Use the configured window, but factor in the parallelism of the EnvRunners.
+        # As a result, we only log the last `window / num_env_runners` steps here,
+        # b/c everything gets parallel-merged in the Algorithm process.
+        win = max(
+            1,
+            int(
+                math.ceil(
+                    self.config.metrics_num_episodes_for_smoothing
+                    / (self.config.num_env_runners or 1)
+                )
+            ),
+        )
+
         self.metrics.log_dict(
             {
                 EPISODE_LEN_MEAN: length,
@@ -1053,9 +1072,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     else {}
                 ),
             },
-            # To mimick the old API stack behavior, we'll use `window` here for
-            # these particular stats (instead of the default EMA).
-            window=self.config.metrics_num_episodes_for_smoothing,
+            window=win,
         )
         # For some metrics, log min/max as well.
         self.metrics.log_dict(
@@ -1064,7 +1081,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 EPISODE_RETURN_MIN: ret,
             },
             reduce="min",
-            window=self.config.metrics_num_episodes_for_smoothing,
+            window=win,
         )
         self.metrics.log_dict(
             {
@@ -1072,7 +1089,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 EPISODE_RETURN_MAX: ret,
             },
             reduce="max",
-            window=self.config.metrics_num_episodes_for_smoothing,
+            window=win,
         )
 
     @staticmethod

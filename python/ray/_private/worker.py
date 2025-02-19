@@ -17,7 +17,6 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
-    IO,
     Any,
     AnyStr,
     Callable,
@@ -470,8 +469,8 @@ class Worker:
         self._enable_record_actor_task_log = (
             ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
         )
-        self._out_file = None
-        self._err_file = None
+        self._out_filepath = None
+        self._err_filepath = None
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
@@ -625,13 +624,13 @@ class Worker:
         finally:
             ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
-    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
+    def set_err_file(self, err_filepath=Optional[AnyStr]) -> None:
         """Set the worker's err file where stderr is redirected to"""
-        self._err_file = err_file
+        self._err_filepath = err_filepath
 
-    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
+    def set_out_file(self, out_filepath=Optional[AnyStr]) -> None:
         """Set the worker's out file where stdout is redirected to"""
-        self._out_file = out_file
+        self._out_filepath = out_filepath
 
     def record_task_log_start(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task starts executing for
@@ -675,24 +674,24 @@ class Worker:
             self.get_current_err_offset(),
         )
 
-    def get_err_file_path(self) -> str:
-        """Get the err log file path"""
-        return self._err_file.name if self._err_file is not None else ""
-
     def get_out_file_path(self) -> str:
         """Get the out log file path"""
-        return self._out_file.name if self._out_file is not None else ""
+        return self._out_filepath if self._out_filepath is not None else ""
+
+    def get_err_file_path(self) -> str:
+        """Get the err log file path"""
+        return self._err_filepath if self._err_filepath is not None else ""
 
     def get_current_out_offset(self) -> int:
         """Get the current offset of the out file if seekable, else 0"""
-        if self._out_file is not None and self._out_file.seekable():
-            return self._out_file.tell()
+        if self._out_filepath is not None:
+            return os.path.getsize(self._out_filepath)
         return 0
 
     def get_current_err_offset(self) -> int:
         """Get the current offset of the err file if seekable, else 0"""
-        if self._err_file is not None and self._err_file.seekable():
-            return self._err_file.tell()
+        if self._err_filepath is not None:
+            return os.path.getsize(self._err_filepath)
         return 0
 
     def get_serialization_context(self):
@@ -2274,6 +2273,7 @@ def connect(
     entrypoint: str = "",
     worker_launch_time_ms: int = -1,
     worker_launched_time_ms: int = -1,
+    debug_source: str = "",
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
 
@@ -2301,6 +2301,7 @@ def connect(
         worker_launched_time_ms: The time when the worker process for this worker
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
+        debug_source: Source information for `CoreWorker`, used for debugging and informational purpose, rather than functional purpose.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -2368,8 +2369,6 @@ def connect(
             )
 
     driver_name = ""
-    log_stdout_file_path = ""
-    log_stderr_file_path = ""
     interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
@@ -2474,8 +2473,6 @@ def connect(
         node.raylet_ip_address,
         (mode == LOCAL_MODE),
         driver_name,
-        log_stdout_file_path,
-        log_stderr_file_path,
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
@@ -2485,6 +2482,7 @@ def connect(
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
+        debug_source,
     )
 
     if mode == SCRIPT_MODE:
