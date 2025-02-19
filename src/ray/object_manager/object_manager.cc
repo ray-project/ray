@@ -529,6 +529,8 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   push_request.set_node_id(self_node_id_.Binary());
   push_request.set_data_size(chunk_reader->GetObject().GetObjectSize());
   push_request.set_metadata_size(chunk_reader->GetObject().GetMetadataSize());
+  std::cout << "Object size: " << chunk_reader->GetObject().GetObjectSize() << std::endl;
+  std::cout << "Metadata size: " << chunk_reader->GetObject().GetMetadataSize() << std::endl;
   push_request.set_chunk_index(chunk_index);
 
   // read a chunk into push_request and handle errors.
