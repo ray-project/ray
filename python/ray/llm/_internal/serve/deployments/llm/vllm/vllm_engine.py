@@ -186,6 +186,7 @@ class BatchLLMRawResponses:
 
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
+        from vllm.engine.multiprocessing.engine import MQLLMEngine
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
         vllm.plugins.load_general_plugins()
 
@@ -193,7 +194,7 @@ class _EngineBackgroundProcess:
             engine_config
         )
 
-        self.engine = vllm.engine.multiprocessing.engine.MQLLMEngine(
+        self.engine = MQLLMEngine(
             ipc_path=ipc_path,
             use_async_sockets=engine_config.model_config.use_async_output_proc,
             vllm_config=engine_config,
@@ -268,10 +269,13 @@ class VLLMEngine:
         logger.info("Started vLLM engine.")
 
     async def _start_engine(self) -> "EngineClient":
+        from vllm.engine.multiprocessing.client import MQLLMEngineClient
+        
         args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
         engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
 
-        if vllm.MQLLMEngineClient.is_unsupported_config(engine_args):
+
+        if  MQLLMEngineClient.is_unsupported_config(engine_args):
             # If the engine is not supported, we fall back to the legacy async engine.
             #
             # Note (genesu): as of 2025-02-11, this code path is only triggered when
@@ -293,6 +297,7 @@ class VLLMEngine:
         engine_config: "VllmConfig",
         placement_group: PlacementGroup,
     ) -> "EngineClient":
+        from vllm.engine.multiprocessing.client import MQLLMEngineClient
         ipc_path = vllm.utils.get_open_zmq_ipc_path()
 
         BackgroundCls = ray.remote(
@@ -305,7 +310,7 @@ class VLLMEngine:
         # Run the process in the background
         process_ref = BackgroundCls.remote(ipc_path, engine_args, engine_config)
         process_ref.start.remote()
-        engine_client = vllm.MQLLMEngineClient(
+        engine_client = MQLLMEngineClient(
             ipc_path=ipc_path,
             engine_config=engine_config,
             engine_pid=os.getpid(),
@@ -351,10 +356,10 @@ class VLLMEngine:
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-
+        
         vllm_config.parallel_config.placement_group = placement_group
 
-        return vllm.AsyncLLMEngine(
+        return vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
             executor_class=vllm.executor.ray_distributed_executor.RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
