@@ -1219,7 +1219,7 @@
     cluster_compute: tpl_cpu_1.yaml
 
   run:
-    timeout: 86400
+    timeout: 300
     script: python workloads/actor_deaths.py
     long_running: true
 
