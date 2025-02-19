@@ -14,12 +14,12 @@
 
 #pragma once
 
+#include <algorithm>
 #include <exception>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <algorithm>
-#include <memory>
 
 #include "absl/synchronization/mutex.h"
 #include "grpcpp/opencensus.h"

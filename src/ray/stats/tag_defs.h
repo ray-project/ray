@@ -17,12 +17,11 @@
 /// The definitions of tag keys that you can use every where.
 /// You can follow these examples to define and register your tag keys.
 
-#include "opencensus/tags/tag_key.h"
-
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
+#include "opencensus/tags/tag_key.h"
 
 using TagKeyType = opencensus::tags::TagKey;
 using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
