@@ -79,7 +79,8 @@ def test_uniform_kbins_discretizer(
     assert out_df["C"].equals(in_df["C"])
 
     # append mode
-    with pytest.raises(ValueError):
+    expected_message = "The length of columns and output_columns must match."
+    with pytest.raises(ValueError, match=expected_message):
         UniformKBinsDiscretizer(["A", "B"], bins=bins, output_columns=["A_discretized"])
 
     discretizer = UniformKBinsDiscretizer(
@@ -194,7 +195,8 @@ def test_custom_kbins_discretizer(
     assert out_df["C"].equals(in_df["C"])
 
     # append mode
-    with pytest.raises(ValueError):
+    expected_message = "The length of columns and output_columns must match."
+    with pytest.raises(ValueError, match=expected_message):
         CustomKBinsDiscretizer(["A", "B"], bins=bins, output_columns=["A_discretized"])
 
     discretizer = CustomKBinsDiscretizer(
