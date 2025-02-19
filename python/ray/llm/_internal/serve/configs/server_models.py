@@ -434,7 +434,6 @@ class LLMConfig(BaseModelExtended):
             raise ValueError(f"Invalid deployment config: {value}") from e
         return value
 
-
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
 
