@@ -77,8 +77,18 @@ class ChatTemplateUDF(StatefulStageUDF):
             }
 
     def _should_add_generation_prompt(self, conversation: List[Dict[str, Any]]) -> bool:
-        # Add generation prompt only if the last message is 'user'.
-        # This is useful in cases where the user provides an assistant prefill message.
+        """Determines if the generation prompt should be added for the given conversation.
+
+        Adds the generation prompt only if the last message is from the user.
+        This is useful in cases where the user provides an assistant prefill
+        message.
+
+        Args:
+            conversation: The conversation to check.
+
+        Returns:
+            True if the generation prompt should be added, False otherwise.
+        """
         return conversation[-1]["role"] == "user"
 
     @property
