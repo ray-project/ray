@@ -414,24 +414,25 @@ class LLMConfig(BaseModelExtended):
 
         return value
 
-    @model_validator(mode="after")
-    def validate_llm_engine(self) -> "LLMConfig":
-        """Converts the llm_engine to an enum."""
+    @field_validator("llm_engine")
+    def validate_llm_engine(cls, value: str) -> str:
+        """Validates the llm_engine string value."""
         try:
-            self.llm_engine = LLMEngine(self.llm_engine).value
+            # Validate the engine
+            LLMEngine(value)
         except ValueError as e:
-            raise ValueError(f"Unsupported engine: {self.llm_engine}") from e
-        return self
-    
-    @model_validator(mode="after")
-    def validate_deployment_config(self) -> "LLMConfig":
-        """Validates the deployment config."""
+            raise ValueError(f"Unsupported engine: {value}") from e
+        return value
+
+    @field_validator("deployment_config")
+    def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the deployment config dictionary."""
         try:
             # Only validate the deployment config
-            DeploymentConfig(**self.deployment_config)
+            DeploymentConfig(**value)
         except Exception as e:
-            raise ValueError(f"Invalid deployment config: {self.deployment_config}") from e
-        return self
+            raise ValueError(f"Invalid deployment config: {value}") from e
+        return value
 
 
     def ray_accelerator_type(self) -> str:
