@@ -40,9 +40,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         all_messages = [row["messages"].tolist() for row in batch]
         prompts = []
         for conversation in all_messages:
-            # Add generation prompt only if the last message is 'user'.
-            # This is useful in cases where the user provides an assistant prefill message.
-            add_generation_prompt = conversation[-1]["role"] == "user"
+            add_generation_prompt = self._should_add_generation_prompt(conversation)
             continue_final_message = not add_generation_prompt
             prompts.append(
                 self.tokenizer.apply_chat_template(
@@ -59,6 +57,11 @@ class ChatTemplateUDF(StatefulStageUDF):
                 self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                 "prompt": prompt,
             }
+
+    def _should_add_generation_prompt(self, conversation: List[Dict[str, Any]]) -> bool:
+        # Add generation prompt only if the last message is 'user'.
+        # This is useful in cases where the user provides an assistant prefill message.
+        return conversation[-1]["role"] == "user"
 
     @property
     def expected_input_keys(self) -> List[str]:
