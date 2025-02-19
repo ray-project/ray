@@ -1852,6 +1852,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// actor task are ready.
   std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
+  std::unique_ptr<P2pDependencyWaiter> p2p_task_argument_waiter_;
+
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
 

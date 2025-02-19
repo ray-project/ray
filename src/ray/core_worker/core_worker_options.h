@@ -69,6 +69,8 @@ struct CoreWorkerOptions {
       // can run without a pause.
       int64_t generator_backpressure_num_objects)>;
 
+  using FetchP2pDependencyCallback = std::function<void(const std::vector<rpc::ObjectReference> &dependencies)>;
+
   CoreWorkerOptions()
       : store_socket(""),
         raylet_socket(""),
@@ -81,6 +83,7 @@ struct CoreWorkerOptions {
         raylet_ip_address(""),
         driver_name(""),
         task_execution_callback(nullptr),
+        fetch_p2p_dependency_callback(nullptr),
         check_signals(nullptr),
         gc_collect(nullptr),
         spill_objects(nullptr),
@@ -138,6 +141,7 @@ struct CoreWorkerOptions {
   std::string driver_name;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
+  FetchP2pDependencyCallback fetch_p2p_dependency_callback;
   /// The callback to be called when shutting down a `CoreWorker` instance.
   std::function<void(const WorkerID &)> on_worker_shutdown;
   /// Application-language callback to check for signals that have been received

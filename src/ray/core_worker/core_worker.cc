@@ -850,7 +850,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   if (task_receiver_ != nullptr) {
     task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
     task_receiver_->Init(
-        core_worker_client_pool_, rpc_address_, task_argument_waiter_.get());
+        core_worker_client_pool_, rpc_address_, task_argument_waiter_.get(), p2p_task_argument_waiter_.get());
+
+    p2p_task_argument_waiter_ = std::make_unique<P2pDependencyWaiter>(options_.fetch_p2p_dependency_callback);
   }
 
   actor_manager_ = std::make_unique<ActorManager>(

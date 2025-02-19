@@ -2251,6 +2251,15 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
 
+cdef void fetch_p2p_dependency_handler(
+        const c_vector[CObjectReference] &c_arg_refs) nogil:
+    with gil, disable_client_hook():
+        assert False
+
+        # TODO:
+        # - Get the RayActorObjectMetadata from CoreWorker in-memory object store.
+        # - Actually perform the recv, and store in in-actor store.
+
 cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -3001,6 +3010,7 @@ cdef class CoreWorker:
         options.raylet_ip_address = raylet_ip_address.encode("utf-8")
         options.driver_name = driver_name
         options.task_execution_callback = task_execution_handler
+        options.fetch_p2p_dependency_callback = fetch_p2p_dependency_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler

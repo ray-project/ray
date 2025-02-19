@@ -20,6 +20,7 @@ namespace core {
 ActorSchedulingQueue::ActorSchedulingQueue(
     instrumented_io_context &main_io_service,
     DependencyWaiter &waiter,
+    P2pDependencyWaiter &p2p_waiter,
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
@@ -31,6 +32,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       wait_timer_(main_io_service),
       main_thread_id_(boost::this_thread::get_id()),
       waiter_(waiter),
+      p2p_waiter_(p2p_waiter),
       task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
       fiber_state_manager_(fiber_state_manager),

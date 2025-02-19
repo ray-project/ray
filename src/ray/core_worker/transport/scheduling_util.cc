@@ -71,5 +71,15 @@ void DependencyWaiterImpl::OnWaitComplete(int64_t tag) {
   it->second();
   requests_.erase(it);
 }
+
+P2pDependencyWaiter::P2pDependencyWaiter(std::function<void(const std::vector<rpc::ObjectReference> &dependencies)> fetch_callback) : fetch_callback_(fetch_callback) {}
+
+void P2pDependencyWaiter::Wait(const std::vector<rpc::ObjectReference> &dependencies,
+                               std::function<void()> on_dependencies_available) {
+  // Call into Python to recv the objects.
+  fetch_callback_(dependencies);
+  on_dependencies_available();
+}
+
 }  // namespace core
 }  // namespace ray

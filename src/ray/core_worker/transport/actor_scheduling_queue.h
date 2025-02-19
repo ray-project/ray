@@ -43,6 +43,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   ActorSchedulingQueue(
       instrumented_io_context &main_io_service,
       DependencyWaiter &waiter,
+      P2pDependencyWaiter &p2p_waiter,
       worker::TaskEventBuffer &task_event_buffer,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
@@ -97,6 +98,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   boost::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
+  P2pDependencyWaiter &p2p_waiter_;
   worker::TaskEventBuffer &task_event_buffer_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;

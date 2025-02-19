@@ -27,8 +27,10 @@ namespace core {
 
 void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
                         rpc::Address rpc_address,
-                        DependencyWaiter *dependency_waiter) {
+                        DependencyWaiter *dependency_waiter,
+                        P2pDependencyWaiter *p2p_dependency_waiter) {
   waiter_ = dependency_waiter;
+  p2p_waiter_ = p2p_dependency_waiter;
   rpc_address_ = rpc_address;
   client_pool_ = client_pool;
 }
@@ -255,6 +257,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                           std::unique_ptr<SchedulingQueue>(
                               new ActorSchedulingQueue(task_main_io_service_,
                                                        *waiter_,
+                                                       *p2p_waiter_,
                                                        task_event_buffer_,
                                                        pool_manager_,
                                                        fiber_state_manager_,

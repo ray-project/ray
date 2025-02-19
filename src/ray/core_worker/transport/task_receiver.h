@@ -79,7 +79,8 @@ class TaskReceiver {
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>,
             rpc::Address rpc_address,
-            DependencyWaiter *dependency_waiter);
+            DependencyWaiter *dependency_waiter,
+            P2pDependencyWaiter *p2p_dependency_waiter);
 
   /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
   /// the task and then start scheduling the requests to begin the execution. If it's a
@@ -137,6 +138,7 @@ class TaskReceiver {
   rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.
   DependencyWaiter *waiter_ = nullptr;
+  P2pDependencyWaiter *p2p_waiter_ = nullptr;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>
