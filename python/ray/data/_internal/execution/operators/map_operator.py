@@ -44,6 +44,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     ApplyAdditionalSplitToOutputBlocks,
     MapTransformer,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
 from ray.data.block import (
     Block,
@@ -64,6 +65,11 @@ class MapOperator(OneToOneOperator, ABC):
 
     This operator implements the distributed map operation, supporting both task
     and actor compute strategies.
+    """
+
+    MAP_UDF_WARN_SIZE_THRESHOLD = 100 * 1024**2
+    """
+    Warn if the size of the map UDF exceeds this threshold.
     """
 
     def __init__(
@@ -271,6 +277,21 @@ class MapOperator(OneToOneOperator, ABC):
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
         self._map_transformer_ref = ray.put(map_transformer)
+        self._warn_large_udf()
+
+    def _warn_large_udf(self):
+        """Print a warning if the UDF is too large."""
+        udf_size = ray.experimental.get_local_object_locations(
+            [self._map_transformer_ref]
+        )[self._map_transformer_ref]["object_size"]
+        if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
+            logger.warning(
+                f"The UDF of operator {self.name} is too large "
+                f"(size = {memory_string(udf_size)}). "
+                "Check if the UDF has accidentally captured large objects. "
+                "Load the large objects in the __init__ method "
+                "or pass them as ObjectRefs instead."
+            )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index

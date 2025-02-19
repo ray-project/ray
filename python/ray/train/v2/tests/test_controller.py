@@ -46,7 +46,14 @@ class DummyWorkerGroup(WorkerGroup):
 
     _start_failure = None
 
-    def __init__(self, *args, **kwargs):
+    # TODO: Clean this up and use Mocks instead.
+    def __init__(
+        self,
+        train_run_context: TrainRunContext,
+        worker_group_context: WorkerGroupContext,
+        callbacks=None,
+    ):
+        self._num_workers = worker_group_context.num_workers
         self._worker_group_state = None
         self._worker_statuses = {}
 
@@ -55,8 +62,8 @@ class DummyWorkerGroup(WorkerGroup):
             worker_statuses=self._worker_statuses,
         )
 
-    def _start(self, worker_group_context: WorkerGroupContext):
-        num_workers = worker_group_context.num_workers
+    def _start(self):
+        num_workers = self._num_workers
         if self._start_failure:
             raise self._start_failure
 
@@ -354,7 +361,6 @@ def test_controller_callback():
         def before_controller_execute_failure_decision(
             self,
             failure_decision: FailureDecision,
-            worker_group_status: WorkerGroupPollStatus,
         ):
             self.failure_decision_called = True
 
