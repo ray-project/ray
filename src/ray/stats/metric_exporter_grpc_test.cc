@@ -28,9 +28,12 @@
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
+#include <string>
+#include <unordered_map>
+#include <memory>
+
 namespace ray {
 
-using namespace stats;
 using opencensus::stats::Aggregation;
 using opencensus::stats::BucketBoundaries;
 using opencensus::stats::MeasureInt64;
