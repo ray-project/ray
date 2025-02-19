@@ -77,7 +77,6 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
 @pytest.mark.asyncio
 async def test_lora_unavailable_base_model(shutdown_ray_and_serve):
     """Getting the handle for an unavailable model should return a 404."""
-    # llm_config = VLLM_APP.model_copy(deep=True)
     llm_config = VLLM_APP.copy(deep=True)
     llm_deployments = get_mocked_llm_deployments([llm_config])
     router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
