@@ -78,7 +78,7 @@ def test_name_and_repr(ray_start_regular_shared):
     )
 
     assert map_op1.name == "map1"
-    assert map_op1.dag_str "InputDataBuffer[Input] -> TaskPoolMapOperator[map1]"
+    assert map_op1.dag_str == "InputDataBuffer[Input] -> TaskPoolMapOperator[map1]"
     assert str(map_op1) == "TaskPoolMapOperator[map1]"
 
     map_op2 = MapOperator.create(
