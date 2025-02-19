@@ -81,6 +81,8 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     engine_config = llm_config.get_engine_config()
     return vllm.engine.arg_utils.AsyncEngineArgs(
         **{
+            # This is the local path on disk, or the hf model id
+            # If it is the hf_model_id, vllm automatically downloads the correct model.
             "model": model,
             "distributed_executor_backend": "ray",
             "disable_log_stats": False,

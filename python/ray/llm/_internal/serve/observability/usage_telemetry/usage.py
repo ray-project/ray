@@ -2,6 +2,8 @@ from enum import Enum
 from typing import Callable, Dict, List, Optional, Sequence
 
 import ray
+
+# TODO (genesu): remove dependency on botocore/ aiobotocore.
 from botocore.exceptions import ClientError
 from ray import serve
 from ray._private.usage.usage_lib import record_extra_usage_tag

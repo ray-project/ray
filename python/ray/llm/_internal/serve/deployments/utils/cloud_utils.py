@@ -1,6 +1,8 @@
 # TODO (genesu): clean up these utils.
 from typing import List, Optional, Tuple, Union, Dict
 import os
+
+# TODO (genesu): remove dependency on boto3. Lazy import in the functions.
 import boto3
 import requests
 import subprocess
