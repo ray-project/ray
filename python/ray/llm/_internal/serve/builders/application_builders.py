@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 
 def _set_deployment_placement_options(llm_config: LLMConfig) -> dict:
-    deployment_config = llm_config.deployment_config.model_copy(deep=True).model_dump()
+    deployment_config = llm_config.deployment_config
     engine_config = llm_config.get_engine_config()
 
     ray_actor_options = deployment_config["ray_actor_options"] or {}

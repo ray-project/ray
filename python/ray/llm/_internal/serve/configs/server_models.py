@@ -348,9 +348,9 @@ class LLMConfig(BaseModelExtended):
         default=None, description="Settings for LoRA adapter."
     )
 
-    deployment_config: DeploymentConfig = Field(
-        default_factory=DeploymentConfig,
-        description="The Ray Serve deployment settings for the model deployment.",
+    deployment_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The Ray @server.deployment options. See @server.deployment for more details.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -422,6 +422,17 @@ class LLMConfig(BaseModelExtended):
         except ValueError as e:
             raise ValueError(f"Unsupported engine: {self.llm_engine}") from e
         return self
+    
+    @model_validator(mode="after")
+    def validate_deployment_config(self) -> "LLMConfig":
+        """Validates the deployment config."""
+        try:
+            # Only validate the deployment config
+            DeploymentConfig(**self.deployment_config)
+        except Exception as e:
+            raise ValueError(f"Invalid deployment config: {self.deployment_config}") from e
+        return self
+
 
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
