@@ -91,11 +91,15 @@ For handling larger models, you will want to specify model parallelism.
 
     processor_config = vLLMProcessorConfig(
         model="unsloth/Llama-3.1-8B-Instruct",
-        engine_kwargs={"max_model_len": 20000},
+        engine_kwargs={
+            "max_model_len": 16384,
+            "tensor_parallel_size": 2,
+            "pipeline_parallel_size": 2,
+            "enable_chunked_prefill": True,
+            "max_num_batched_tokens": 2048,
+        },
         concurrency=1,
         batch_size=64,
-        tensor_parallel_size=2,
-        pipeline_parallel_size=2,
     )
 
 The underlying `Processor` object will instantiate replicas of the vLLM engine and automatically
