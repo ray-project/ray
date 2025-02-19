@@ -234,9 +234,15 @@ def push_telemetry_report_for_all_models(
         use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
-            num_replicas = model.deployment_config["autoscaling_config"].get("initial_replicas", 1)
-            min_replicas = model.deployment_config["autoscaling_config"].get("min_replicas", 1)
-            max_replicas = model.deployment_config["autoscaling_config"].get("max_replicas", 1)
+            num_replicas = model.deployment_config["autoscaling_config"].get(
+                "initial_replicas", 1
+            )
+            min_replicas = model.deployment_config["autoscaling_config"].get(
+                "min_replicas", 1
+            )
+            max_replicas = model.deployment_config["autoscaling_config"].get(
+                "max_replicas", 1
+            )
 
         engine_config = model.get_engine_config()
 

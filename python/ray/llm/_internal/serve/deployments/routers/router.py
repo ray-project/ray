@@ -403,7 +403,7 @@ class LLMModelRouterDeploymentImpl:
         Returns:
             A Ray Serve deployment.
         """
-        
+
         ingress_cls = serve.ingress(fastapi_router_app)(cls)
         deployment_decorator = serve.deployment(
             # TODO (Kourosh): make this configurable
@@ -427,7 +427,7 @@ class LLMModelRouterDeploymentImpl:
             ),
             max_ongoing_requests=1000,  # Maximum backlog for a single replica
         )
-    
+
         deployment_cls = deployment_decorator(ingress_cls)
-        
+
         return deployment_cls
