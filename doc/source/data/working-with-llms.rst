@@ -20,15 +20,16 @@ At a high level, the `ray.data.llm` module provides a `Processor` object which e
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
 You can use the `build_llm_processor` API to construct a processor.
-In the following example, we use the `vLLMEngineProcessorConfig` to construct a processor for the `meta-llama/Llama-3.1-8B-Instruct` model.
+The following example uses the `vLLMEngineProcessorConfig` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
 
 To run this example, install vLLM, which is a popular and optimized LLM inference engine.
 
 .. testcode::
 
-    pip install -U vllm
+    # Later versions *should* work but are not tested yet.
+    pip install -U vllm==0.7.2
 
-The vLLMEngineProcessorConfig is a configuration object for the vLLM engine.
+The `vLLMEngineProcessorConfig`` is a configuration object for the vLLM engine.
 It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
 Upon execution, the Processor object instantiates replicas of the vLLM engine (using `map_batches` under the hood).
 
@@ -58,12 +59,11 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=250,
-            ),
-            **row
+            )
         ),
         postprocess=lambda row: dict(
             answer=row["generated_text"],
-            **row
+            **row  # This will return all the original columns in the dataset.
         ),
     )
 

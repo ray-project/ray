@@ -165,9 +165,13 @@ def build_llm_processor(
         config: The processor config.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
-            required fields for the following processing stages.
+            required fields for the following processing stages. Each row
+            can contain a `sampling_params` field which will be used by the
+            engine for row-specific sampling parameters.
+            Note that all columns will be carried over until the postprocess stage.
         postprocess: An optional lambda function that takes a row (dict) as input
-            and returns a postprocessed row (dict).
+            and returns a postprocessed row (dict). To keep all the original columns,
+            you can use the `**row` syntax to return all the original columns.
 
     Returns:
         The built processor.
@@ -205,6 +209,7 @@ def build_llm_processor(
                 ),
                 postprocess=lambda row: dict(
                     resp=row["generated_text"],
+                    **row,  # This will return all the original columns in the dataset.
                 ),
             )
 
