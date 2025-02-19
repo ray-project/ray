@@ -5,9 +5,7 @@
 #    pip-compile --constraint=python/requirements_compiled_rayllm_test_py311_cu121.txt --extra-index-url=https://download.pytorch.org/whl/cu121 --find-links=https://data.pyg.org/whl/torch-2.3.0+cu121.html --generate-hashes --output-file=python/requirements_compiled_rayllm_py311_cu121.txt --strip-extras --unsafe-package=grpcio-tools --unsafe-package=ray --unsafe-package=setuptools python/requirements.txt python/requirements/llm/llm-requirements.txt
 #
 --extra-index-url https://download.pytorch.org/whl/cu121
---extra-index-url https://download.pytorch.org/whl/cpu
 --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 
 aiobotocore==2.19.0 \
     --hash=sha256:12c2960a21472b8eb3452cde5eb31d541ca1464d236f4221556320fa8aed2ee8 \
@@ -964,15 +962,9 @@ httptools==0.6.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   uvicorn
-<<<<<<< HEAD
-httpx==0.27.2 \
-    --hash=sha256:7bb2708e112d8fdd7829cd4243970f0c223274051cb35ee80c03301ee29a3df0 \
-    --hash=sha256:f7c2be1d2f3c3c3160d441802406b206c2b76f5947b11115e6df10c6c65e66c2
-=======
 httpx==0.28.1 \
     --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
->>>>>>> master
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   openai
@@ -2780,10 +2772,6 @@ sniffio==1.3.1 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   anyio
-<<<<<<< HEAD
-    #   httpx
-=======
->>>>>>> master
     #   openai
 starlette==0.36.3 \
     --hash=sha256:13d429aa93a61dc40bf503e8c801db1f1bca3dc706b10ef2434a36123568f044 \
