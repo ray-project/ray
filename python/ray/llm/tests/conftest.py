@@ -74,6 +74,7 @@ def model_pixtral_12b():
     """The Pixtral 12B model for testing."""
     REMOTE_URL = f"{S3_ARTIFACT_URL}mistral-community-pixtral-12b/"
     FILE_LIST = [
+        "config.json",
         "chat_template.json",
         "preprocessor_config.json",
         "processor_config.json",
