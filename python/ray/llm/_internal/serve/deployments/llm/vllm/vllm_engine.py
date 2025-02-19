@@ -270,7 +270,7 @@ class VLLMEngine:
 
     async def _start_engine(self) -> "EngineClient":
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
-        
+
         args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
         engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
 
@@ -356,7 +356,7 @@ class VLLMEngine:
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
-        
+
         vllm_config.parallel_config.placement_group = placement_group
 
         return vllm.engine.async_llm_engine.AsyncLLMEngine(
