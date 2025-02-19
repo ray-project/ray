@@ -1602,8 +1602,7 @@ def test_op_metrics_logging():
             + gen_expected_metrics(is_map=False)
         )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         map_str = (
-            "Operator InputDataBuffer[Input] -> "
-            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
         ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
 
