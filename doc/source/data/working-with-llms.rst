@@ -19,9 +19,9 @@ Perform batch inference with LLMs
 At a high level, the `ray.data.llm` module provides a `Processor` object which encapsulates
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
-You can use the `build_llm_processor` API to construct a processor. In the following example, we use the `vLLMProcessorConfig` to construct a processor for the `meta-llama/Llama-3.1-8B-Instruct` model.
+You can use the `build_llm_processor` API to construct a processor. In the following example, we use the `vLLMEngineProcessorConfig` to construct a processor for the `meta-llama/Llama-3.1-8B-Instruct` model.
 
-The vLLMProcessorConfig is a configuration object for the vLLM engine.
+The vLLMEngineProcessorConfig is a configuration object for the vLLM engine.
 It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations. Upon execution, the Processor object instantiates replicas of the vLLM engine (using `map_batches` under the hood).
 
 .. testcode::
@@ -72,13 +72,13 @@ It contains the model name, the number of GPUs to use, and the number of shards 
 Configure vLLM for LLM inference
 --------------------------------
 
-Use the `vLLMProcessorConfig` to configure the vLLM engine.
+Use the `vLLMEngineProcessorConfig` to configure the vLLM engine.
 
 .. testcode::
 
-    from ray.data.llm import vLLMProcessorConfig
+    from ray.data.llm import vLLMEngineProcessorConfig
 
-    processor_config = vLLMProcessorConfig(
+    processor_config = vLLMEngineProcessorConfig(
         model="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={"max_model_len": 20000},
         concurrency=1,
@@ -89,7 +89,7 @@ For handling larger models, specify model parallelism.
 
 .. testcode::
 
-    processor_config = vLLMProcessorConfig(
+    processor_config = vLLMEngineProcessorConfig(
         model="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
             "max_model_len": 16384,
