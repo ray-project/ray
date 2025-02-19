@@ -78,54 +78,58 @@ compile_pip_dependencies() {
     return 0
   fi
 
-  echo "Target file: $TARGET"
+  (
+    # shellcheck disable=SC2262
+    alias pip="python -m pip"
 
-  # shellcheck disable=SC2262
-  alias pip="python -m pip"
-  pip install pip-tools
+    cd "${WORKSPACE_DIR}"
 
-  # Required packages to lookup e.g. dragonfly-opt
-  HAS_TORCH=0
-  python -c "import torch" 2>/dev/null && HAS_TORCH=1
-  pip install --no-cache-dir numpy torch
+    echo "Target file: $TARGET"
+    pip install pip-tools
 
-  pip-compile --verbose --resolver=backtracking \
-     --pip-args --no-deps --strip-extras --no-header -o \
-    "${WORKSPACE_DIR}/python/$TARGET" \
-    "${WORKSPACE_DIR}/python/requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/cloud-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/security-requirements.txt"
+    # Required packages to lookup e.g. dragonfly-opt
+    HAS_TORCH=0
+    python -c "import torch" 2>/dev/null && HAS_TORCH=1
+    pip install --no-cache-dir numpy torch
 
-  # Remove some pins from upstream dependencies: ray
-  sed -i "/^ray==/d" "${WORKSPACE_DIR}/python/$TARGET"
+    pip-compile --verbose --resolver=backtracking \
+      --pip-args --no-deps --strip-extras --no-header \
+      --unsafe-package ray \
+      --unsafe-package pip \
+      --unsafe-package setuptools \
+      -o "python/$TARGET" \
+      python/requirements.txt \
+      python/requirements/lint-requirements.txt \
+      python/requirements/test-requirements.txt \
+      python/requirements/cloud-requirements.txt \
+      python/requirements/docker/ray-docker-requirements.txt \
+      python/requirements/ml/core-requirements.txt \
+      python/requirements/ml/data-requirements.txt \
+      python/requirements/ml/data-test-requirements.txt \
+      python/requirements/ml/dl-cpu-requirements.txt \
+      python/requirements/ml/rllib-requirements.txt \
+      python/requirements/ml/rllib-test-requirements.txt \
+      python/requirements/ml/train-requirements.txt \
+      python/requirements/ml/train-test-requirements.txt \
+      python/requirements/ml/tune-requirements.txt \
+      python/requirements/ml/tune-test-requirements.txt \
+      python/requirements/security-requirements.txt
 
-  # Delete local installation
-  sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
+    # Delete local installation
+    sed -i "/@ file/d" "python/$TARGET"
 
-  # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
-  # This is needed because we specify the requirements as torch==version, but
-  # the resolver adds the device-specific version tag. If this is not removed,
-  # pip install will complain about irresolvable constraints.
-  sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+    # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+    # This is needed because we specify the requirements as torch==version, but
+    # the resolver adds the device-specific version tag. If this is not removed,
+    # pip install will complain about irresolvable constraints.
+    sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "python/$TARGET"
 
-  cat "${WORKSPACE_DIR}/python/$TARGET"
+    cat "python/$TARGET"
 
-  if [ "$HAS_TORCH" -eq 0 ]; then
-    pip uninstall -y torch
-  fi
+    if [[ "$HAS_TORCH" == "0" ]]; then
+      pip uninstall -y torch
+    fi
+  )
 }
 
 test_core() {
