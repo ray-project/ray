@@ -18,8 +18,6 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
-import "google/protobuf/timestamp.proto";
-
 // Metadata for a Ray Train run, including its details and status
 message ExportTrainRun {
   // Enumeration of the possible statuses for a Train run
@@ -52,8 +50,8 @@ message ExportTrainRun {
   RunStatus status = 5;
   // Additional details about the current status, including error messages if applicable
   optional string status_detail = 6;
-  // The timestamp when the Train run started
-  google.protobuf.Timestamp start_time = 7;
-  // The timestamp when the Train run ended. If not set, the run is still in progress
-  optional google.protobuf.Timestamp end_time = 8;
+  // The timestamp when the Train run started in ns.
+  uint64 start_time = 7;
+  // The timestamp when the Train run ended in ns. If not set, the run is still in progress
+  optional uint64 end_time = 8;
 }

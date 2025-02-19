@@ -254,7 +254,9 @@ proto_library(
         ":export_node_event_proto",
         ":export_actor_event_proto",
         ":export_driver_job_event_proto",
-        ":export_submission_job_event_proto"
+        ":export_submission_job_event_proto",
+        ":export_train_run_proto",
+        ":export_train_run_attempt_proto",
     ],
 )
 
@@ -359,6 +361,36 @@ cc_proto_library(
 python_grpc_compile(
     name = "export_submission_job_event_py_proto",
     deps = [":export_submission_job_event_proto"],
+)
+
+proto_library(
+    name = "export_train_run_proto",
+    srcs = ["export_api/export_train_run.proto"],
+)
+
+cc_proto_library(
+    name = "export_train_run_cc_proto",
+    deps = [":export_train_run_proto"],
+)
+
+python_grpc_compile(
+    name = "export_train_run_py_proto",
+    deps = [":export_train_run_proto"],
+)
+
+proto_library(
+    name = "export_train_run_attempt_proto",
+    srcs = ["export_api/export_train_run_attempt.proto"],
+)
+
+cc_proto_library(
+    name = "export_train_run_attempt_cc_proto",
+    deps = [":export_train_run_attempt_proto"],
+)
+
+python_grpc_compile(
+    name = "export_train_run_attempt_py_proto",
+    deps = [":export_train_run_attempt_proto"],
 )
 
 # Agent manager gRPC lib.

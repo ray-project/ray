@@ -18,14 +18,12 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
-import "google/protobuf/timestamp.proto";
-
 // Metadata for an individual attempt to execute a Train run
 message ExportTrainRunAttempt {
   // Enumeration of the possible statuses for a Train run attempt
   enum RunAttemptStatus {
     // Default value required by proto3
-    UNSPECIFIED = 0;
+    ACTOR_STATUS_ = 0;
 
     // Active States
     PENDING = 1;
@@ -40,7 +38,7 @@ message ExportTrainRunAttempt {
   // Enumeration of the statuses for a Train worker actor
   enum ActorStatus {
     // Default value required by proto3
-    UNSPECIFIED = 0;
+    ACTOR_STATUS_UNSPECIFIED = 0;
 
     // The actor is currently active
     ALIVE = 1;
@@ -86,10 +84,10 @@ message ExportTrainRunAttempt {
   RunAttemptStatus status = 3;
   // Additional details about the status, including error messages if applicable
   optional string status_detail = 4;
-  // The timestamp when the Train run attempt started
-  google.protobuf.Timestamp start_time = 5;
-  // The timestamp when the Train run attempt ended. If null, the attempt is still ongoing
-  optional google.protobuf.Timestamp end_time = 6;
+  // The timestamp when the Train run attempt started in ns.
+  uint64 start_time = 5;
+  // The timestamp when the Train run attempt ended in ns. If null, the attempt is still ongoing
+  optional uint64 end_time = 6;
   // The resources (e.g., CPU, GPU) allocated to the Train run attempt
   repeated TrainResources resources = 7;
   // List of Train workers participating in this attempt, sorted by global ranks

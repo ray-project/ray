@@ -1,5 +1,3 @@
-from google.protobuf import timestamp_pb2
-
 from ray.protobuf.export_api.export_train_run_pb2 import TrainRun as ProtoTrainRun
 from ray.protobuf.export_api.export_train_run_attempt_pb2 import (
     TrainRunAttempt as ProtoTrainRunAttempt,
@@ -13,11 +11,9 @@ from ray.train.v2._internal.state.schema import (
 )
 
 # Timestamp conversion
-def _to_proto_timestamp(time_ms: int) -> timestamp_pb2.Timestamp:
-    """Convert millisecond timestamp to protobuf Timestamp."""
-    ts = timestamp_pb2.Timestamp()
-    ts.FromMilliseconds(time_ms)
-    return ts
+def _to_proto_timestamp(time_ms: int) -> int:
+    """Convert millisecond timestamp to ns."""
+    return time_ms * 1000
 
 
 # Status mapping dictionaries
