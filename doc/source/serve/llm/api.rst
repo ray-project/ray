@@ -36,16 +36,6 @@ Configs
    configs.AutoscalingConfig
 
 
-Deployments
----------------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   deployments.VLLMDeploymentImpl
-   deployments.LLMModelRouterDeploymentImpl
-
 
 OpenAI API Models
 ---------------------
