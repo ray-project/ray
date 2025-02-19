@@ -33,6 +33,11 @@ class WorkerGroupPollStatus:
             not status.running for status in self.worker_statuses.values()
         )
 
+    def get_error_string(self) -> str:
+        return "\n".join(
+            f"[Rank {world_rank}]\n{error}" for world_rank, error in self.errors.items()
+        )
+
 
 @dataclass(frozen=True)
 class PollTask:
