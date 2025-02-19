@@ -12,4 +12,3 @@ def _worker_process_setup_hook():
     """Noop setup hook used for ENABLE_WORKER_PROCESS_SETUP_HOOK
     (see python/ray/llm/_internal/serve/configs/constants.py)."""
     pass
-

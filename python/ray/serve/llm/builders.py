@@ -1,4 +1,3 @@
-
 from typing import TYPE_CHECKING
 
 from ray.util.annotations import PublicAPI
@@ -11,7 +10,7 @@ if TYPE_CHECKING:
 @PublicAPI(stability="alpha")
 def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
-    
+
     Examples:
         .. testcode::
             :skipif: True
@@ -57,7 +56,7 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a
     Serve application serving LLMs.
-    
+
     Examples:
         .. testcode::
             :skipif: True

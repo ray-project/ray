@@ -71,9 +71,7 @@ time_in_queue_histogram = metrics.Histogram(
 )
 
 
-
 def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
-    vllm = try_import("vllm")
     model = llm_config.model_id
     if isinstance(llm_config.model_loading_config.model_source, str):
         model = llm_config.model_loading_config.model_source
@@ -94,7 +92,6 @@ def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
-    vllm = try_import("vllm")
     async_engine_args = _get_async_engine_args(llm_config)
     vllm_config = async_engine_args.create_engine_config()
     return async_engine_args, vllm_config
@@ -189,11 +186,12 @@ class BatchLLMRawResponses:
 
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
-        vllm = try_import("vllm")
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
         vllm.plugins.load_general_plugins()
 
-        executor_class = vllm.engine.llm_engine.LLMEngine._get_executor_cls(engine_config)
+        executor_class = vllm.engine.llm_engine.LLMEngine._get_executor_cls(
+            engine_config
+        )
 
         self.engine = vllm.engine.multiprocessing.engine.MQLLMEngine(
             ipc_path=ipc_path,
@@ -227,8 +225,10 @@ class VLLMEngine:
             llm_config: The llm configuration for this engine
         """
         if vllm is None:
-            raise ImportError("vLLM is not installed. Please install it with `pip install vllm`.")
-        
+            raise ImportError(
+                "vLLM is not installed. Please install it with `pip install vllm`."
+            )
+
         assert isinstance(
             llm_config, LLMConfig
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
@@ -286,7 +286,6 @@ class VLLMEngine:
         return await self._start_mq_engine(
             engine_args, engine_config, args.placement_group
         )
-
 
     async def _start_mq_engine(
         self,

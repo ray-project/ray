@@ -50,8 +50,6 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ResponseFormatType,
 )
 
-if TYPE_CHECKING:
-    from vllm.sampling_params import GuidedDecodingParams
 
 GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -164,7 +162,7 @@ class AutoscalingConfig(BaseModel, extra="allow"):
 
     @model_validator(mode="before")
     def sync_target_ongoing_requests(cls, values):
-        """This is a temporary validator to sync the target_ongoing_requests 
+        """This is a temporary validator to sync the target_ongoing_requests
         and target_num_ongoing_requests_per_replica fields.
         """
         target_ongoing_requests = values.get("target_ongoing_requests", None)
@@ -225,10 +223,10 @@ class DeploymentConfig(BaseModelExtended):
     @model_validator(mode="before")
     def populate_max_ongoing_requests(cls, values):
         """Validate and populate the max_ongoing_requests field.
-        
+
         max_concurrent_queries takes priority because users may have set this value
         before max_ongoing_requests exists
-        
+
         """
         max_ongoing_requests = values.get("max_ongoing_requests", None)
         max_concurrent_queries = values.get("max_concurrent_queries", None)
@@ -422,9 +420,9 @@ class LLMConfig(BaseModelExtended):
 
         if value not in [t.value for t in GPUType]:
             raise ValueError(f"Unsupported accelerator type: {value}")
-        
+
         return value
-    
+
     @model_validator(mode="after")
     def validate_llm_engine(self) -> "LLMConfig":
         """Converts the llm_engine to an enum."""

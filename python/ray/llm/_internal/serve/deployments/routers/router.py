@@ -396,20 +396,21 @@ class LLMModelRouterDeploymentImpl:
             if isinstance(result, ChatCompletionResponse):
                 return JSONResponse(content=result.model_dump())
 
-
     @classmethod
     def as_deployment(cls) -> serve.Deployment:
-        """Converts this class to a Ray Serve deployment with ingress. 
-        
+        """Converts this class to a Ray Serve deployment with ingress.
+
         Returns:
             A Ray Serve deployment.
         """
-        
+
         @serve.deployment(
             # TODO (Kourosh): make this configurable
             autoscaling_config={
                 "min_replicas": int(os.environ.get("RAYLLM_ROUTER_MIN_REPLICAS", 0)),
-                "initial_replicas": int(os.environ.get("RAYLLM_ROUTER_INITIAL_REPLICAS", 2)),
+                "initial_replicas": int(
+                    os.environ.get("RAYLLM_ROUTER_INITIAL_REPLICAS", 2)
+                ),
                 "max_replicas": int(os.environ.get("RAYLLM_ROUTER_MAX_REPLICAS", 16)),
                 "target_ongoing_requests": int(
                     os.environ.get(
@@ -430,4 +431,3 @@ class LLMModelRouterDeploymentImpl:
             pass
 
         return LLMModelRouterDeployment
-

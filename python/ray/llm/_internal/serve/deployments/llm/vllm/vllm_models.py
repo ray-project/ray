@@ -210,7 +210,7 @@ class VLLMGenerationRequest(GenerationRequest):
 
     @property
     def lora_request(self) -> "LoRARequest":
-        
+
         disk_vllm_config = self.disk_multiplex_config
         if not disk_vllm_config:
             return None

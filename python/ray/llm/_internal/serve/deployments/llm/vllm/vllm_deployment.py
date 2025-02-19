@@ -386,9 +386,9 @@ class VLLMDeploymentImpl(LLMDeployment):
     ):
         """Constructor of VLLMDeployment.
 
-        Only the llm_config is public api, the other arguments are private 
+        Only the llm_config is public api, the other arguments are private
         and used for testing.
-        
+
         Args:
             llm_config: LLMConfig for the model.
 
@@ -516,10 +516,10 @@ class VLLMDeploymentImpl(LLMDeployment):
 
     async def chat(self, request: ChatCompletionRequest) -> LLMChatResponse:
         """Runs a chat request to the vllm engine, and return the response.
-        
+
         Args:
             request: A ChatCompletionRequest object.
-            
+
         Returns:
             A LLMChatResponse object.
         """
@@ -536,10 +536,10 @@ class VLLMDeploymentImpl(LLMDeployment):
 
     async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
         """Runs a completion request to the vllm engine, and return the response.
-        
+
         Args:
             request: A CompletionRequest object.
-            
+
         Returns:
             A LLMCompletionsResponse object.
         """
@@ -568,15 +568,16 @@ class VLLMDeploymentImpl(LLMDeployment):
     async def _disk_lora_model(self, lora_model_id: str) -> DiskMultiplexConfig:
         disk_lora_model: DiskMultiplexConfig = await self.load_model(lora_model_id)
         return disk_lora_model
-    
-    
+
     @classmethod
-    def as_deployment(cls, deployment_options: Dict[str, Any] = None) -> serve.Deployment:
+    def as_deployment(
+        cls, deployment_options: Dict[str, Any] = None
+    ) -> serve.Deployment:
         """Convert the VLLMDeploymentImpl to a Ray Serve deployment.
-        
+
         Args:
             deployment_options: A dictionary of deployment options.
-            
+
         Returns:
             A Ray Serve deployment.
         """

@@ -2,20 +2,21 @@ from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import (
     VLLMDeploymentImpl as _VLLMDeploymentImpl,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
-    LLMModelRouterDeploymentImpl as _LLMModelRouterDeploymentImpl
+    LLMModelRouterDeploymentImpl as _LLMModelRouterDeploymentImpl,
 )
 
 
 from ray.util.annotations import PublicAPI
 
+
 @PublicAPI(stability="alpha")
 class VLLMDeploymentImpl(_VLLMDeploymentImpl):
     """The implementation of the VLLM engine deployment.
-    
+
     To build a VLLMDeployment object you should use `build_vllm_deployment` function.
     We also expose a lower level API for more control over the deployment class
     through `as_deployment` method.
-    
+
     Examples:
         .. testcode::
             :skipif: True
@@ -43,9 +44,9 @@ class VLLMDeploymentImpl(_VLLMDeploymentImpl):
             # Build the deployment directly
             VLLMDeployment = VLLMDeploymentImpl.as_deployment(llm_config.get_serve_options())
             vllm_app = VLLMDeployment.bind(llm_config)
-            
+
             model_handle = serve.run(vllm_app)
-            
+
             # Query the model via `chat` api
             from ray.serve.llm.openai_api_models import ChatCompletionRequest
             request = ChatCompletionRequest(
@@ -64,7 +65,6 @@ class VLLMDeploymentImpl(_VLLMDeploymentImpl):
     pass
 
 
-
 @PublicAPI(stability="alpha")
 class LLMModelRouterDeploymentImpl(_LLMModelRouterDeploymentImpl):
 
@@ -75,8 +75,8 @@ class LLMModelRouterDeploymentImpl(_LLMModelRouterDeploymentImpl):
       - /v1/completions: Text completion
       - /v1/models: List available models
       - /v1/models/{model}: Model information
-      
-      
+
+
     Examples:
         .. testcode::
             :skipif: True
@@ -120,4 +120,3 @@ class LLMModelRouterDeploymentImpl(_LLMModelRouterDeploymentImpl):
     """
 
     pass
-
