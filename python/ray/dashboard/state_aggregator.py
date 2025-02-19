@@ -495,7 +495,7 @@ class StateAPIManager:
         ]
 
         replies = await asyncio.gather(
-            *[task[1] for task in tasks],
+            *tasks,
             return_exceptions=True,
         )
 
