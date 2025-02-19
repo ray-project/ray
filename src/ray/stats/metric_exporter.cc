@@ -14,13 +14,12 @@
 
 #include "ray/stats/metric_exporter.h"
 
-#include <memory>
-#include <utility>
-#include <string>
-#include <vector>
-
 #include <future>
+#include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace ray {
 namespace stats {
@@ -51,7 +50,8 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(
       // To make sure we're not overflowing Agent's set gRPC max message size, we will be
       // tracking target payload binary size and make sure it stays w/in 95% of the
       // threshold
-      proto_payload_size_threshold_bytes_(static_cast<size_t>(max_grpc_payload_size * 0.95f)) {
+      proto_payload_size_threshold_bytes_(
+          static_cast<size_t>(max_grpc_payload_size * 0.95f)) {
   absl::MutexLock l(&mu_);
   client_ = std::move(agent_client);
 };

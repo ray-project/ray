@@ -14,6 +14,9 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -27,10 +30,6 @@
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
-
-#include <string>
-#include <unordered_map>
-#include <memory>
 
 namespace ray {
 

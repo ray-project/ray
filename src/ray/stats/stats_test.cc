@@ -16,9 +16,9 @@
 
 #include <chrono>
 #include <iostream>
+#include <string>
 #include <thread>
 #include <vector>
-#include <string>
 
 #include "absl/memory/memory.h"
 #include "gmock/gmock.h"
