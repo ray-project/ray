@@ -190,4 +190,6 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self, space: Dict[str, gym.Space], n: int = 1
     ) -> List[Dict[str, gym.Space]]:
 
-        return [tree.map_structure(lambda x: x.sample(), space) for _ in range(n)]
+        return [
+            {aid: agent_space for aid, agent_space in space.items()} for _ in range(n)
+        ]
