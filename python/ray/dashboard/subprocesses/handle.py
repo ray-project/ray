@@ -238,6 +238,8 @@ class SubprocessModuleHandle:
         while True:
             try:
                 await self._do_once_health_check()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 filename = module_logging_filename(
                     self.module_cls.__name__, incarnation, self.config.logging_filename
