@@ -14,6 +14,12 @@
 
 #include "ray/raylet_client/raylet_client.h"
 
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/synchronization/notification.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
@@ -21,7 +27,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 using MessageType = ray::protocol::MessageType;
 
@@ -89,7 +94,7 @@ Status RayletClient::Disconnect(
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
-  // TODO (myan): In the current implementation, if raylet is already terminated in the
+  // TODO(myan): In the current implementation, if raylet is already terminated in the
   // "WriteMessage" function above, the worker process will exit early in the function
   // and will not reach here. However, the code path here is shared between graceful
   // shutdown and force termination. We need to make sure the above early exit
@@ -195,11 +200,13 @@ Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<protocol::WaitReply>(reply.data());
   auto found = reply_message->found();
+  result->first.reserve(found->size());
   for (size_t i = 0; i < found->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
     result->first.push_back(object_id);
   }
   auto remaining = reply_message->remaining();
+  result->second.reserve(remaining->size());
   for (size_t i = 0; i < remaining->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
     result->second.push_back(object_id);
@@ -364,7 +371,7 @@ void RayletClient::PushMutableObject(
     // metadata).
     request.set_payload(static_cast<char *>(data) + offset, chunk_size);
 
-    // TODO: Add failure recovery, retries, and timeout.
+    // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
         request, [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
           RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;

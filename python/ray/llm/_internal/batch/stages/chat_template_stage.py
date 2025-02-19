@@ -1,12 +1,11 @@
 """Apply chat template stage"""
 
-from typing import Any, Dict, AsyncIterator, List
+from typing import Any, Dict, AsyncIterator, List, Optional, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import get_cached_tokenizer
 
 
 class ChatTemplateUDF(StatefulStageUDF):
@@ -14,6 +13,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         self,
         data_column: str,
         model: str,
+        chat_template: Optional[str] = None,
     ):
         """
         Initialize the ChatTemplateUDF.
@@ -21,11 +21,20 @@ class ChatTemplateUDF(StatefulStageUDF):
         Args:
             data_column: The data column name.
             model: The model to use for the chat template.
+            chat_template: The chat template in Jinja template format. This is
+            usually not needed if the model checkpoint already contains the
+            chat template.
         """
-        from transformers import AutoTokenizer
+        from transformers import AutoProcessor
 
         super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+
+        # NOTE: We always use processor instead of tokenizer in this stage,
+        # because tokenizers of VLM models may not have chat template attribute.
+        # However, this may not be a reliable solution, because processors and
+        # tokenizers are not standardized across different models.
+        self.processor = AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        self.chat_template = chat_template
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -37,16 +46,20 @@ class ChatTemplateUDF(StatefulStageUDF):
         Yields:
             A generator of rows with the chat template applied.
         """
-        all_messages = [row["messages"].tolist() for row in batch]
         prompts = []
-        for conversation in all_messages:
+        for row in batch:
+            if hasattr(row["messages"], "tolist"):
+                conversation = row["messages"].tolist()
+            else:
+                conversation = row["messages"]
             add_generation_prompt = self._should_add_generation_prompt(conversation)
             # If we don't add a generation prompt, we should continue the final message.
             continue_final_message = not add_generation_prompt
             prompts.append(
-                self.tokenizer.apply_chat_template(
+                self.processor.apply_chat_template(
                     conversation,
                     tokenize=False,
+                    chat_template=self.chat_template,
                     add_generation_prompt=add_generation_prompt,
                     continue_final_message=continue_final_message,
                 )
@@ -75,8 +88,4 @@ class ChatTemplateStage(StatefulStage):
     A stage that applies chat template.
     """
 
-    fn: StatefulStageUDF = ChatTemplateUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
+    fn: Type[StatefulStageUDF] = ChatTemplateUDF

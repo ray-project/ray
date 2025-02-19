@@ -19,7 +19,7 @@ import ray.train
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
 from ray.exceptions import RayTaskError
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -46,7 +46,7 @@ class SteppingCallback(Callback):
 def _run(local_dir, driver_semaphore, trainer_semaphore):
     def _train(config):
         for i in range(7):
-            ray.train.report(dict(val=i))
+            ray.tune.report(dict(val=i))
 
     tune.run(
         _train,
@@ -114,7 +114,7 @@ class TuneInterruptionTest(unittest.TestCase):
         def run_in_thread():
             def _train(config):
                 for i in range(7):
-                    ray.train.report(dict(val=i))
+                    ray.tune.report(dict(val=i))
 
             tune.run(_train)
             event.set()
@@ -561,7 +561,7 @@ class TrainableCrashWithFailFast(unittest.TestCase):
         should bubble up."""
 
         def f(config):
-            ray.train.report({"a": 1})
+            ray.tune.report({"a": 1})
             time.sleep(0.1)
             raise RuntimeError("Error happens in trainable!!")
 
@@ -618,14 +618,14 @@ def test_resume_options(tmp_path, resume):
     tmp_path.joinpath("dummy_ckpt").mkdir()
 
     def train_fn(config):
-        checkpoint = ray.train.get_checkpoint()
+        checkpoint = ray.tune.get_checkpoint()
         if not checkpoint:
-            ray.train.report(
+            ray.tune.report(
                 {"finish_marker": False},
                 checkpoint=Checkpoint.from_directory(tmp_path / "dummy_ckpt"),
             )
             raise RuntimeError("failing on the first run!!")
-        ray.train.report({"finish_marker": True})
+        ray.tune.report({"finish_marker": True})
 
     analysis = tune.run(
         train_fn,
