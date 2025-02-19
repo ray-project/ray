@@ -9,7 +9,7 @@ from ray.serve.handle import DeploymentHandle
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LoraConfig
-from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
+from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeploymentImpl
 from ray.llm._internal.serve.builders.application_builders import (
     get_serve_deployment_args,
 )

@@ -1,4 +1,4 @@
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
-from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeploymentImpl
+from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeploymentImpl
 
-__all__ = ["VLLMDeployment", "LLMModelRouterDeployment"]
+__all__ = ["VLLMDeploymentImpl", "LLMModelRouterDeploymentImpl"]
