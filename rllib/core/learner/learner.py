@@ -1163,8 +1163,8 @@ class Learner(Checkpointable):
                 fwd_out, loss_per_module, tensor_metrics = self._update(
                     batch.policy_batches
                 )
-                # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-                # to actual (numpy) values.
+                # Convert logged tensor metrics (logged during tensor-mode of
+                # MetricsLogger) to actual (numpy) values.
                 self.metrics.tensors_to_numpy(tensor_metrics)
 
                 self._set_slicing_by_batch_id(batch, value=False)

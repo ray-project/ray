@@ -68,6 +68,7 @@ ray_cc_library(
         ":ray_config",
         "//src/ray/util",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
     ],
