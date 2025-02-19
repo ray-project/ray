@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import uuid
 import time
 import timeit
 import traceback
@@ -21,7 +22,6 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import uuid
 from dataclasses import dataclass
 
 import requests
@@ -2166,9 +2166,10 @@ def safe_write_to_results_json(
     if the job gets interrupted in the middle of writing.
     """
     test_output_json = os.environ.get(env_var, default_file_name)
-    test_output_json_tmp = test_output_json + ".tmp"
+    test_output_json_tmp = f"{test_output_json}.tmp.{str(uuid.uuid4())}"
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
+        f.flush()
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))
