@@ -540,7 +540,10 @@ void RayLog::AddFatalLogCallbacks(
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     : is_enabled_(severity >= severity_threshold_),
       severity_(severity),
-      is_fatal_(severity == RayLogLevel::FATAL) {
+      is_fatal_(severity == RayLogLevel::FATAL),
+      msg_osstream_(&msg_osstream_buf_),
+      context_osstream_(&context_osstream_buf_),
+      expose_fatal_osstream_(&expose_fatal_osstream_buf_) {
   if (is_fatal_) {
 #ifdef _WIN32
     int pid = _getpid();
@@ -580,7 +583,7 @@ RayLog::~RayLog() {
     msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     for (const auto &callback : fatal_log_callbacks_) {
-      callback(EL_RAY_FATAL_CHECK_FAILED, expose_fatal_osstream_.str());
+      callback(EL_RAY_FATAL_CHECK_FAILED, std::move(*expose_fatal_osstream_.str()));
     }
   }
 
@@ -593,13 +596,13 @@ RayLog::~RayLog() {
     logger->log(GetMappedSeverity(severity_),
                 /*fmt*/ ",\"{}\":\"{}\"{}",
                 kLogKeyMessage,
-                json_escape_string(msg_osstream_.str()),
-                context_osstream_.str());
+                json_escape_string(std::move(*msg_osstream_.str())),
+                std::move(*context_osstream_.str()));
   } else {
     logger->log(GetMappedSeverity(severity_),
                 /*fmt*/ "{}{}",
-                msg_osstream_.str(),
-                context_osstream_.str());
+                std::move(*msg_osstream_.str()),
+                std::move(*context_osstream_.str()));
   }
   logger->flush();
 

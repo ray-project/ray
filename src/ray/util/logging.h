@@ -61,6 +61,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/internal/ostringstream.h"
 #include "ray/util/macros.h"
 #include "ray/util/string_utils.h"
 
@@ -397,11 +398,14 @@ class RayLog {
   /// Whether current log is fatal or not.
   bool is_fatal_ = false;
   /// String stream of the log message
-  std::ostringstream msg_osstream_;
+  std::string msg_osstream_buf_;
+  absl::strings_internal::OStringStream msg_osstream_;
   /// String stream of the log context: a list of key-value pairs.
-  std::ostringstream context_osstream_;
+  std::string context_osstream_buf_;
+  absl::strings_internal::OStringStream context_osstream_;
   /// String stream of exposed fatal log content.
-  std::ostringstream expose_fatal_osstream_;
+  std::string expose_fatal_osstream_buf_;
+  absl::strings_internal::OStringStream expose_fatal_osstream_;
 
   /// Whether or not the log is initialized.
   static std::atomic<bool> initialized_;
