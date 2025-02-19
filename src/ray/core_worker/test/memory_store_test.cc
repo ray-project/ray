@@ -16,8 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "mock/ray/core_worker/memory_store.h"
+#include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/common/test_util.h"
 
