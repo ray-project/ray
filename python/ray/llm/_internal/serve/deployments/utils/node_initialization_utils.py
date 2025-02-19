@@ -267,9 +267,3 @@ def _initialize_local_node(
         engine_config.actual_hf_model_id,
         trust_remote_code=engine_config.trust_remote_code,
     )
-    prompt_format = engine_config.prompt_format
-    # Note (genesu): The prompt format is always loaded from HF.
-    prompt_format.set_processor(
-        engine_config.actual_hf_model_id,
-        trust_remote_code=engine_config.trust_remote_code,
-    )
