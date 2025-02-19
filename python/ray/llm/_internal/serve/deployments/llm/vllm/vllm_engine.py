@@ -226,7 +226,7 @@ class VLLMEngine:
         """
         if vllm is None:
             raise ImportError(
-                "vLLM is not installed. Please install it with `pip install vllm`."
+                "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
 
         assert isinstance(

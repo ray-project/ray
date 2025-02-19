@@ -250,7 +250,7 @@ class InputModality(str, Enum):
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
-    VLLM = "vllm"
+    VLLM = "VLLM"
 
 
 class JSONModeOptions(BaseModelExtended):
