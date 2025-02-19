@@ -7,8 +7,6 @@ if TYPE_CHECKING:
     from ray.serve.llm.configs import LLMConfig, LLMServingArgs
 
 
-
-
 @PublicAPI(stability="alpha")
 def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
@@ -41,7 +39,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
 
             # Deploy the application
             serve.run(llm_app)
-            
+
     Args:
         llm_config: The llm config to build vllm deployment.
 
@@ -112,4 +110,3 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
     from ray.llm._internal.serve.builders import build_openai_app
 
     return build_openai_app(llm_serving_args=llm_serving_args)
-
