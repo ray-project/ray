@@ -28,7 +28,8 @@ from pydantic import (
     model_validator,
 )
 
-from transformers import PretrainedConfig
+from ray.llm._internal.utils import try_import
+
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
@@ -48,6 +49,8 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
+
+transformers = try_import("transformers")
 
 
 GPUType = Enum("GPUType", vars(accelerators))
@@ -378,7 +381,7 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = PretrainedConfig.from_pretrained(model_id_or_path)
+        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
     def apply_checkpoint_info(self, model_id_or_path: str) -> None:
