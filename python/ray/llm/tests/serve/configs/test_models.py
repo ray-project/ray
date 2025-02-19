@@ -1,7 +1,8 @@
 import pydantic
 import pytest
+import sys
 
-from ray.llm._internal.serve.configs.models import LLMConfig, ModelLoadingConfig
+from ray.llm._internal.serve.configs.server_models import LLMConfig, ModelLoadingConfig
 
 from pathlib import Path
 
@@ -57,3 +58,7 @@ class TestModelConfig:
                 accelerator_type="L4",
                 generation_config="invalid_config",  # Should be a dictionary, not a string
             )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
