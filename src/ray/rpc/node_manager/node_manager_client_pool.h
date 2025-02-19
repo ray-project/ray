@@ -49,10 +49,10 @@ class NodeManagerClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::NodeID id);
 
-  NodeManagerClientPool(rpc::ClientCallManager &ccm)
+  explicit NodeManagerClientPool(rpc::ClientCallManager &ccm)
       : client_factory_(defaultClientFactory(ccm)){};
 
-  NodeManagerClientPool(RayletClientFactoryFn client_factory)
+  explicit NodeManagerClientPool(RayletClientFactoryFn client_factory)
       : client_factory_(client_factory){};
 
  private:
