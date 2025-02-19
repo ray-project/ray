@@ -27,6 +27,10 @@ def register_starlette_serializer(serialization_context):
 def _register_numpy_serializer(serialization_context):
     from ray._private.numpy_serialization import _register_numpy_ndarray_data_serializer
 
+    try:
+        import numpy  # noqa:F401
+    except ModuleNotFoundError:
+        return
     _register_numpy_ndarray_data_serializer(serialization_context)
 
 
