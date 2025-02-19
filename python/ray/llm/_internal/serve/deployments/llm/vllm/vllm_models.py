@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict, List, Optional
 
-from pydantic import ConfigDict, Field
+from ray._private.pydantic_compat import Field, Extra
 from ray import serve
 from ray.util.placement_group import (
     PlacementGroup,
@@ -30,11 +30,7 @@ from ray.llm._internal.serve.configs.constants import (
 logger = get_logger(__name__)
 
 
-class VLLMEngineConfig(BaseModelExtended):
-    model_config = ConfigDict(
-        use_enum_values=True,
-        extra="forbid",
-    )
+class VLLMEngineConfig(BaseModelExtended, use_enum_values=True, extra=Extra.forbid):
 
     model_id: str = Field(
         description="The identifier for the model. This is the id that will be used to query the model.",
@@ -189,8 +185,7 @@ class VLLMSamplingParams(SamplingParams):
     seed: Optional[int] = None
 
 
-class VLLMGenerationRequest(GenerationRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+class VLLMGenerationRequest(GenerationRequest, arbitrary_types_allowed=True):
 
     sampling_params: VLLMSamplingParams
     multi_modal_data: Optional[Dict[str, Any]] = None
