@@ -35,7 +35,7 @@
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 // clang-format on
-using namespace std; // NOLINT
+using namespace std;  // NOLINT
 
 #define ASSERT_RESOURCES_EQ(data, expected_available, expected_total) \
   {                                                                   \

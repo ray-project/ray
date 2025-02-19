@@ -14,9 +14,9 @@
 
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
-#include "gtest/gtest.h"
-
 #include <memory>
+
+#include "gtest/gtest.h"
 
 namespace ray {
 

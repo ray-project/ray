@@ -19,7 +19,6 @@
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/join.hpp>
-
 #include <deque>
 #include <utility>
 

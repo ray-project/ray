@@ -14,13 +14,13 @@
 
 #pragma once
 
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
-
-#include <string>
 
 namespace ray {
 namespace raylet {

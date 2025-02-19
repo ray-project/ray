@@ -16,10 +16,10 @@
 // build.
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
-#include "gtest/gtest.h"
-
-#include <string>
 #include <memory>
+#include <string>
+
+#include "gtest/gtest.h"
 
 namespace ray {
 

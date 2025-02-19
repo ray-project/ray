@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
@@ -25,10 +29,6 @@
 #include "ray/raylet/scheduling/local_task_manager_interface.h"
 #include "ray/raylet/scheduling/scheduler_resource_reporter.h"
 #include "ray/raylet/scheduling/scheduler_stats.h"
-
-#include <string>
-#include <memory>
-#include <deque>
 
 namespace ray {
 namespace raylet {

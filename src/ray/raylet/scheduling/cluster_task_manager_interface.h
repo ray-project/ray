@@ -14,11 +14,11 @@
 
 #pragma once
 
-#include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/node_manager.pb.h"
-
 #include <memory>
 #include <string>
+
+#include "ray/rpc/server_call.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace raylet {

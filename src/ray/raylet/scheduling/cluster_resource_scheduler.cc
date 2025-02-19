@@ -24,7 +24,7 @@
 
 namespace ray {
 
-using namespace ::ray::raylet_scheduling_policy; // NOLINT
+using namespace ::ray::raylet_scheduling_policy;  // NOLINT
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     instrumented_io_context &io_service,

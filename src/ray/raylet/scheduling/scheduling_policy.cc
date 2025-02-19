@@ -14,10 +14,10 @@
 
 #include "ray/raylet/scheduling/scheduling_policy.h"
 
-#include <functional>
-#include <vector>
 #include <algorithm>
+#include <functional>
 #include <utility>
+#include <vector>
 
 #include "ray/util/container_util.h"
 

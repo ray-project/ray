@@ -17,10 +17,10 @@
 #include <gtest/gtest_prod.h>
 
 #include <iostream>
-#include <sstream>
-#include <vector>
-#include <string>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

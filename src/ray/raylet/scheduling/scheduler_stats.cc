@@ -13,12 +13,13 @@
 // limitations under the License.
 
 #include "ray/raylet/scheduling/scheduler_stats.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
-#include "ray/stats/metric_defs.h"
 
-#include <utility>
 #include <deque>
 #include <string>
+#include <utility>
+
+#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace raylet {
