@@ -12,7 +12,7 @@ dtype
 [Ii]ngest
 [Ii]nqueue(s)?
 [Ll]ookup(s)?
-LLM(s)
+LLM(s)?
 Modin
 [Mm]ultiget(s)?
 ndarray(s)?
