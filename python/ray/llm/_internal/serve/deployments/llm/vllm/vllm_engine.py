@@ -187,6 +187,7 @@ class BatchLLMRawResponses:
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
         from vllm.engine.multiprocessing.engine import MQLLMEngine
+
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
         vllm.plugins.load_general_plugins()
 
@@ -274,8 +275,7 @@ class VLLMEngine:
         args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
         engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
 
-
-        if  MQLLMEngineClient.is_unsupported_config(engine_args):
+        if MQLLMEngineClient.is_unsupported_config(engine_args):
             # If the engine is not supported, we fall back to the legacy async engine.
             #
             # Note (genesu): as of 2025-02-11, this code path is only triggered when
@@ -298,6 +298,7 @@ class VLLMEngine:
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         from vllm.engine.multiprocessing.client import MQLLMEngineClient
+
         ipc_path = vllm.utils.get_open_zmq_ipc_path()
 
         BackgroundCls = ray.remote(
