@@ -248,8 +248,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         head_node_id = NodeID.from_hex(head_node_id_hex)
 
-        head_node_id = NodeID.from_hex(head_node_id_hex)
-
         if head_node_id not in self._agents:
             ip, http_port, grpc_port = await self._fetch_agent_info(head_node_id)
             agent_http_address = f"http://{ip}:{http_port}"
