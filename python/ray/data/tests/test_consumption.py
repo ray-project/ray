@@ -664,6 +664,103 @@ def test_limit_no_num_row_info(ray_start_regular_shared):
         assert extract_values("id", ds.limit(i).take(100)) == [1] * i
 
 
+@pytest.mark.parametrize("lazy", [False, True])
+def test_offset(ray_start_regular_shared, lazy):
+    ds = ray.data.range(100, override_num_blocks=20)
+    if not lazy:
+        ds = ds.materialize()
+    for i in range(103):
+        offset_ds = ds.offset(i)
+        expected_values = list(range(i, 100))
+        assert offset_ds.count() == len(expected_values)
+        assert extract_values("id", offset_ds.take_all()) == expected_values
+
+
+# NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
+# redundant files due to exponential ramp-up.
+@pytest.mark.parametrize("offset", [10, 20, 30, 60])
+def test_offset_no_redundant_read(ray_start_regular_shared, offset):
+    # Test that dataset offset skips reading unnecessary data.
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def increment(self):
+            self.count += 1
+
+        def get(self):
+            return self.count
+
+        def reset(self):
+            self.count = 0
+
+    class CountingRangeDatasource(Datasource):
+        def __init__(self):
+            self.counter = Counter.remote()
+
+        def prepare_read(self, parallelism, n):
+            def range_(i):
+                ray.get(self.counter.increment.remote())
+                return [
+                    pd.DataFrame({"id": range(parallelism * i, parallelism * i + n)})
+                ]
+
+            return [
+                ReadTask(
+                    lambda i=i: range_(i),
+                    BlockMetadata(
+                        num_rows=n,
+                        size_bytes=sum(
+                            sys.getsizeof(i)
+                            for i in range(parallelism * i, parallelism * i + n)
+                        ),
+                        schema=None,
+                        input_files=None,
+                        exec_stats=None,
+                    ),
+                )
+                for i in range(parallelism)
+            ]
+
+    source = CountingRangeDatasource()
+    total_rows = 1000
+    override_num_blocks = 100
+    ds = ray.data.read_datasource(
+        source,
+        override_num_blocks=override_num_blocks,
+        n=total_rows // override_num_blocks,
+    )
+    ds = ds.offset(offset)
+    assert len(ds.take_all()) == total_rows - offset
+    count = ray.get(source.counter.get.remote())
+    min_read_tasks = (total_rows - offset) // (total_rows // override_num_blocks)
+    assert min_read_tasks <= count <= override_num_blocks
+
+
+def test_offset_no_num_row_info(ray_start_regular_shared):
+    # Test that datasources with no number-of-rows metadata available are still able to
+    # be truncated, falling back to kicking off all read tasks.
+    class DumbOnesDatasource(Datasource):
+        def prepare_read(self, parallelism, n):
+            return parallelism * [
+                ReadTask(
+                    lambda: [pd.DataFrame({"id": [1] * n})],
+                    BlockMetadata(
+                        num_rows=None,
+                        size_bytes=sys.getsizeof(1) * n,
+                        schema=None,
+                        input_files=None,
+                        exec_stats=None,
+                    ),
+                )
+            ]
+
+    ds = ray.data.read_datasource(DumbOnesDatasource(), override_num_blocks=10, n=10)
+    for i in range(1, 100):
+        assert extract_values("id", ds.offset(i).take(100)) == [1] * (100 - i)
+
+
 def test_convert_types(ray_start_regular_shared):
     plain_ds = ray.data.range(1)
     arrow_ds = plain_ds.map(lambda x: {"a": x["id"]})
