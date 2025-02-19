@@ -271,7 +271,8 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(
+        &call->reply_, &call->status_, reinterpret_cast<void *>(tag));
     return call;
   }
 

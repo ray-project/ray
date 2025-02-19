@@ -150,7 +150,8 @@ void GrpcServer::Run() {
     //       gets occupied therefore not serving as back-pressure mechanism)
     size_t buffer_size;
     if (entry->GetMaxActiveRPCs() != -1) {
-      buffer_size = std::max(1, int(entry->GetMaxActiveRPCs() / num_threads_));
+      buffer_size =
+          std::max(1, static_cast<int>(entry->GetMaxActiveRPCs() / num_threads_));
     } else {
       buffer_size = 32;
     }
