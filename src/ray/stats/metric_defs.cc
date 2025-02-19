@@ -17,7 +17,7 @@
 #include "ray/util/size_literals.h"
 
 // Suppress linter warning for using namespace, since it's required for literals
-using namespace ray::size_literals;  // NOLINT
+using namespace ray::literals;  // NOLINT
 
 namespace ray::stats {
 
