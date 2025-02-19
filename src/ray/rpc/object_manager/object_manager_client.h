@@ -45,9 +45,9 @@ class ObjectManagerClient {
                       int num_connections =
                           ::RayConfig::instance().object_manager_client_connection_num())
       : num_connections_(num_connections) {
-    push_rr_index_ = rand() % num_connections_;
-    pull_rr_index_ = rand() % num_connections_;
-    freeobjects_rr_index_ = rand() % num_connections_;
+    push_rr_index_ = std::rand() % num_connections_;
+    pull_rr_index_ = std::rand() % num_connections_;
+    freeobjects_rr_index_ = std::rand() % num_connections_;
     grpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
       grpc_clients_.emplace_back(

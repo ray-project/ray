@@ -207,7 +207,7 @@ class ClientCallManager {
         num_threads_(num_threads),
         shutdown_(false),
         call_timeout_ms_(call_timeout_ms) {
-    rr_index_ = rand() % num_threads_;
+    rr_index_ = std::rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
