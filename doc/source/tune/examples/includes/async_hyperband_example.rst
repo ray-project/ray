@@ -5,15 +5,8 @@ Asynchronous HyperBand Example
 
 This example demonstrates how to use Ray Tune's Asynchronous Successive Halving Algorithm (ASHA) scheduler 
 to efficiently optimize hyperparameters for a machine learning model. ASHA is particularly useful for 
-large-scale hyperparameter optimization as it can adaptively allocate resources and terminate 
-poorly-performing trials early.
-
-Key Features
------------
-- Asynchronous execution of trials
-- Adaptive resource allocation
-- Early stopping of underperforming configurations
-- Simple integration with any training procedure
+large-scale hyperparameter optimization as it can adaptively allocate resources and end 
+poorly performing trials early.
 
 Requirements:
 
