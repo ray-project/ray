@@ -232,7 +232,7 @@ class VLLMEngine:
         assert isinstance(
             llm_config, LLMConfig
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
-        self.llm_config = llm_config.model_copy(deep=True)
+        self.llm_config = llm_config
         self.engine_config = VLLMEngineConfig.from_llm_config(llm_config)
 
         self._stats = VLLMEngineStatTracker()

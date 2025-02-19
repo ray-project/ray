@@ -373,9 +373,15 @@ class LLMConfig(BaseModelExtended):
         hf_config = PretrainedConfig.from_pretrained(model_id_or_path)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
-    def apply_checkpoint_info(self, model_id_or_path: str) -> None:
+    def apply_checkpoint_info(
+        self, model_id_or_path: str, trust_remote_code: bool = False
+    ) -> None:
         """Apply the checkpoint info to the model config."""
         self._infer_supports_vision(model_id_or_path)
+        self._prompt_format.set_processor(
+            model_id_or_path,
+            trust_remote_code=trust_remote_code,
+        )
 
     @property
     def supports_vision(self) -> bool:
