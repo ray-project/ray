@@ -7,10 +7,41 @@ if TYPE_CHECKING:
     from ray.serve.llm.configs import LLMConfig, LLMServingArgs
 
 
+
+
 @PublicAPI(stability="alpha")
 def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
+    Examples:
+        .. testcode::
+            :skipif: True
+
+            from ray import serve
+            from ray.serve.config import AutoscalingConfig
+            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
+            from ray.serve.llm.builders import build_vllm_deployment
+
+            # Configure the model
+            llm_config = LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    served_model_name="llama-3.1-8b",
+                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                ),
+                deployment_config=DeploymentConfig(
+                    autoscaling_config=AutoscalingConfig(
+                        min_replicas=1,
+                        max_replicas=8,
+                    )
+                ),
+            )
+
+            # Build the deployment
+            llm_app = build_vllm_deployment(llm_config)
+
+            # Deploy the application
+            serve.run(llm_app)
+            
     Args:
         llm_config: The llm config to build vllm deployment.
 
@@ -29,6 +60,48 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
     Serve application serving LLMs.
 
 
+    Examples:
+        .. testcode::
+            :skipif: True
+
+            from ray import serve
+            from ray.serve.config import AutoscalingConfig
+            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
+            from ray.serve.llm.builders import build_openai_app
+
+            # Configure multiple models
+            llm_config1 = LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    served_model_name="llama-3.1-8b",
+                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                ),
+                deployment_config=DeploymentConfig(
+                    autoscaling_config=AutoscalingConfig(
+                        min_replicas=1,
+                        max_replicas=8,
+                    )
+                ),
+            )
+
+            llm_config2 = LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    served_model_name="llama-3.2-3b",
+                    model_source="meta-llama/Llama-3.2-3b-instruct",
+                ),
+                deployment_config=DeploymentConfig(
+                    autoscaling_config=AutoscalingConfig(
+                        min_replicas=1,
+                        max_replicas=8,
+                    )
+                ),
+            )
+
+            # Build the application
+            llm_app = build_openai_app([llm_config1, llm_config2])
+
+            # Deploy the application
+            serve.run(llm_app)
+
     Args:
         llm_serving_args: The list of llm configs or the paths to the llm config to
             build the app.
@@ -40,74 +113,3 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
     return build_openai_app(llm_serving_args=llm_serving_args)
 
-    # Examples:
-    #     .. testcode::
-    #         :skipif: True
-
-    #         # from ray import serve
-    #         # from ray.serve.config import AutoscalingConfig
-    #         # from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
-    #         # from ray.serve.llm.builders import build_vllm_deployment
-
-    #         # # Configure the model
-    #         # llm_config = LLMConfig(
-    #         #     model_loading_config=ModelLoadingConfig(
-    #         #         served_model_name="llama-3.1-8b",
-    #         #         model_source="meta-llama/Llama-3.1-8b-instruct",
-    #         #     ),
-    #         #     deployment_config=DeploymentConfig(
-    #         #         autoscaling_config=AutoscalingConfig(
-    #         #             min_replicas=1,
-    #         #             max_replicas=8,
-    #         #         )
-    #         #     ),
-    #         # )
-
-    #         # # Build the deployment
-    #         # llm_app = build_vllm_deployment(llm_config)
-
-    #         # # Deploy the application
-    #         # serve.run(llm_app)
-
-    # Examples:
-    #     .. testcode::
-    #         :skipif: True
-
-    #         assert False
-    #         # from ray import serve
-    #         # from ray.serve.config import AutoscalingConfig
-    #         # from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
-    #         # from ray.serve.llm.builders import build_openai_app
-
-    #         # # Configure multiple models
-    #         # llm_config1 = LLMConfig(
-    #         #     model_loading_config=ModelLoadingConfig(
-    #         #         served_model_name="llama-3.1-8b",
-    #         #         model_source="meta-llama/Llama-3.1-8b-instruct",
-    #         #     ),
-    #         #     deployment_config=DeploymentConfig(
-    #         #         autoscaling_config=AutoscalingConfig(
-    #         #             min_replicas=1,
-    #         #             max_replicas=8,
-    #         #         )
-    #         #     ),
-    #         # )
-
-    #         # llm_config2 = LLMConfig(
-    #         #     model_loading_config=ModelLoadingConfig(
-    #         #         served_model_name="llama-3.2-3b",
-    #         #         model_source="meta-llama/Llama-3.2-3b-instruct",
-    #         #     ),
-    #         #     deployment_config=DeploymentConfig(
-    #         #         autoscaling_config=AutoscalingConfig(
-    #         #             min_replicas=1,
-    #         #             max_replicas=8,
-    #         #         )
-    #         #     ),
-    #         # )
-
-    #         # # Build the application
-    #         # llm_app = build_openai_app([llm_config1, llm_config2])
-
-    #         # # Deploy the application
-    #         # serve.run(llm_app)
