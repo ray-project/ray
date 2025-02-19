@@ -235,7 +235,7 @@
 - name: iter_torch_batches
 
   cluster:
-    cluster_compute: autoscaling_gpu_compute.yaml
+    cluster_compute: autoscaling_gpu_head_compute.yaml
 
   run:
     timeout: 2400
