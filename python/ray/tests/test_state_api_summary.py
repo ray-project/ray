@@ -18,7 +18,7 @@ from ray._raylet import ActorID, TaskID, ObjectID
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
-from ray.core.generated.gcs_pb2 import GcsNodeInfo, GetAllNodeInfoReply
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.tests.test_state_api import (
     generate_task_data,
     generate_task_event,
@@ -33,7 +33,7 @@ from ray.util.state.common import (
     TaskSummaries,
     DRIVER_TASK_ID_PREFIX,
 )
-from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
+from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply, GetAllNodeInfoReply
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
 from ray.util.state.state_cli import summary_state_cli_group
