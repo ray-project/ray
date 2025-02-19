@@ -102,7 +102,7 @@ def get_rayllm_testing_model(
 
 
 @pytest.fixture
-def testing_model(shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b):
+def testing_model(shutdown_ray_and_serve, model_pixtral_12b):
     test_model_path = get_test_model_path("mock_vllm_model.yaml")
 
     with open(test_model_path, "r") as f:
