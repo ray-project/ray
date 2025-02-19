@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 import ray
 
@@ -10,7 +10,10 @@ from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
-from ray.llm._internal.serve.configs.server_models import LLMConfig, BaseModelExtended
+from ray.llm._internal.serve.configs.base import BaseModelExtended
+
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.configs.server_models import LLMConfig
 
 RAYLLM_TELEMETRY_NAMESPACE = "rayllm_telemetry"
 RAYLLM_TELEMETRY_ACTOR_NAME = "rayllm_telemetry"
@@ -201,7 +204,7 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
 
 
 def push_telemetry_report_for_all_models(
-    all_models: Optional[Sequence[LLMConfig]] = None,
+    all_models: Optional[Sequence["LLMConfig"]] = None,
     get_lora_model_func: Callable = get_lora_model_ids,
 ):
     """Push telemetry report for all models."""

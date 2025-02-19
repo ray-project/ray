@@ -15,8 +15,8 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.configs.prompt_formats import (
     HuggingFacePromptFormat,
 )
+from ray.llm._internal.serve.configs.base import BaseModelExtended
 from ray.llm._internal.serve.configs.server_models import (
-    BaseModelExtended,
     DiskMultiplexConfig,
     GCSMirrorConfig,
     GenerationRequest,
