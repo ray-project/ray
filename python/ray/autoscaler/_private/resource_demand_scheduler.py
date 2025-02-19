@@ -788,8 +788,8 @@ def get_nodes_for(
                 )
             break
 
-        weights = [node_types[node_type[1]].get("max_workers", 0) for node_type in utilization_scores]
-        best_node_type = random.choices(utilization_scores, weights=weights, k=1)[0][1]
+        scores, node_types = zip(*utilization_scores)
+        best_node_type = random.choices(node_types, weights=scores, k=1)[0]
         nodes_to_add[best_node_type] += 1
         if strict_spread:
             resources = resources[1:]
