@@ -4,7 +4,6 @@ site packages.
 """
 
 import sys
-import warnings
 
 from ray.util.annotations import DeveloperAPI
 
@@ -33,7 +32,7 @@ def register_numpy_serializer(serialization_context):
 
 def register_torch_serializer(serialization_context):
     try:
-        import torch
+        import torch  # noqa:F401
     except ModuleNotFoundError:
         return
 
