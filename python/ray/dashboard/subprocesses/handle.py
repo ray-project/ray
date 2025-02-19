@@ -127,9 +127,12 @@ class SubprocessModuleHandle:
         )
 
     def __del__(self):
-        self.loop.run_until_complete(
-            self.destroy_module(RuntimeError("SubprocessModuleHandle is being deleted"))
-        )
+        if self.loop.is_running():
+            self.loop.run_until_complete(
+                self.destroy_module(
+                    RuntimeError("SubprocessModuleHandle is being deleted")
+                )
+            )
 
     def start_module(self, start_dispatch_parent_bound_messages_thread: bool = True):
         """

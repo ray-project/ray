@@ -133,7 +133,6 @@ async def start_http_server_app(
     return app
 
 
-# @pytest.mark.asyncio is not compatible with aiohttp_client.
 async def test_http_server(aiohttp_client, default_module_config):
     """
     Tests that the http server works. It must
