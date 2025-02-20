@@ -655,8 +655,10 @@ def _null_safe_combine(
                 return combine(cur, new)
 
         else:
-            if _is_null(new) or _is_null(cur):
-                return None
+            if _is_null(new):
+                return new
+            elif _is_null(cur):
+                return cur
             else:
                 return combine(cur, new)
 
