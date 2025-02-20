@@ -20,7 +20,7 @@ PYDANTIC_VERSION = version.parse(pydantic.__version__)
     PYDANTIC_VERSION < version.parse("2.0"),
     reason="ray.serve.llm requires pydantic>=2.0",
 )
-@pytest.mark.skipif(HAS_VLLM, reason="vllm is installed")
+@pytest.mark.skipif(not HAS_VLLM, reason="vllm is installed")
 def test_serve_llm_import_does_not_error():
     # expected ImportError because of missing
     # dependencies without ray[llm] dependencies
