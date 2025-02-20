@@ -4,7 +4,7 @@ import pytest
 # skip the test if vllm is installed
 HAS_VLLM = False
 try:
-    import vllm
+    import vllm  # noqa: F401
 
     HAS_VLLM = True
 except ImportError:
