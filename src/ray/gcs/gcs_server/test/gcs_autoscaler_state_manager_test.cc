@@ -905,18 +905,16 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetPerNodeInfeasibleResourceRequests) 
 
   // Verify
   {
-    ASSERT_TRUE(per_node_infeasible_requests.has_value());
-    ASSERT_EQ(per_node_infeasible_requests->size(), 1);
-    ASSERT_NE(per_node_infeasible_requests->find(NodeID::FromBinary(node_1->node_id())),
-              per_node_infeasible_requests->end());
+    ASSERT_EQ(per_node_infeasible_requests.size(), 1);
+    ASSERT_NE(per_node_infeasible_requests.find(NodeID::FromBinary(node_1->node_id())),
+              per_node_infeasible_requests.end());
     ASSERT_EQ(
-        per_node_infeasible_requests->at(NodeID::FromBinary(node_1->node_id())).size(),
-        1);
-    ASSERT_EQ(per_node_infeasible_requests->at(NodeID::FromBinary(node_1->node_id()))
+        per_node_infeasible_requests.at(NodeID::FromBinary(node_1->node_id())).size(), 1);
+    ASSERT_EQ(per_node_infeasible_requests.at(NodeID::FromBinary(node_1->node_id()))
                   .at(0)
                   .size(),
               1);
-    ASSERT_EQ(per_node_infeasible_requests->at(NodeID::FromBinary(node_1->node_id()))
+    ASSERT_EQ(per_node_infeasible_requests.at(NodeID::FromBinary(node_1->node_id()))
                   .at(0)
                   .at("CPU"),
               3);

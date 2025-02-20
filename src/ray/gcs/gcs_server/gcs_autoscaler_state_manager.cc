@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
+#include <type_traits>
+
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -453,19 +455,16 @@ std::string GcsAutoscalerStateManager::DebugString() const {
   return stream.str();
 }
 
-std::optional<
-    absl::flat_hash_map<ray::NodeID,
-                        std::vector<google::protobuf::Map<std::string, double>>>>
+absl::flat_hash_map<ray::NodeID, std::vector<google::protobuf::Map<std::string, double>>>
 GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-
-  if (!autoscaling_state_.has_value()) {
-    return std::nullopt;
-  }
 
   absl::flat_hash_map<ray::NodeID,
                       std::vector<google::protobuf::Map<std::string, double>>>
       per_node_infeasible_requests;
+  if (!autoscaling_state_.has_value()) {
+    return per_node_infeasible_requests;
+  }
 
   // obtain the infeasible requests from the autoscaler state
   std::vector<google::protobuf::Map<std::string, double>>
@@ -488,8 +487,8 @@ GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
       auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
       for (const auto &shape : autoscaler_infeasible_resource_shapes) {
         const auto &resource_demand = resource_load_by_shape.resource_demands(i);
-        if (resource_demand.num_infeasible_requests_queued() > 0
-            && MapEqual(shape, resource_demand.shape())) {
+        if (resource_demand.num_infeasible_requests_queued() > 0 &&
+            MapEqual(shape, resource_demand.shape())) {
           is_infeasible_shape = true;
           infeasible_resource_shape = shape;
           break;
@@ -509,12 +508,13 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
 
   // Obtain the node & infeasible request mapping
   auto per_node_infeasible_requests = GetPerNodeInfeasibleResourceRequests();
-  if (!per_node_infeasible_requests.has_value()) {
+  if (per_node_infeasible_requests.empty()) {
     return;
   }
 
   // Cancel the infeasible requests
-  // TODO: Call raylet to cancle the infeasible requests
+  // NOTE(mengjin): This is just a stub for now, but will soon be implemented to support
+  // cancel infeasible resource requests
 }
 
 }  // namespace gcs

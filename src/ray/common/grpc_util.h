@@ -25,16 +25,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
+#include "ray/util/type_traits.h"
 
 namespace ray {
-
-template <typename, typename = void>
-struct has_equal_operator : std::false_type {};
-
-template <typename T>
-struct has_equal_operator<T,
-                          std::void_t<decltype(std::declval<T>() == std::declval<T>())>>
-    : std::true_type {};
 
 /// Wrap a protobuf message.
 template <class Message>
@@ -166,10 +159,17 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
 /// Check whether 2 google::protobuf::Map are equal. This function assumes that the
 /// value of the map is either a simple type that supports operator== or a protobuf
 /// message that can be compared using
-// google::protobuf::util::MessageDifferencer::Equivalent.
+/// google::protobuf::util::MessageDifferencer::Equivalent.
 template <class K, class V>
 bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
               const ::google::protobuf::Map<K, V> &rhs) {
+  static_assert(
+      has_equal_operator<V>::value ||
+          std::is_base_of<google::protobuf::Message, V>::value,
+      "Invalid value type for the map. The value of in the map must either be a simple "
+      "type that supports operator== or a protobuf message that can be compared using "
+      "google::protobuf::util::MessageDifferencer::Equivalent");
+
   if (lhs.size() != rhs.size()) {
     return false;
   }
@@ -183,11 +183,17 @@ bool MapEqual(const ::google::protobuf::Map<K, V> &lhs,
       if (it->second != pair.second) {
         return false;
       }
-    } else {
+    } else if (std::is_base_of<google::protobuf::Message, V>::value) {
       if (!google::protobuf::util::MessageDifferencer::Equivalent(it->second,
                                                                   pair.second)) {
         return false;
       }
+    } else {
+      // Should never reach here due to the static_assert above.
+      throw std::invalid_argument(
+          "The value of in the map must either be a simple "
+          "type that supports operator== or a protobuf message that can be compared "
+          "using google::protobuf::util::MessageDifferencer::Equivalent");
     }
   }
 

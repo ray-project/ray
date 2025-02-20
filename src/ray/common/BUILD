@@ -50,6 +50,9 @@ ray_cc_library(
     deps = [
         ":ray_config",
         ":status",
+        "//src/ray/util",
+        "//src/ray/util:logging",
+        "//src/ray/util:type_traits",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

@@ -147,9 +147,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the autoscaler infeasible request resource shapes for each node.
-  /// \return An optional value of a map of node id to the corresponding infeasible
-  ///         resource requests shapes. The optional value is empty if there is no
-  ///         autoscaling state.
+  /// \return a map of node id to the corresponding infeasible resource requests shapes.
   ///
   /// The function takes the infeasible requests from `autoscaling_state_` and maps the
   /// corresponding resource shapes to the ResourceLoad of each node in
@@ -158,9 +156,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// (1) It is in the `infeasible_resource_requests` of the `autoscaling_state_`.
   /// (2) The `num_infeasible_requests_queued` in the `ResourceDemand` of the shape in
   ///    corresponding entry in `node_resource_info_` is greater than 0.
-  std::optional<
-      absl::flat_hash_map<ray::NodeID,
-                          std::vector<google::protobuf::Map<std::string, double>>>>
+  absl::flat_hash_map<ray::NodeID,
+                      std::vector<google::protobuf::Map<std::string, double>>>
   GetPerNodeInfeasibleResourceRequests() const;
 
   /// \brief Cancel the tasks with autoscaler infeasible requests.
