@@ -650,6 +650,8 @@ class Worker:
 
         if not hasattr(self, "core_worker"):
             return
+        if self._file_rotation_enabled:
+            return
 
         self.core_worker.record_task_log_start(
             task_id,
@@ -671,6 +673,8 @@ class Worker:
             return
 
         if not hasattr(self, "core_worker"):
+            return
+        if self._file_rotation_enabled:
             return
 
         self.core_worker.record_task_log_end(

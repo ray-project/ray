@@ -287,15 +287,18 @@ if __name__ == "__main__":
 
     worker = ray._private.worker.global_worker
 
-    # Setup log file.
-    out_filepath, err_filepath = node.get_log_file_names(
-        get_worker_log_file_name(args.worker_type),
-        unique=False,  # C++ core worker process already creates the file, should use a deterministic function to get the same file path.
-        create_out=True,
-        create_err=True,
-    )
-    worker.set_out_file(out_filepath)
-    worker.set_err_file(err_filepath)
+    # Setup log file if rotation not enabled.
+    if os.getenv("RAY_ROTATION_MAX_BYTES", None):
+        worker.set_file_rotation_enabled(True)
+    else:
+        out_filepath, err_filepath = node.get_log_file_names(
+            get_worker_log_file_name(args.worker_type),
+            unique=False,  # C++ core worker process already creates the file, should use a deterministic function to get the same file path.
+            create_out=True,
+            create_err=True,
+        )
+        worker.set_out_file(out_filepath)
+        worker.set_err_file(err_filepath)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
