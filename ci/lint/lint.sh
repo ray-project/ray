@@ -32,6 +32,7 @@ pre_commit() {
     check-import-order
     check-cpp-files-inclusion
     end-of-file-fixer
+    check-json
     trailing-whitespace
   )
 
