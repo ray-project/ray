@@ -156,28 +156,7 @@ async def _peek_at_openai_json_generator(
     return first_response, _openai_json_wrapper(generator, first_response)
 
 
-@serve.deployment(
-    # TODO make this configurable
-    autoscaling_config={
-        "min_replicas": int(os.environ.get("RAYLLM_ROUTER_MIN_REPLICAS", 0)),
-        "initial_replicas": int(os.environ.get("RAYLLM_ROUTER_INITIAL_REPLICAS", 2)),
-        "max_replicas": int(os.environ.get("RAYLLM_ROUTER_MAX_REPLICAS", 16)),
-        "target_ongoing_requests": int(
-            os.environ.get(
-                "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
-                os.environ.get(
-                    "RAYLLM_ROUTER_TARGET_NUM_ONGOING_REQUESTS_PER_REPLICA", 200
-                ),
-            )
-        ),
-    },
-    ray_actor_options=json.loads(
-        os.environ.get("RAYLLM_ROUTER_RAY_ACTOR_OPTIONS", "{}")
-    ),
-    max_ongoing_requests=1000,  # Maximum backlog for a single replica
-)
-@serve.ingress(fastapi_router_app)
-class LLMModelRouterDeployment:
+class LLMModelRouterDeploymentImpl:
     def __init__(
         self,
         llm_deployments: List[DeploymentHandle],
@@ -416,3 +395,39 @@ class LLMModelRouterDeployment:
 
             if isinstance(result, ChatCompletionResponse):
                 return JSONResponse(content=result.model_dump())
+
+    @classmethod
+    def as_deployment(cls) -> serve.Deployment:
+        """Converts this class to a Ray Serve deployment with ingress.
+
+        Returns:
+            A Ray Serve deployment.
+        """
+
+        ingress_cls = serve.ingress(fastapi_router_app)(cls)
+        deployment_decorator = serve.deployment(
+            # TODO (Kourosh): make this configurable
+            autoscaling_config={
+                "min_replicas": int(os.environ.get("RAYLLM_ROUTER_MIN_REPLICAS", 0)),
+                "initial_replicas": int(
+                    os.environ.get("RAYLLM_ROUTER_INITIAL_REPLICAS", 2)
+                ),
+                "max_replicas": int(os.environ.get("RAYLLM_ROUTER_MAX_REPLICAS", 16)),
+                "target_ongoing_requests": int(
+                    os.environ.get(
+                        "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
+                        os.environ.get(
+                            "RAYLLM_ROUTER_TARGET_NUM_ONGOING_REQUESTS_PER_REPLICA", 200
+                        ),
+                    )
+                ),
+            },
+            ray_actor_options=json.loads(
+                os.environ.get("RAYLLM_ROUTER_RAY_ACTOR_OPTIONS", "{}")
+            ),
+            max_ongoing_requests=1000,  # Maximum backlog for a single replica
+        )
+
+        deployment_cls = deployment_decorator(ingress_cls)
+
+        return deployment_cls
