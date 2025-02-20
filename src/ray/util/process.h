@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -47,7 +48,7 @@ class EnvironmentVariableLess {
 typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
 
 #ifdef _WIN32
-typedef int pid_t;
+using pid_t = int;
 #endif
 
 using StartupToken = int64_t;

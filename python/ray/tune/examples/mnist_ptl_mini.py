@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
 from torchvision import transforms
 
-from ray import train, tune
+from ray import tune
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
@@ -141,7 +141,7 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
             mode="min",
             num_samples=num_samples,
         ),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="tune_mnist",
         ),
         param_space=config,

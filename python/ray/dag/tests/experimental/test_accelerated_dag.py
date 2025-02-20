@@ -1395,6 +1395,76 @@ class TestDAGExceptionCompileMultipleTimes:
             branch2.experimental_compile()
 
 
+def test_exceed_max_buffered_results(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
+
+    refs = []
+    for i in range(2):
+        ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
+
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(
+            "The compiled graph can't have more than 1 buffered results, "
+            r"and you currently have 1 buffered results. Call `ray.get\(\)` on "
+            r"CompiledDAGRef's \(or await on CompiledDAGFuture's\) to retrieve "
+            "results, or increase `_max_buffered_results` if buffering is "
+            "desired, note that this will increase driver memory usage."
+        ),
+    ):
+        ray.get(ref)
+
+    del refs
+
+
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_exceed_max_buffered_results_multi_output(ray_start_regular, single_fetch):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as inp:
+        dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
+
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
+
+    refs = []
+    for _ in range(2):
+        ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
+
+    if single_fetch:
+        # If there are results not fetched from an execution, that execution
+        # still counts towards the number of buffered results.
+        ray.get(refs[0][0])
+
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
+    with pytest.raises(
+        ray.exceptions.RayCgraphCapacityExceeded,
+        match=(
+            "The compiled graph can't have more than 1 buffered results, "
+            r"and you currently have 1 buffered results. Call `ray.get\(\)` on "
+            r"CompiledDAGRef's \(or await on CompiledDAGFuture's\) to retrieve "
+            "results, or increase `_max_buffered_results` if buffering is "
+            "desired, note that this will increase driver memory usage."
+        ),
+    ):
+        if single_fetch:
+            ray.get(ref[0])
+        else:
+            ray.get(ref)
+
+    del refs
+
+
 def test_compiled_dag_ref_del(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:
@@ -2546,52 +2616,6 @@ def test_inflight_requests_exceed_capacity(ray_start_regular):
     # CompiledDagRef __del__ will release buffers and
     # increment _max_finished_execution_index
     _ = (ref1, ref2)
-
-
-def test_result_buffer_exceeds_capacity(ray_start_regular):
-    expected_error_message = (
-        "The compiled graph can't have more than 2 "
-        "in-flight executions, and you currently have 2 "
-        "in-flight executions. Retrieve an output using ray.get before "
-        "submitting more requests or increase `_max_inflight_executions`. "
-    )
-    a = Actor.remote(0)
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-    compiled_dag = dag.experimental_compile(_max_inflight_executions=2)
-    ref1 = compiled_dag.execute(1)
-    ref2 = compiled_dag.execute(2)
-    ray.get(ref2)
-    ref3 = compiled_dag.execute(3)
-    with pytest.raises(
-        ray.exceptions.RayCgraphCapacityExceeded,
-        match=(expected_error_message),
-    ):
-        _ = compiled_dag.execute(4)
-
-    # test same with asyncio
-    async def main():
-        a = Actor.remote(0)
-        with InputNode() as inp:
-            dag = a.inc.bind(inp)
-        async_compiled_dag = dag.experimental_compile(
-            enable_asyncio=True, _max_inflight_executions=2
-        )
-        ref1 = await async_compiled_dag.execute_async(1)
-        ref2 = await async_compiled_dag.execute_async(2)
-        await ref2
-        ref3 = await async_compiled_dag.execute_async(3)
-        with pytest.raises(
-            ray.exceptions.RayCgraphCapacityExceeded,
-            match=(expected_error_message),
-        ):
-            _ = await async_compiled_dag.execute_async(4)
-        _ = (ref1, ref3)
-
-    loop = get_or_create_event_loop()
-    loop.run_until_complete(main())
-    # same reason as comment for test_inflight_requests_exceed_capacity
-    _ = (ref1, ref3)
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):

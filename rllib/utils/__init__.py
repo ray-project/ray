@@ -1,6 +1,7 @@
 from collections import deque
 import contextlib
 from functools import partial
+from typing import Any, List, Optional, Tuple, Union
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -62,20 +63,22 @@ def add_mixins(base, mixins, reversed=False):
 
 
 @DeveloperAPI
-def force_list(elements=None, to_tuple=False):
+def force_list(
+    elements: Optional[Any] = None, to_tuple: bool = False
+) -> Union[List, Tuple]:
     """
     Makes sure `elements` is returned as a list, whether `elements` is a single
     item, already a list, or a tuple.
 
     Args:
-        elements (Optional[any]): The inputs as single item, list, or tuple to
-            be converted into a list/tuple. If None, returns empty list/tuple.
+        elements: The inputs as a single item, a list/tuple/deque of items, or None,
+            to be converted to a list/tuple. If None, returns empty list/tuple.
         to_tuple: Whether to use tuple (instead of list).
 
     Returns:
-        Union[list,tuple]: All given elements in a list/tuple depending on
-            `to_tuple`'s value. If elements is None,
-            returns an empty list/tuple.
+        The provided item in a list of size 1, or the provided items as a
+        list. If `elements` is None, returns an empty list. If `to_tuple` is True,
+        returns a tuple instead of a list.
     """
     ctor = list
     if to_tuple is True:

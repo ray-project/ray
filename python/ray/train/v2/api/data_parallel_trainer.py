@@ -10,7 +10,7 @@ from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
     _TRAINER_RESTORE_DEPRECATION_WARNING,
 )
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
@@ -23,6 +23,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     DEFAULT_RUN_CONTROLLER_AS_ACTOR,
@@ -143,6 +144,9 @@ class DataParallelTrainer:
         if env_bool(METRICS_ENABLED_ENV_VAR, True):
             callbacks.append(ControllerMetricsCallback(self.train_run_context))
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
+
+        if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
+            callbacks.append(StateManagerCallback(self.train_run_context))
 
         # Add internal callback that invokes all user-defined callbacks.
         user_callbacks = [

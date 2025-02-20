@@ -16,6 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <string>
+#include <vector>
+
 namespace {
 
 const char *argv0 = nullptr;

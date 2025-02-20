@@ -1163,8 +1163,8 @@ class Learner(Checkpointable):
                 fwd_out, loss_per_module, tensor_metrics = self._update(
                     batch.policy_batches
                 )
-                # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-                # to actual (numpy) values.
+                # Convert logged tensor metrics (logged during tensor-mode of
+                # MetricsLogger) to actual (numpy) values.
                 self.metrics.tensors_to_numpy(tensor_metrics)
 
                 self._set_slicing_by_batch_id(batch, value=False)
@@ -1246,6 +1246,7 @@ class Learner(Checkpointable):
 
         state = {
             "should_module_be_updated": self.config.policies_to_train,
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
         }
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
@@ -1256,7 +1257,6 @@ class Learner(Checkpointable):
                 ),
                 **kwargs,
             )
-            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
 

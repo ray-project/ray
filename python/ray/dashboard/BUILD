@@ -14,6 +14,9 @@ py_library(
     name = "conftest",
     srcs = ["tests/conftest.py"],
     deps = ["//python/ray/tests:conftest"],
+    visibility = [
+        "//python/ray/dashboard:__subpackages__",
+    ],
 )
 
 py_test_run_all_subdirectory(

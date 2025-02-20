@@ -597,7 +597,7 @@ def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
 
-def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table":
     """This is counterpart for Pyarrow's `Table.combine_chunks` that's using
     extended `ChunkedArray` combination protocol.
 
@@ -607,13 +607,14 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
     new_column_values_arrays = []
 
     for col in table.columns:
-        new_column_values_arrays.append(combine_chunked_array(col))
+        new_column_values_arrays.append(combine_chunked_array(col, copy))
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
 
 def combine_chunked_array(
     array: "pyarrow.ChunkedArray",
+    copy: bool = False,
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
 
@@ -647,6 +648,8 @@ def combine_chunked_array(
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
+    elif len(array.chunks) == 1 and not copy:
+        return array
     else:
         return _try_combine_chunks_safe(array)
 

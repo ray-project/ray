@@ -622,6 +622,7 @@ autodoc_mock_imports = [
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",

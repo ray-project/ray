@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <limits>
+
 #include "absl/random/random.h"
 
 /// A helper function to fill random bytes into the `data`.

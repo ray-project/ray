@@ -22,6 +22,11 @@ DEFAULT_MAX_INFLIGHT_EXECUTIONS = int(
     os.environ.get("RAY_CGRAPH_max_inflight_executions", 10)
 )
 
+# The default number of results that can be buffered at the driver.
+DEFAULT_MAX_BUFFERED_RESULTS = int(
+    os.environ.get("RAY_CGRAPH_max_buffered_results", 1000)
+)
+
 DEFAULT_OVERLAP_GPU_COMMUNICATION = bool(
     os.environ.get("RAY_CGRAPH_overlap_gpu_communication", 0)
 )
@@ -75,6 +80,7 @@ class DAGContext:
     read_iteration_timeout: float = DEFAULT_READ_ITERATION_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
     max_inflight_executions: int = DEFAULT_MAX_INFLIGHT_EXECUTIONS
+    max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
     overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION
 
     def __post_init__(self):

@@ -1,8 +1,8 @@
 import pytest
 
 import ray
-from ray import train, tune
-from ray.train import Checkpoint, Result
+from ray import tune
+from ray.tune import Checkpoint, Result
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune.result_grid import ResultGrid
 
@@ -20,7 +20,7 @@ def test_result_grid_api(ray_start_2_cpus, tmp_path):
         peak_fn = [0, config["id"], -config["id"], 0]
         for i in range(len(peak_fn)):
             with create_dict_checkpoint({"iter": i}) as checkpoint:
-                train.report(
+                tune.report(
                     {"iter": i, "score": config["id"], "peak": peak_fn[i]},
                     checkpoint=checkpoint,
                 )
@@ -28,10 +28,10 @@ def test_result_grid_api(ray_start_2_cpus, tmp_path):
     tuner = tune.Tuner(
         train_fn,
         param_space={"id": tune.grid_search([1, 2])},
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             storage_path=str(tmp_path),
             name="test_result_grid_api",
-            checkpoint_config=train.CheckpointConfig(num_to_keep=2),
+            checkpoint_config=tune.CheckpointConfig(num_to_keep=2),
         ),
     )
     result_grid = tuner.fit()
@@ -91,7 +91,7 @@ def test_best_result_no_report(ray_start_2_cpus):
 
 def test_result_repr(ray_start_2_cpus):
     def f(config):
-        train.report({"loss": 1})
+        tune.report({"loss": 1})
 
     tuner = tune.Tuner(f, param_space={"x": tune.grid_search([1, 2])})
     result_grid = tuner.fit()
@@ -155,7 +155,7 @@ def test_result_grid_repr(tmp_path):
 
 def test_no_metric_mode_one_trial(ray_start_2_cpus):
     def f(config):
-        train.report(dict(x=1))
+        tune.report(dict(x=1))
 
     results = tune.Tuner(f, tune_config=tune.TuneConfig(num_samples=1)).fit()
     # This should not throw any exception
@@ -165,9 +165,9 @@ def test_no_metric_mode_one_trial(ray_start_2_cpus):
 
 def test_result_grid_df(ray_start_2_cpus):
     def f(config):
-        train.report(dict(metric=config["nested"]["param"] * 1))
-        train.report(dict(metric=config["nested"]["param"] * 4))
-        train.report(dict(metric=config["nested"]["param"] * 3))
+        tune.report(dict(metric=config["nested"]["param"] * 1))
+        tune.report(dict(metric=config["nested"]["param"] * 4))
+        tune.report(dict(metric=config["nested"]["param"] * 3))
 
     analysis = tune.run(f, config={"nested": {"param": tune.grid_search([1, 2])}})
     result_grid = ResultGrid(analysis)
@@ -194,12 +194,12 @@ def test_num_errors_terminated(ray_start_2_cpus, tmp_path):
         if config["id"] == 1:
             raise RuntimeError()
         else:
-            train.report({"score": config["id"]})
+            tune.report({"score": config["id"]})
 
     tuner = tune.Tuner(
         train_fn,
         param_space={"id": tune.grid_search([1, 2])},
-        run_config=train.RunConfig(storage_path=str(tmp_path)),
+        run_config=tune.RunConfig(storage_path=str(tmp_path)),
     )
 
     result_grid = tuner.fit()

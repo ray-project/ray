@@ -9,6 +9,7 @@ ARG PYTHON=3.9
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
+ENV RAY_BUILD_ENV=ubuntu20.04_cuda12.1_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON

@@ -49,7 +49,7 @@ Status GcsTable<Key, Data>::Get(const Key &key,
   return store_client_->AsyncGet(
       table_name_, key.Binary(), std::move(callback).Rebind([](auto callback) {
         return [callback = std::move(callback)](Status status,
-                                                std::optional<std::string> &&result) {
+                                                std::optional<std::string> result) {
           std::optional<Data> value;
           if (result) {
             Data data;

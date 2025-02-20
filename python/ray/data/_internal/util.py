@@ -318,9 +318,8 @@ def _check_import(obj, *, module: str, package: str) -> None:
         importlib.import_module(module)
     except ImportError:
         raise ImportError(
-            f"`{obj.__class__.__name__}` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
+            f"`{obj.__class__.__name__}` depends on '{module}', but Ray Data couldn't "
+            f"import it. Install '{module}' by running `pip install {package}`."
         )
 
 

@@ -375,7 +375,3 @@ class PrepareImageStage(StatefulStage):
     """A stage to prepare images from OpenAI chat template messages."""
 
     fn: StatefulStageUDF = PrepareImageUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )

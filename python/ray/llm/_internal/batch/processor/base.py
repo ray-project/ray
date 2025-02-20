@@ -18,11 +18,12 @@ class ProcessorConfig(BaseModel):
     """The processor configuration."""
 
     batch_size: int = Field(
+        default=64,
         description="Large batch sizes are likely to saturate the compute resources "
         "and could achieve higher throughput. On the other hand, small batch sizes "
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
-        "based on your use case.",
+        "based on your use case. Defaults to 64.",
     )
     accelerator_type: Optional[str] = Field(
         default=None,
@@ -57,7 +58,7 @@ class Processor:
     # The internal used data column name ("__data"). Your input
     # dataset should not contain this column. If you want to use this column
     # in your input dataset, you have to derive and customize Processor.
-    data_column: str = "__data"
+    DATA_COLUMN: str = "__data"
 
     def __init__(
         self,
@@ -71,17 +72,21 @@ class Processor:
         self.postprocess = None
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
 
-        if preprocess is not None:
-            self.preprocess = wrap_preprocess(
-                preprocess,
-                self.data_column,
-            )
+        # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
+        # Wrapping is required even if they are identity functions, b/c data_column
+        # gets inserted/removed via wrap_preprocess/wrap_postprocess.
+        preprocess = preprocess or (lambda row: row)
+        postprocess = postprocess or (lambda row: row)
 
-        if postprocess is not None:
-            self.postprocess = wrap_postprocess(
-                postprocess,
-                self.data_column,
-            )
+        self.preprocess = wrap_preprocess(
+            preprocess,
+            self.DATA_COLUMN,
+        )
+
+        self.postprocess = wrap_postprocess(
+            postprocess,
+            self.DATA_COLUMN,
+        )
 
         for stage in stages:
             self._append_stage(stage)
@@ -104,7 +109,7 @@ class Processor:
         for stage in self.stages.values():
             kwargs = stage.get_dataset_map_batches_kwargs(
                 batch_size=self.config.batch_size,
-                data_column=self.data_column,
+                data_column=self.DATA_COLUMN,
             )
             dataset = dataset.map_batches(stage.fn, **kwargs)
 

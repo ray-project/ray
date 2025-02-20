@@ -24,23 +24,6 @@
 namespace ray {
 namespace raylet {
 
-bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
-  // Check whether the resource is CPU resource or CPU resource inside PG.
-  if (resource_id == ResourceID::CPU()) {
-    return true;
-  }
-
-  auto possible_pg_resource = ParsePgFormattedResource(resource_id.Binary(),
-                                                       /*for_wildcard_resource*/ true,
-                                                       /*for_indexed_resource*/ true);
-  if (possible_pg_resource.has_value() &&
-      possible_pg_resource->original_resource == ResourceID::CPU().Binary()) {
-    return true;
-  }
-
-  return false;
-}
-
 LocalTaskManager::LocalTaskManager(
     const NodeID &self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
