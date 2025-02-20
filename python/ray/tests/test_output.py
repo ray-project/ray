@@ -33,9 +33,9 @@ ray.get([verbose.remote() for _ in range(10)])
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
 
-    assert out_str.count("hello") == 2, out_str
-    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
-    assert out_str.count("[repeated 9x across cluster]") == 1, out_str
+    assert out_str.count("hello") == 2
+    assert out_str.count("RAY_DEDUP_LOGS") == 1
+    assert out_str.count("[repeated 9x across cluster]") == 1
 
 
 def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
@@ -71,9 +71,9 @@ for actor in actors:
 """
         out_str = run_string_as_driver(script)
         print(out_str)
-    assert "PYTHON worker processes have been started" in out_str, out_str
-    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
-    assert "[repeated" in out_str, out_str
+    assert "PYTHON worker processes have been started" in out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1
+    assert "[repeated" in out_str
 
 
 def test_logger_config_with_ray_init():
