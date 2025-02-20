@@ -46,8 +46,8 @@ from ray.llm._internal.serve.configs.server_models import (
 # openai.types.chat aliases.
 # We use aliases becasuse openai.types.chat is not installed in the docs build.
 # This is a hack to make the docs build pass.
-ChatCompletionMessageToolCallParam = TypeVar(
-    "ChatCompletionMessageToolCallParam", bound=Any
+ChatCompletionContentPartInputAudioParam = TypeVar(
+    "ChatCompletionContentPartInputAudioParam", bound=Any
 )
 ChatCompletionContentPartRefusalParam = TypeVar(
     "ChatCompletionContentPartRefusalParam", bound=Any
