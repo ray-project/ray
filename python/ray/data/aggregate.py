@@ -136,6 +136,7 @@ class AggregateFnV2(AggregateFn):
     def __init__(
         self,
         name: str,
+        zero_factory: Callable[[], AggType],
         *,
         on: Optional[str],
         ignore_nulls: bool,
@@ -151,10 +152,11 @@ class AggregateFnV2(AggregateFn):
         _safe_combine = _null_safe_combine(self.combine)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self._finalize)
+        _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
 
         super().__init__(
             name=name,
-            init=lambda _: _OPTIONAL_EMPTY,
+            init=_safe_zero_factory,
             merge=_safe_combine,
             accumulate_block=(
                 lambda acc, block: _safe_combine(acc, _safe_aggregate(block))
@@ -202,6 +204,7 @@ class Count(AggregateFnV2):
             alias_name if alias_name else f"count({on or ''})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: 0,
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -233,6 +236,7 @@ class Sum(AggregateFnV2):
             alias_name if alias_name else f"sum({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: 0,
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -258,6 +262,7 @@ class Min(AggregateFnV2):
             alias_name if alias_name else f"min({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: float("+inf")
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -284,6 +289,7 @@ class Max(AggregateFnV2):
             alias_name if alias_name else f"max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: float("-inf")
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -309,6 +315,7 @@ class Mean(AggregateFnV2):
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: list([0, 0]),
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -360,6 +367,7 @@ class Std(AggregateFnV2):
             alias_name if alias_name else f"std({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: list([0, 0, 0]),
         )
 
         self._ddof = ddof
@@ -425,6 +433,7 @@ class AbsMax(AggregateFnV2):
             alias_name if alias_name else f"abs_max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: 0,
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
@@ -462,6 +471,7 @@ class Quantile(AggregateFnV2):
             alias_name if alias_name else f"quantile({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=list,
         )
 
     def combine(self, current_accumulator: List[Any], new: List[Any]) -> List[Any]:
@@ -539,6 +549,7 @@ class Unique(AggregateFnV2):
             alias_name if alias_name else f"unique({str(on)})",
             on=on,
             ignore_nulls=False,
+            zero_factory=set,
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
@@ -562,6 +573,16 @@ class Unique(AggregateFnV2):
 
 def _is_null(a: Optional[AggType]) -> bool:
     return a is None or is_nan(a)
+
+
+def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
+    def _safe_zero_factory(_):
+        if ignore_nulls:
+            return None
+
+        return zero_factory()
+
+    return _safe_zero_factory
 
 
 def _null_safe_aggregate(
