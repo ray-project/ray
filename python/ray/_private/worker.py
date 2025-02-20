@@ -674,6 +674,8 @@ class Worker:
 
         if not hasattr(self, "core_worker"):
             return
+
+        # Disable file offset fetch if rotation enabled (since file offset doesn't make sense for rotated files).
         if self._file_rotation_enabled:
             return
 
