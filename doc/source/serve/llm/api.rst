@@ -13,8 +13,8 @@ Builders
    :nosignatures:
    :toctree: doc/
 
-   builders.build_vllm_deployment
-   builders.build_openai_app
+   build_vllm_deployment
+   build_openai_app
 
 Configs
 ---------------------
@@ -23,13 +23,13 @@ Configs
    :toctree: doc/
    :template: autosummary/autopydantic.rst
 
-   configs.LLMConfig
-   configs.LLMServingArgs
-   configs.ModelLoadingConfig
-   configs.S3MirrorConfig
-   configs.S3AWSCredentials
-   configs.GCSMirrorConfig
-   configs.LoraConfig
+   LLMConfig
+   LLMServingArgs
+   ModelLoadingConfig
+   S3MirrorConfig
+   S3AWSCredentials
+   GCSMirrorConfig
+   LoraConfig
 
 
 Deployments
@@ -39,7 +39,7 @@ Deployments
    :nosignatures:
    :toctree: doc/
 
-   deployments.VLLMDeploymentImpl
-   deployments.LLMModelRouterDeploymentImpl
+   VLLMDeploymentImpl
+   LLMModelRouterDeploymentImpl
 
 
