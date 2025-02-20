@@ -63,7 +63,7 @@ def take_table(
             if _is_column_extension_type(col) and col.num_chunks > 1:
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
-                col = _concatenate_extension_column(col, always_copy=True)
+                col = _concatenate_extension_column(col)
             new_cols.append(col.take(indices))
         table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
     else:
