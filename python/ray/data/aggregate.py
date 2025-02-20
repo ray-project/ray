@@ -305,7 +305,9 @@ class Mean(AggregateFnV2):
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: list([0, 0]),
+            # NOTE: We've to copy returned list here, as some
+            #       aggregations might be modifying elements in-place
+            zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -360,7 +362,9 @@ class Std(AggregateFnV2):
             alias_name if alias_name else f"std({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: list([0, 0, 0]),
+            # NOTE: We've to copy returned list here, as some
+            #       aggregations might be modifying elements in-place
+            zero_factory=lambda: list([0, 0, 0]),  # noqa: C410
         )
 
         self._ddof = ddof
