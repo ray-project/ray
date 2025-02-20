@@ -109,12 +109,6 @@ def pyiceberg_table():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_get_catalog():
-    # NOTE: Iceberg only works with PyArrow 9 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        return
 
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -129,12 +123,6 @@ def test_get_catalog():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_plan_files():
-    # NOTE: Iceberg only works with PyArrow 9 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        return
 
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -149,12 +137,6 @@ def test_plan_files():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_chunk_plan_files():
-    # NOTE: Iceberg only works with PyArrow 9 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        return
 
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -176,12 +158,6 @@ def test_chunk_plan_files():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_get_read_tasks():
-    # NOTE: Iceberg only works with PyArrow 9 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        return
 
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -197,12 +173,6 @@ def test_get_read_tasks():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_filtered_read():
-    # NOTE: Iceberg only works with PyArrow 9 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        return
 
     from pyiceberg import expressions as pyi_expr
 
@@ -223,12 +193,6 @@ def test_filtered_read():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_read_basic():
-    # NOTE: Iceberg only works with PyArrow 9 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        return
 
     row_filter = pyi_expr.In("col_c", {1, 2, 3, 4, 5, 6, 7, 8})
 
@@ -266,12 +230,6 @@ def test_read_basic():
     reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_write_basic():
-    # NOTE: Iceberg only works with PyArrow 9 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        return
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
     table = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")

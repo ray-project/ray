@@ -39,12 +39,16 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         Initialize the IcebergDatasink
 
         Args:
-            table_identifier: The identifier of the table to read
+            table_identifier: The identifier of the table to read e.g. `default.taxi_dataset`
             catalog_kwargs: Optional arguments to use when setting up the Iceberg
                 catalog
-            snapshot_properties: Optional snapshot properties to
-                use when reading the table
+            snapshot_properties: custom properties write to snapshot when committing
+            to an iceberg table, e.g. {"commit_time": "2021-01-01T00:00:00Z"}
         """
+
+        from pyiceberg.io import FileIO
+        from pyiceberg.table import Transaction
+        from pyiceberg.table.metadata import TableMetadata
 
         self.table_identifier = table_identifier
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
@@ -57,11 +61,13 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         else:
             self._catalog_name = "default"
 
-        self._uuid = None
-        self._io = None
-        self._txn = None
-        self._table_metadata = None
+        self._uuid: str = None
+        self._io: FileIO = None
+        self._txn: Transaction = None
+        self._table_metadata: TableMetadata = None
 
+    # Since iceberg transaction is not pickle-able, because of the table and catalog properties
+    # we need to exclude the transaction object during serialization and deserialization during pickle
     def __getstate__(self) -> dict:
         """Exclude `_txn` during pickling."""
         state = self.__dict__.copy()
@@ -103,7 +109,9 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
             TableProperties.MANIFEST_MERGE_ENABLED_DEFAULT,
         )
 
-    def write(self, blocks: Iterable[Block], ctx: TaskContext):
+    def write(
+        self, blocks: Iterable[Block], ctx: TaskContext
+    ) -> WriteResult[List["DataFile"]]:
         from pyiceberg.io.pyarrow import (
             _check_pyarrow_schema_compatible,
             _dataframe_to_data_files,
@@ -111,7 +119,7 @@ class IcebergDatasink(Datasink[List["DataFile"]]):
         from pyiceberg.table import DOWNCAST_NS_TIMESTAMP_TO_US_ON_WRITE
         from pyiceberg.utils.config import Config
 
-        data_files_list = []
+        data_files_list: WriteResult[List["DataFile"]] = []
         for block in blocks:
             pa_table = BlockAccessor.for_block(block).to_arrow()
 
