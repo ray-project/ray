@@ -1,7 +1,15 @@
 import sys
 import pytest
+from packaging import version
+import pydantic
+
+PYDANTIC_VERSION = version.parse(pydantic.__version__)
 
 
+@pytest.mark.skipif(
+    PYDANTIC_VERSION < version.parse("2.0"),
+    reason="ray.serve.llm requires pydantic>=2.0",
+)
 def test_serve_llm_import_does_not_error():
     import ray.serve.llm  # noqa: F401
     from ray.serve.llm.configs import (
