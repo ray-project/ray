@@ -31,3 +31,13 @@ Configs
    configs.GCSMirrorConfig
    configs.LoraConfig
 
+
+Deployments
+---------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   deployments.VLLMDeploymentImpl
+   deployments.LLMModelRouterDeploymentImpl
