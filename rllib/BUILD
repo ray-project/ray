@@ -306,7 +306,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/appo/multi_agent_pong_appo.py"],
-    args = ["--stop-iters=3"]
+    args = ["--stop-iters=3", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1", "--num-aggregator-actors-per-learner=1"]
 )
 
 
