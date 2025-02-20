@@ -447,8 +447,8 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return val
 
-    def count(self, on: str) -> Optional[U]:
-        return self._apply_agg(lambda col: col.count(), on)
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
+        return self._apply_agg(lambda col: col.count(skipna=ignore_nulls), on)
 
     def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
         if on is not None and not isinstance(on, str):
