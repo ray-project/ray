@@ -203,7 +203,7 @@ LogitsProcessors = List[Union[str, LogitsProcessorConstructor]]
 class ChatCompletionRequest(BaseModel):
     # Ordered by official OpenAI API documentation
     # https://platform.openai.com/docs/api-reference/chat/create
-    messages: Annotated[List[ChatCompletionMessageParam], Field(min_length=1)]
+    messages: Annotated[List[ChatCompletionMessageParam], Field(min_items=1)]
     model: str
     frequency_penalty: Optional[float] = 0.0
     logit_bias: Optional[Dict[str, float]] = None
