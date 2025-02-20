@@ -2,7 +2,7 @@ Ray Serve LLM API
 ==============================
 
 
-.. currentmodule:: ray.serve.llm
+.. currentmodule:: ray.serve.llm.builders
 
 
 
@@ -13,8 +13,11 @@ Builders
    :nosignatures:
    :toctree: doc/
 
-   builders.build_vllm_deployment
-   builders.build_openai_app
+   build_vllm_deployment
+   build_openai_app
+
+
+.. currentmodule:: ray.serve.llm.configs
 
 Configs
 ---------------------
@@ -23,14 +26,15 @@ Configs
    :toctree: doc/
    :template: autosummary/autopydantic.rst
 
-   configs.LLMConfig
-   configs.LLMServingArgs
-   configs.ModelLoadingConfig
-   configs.S3MirrorConfig
-   configs.S3AWSCredentials
-   configs.GCSMirrorConfig
-   configs.LoraConfig
+   LLMConfig
+   LLMServingArgs
+   ModelLoadingConfig
+   S3MirrorConfig
+   S3AWSCredentials
+   GCSMirrorConfig
+   LoraConfig
 
+.. currentmodule:: ray.serve.llm.deployments
 
 Deployments
 ---------------------
@@ -39,5 +43,5 @@ Deployments
    :nosignatures:
    :toctree: doc/
 
-   deployments.VLLMDeploymentImpl
-   deployments.LLMModelRouterDeploymentImpl
+   VLLMDeploymentImpl
+   LLMModelRouterDeploymentImpl
