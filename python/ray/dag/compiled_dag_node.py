@@ -33,7 +33,12 @@ from ray.dag.constants import (
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
-from ray.exceptions import RayTaskError, RayChannelError, RayChannelTimeoutError
+from ray.exceptions import (
+    RayCgraphCapacityExceeded,
+    RayTaskError,
+    RayChannelError,
+    RayChannelTimeoutError,
+)
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -797,6 +802,7 @@ class CompiledDAG:
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         max_inflight_executions: Optional[int] = None,
+        max_buffered_results: Optional[int] = None,
         overlap_gpu_communication: Optional[bool] = None,
         default_communicator: Optional[Union[Communicator, str]] = "create",
     ):
@@ -818,6 +824,14 @@ class CompiledDAG:
                 can be submitted via `execute` or `execute_async` before consuming
                 the output using `ray.get()`. If the caller submits more executions,
                 `RayCgraphCapacityExceeded` is raised.
+            max_buffered_results: The maximum number of results that can be
+                buffered at the driver. If more results are buffered,
+                `RayCgraphCapacityExceeded` is raised. Note that
+                when result corresponding to an execution is retrieved
+                (by calling `ray.get()` on a `CompiledDAGRef` or
+                `CompiledDAGRef` or await on a `CompiledDAGFuture), results
+                corresponding to earlier executions that have not been retrieved
+                yet are buffered.
             overlap_gpu_communication: (experimental) Whether to overlap GPU
                 communication with computation during DAG execution. If True, the
                 communication and computation can be overlapped, which can improve
@@ -851,6 +865,9 @@ class CompiledDAG:
         self._max_inflight_executions = max_inflight_executions
         if self._max_inflight_executions is None:
             self._max_inflight_executions = ctx.max_inflight_executions
+        self._max_buffered_results = max_buffered_results
+        if self._max_buffered_results is None:
+            self._max_buffered_results = ctx.max_buffered_results
         self._dag_id = uuid.uuid4().hex
         self._submit_timeout: Optional[float] = submit_timeout
         if self._submit_timeout is None:
@@ -2145,7 +2162,7 @@ class CompiledDAG:
     def _raise_if_too_many_inflight_executions(self):
         num_inflight_executions = (
             self._execution_index - self._max_finished_execution_index
-        ) + len(self._result_buffer)
+        )
         if num_inflight_executions >= self._max_inflight_executions:
             raise ray.exceptions.RayCgraphCapacityExceeded(
                 "The compiled graph can't have more than "
@@ -2304,6 +2321,16 @@ class CompiledDAG:
         if timeout is None:
             timeout = self._get_timeout
         while self._max_finished_execution_index < execution_index:
+            if len(self._result_buffer) >= self._max_buffered_results:
+                raise RayCgraphCapacityExceeded(
+                    "The compiled graph can't have more than "
+                    f"{self._max_buffered_results} buffered results, and you "
+                    f"currently have {len(self._result_buffer)} buffered results. "
+                    "Call `ray.get()` on CompiledDAGRef's (or await on "
+                    "CompiledDAGFuture's) to retrieve results, or increase "
+                    f"`_max_buffered_results` if buffering is desired, note that "
+                    "this will increase driver memory usage."
+                )
             start_time = time.monotonic()
 
             # Fetch results from each output channel up to execution_index and cache
@@ -3073,6 +3100,7 @@ def build_compiled_dag_from_ray_dag(
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
     max_inflight_executions: Optional[int] = None,
+    max_buffered_results: Optional[int] = None,
     overlap_gpu_communication: Optional[bool] = None,
     default_communicator: Optional[Union[Communicator, str]] = "create",
 ) -> "CompiledDAG":
@@ -3081,6 +3109,7 @@ def build_compiled_dag_from_ray_dag(
         buffer_size_bytes,
         enable_asyncio,
         max_inflight_executions,
+        max_buffered_results,
         overlap_gpu_communication,
         default_communicator,
     )
