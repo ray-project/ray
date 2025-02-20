@@ -32,14 +32,3 @@ Configs
    LoraConfig
 
 
-Deployments
----------------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   VLLMDeploymentImpl
-   LLMModelRouterDeploymentImpl
-
-
