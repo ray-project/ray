@@ -17,6 +17,7 @@
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest_prod.h>
 
+#include <boost/any.hpp>
 #include <queue>
 
 #include "absl/container/flat_hash_map.h"
