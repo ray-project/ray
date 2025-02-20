@@ -1,0 +1,37 @@
+import sys
+import pytest
+
+# skip the test if vllm is installed
+HAS_VLLM = False
+try:
+    import vllm
+
+    HAS_VLLM = True
+except ImportError:
+    pass
+
+
+@pytest.mark.skipif(HAS_VLLM, reason="vllm is installed")
+def test_serve_llm_import_does_not_error():
+    # expected ImportError because of missing
+    # dependencies without ray[llm] dependencies
+    with pytest.raises(ImportError):
+        import ray.serve.llm  # noqa: F401
+    with pytest.raises(ImportError):
+        from ray.serve.llm.configs import (
+            LLMConfig,  # noqa: F401
+        )
+    with pytest.raises(ImportError):
+        from ray.serve.llm.deployments import (
+            VLLMDeploymentImpl,  # noqa: F401
+            LLMModelRouterDeploymentImpl,  # noqa: F401
+        )
+    with pytest.raises(ImportError):
+        from ray.serve.llm.builders import (
+            build_vllm_deployment,  # noqa: F401
+            build_openai_app,  # noqa: F401
+        )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
