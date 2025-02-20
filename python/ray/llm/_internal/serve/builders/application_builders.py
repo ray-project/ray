@@ -10,7 +10,9 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     LLMEngine,
 )
-from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
+from ray.llm._internal.serve.deployments.routers.router import (
+    LLMModelRouterDeploymentImpl,
+)
 
 logger = get_logger(__name__)
 
@@ -62,4 +64,6 @@ def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
 
     llm_deployments = _get_llm_deployments(llm_configs)
 
-    return LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    return LLMModelRouterDeploymentImpl.as_deployment().bind(
+        llm_deployments=llm_deployments
+    )

@@ -9,7 +9,9 @@ from ray.serve.handle import DeploymentHandle
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LoraConfig
-from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
+from ray.llm._internal.serve.deployments.routers.router import (
+    LLMModelRouterDeploymentImpl,
+)
 from ray.llm._internal.serve.configs.server_models import ModelData
 from ray.llm.tests.serve.deployments.fake_image_retriever import FakeImageRetriever
 from ray.llm.tests.serve.deployments.mock_vllm_engine import MockEchoVLLMEngine
@@ -74,7 +76,9 @@ async def test_lora_unavailable_base_model(shutdown_ray_and_serve):
     """Getting the handle for an unavailable model should return a 404."""
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMModelRouterDeploymentImpl.as_deployment().bind(
+        llm_deployments=llm_deployments
+    )
     router_handle = serve.run(router_deployment)
 
     with pytest.raises(HTTPException) as e:
@@ -92,7 +96,9 @@ async def test_lora_get_model(shutdown_ray_and_serve):
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMModelRouterDeploymentImpl.as_deployment().bind(
+        llm_deployments=llm_deployments
+    )
     router_handle = serve.run(router_deployment)
 
     # Case 1: model does not exist.
@@ -119,7 +125,7 @@ async def test_lora_get_model(shutdown_ray_and_serve):
             "max_request_context_length": 4096,
         }
 
-    router_deployment = LLMModelRouterDeployment.bind(
+    router_deployment = LLMModelRouterDeploymentImpl.as_deployment().bind(
         llm_deployments=llm_deployments,
         _get_lora_model_metadata_func=fake_get_lora_model_metadata,
     )
@@ -142,7 +148,9 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMModelRouterDeploymentImpl.as_deployment().bind(
+        llm_deployments=llm_deployments
+    )
     router_handle = serve.run(router_deployment)
 
     models = (await router_handle.models.remote()).data
@@ -208,7 +216,9 @@ async def test_lora_include_adapters_in_list_models(
     app.lora_config = LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path)
 
     llm_deployments = get_mocked_llm_deployments([app])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMModelRouterDeploymentImpl.as_deployment().bind(
+        llm_deployments=llm_deployments
+    )
     router_handle = serve.run(router_deployment)
 
     models = (await router_handle.models.remote()).data

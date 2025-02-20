@@ -59,6 +59,16 @@ class TestModelConfig:
                 generation_config="invalid_config",  # Should be a dictionary, not a string
             )
 
+    def test_deployment_config_extra_forbid(self):
+        """Test that deployment config extra is forbid."""
+        with pytest.raises(
+            pydantic.ValidationError,
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                deployment_config={"extra": "invalid"},
+            )
+
     def test_get_serve_options(self):
         """Test that get_serve_options returns the correct options."""
         serve_options = LLMConfig(
