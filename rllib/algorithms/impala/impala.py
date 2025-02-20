@@ -627,10 +627,6 @@ class IMPALA(Algorithm):
             )
 
             while data_packages_for_aggregators:
-
-                def _func(actor, p):
-                    return actor.get_batch(p)
-
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
@@ -639,7 +635,8 @@ class IMPALA(Algorithm):
                     data_packages_for_aggregators[num_agg:],
                 )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
-                    func=[functools.partial(_func, p=p) for p in packs],
+                    func=["get_batch" for p in packs],#TODO: <- kind of ugly
+                    kwargs=[{"episode_refs": p} for p in packs],
                     tag="batches",
                 )
                 self.metrics.log_value(
