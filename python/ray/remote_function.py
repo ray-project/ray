@@ -29,7 +29,6 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_function,
     _tracing_task_invocation,
 )
-from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +320,8 @@ class RemoteFunction:
         worker.check_connected()
 
         if worker.mode != ray._private.worker.WORKER_MODE and not _core_usage_recorded:
+            from ray._private.usage import usage_lib
+
             _core_usage_recorded = True
             usage_lib.record_library_usage("core")
 
