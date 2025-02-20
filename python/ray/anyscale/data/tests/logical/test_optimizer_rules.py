@@ -421,6 +421,18 @@ def test_projection_select_rename_merge(ray_start_regular_shared):
     }, select_op.cols_rename
 
 
+def test_projection_pushdown_read_rename_columns(ray_start_regular_shared):
+    """Test that select columns on ReadFiles is handled."""
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(
+        path, columns=["sepal.length", "sepal.width"]
+    ).rename_columns({"sepal.length": "length"})
+
+    ds2 = ray.data.read_parquet(path, columns=["sepal.length", "sepal.width"])
+    assert ds.count() == ds2.count()
+    assert sorted(ds.schema().names) == sorted(["length", "sepal.width"])
+
+
 def test_projection_pushdown_rename_conflict(ray_start_regular_shared):
     """Test that renaming the same column to different names raises an error."""
     path = "example://iris.parquet"
