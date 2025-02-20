@@ -144,6 +144,23 @@ class DAGNode(DAGNodeBase):
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
+        """
+        Configure the torch tensor transport for this node.
+
+        Args:
+            transport: "nccl" means that tensors will be passed via NCCL.
+                "auto" (default) means that tensor transport will be
+                automatically determined based on the sender and receiver,
+                either through NCCL or host memory.
+            _static_shape: A hint indicating whether the shape(s) and dtype(s)
+                of tensor(s) contained in this value always remain the same
+                across different executions of the DAG. If this is True, the
+                transport will be more efficient.
+            _direct_return: Whether the tensor is sent directly or inside of
+                other data. If a "nccl" transport is used, this allows the
+                sender and receiver to eliminate performance overhead from
+                an additional data transfer.
+        """
         if transport == "auto":
             self._type_hint = AutoTransportType(
                 _static_shape=_static_shape,
