@@ -22,7 +22,6 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/common/status_or.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
 
@@ -96,11 +95,12 @@ class CoreWorkerMemoryStore {
   /// \return A pair of sets of object IDs. The first set contains the object IDs that
   /// are ready in the core worker memory store (capped to num_objects), and the second
   /// set contains the object IDs are ready in the plasma object store (not capped).
-  StatusOr<std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>> Wait(
-      const absl::flat_hash_set<ObjectID> &object_ids,
-      int num_objects,
-      int64_t timeout_ms,
-      const WorkerContext &ctx);
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+              int num_objects,
+              int64_t timeout_ms,
+              const WorkerContext &ctx,
+              absl::flat_hash_set<ObjectID> *ready,
+              absl::flat_hash_set<ObjectID> *plasma_object_ids);
 
   /// Get an object if it exists.
   ///
