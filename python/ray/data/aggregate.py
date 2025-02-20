@@ -428,14 +428,13 @@ class AbsMax(AggregateFnV2):
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
         min_ = block_accessor.min(self._target_col_name, self._ignore_nulls)
 
-        return max(
-            self._null_safe_abs(max_),
-            self._null_safe_abs(min_),
-        )
+        if _is_null(max_) or _is_null(min_):
+            return None
 
-    @staticmethod
-    def _null_safe_abs(v):
-        return abs(v) if not _is_null(v) else None
+        return max(
+            abs(max_),
+            abs(min_),
+        )
 
 
 @PublicAPI
