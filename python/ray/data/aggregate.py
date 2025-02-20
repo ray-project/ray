@@ -205,7 +205,7 @@ class Count(AggregateFnV2):
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        return BlockAccessor.for_block(block).num_rows()
+        return BlockAccessor.for_block(block).count(self._target_col_name, ignore_nulls=self._ignore_nulls)
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return current_accumulator + new
