@@ -319,6 +319,7 @@ class RemoteFunction:
         worker = ray._private.worker.global_worker
         worker.check_connected()
 
+        global _core_usage_recorded
         if worker.mode != ray._private.worker.WORKER_MODE and not _core_usage_recorded:
             from ray._private.usage import usage_lib
 
