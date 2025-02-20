@@ -184,48 +184,22 @@ class ServeMultiplexConfig(BaseModelExtended):
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
 class DeploymentConfig(BaseModelExtended):
     autoscaling_config: Optional[AutoscalingConfig] = Field(
-        AutoscalingConfig(),
+        default=None,
         description="Configuration for autoscaling the number of workers",
     )
     max_ongoing_requests: Optional[int] = Field(
         None,
         description="Sets the maximum number of queries in flight that are sent to a single replica.",
     )
-    # max_concurrent_queries is the deprecated field
-    # max_ongoing_requests should be used instead
-    max_concurrent_queries: Optional[int] = Field(
-        None,
-        description="This field is deprecated. max_ongoing_requests should be used instead.",
-        exclude=True,
-    )
+    
     ray_actor_options: Optional[Dict[str, Any]] = Field(
         None, description="the Ray actor options to pass into the replica's actor."
     )
     graceful_shutdown_timeout_s: int = Field(
         300,
         description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
-    )  # XXX: hardcoded
+    )
 
-    @model_validator(mode="before")
-    def populate_max_ongoing_requests(cls, values):
-        """Validate and populate the max_ongoing_requests field.
-
-        max_concurrent_queries takes priority because users may have set this value
-        before max_ongoing_requests exists
-
-        """
-        max_ongoing_requests = values.get("max_ongoing_requests", None)
-        max_concurrent_queries = values.get("max_concurrent_queries", None)
-
-        final_value = (
-            max_ongoing_requests
-            or max_concurrent_queries
-            or FALLBACK_MAX_ONGOING_REQUESTS
-        )
-        values["max_ongoing_requests"] = final_value
-        values["max_concurrent_queries"] = final_value
-
-        return values
 
 
 class InputModality(str, Enum):

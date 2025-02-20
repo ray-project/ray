@@ -6,6 +6,7 @@ import ray
 # TODO (genesu): remove dependency on botocore/ aiobotocore.
 from botocore.exceptions import ClientError
 from ray import serve
+
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -234,7 +235,8 @@ def push_telemetry_report_for_all_models(
         use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
-            autoscaling_config = model.deployment_config["autoscaling_config"]
+            from ray.llm._internal.serve.configs.server_models import AutoscalingConfig
+            autoscaling_config = AutoscalingConfig(**model.deployment_config["autoscaling_config"])
             num_replicas = autoscaling_config.initial_replicas
             min_replicas = autoscaling_config.min_replicas
             max_replicas = autoscaling_config.max_replicas
