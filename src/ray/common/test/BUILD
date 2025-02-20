@@ -222,3 +222,17 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "grpc_util_test",
+    size = "small",
+    srcs = [
+        "grpc_util_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:grpc_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_googletest//:gtest_main",
+    ]
+)
