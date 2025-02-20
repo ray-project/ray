@@ -6,15 +6,6 @@ Ray Serve LLM API
 
 
 
-Builders
----------------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   build_vllm_deployment
-   build_openai_app
 
 
 
