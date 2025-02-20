@@ -1,11 +1,14 @@
 # TODO (genesu): clean up these utils.
-from typing import List, Optional, Tuple, Union, Dict
+from typing import List, Optional, Tuple, Union, Dict, Any, Callable, Awaitable
 import os
 
 # TODO (genesu): remove dependency on boto3. Lazy import in the functions.
 import boto3
 import requests
 import subprocess
+import time
+import inspect
+import asyncio
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.configs.server_models import S3AWSCredentials
@@ -537,3 +540,115 @@ def get_aws_credentials(
 
     env = resp.json()
     return env
+
+
+class CloudObjectCache:
+    """A cache that works with both sync and async fetch functions.
+    
+    The purpose of this data structure is to cache the result of a function call
+    usually used to fetch a value from a cloud object store.
+    
+    The idea is this: 
+    - Cloud operations are expensive
+    - In LoRA specifically, we would fetch remote storage to download the model weights 
+    at each request.
+    - If the same model is requested many times, we don't want to inflate the time to first token.
+    - We control the cache via not only the least recently used eviction policy, but also
+    by expiring cache entries after a certain time.
+    - If the object is missing, we cache the missing status for a small duration while if 
+    the object exists, we cache the object for a longer duration.
+    """
+
+    def __init__(
+        self,
+        max_size: int,
+        fetch_fn: Union[Callable[[str], Any], Callable[[str], Awaitable[Any]]],
+        missing_expire_seconds: Optional[int] = None,
+        exists_expire_seconds: Optional[int] = None,
+        missing_object_value: Any = object(),
+    ):
+        """Initialize the cache.
+
+        Args:
+            max_size: Maximum number of items to store in cache
+            fetch_fn: Function to fetch values (can be sync or async)
+            missing_expire_seconds: How long to cache missing objects (None for no expiration)
+            exists_expire_seconds: How long to cache existing objects (None for no expiration)
+        """
+        self._cache: Dict[str, tuple[Any, Optional[float]]] = {}
+        self._max_size = max_size
+        self._fetch_fn = fetch_fn
+        self._missing_expire_seconds = missing_expire_seconds
+        self._exists_expire_seconds = exists_expire_seconds
+        self._is_async = inspect.iscoroutinefunction(fetch_fn)
+        self._missing_object_value = missing_object_value
+
+    async def aget(self, key: str) -> Any:
+        """Async get value from cache or fetch it if needed."""
+        value, should_fetch = self._check_cache(key)
+        if not should_fetch:
+            return value
+            
+        if self._is_async:
+            value = await self._fetch_fn(key)
+        else:
+            # Runs the sync fetch function in a separate thread 
+            # to avoid blocking the main thread.
+            value = await asyncio.to_thread(self._fetch_fn, key)
+            
+        self._update_cache(key, value)
+        return value
+
+    def get(self, key: str) -> Any:
+        """Sync get value from cache or fetch it if needed."""
+        if self._is_async:
+            raise ValueError("Cannot use sync get() with async fetch function")
+            
+        value, should_fetch = self._check_cache(key)
+        if not should_fetch:
+            return value
+            
+        # Fetch new value
+        value = self._fetch_fn(key)
+        self._update_cache(key, value)
+        return value
+
+    def _check_cache(self, key: str) -> tuple[Any, bool]:
+        """Check if key exists in cache and is valid.
+        
+        Returns:
+            Tuple of (value, should_fetch)
+            where should_fetch is True if we need to fetch a new value
+        """
+        now = time.monotonic()
+        
+        if key in self._cache:
+            value, expire_time = self._cache[key]
+            if expire_time is None or now < expire_time:
+                return value, False
+                
+        return None, True
+
+    def _update_cache(self, key: str, value: Any) -> None:
+        """Update cache with new value."""
+        now = time.monotonic()
+        
+        # Calculate expiration
+        expire_time = None
+        if self._missing_expire_seconds is not None or self._exists_expire_seconds is not None:
+            if value is self._missing_object_value:
+                expire_time = now + self._missing_expire_seconds if self._missing_expire_seconds else None
+            else:
+                expire_time = now + self._exists_expire_seconds if self._exists_expire_seconds else None
+            
+        # Enforce size limit by removing oldest entry if needed
+        # This is an O(n) operation but it's fine since the cache size is usually small.
+        if len(self._cache) >= self._max_size:
+            oldest_key = min(self._cache, key=lambda k: self._cache[k][1] or float('inf'))
+            del self._cache[oldest_key]
+            
+        self._cache[key] = (value, expire_time)
+
+
+    def __len__(self) -> int:
+        return len(self._cache)
