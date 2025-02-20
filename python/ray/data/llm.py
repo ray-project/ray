@@ -11,7 +11,18 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class ProcessorConfig(_ProcessorConfig):
-    """The processor configuration."""
+    """The processor configuration.
+
+    Args:
+        batch_size: Configures batch size for the processor. Large batch sizes are
+            likely to saturate the compute resources and could achieve higher throughput.
+            On the other hand, small batch sizes are more fault-tolerant and could
+            reduce bubbles in the data pipeline. You can tune the batch size to balance
+            the throughput and fault-tolerance based on your use case.
+        accelerator_type: The accelerator type used by the LLM stage in a processor.
+            Default to None, meaning that only the CPU will be used.
+        concurrency: The number of workers for data parallelism. Default to 1.
+    """
 
     pass
 
@@ -69,9 +80,17 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
 
     Args:
         model: The model to use for the vLLM engine.
-        engine_kwargs: The kwargs to pass to the vLLM engine.
+        batch_size: The batch size to send to the vLLM engine. Large batch sizes are
+            likely to saturate the compute resources and could achieve higher throughput.
+            On the other hand, small batch sizes are more fault-tolerant and could
+            reduce bubbles in the data pipeline. You can tune the batch size to balance
+            the throughput and fault-tolerance based on your use case.
+        engine_kwargs: The kwargs to pass to the vLLM engine. Default engine kwargs are
+            pipeline_parallel_size: 1, tensor_parallel_size: 1, max_num_seqs: 128,
+            distributed_executor_backend: "mp".
         task_type: The task type to use. If not specified, will use 'generate' by default.
-        runtime_env: The runtime environment to use for the vLLM engine.
+        runtime_env: The runtime environment to use for the vLLM engine. See
+            :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,
             will use the default value from the vLLM engine.
         max_concurrent_batches: The maximum number of concurrent batches in the engine.
@@ -86,6 +105,9 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             If not, vLLM will tokenize the prompt in the engine.
         detokenize: Whether to detokenize the output.
         has_image: Whether the input messages have images.
+        accelerator_type: The accelerator type used by the LLM stage in a processor.
+            Default to None, meaning that only the CPU will be used.
+        concurrency: The number of workers for data parallelism. Default to 1.
 
     Examples:
 
@@ -144,9 +166,13 @@ def build_llm_processor(
         config: The processor config.
         preprocess: An optional lambda function that takes a row (dict) as input
             and returns a preprocessed row (dict). The output row must contain the
-            required fields for the following processing stages.
+            required fields for the following processing stages. Each row
+            can contain a `sampling_params` field which will be used by the
+            engine for row-specific sampling parameters.
+            Note that all columns will be carried over until the postprocess stage.
         postprocess: An optional lambda function that takes a row (dict) as input
-            and returns a postprocessed row (dict).
+            and returns a postprocessed row (dict). To keep all the original columns,
+            you can use the `**row` syntax to return all the original columns.
 
     Returns:
         The built processor.
@@ -184,6 +210,7 @@ def build_llm_processor(
                 ),
                 postprocess=lambda row: dict(
                     resp=row["generated_text"],
+                    **row,  # This will return all the original columns in the dataset.
                 ),
             )
 
