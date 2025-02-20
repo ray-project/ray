@@ -1411,8 +1411,8 @@ def test_groupby_multi_agg_with_nans_v2(
     # Step 2: Aggregate all possible permutations of the partially aggregated
     #         blocks, assert against expected output
     for aggregated_blocks in itertools.permutations(aggregated_sub_blocks):
-        cur = aggregated_sub_blocks[0]
-        for next_ in aggregated_sub_blocks[1:]:
+        cur = aggregated_blocks[0]
+        for next_ in aggregated_blocks[1:]:
             cur, _ = TableBlockAccessor._combine_aggregated_blocks(
                 [cur, next_], group_by_key, aggs, finalize=False
             )
@@ -1429,6 +1429,9 @@ def test_groupby_multi_agg_with_nans_v2(
             raise ValueError(f"Unknown format: {ds_format}")
 
         res = res.sort_values(by="A").reset_index(drop=True)
+
+        print(">>> Result: ", res)
+        print(">>> Expected: ", expected_df)
 
         # NOTE: We currently ignore the underlying schema and assert only
         #       based on values, due to current aggregations implementations
