@@ -69,6 +69,7 @@ class CircularBuffer:
             idx = self._rng.choice(list(self._indices))
             actual_buffer_idx = idx - self._offset + self._NxK
             batch = self._buffer[actual_buffer_idx]
+            assert batch is not None
             self._buffer[actual_buffer_idx] = None
             self._indices.discard(idx)
 

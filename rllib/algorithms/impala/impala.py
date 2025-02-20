@@ -698,8 +698,8 @@ class IMPALA(Algorithm):
                     assert len(batch_ref_or_episode_list_ref) == (
                         self.config.num_learners or 1
                     )
-                    learner_results = self.learner_group.update_from_batch(
-                        batch=batch_ref_or_episode_list_ref,
+                    learner_results = self.learner_group.update(
+                        batch_refs=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
                         timesteps=timesteps,
@@ -708,8 +708,8 @@ class IMPALA(Algorithm):
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 else:
-                    learner_results = self.learner_group.update_from_episodes(
-                        episodes=batch_ref_or_episode_list_ref,
+                    learner_results = self.learner_group.update(
+                        episodes_refs=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
                         timesteps=timesteps,

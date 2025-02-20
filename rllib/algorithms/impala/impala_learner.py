@@ -11,6 +11,7 @@ from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -97,36 +98,51 @@ class IMPALALearner(Learner):
 
         # Create and start the Learner thread.
         self._learner_thread = _LearnerThread(
-            update_method=self._update_from_batch_or_episodes,
+            update_method=Learner.update,
             in_queue=self._learner_thread_in_queue,
             learner=self,
         )
         self._learner_thread.start()
 
     @override(Learner)
-    def update_from_batch(
+    def update(
         self,
-        batch: Any,
+        training_data: TrainingData,
         *,
         timesteps: Dict[str, Any],
         return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
+        """
+
+        Args:
+            batch:
+            timesteps:
+            return_state: Whether to include one of the Learner worker's state from
+                after the update step in the returned results dict (under the
+                `_rl_module_state_after_update` key). Note that after an update, all
+                Learner workers' states should be identical, so we use the first
+                Learner's state here. Useful for avoiding an extra `get_weights()` call,
+                e.g. for synchronizing EnvRunner weights.
+            **kwargs:
+
+        Returns:
+
+        """
         global _CURRENT_GLOBAL_TIMESTEPS
         _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
-        if isinstance(batch, ray.ObjectRef):
-            batch = ray.get(batch)
+        training_data.solve_refs()
 
         if self.config.num_gpus_per_learner > 0:
-            self._gpu_loader_in_queue.put(batch)
+            self._gpu_loader_in_queue.put(training_data.batch)
             self.metrics.log_value(
                 (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
                 self._gpu_loader_in_queue.qsize(),
             )
         else:
             if isinstance(self._learner_thread_in_queue, CircularBuffer):
-                ts_dropped = self._learner_thread_in_queue.add(batch)
+                ts_dropped = self._learner_thread_in_queue.add(training_data.batch)
                 self.metrics.log_value(
                     (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
                     ts_dropped,
@@ -135,14 +151,14 @@ class IMPALALearner(Learner):
             else:
                 # Enqueue to Learner thread's in-queue.
                 _LearnerThread.enqueue(
-                    self._learner_thread_in_queue, batch, self.metrics
+                    self._learner_thread_in_queue, training_data.batch, self.metrics
                 )
 
-        # TODO (sven): Find a better way to limit the number of (mostly) unnecessary
-        #  metrics reduces.
         result = {}
         with self._num_updates_lock:
             count = self._num_updates
+        # TODO (sven): Find a better way to limit the number of (mostly unnecessary)
+        #  metrics reduces.
         if count >= 20:
             with self._num_updates_lock:
                 self._num_updates = 0
@@ -170,13 +186,8 @@ class IMPALALearner(Learner):
     def update_from_episodes(
         self,
         episodes: Any,
-        *,
-        timesteps: Dict[str, Any],
         **kwargs,
     ) -> ResultDict:
-        global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
-
         if isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
             try:
                 episodes = tree.flatten(ray.get(episodes))
@@ -214,59 +225,6 @@ class IMPALALearner(Learner):
 
         return self.update_from_batch(
             batch=batch,
-            timesteps=timesteps,
-            **kwargs,
-        )
-
-    @override(Learner)
-    def update_from_episodes(
-        self,
-        episodes: Any,
-        *,
-        timesteps: Dict[str, Any],
-        **kwargs,
-    ) -> ResultDict:
-        global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
-
-        if isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
-            try:
-                episodes = tree.flatten(ray.get(episodes))
-            except ray.exceptions.OwnerDiedError:
-                episode_refs = episodes
-                episodes = []
-                for ref in episode_refs:
-                    try:
-                        episodes.extend(ray.get(ref))
-                    except ray.exceptions.OwnerDiedError:
-                        pass
-
-        # Call the learner connector pipeline.
-        shared_data = {}
-        batch = self._learner_connector(
-            rl_module=self.module,
-            batch={},
-            episodes=episodes,
-            shared_data=shared_data,
-            metrics=self.metrics,
-        )
-        # Convert to a batch.
-        # TODO (sven): Try to not require MultiAgentBatch anymore.
-        batch = MultiAgentBatch(
-            {
-                module_id: (
-                    SampleBatch(module_data, _zero_padded=True)
-                    if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                    else SampleBatch(module_data)
-                )
-                for module_id, module_data in batch.items()
-            },
-            env_steps=sum(len(e) for e in episodes),
-        )
-
-        return self.update_from_batch(
-            batch=batch,
-            timesteps=timesteps,
             **kwargs,
         )
 
@@ -391,6 +349,7 @@ class _LearnerThread(threading.Thread):
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
             self._update_method(
+                self=self.learner,
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )

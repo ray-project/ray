@@ -202,6 +202,7 @@ class LearnerGroup(Checkpointable):
     def update(
         self,
         *,
+        batch: Optional[MultiAgentBatch] = None,
         batches: Optional[List[MultiAgentBatch]] = None,
         batch_refs: Optional[List[ray.ObjectRef]] = None,
         episodes: Optional[List[EpisodeType]] = None,
@@ -265,74 +266,59 @@ class LearnerGroup(Checkpointable):
             call to async_update that is ready.
         """
         # Create and validate TrainingData object, if not already provided.
-        training_data = TrainingData(
-            batch=batch,
-            batches=batches,
-            batch_refs=batch_refs,
-            episodes=episodes,
-            episodes_refs=episodes_refs,
-            data_iterator=data_iterator,
-        )
+        if training_data is None:
+            training_data = TrainingData(
+                batch=batch,
+                batches=batches,
+                batch_refs=batch_refs,
+                episodes=episodes,
+                episodes_refs=episodes_refs,
+                data_iterator=data_iterator,
+            )
         training_data.validate()
 
         # Define function to be called on all Learner actors (or the local learner).
-        def _learner_update(
-            _learner: Learner,
-            *,
-            _batch_shard=None,
-            _episodes_shard=None,
-            _timesteps=None,
-            _return_state=False,
-            _num_total_minibatches=0,
-            **_kwargs,
-        ):
-            # If the batch shard is an `DataIterator` we have an offline
-            # multi-learner setup and `update_from_iterator` needs to
-            # handle updating.
-            if isinstance(_batch_shard, ray.data.DataIterator):
-                result = _learner.update_from_iterator(
-                    iterator=_batch_shard,
-                    timesteps=_timesteps,
-                    minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    **_kwargs,
-                )
-            elif _batch_shard is not None:
-                result = _learner.update_from_batch(
-                    batch=_batch_shard,
-                    timesteps=_timesteps,
-                    num_epochs=num_epochs,
-                    minibatch_size=minibatch_size,
-                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-                    **_kwargs,
-                )
-            else:
-                result = _learner.update_from_episodes(
-                    episodes=_episodes_shard,
-                    timesteps=_timesteps,
-                    num_epochs=num_epochs,
-                    minibatch_size=minibatch_size,
-                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-                    num_total_minibatches=_num_total_minibatches,
-                    **_kwargs,
-                )
-            if _return_state:
-                learner_state = _learner.get_state(
-                    # Only return the state of those RLModules that actually
-                    # returned results and thus got probably updated.
-                    components=[
-                        COMPONENT_RL_MODULE + "/" + mid
-                        for mid in _learner.module.keys()
-                        if _learner.should_module_be_updated(mid)
-                    ],
-                    inference_only=True,
-                )
-                learner_state[COMPONENT_RL_MODULE] = ray.put(
-                    learner_state[COMPONENT_RL_MODULE]
-                )
-                result["_rl_module_state_after_update"] = learner_state
-
-            return result
+        #def _learner_update(
+        #    _learner: Learner,
+        #    *,
+        #    _batch_shard=None,
+        #    _episodes_shard=None,
+        #    _timesteps=None,
+        #    _return_state,
+        #    _num_total_minibatches=0,
+        #    **_kwargs,
+        #):
+        #    # If the batch shard is an `DataIterator` we have an offline
+        #    # multi-learner setup and `update_from_iterator` needs to
+        #    # handle updating.
+        #    if isinstance(_batch_shard, ray.data.DataIterator):
+        #        result = _learner.update_from_iterator(
+        #            iterator=_batch_shard,
+        #            timesteps=_timesteps,
+        #            minibatch_size=minibatch_size,
+        #            num_iters=num_iters,
+        #            **_kwargs,
+        #        )
+        #    elif _batch_shard is not None:
+        #        result = _learner.update_from_batch(
+        #            batch=_batch_shard,
+        #            timesteps=_timesteps,
+        #            num_epochs=num_epochs,
+        #            minibatch_size=minibatch_size,
+        #            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+        #            **_kwargs,
+        #        )
+        #    else:
+        #        result = _learner.update_from_episodes(
+        #            episodes=_episodes_shard,
+        #            timesteps=_timesteps,
+        #            num_epochs=num_epochs,
+        #            minibatch_size=minibatch_size,
+        #            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+        #            num_total_minibatches=_num_total_minibatches,
+        #            **_kwargs,
+        #        )
+        #    return result
 
         # Local Learner instance.
         if self.is_local:
@@ -369,92 +355,92 @@ class LearnerGroup(Checkpointable):
         #  "lockstep"), the `ShardBatchIterator` should not be used.
         #  Then again, we might move into a world where Learner always
         #  receives Episodes, never batches.
-        if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
-            partials = [
-                partial(
-                    _learner_update,
-                    _batch_shard=iterator,
-                    _return_state=(return_state and i == 0),
-                    _timesteps=timesteps,
-                    **kwargs,
-                )
-                # Note, `OfflineData` defines exactly as many iterators as there
-                # are learners.
-                for i, iterator in enumerate(batch)
-            ]
-        elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
-            pass
-
-        elif batch is not None:
-            partials = [
-                partial(
-                    _learner_update,
-                    _batch_shard=batch_shard,
-                    _return_state=(return_state and i == 0),
-                    _timesteps=timesteps,
-                    **kwargs,
-                )
-                for i, batch_shard in enumerate(
-                    ShardBatchIterator(batch, len(self))
-                )
-            ]
-        elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
-            partials = [
-                partial(
-                    _learner_update,
-                    _episodes_shard=episodes_shard,
-                    _timesteps=timesteps,
-                    _return_state=(return_state and i == 0),
-                    **kwargs,
-                )
-                for i, episodes_shard in enumerate(
-                    ShardObjectRefIterator(episodes, len(self))
-                )
-            ]
-        # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
-        # in case of multi-agent).
-        else:
-            from ray.data.iterator import DataIterator
-
-            if isinstance(episodes[0], DataIterator):
-                num_total_minibatches = 0
-                partials = [
-                    partial(
-                        _learner_update,
-                        _episodes_shard=episodes_shard,
-                        _timesteps=timesteps,
-                        _num_total_minibatches=num_total_minibatches,
-                    )
-                    for episodes_shard in episodes
-                ]
-            else:
-                eps_shards = list(
-                    ShardEpisodesIterator(
-                        episodes,
-                        len(self),
-                        len_lookback_buffer=self.config.episode_lookback_horizon,
-                    )
-                )
-                # In the multi-agent case AND `minibatch_size` AND num_workers
-                # > 1, we compute a max iteration counter such that the different
-                # Learners will not go through a different number of iterations.
-                num_total_minibatches = 0
-                if minibatch_size and len(self) > 1:
-                    num_total_minibatches = self._compute_num_total_minibatches(
-                        episodes,
-                        len(self),
-                        minibatch_size,
-                        num_epochs,
-                    )
-                partials = [
-                    partial(
-                        _learner_update,
-                        _episodes_shard=eps_shard,
-                        _timesteps=timesteps,
-                        _num_total_minibatches=num_total_minibatches,
-                    )
-                    for eps_shard in eps_shards
-                ]
+        #if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
+        #    partials = [
+        #        partial(
+        #            _learner_update,
+        #            _batch_shard=iterator,
+        #            _return_state=(return_state and i == 0),
+        #            _timesteps=timesteps,
+        #            **kwargs,
+        #        )
+        #        # Note, `OfflineData` defines exactly as many iterators as there
+        #        # are learners.
+        #        for i, iterator in enumerate(batch)
+        #    ]
+        #elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
+        #    pass
+        #
+        #elif batch is not None:
+        #    partials = [
+        #        partial(
+        #            _learner_update,
+        #            _batch_shard=batch_shard,
+        #            _return_state=(return_state and i == 0),
+        #            _timesteps=timesteps,
+        #            **kwargs,
+        #        )
+        #        for i, batch_shard in enumerate(
+        #            ShardBatchIterator(batch, len(self))
+        #        )
+        #    ]
+        #elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
+        #    partials = [
+        #        partial(
+        #            _learner_update,
+        #            _episodes_shard=episodes_shard,
+        #            _timesteps=timesteps,
+        #            _return_state=(return_state and i == 0),
+        #            **kwargs,
+        #        )
+        #        for i, episodes_shard in enumerate(
+        #            ShardObjectRefIterator(episodes, len(self))
+        #        )
+        #    ]
+        ## Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
+        ## in case of multi-agent).
+        #else:
+        #    from ray.data.iterator import DataIterator
+        #
+        #    if isinstance(episodes[0], DataIterator):
+        #        num_total_minibatches = 0
+        #        partials = [
+        #            partial(
+        #                _learner_update,
+        #                _episodes_shard=episodes_shard,
+        #                _timesteps=timesteps,
+        #                _num_total_minibatches=num_total_minibatches,
+        #            )
+        #            for episodes_shard in episodes
+        #        ]
+        #    else:
+        #        eps_shards = list(
+        #            ShardEpisodesIterator(
+        #                episodes,
+        #                len(self),
+        #                len_lookback_buffer=self.config.episode_lookback_horizon,
+        #            )
+        #        )
+        #        # In the multi-agent case AND `minibatch_size` AND num_workers
+        #        # > 1, we compute a max iteration counter such that the different
+        #        # Learners will not go through a different number of iterations.
+        #        num_total_minibatches = 0
+        #        if minibatch_size and len(self) > 1:
+        #            num_total_minibatches = self._compute_num_total_minibatches(
+        #                episodes,
+        #                len(self),
+        #                minibatch_size,
+        #                num_epochs,
+        #            )
+        #        partials = [
+        #            partial(
+        #                _learner_update,
+        #                _episodes_shard=eps_shard,
+        #                _timesteps=timesteps,
+        #                _num_total_minibatches=num_total_minibatches,
+        #            )
+        #            for eps_shard in eps_shards
+        #        ]
 
         if async_update:
             # Retrieve all ready results (kicked off by prior calls to this method).
@@ -470,9 +456,10 @@ class LearnerGroup(Checkpointable):
                     dict(
                         training_data=td_shard,
                         timesteps=timesteps,
-                        return_state=(return_state and i == 0)
+                        return_state=(return_state and i == 0),
+                        **kwargs,
                     )
-                    for i, td_shard in enumerate(training_data.shard(num_shards=self._workers))
+                    for i, td_shard in enumerate(training_data.shard(num_shards=len(self)))
                 ],
             )
 
@@ -812,26 +799,6 @@ class LearnerGroup(Checkpointable):
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
-
-    def _local_update(
-        self,
-        *,
-        batch,
-        batches,
-        episodes,
-        batch_refs,
-        episode_refs,
-        data_iterator,
-        **kwargs,
-    ):
-        # Solve ray references, if necessary.
-        if batch_refs is not None:
-            assert len(batch_refs) == 1
-            batch = ray.get(batch_refs[0])
-        elif episode_refs is not None:
-            assert len(episode_refs) == 1
-            episodes = ray.get(episode_refs[0])
-
 
     @staticmethod
     def _compute_num_total_minibatches(
