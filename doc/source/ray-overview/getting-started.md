@@ -625,7 +625,7 @@ Learn more about launching Ray Clusters on Kubernetes
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Anyscale 
 :animate: fade-in-slide-down
 
-Anyscale is the company behind Ray. The Anyscale Platform provides an enterprise-grade Ray deployment on top of your AWS, GCP, Azure, or on-prem Kubernetes clusters.
+Anyscale is the company behind Ray. The Anyscale platform provides an enterprise-grade Ray deployment on top of your AWS, GCP, Azure, or on-prem Kubernetes clusters.
 
 ```{button-link} https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-launch-ray-cluster
 :color: primary
