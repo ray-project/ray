@@ -297,7 +297,10 @@ class TestDAGRefDestruction:
             result = await futs[0]
             assert result == i
 
-        loop.run_until_complete(asyncio.gather(*[main(i) for i in range(12)]))
+        loop.run_until_complete(asyncio.gather(*[main(i) for i in range(5)]))
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
