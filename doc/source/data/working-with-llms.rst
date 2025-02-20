@@ -19,10 +19,19 @@ Perform batch inference with LLMs
 At a high level, the `ray.data.llm` module provides a `Processor` object which encapsulates
 logic for performing batch inference with LLMs on a Ray Data dataset.
 
-You can use the `build_llm_processor` API to construct a processor. In the following example, we use the `vLLMEngineProcessorConfig` to construct a processor for the `meta-llama/Llama-3.1-8B-Instruct` model.
+You can use the `build_llm_processor` API to construct a processor.
+The following example uses the `vLLMEngineProcessorConfig` to construct a processor for the `unsloth/Llama-3.1-8B-Instruct` model.
 
-The vLLMEngineProcessorConfig is a configuration object for the vLLM engine.
-It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations. Upon execution, the Processor object instantiates replicas of the vLLM engine (using `map_batches` under the hood).
+To run this example, install vLLM, which is a popular and optimized LLM inference engine.
+
+.. testcode::
+
+    # Later versions *should* work but are not tested yet.
+    pip install -U vllm==0.7.2
+
+The `vLLMEngineProcessorConfig`` is a configuration object for the vLLM engine.
+It contains the model name, the number of GPUs to use, and the number of shards to use, along with other vLLM engine configurations.
+Upon execution, the Processor object instantiates replicas of the vLLM engine (using `map_batches` under the hood).
 
 .. testcode::
 
@@ -53,7 +62,8 @@ It contains the model name, the number of GPUs to use, and the number of shards 
             )
         ),
         postprocess=lambda row: dict(
-            answer=row["generated_text"]
+            answer=row["generated_text"],
+            **row  # This will return all the original columns in the dataset.
         ),
     )
 
@@ -67,6 +77,17 @@ It contains the model name, the number of GPUs to use, and the number of shards 
 
     {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
 
+Some models may require a Hugging Face token to be specified. You can specify the token in the `runtime_env` argument.
+
+.. testcode::
+
+    config = vLLMEngineProcessorConfig(
+        model="unsloth/Llama-3.1-8B-Instruct",
+        runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
+        concurrency=1,
+        batch_size=64,
+    )
+
 .. _vllm_llm:
 
 Configure vLLM for LLM inference
@@ -78,7 +99,7 @@ Use the `vLLMEngineProcessorConfig` to configure the vLLM engine.
 
     from ray.data.llm import vLLMEngineProcessorConfig
 
-    processor_config = vLLMEngineProcessorConfig(
+    config = vLLMEngineProcessorConfig(
         model="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={"max_model_len": 20000},
         concurrency=1,
@@ -89,7 +110,7 @@ For handling larger models, specify model parallelism.
 
 .. testcode::
 
-    processor_config = vLLMEngineProcessorConfig(
+    config = vLLMEngineProcessorConfig(
         model="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
             "max_model_len": 16384,
@@ -106,11 +127,21 @@ The underlying `Processor` object instantiates replicas of the vLLM engine and a
 configure parallel workers to handle model parallelism (for tensor parallelism and pipeline parallelism,
 if specified).
 
+To optimize model loading, you can configure the `load_format` to `runai_streamer` or `tensorizer`:
+
+.. testcode::
+
+    config = vLLMEngineProcessorConfig(
+        model="unsloth/Llama-3.1-8B-Instruct",
+        engine_kwargs={"load_format": "runai_streamer"},
+        concurrency=1,
+        batch_size=64,
+    )
 
 .. _openai_compatible_api_endpoint:
 
-OpenAI Compatible API Endpoint
-------------------------------
+Batch inference with an OpenAI-compatible endpoint
+--------------------------------------------------
 
 You can also make calls to deployed models that have an OpenAI compatible API endpoint.
 
