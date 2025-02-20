@@ -49,11 +49,6 @@ To understand the following content better, you should understand the difference
   * `metadata` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the `--metadata-json` option.
   * `entrypointNumCpus` / `entrypointNumGpus` / `entrypointResources` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details.
   * `backoffLimit` (Optional, added in version 1.2.0): Specifies the number of retries before marking this RayJob failed. Each retry creates a new RayCluster. The default value is 0.
-  * `suspend` (Optional): Specifies whether the RayJob controller should create a RayCluster instance.
-    If a job is applied with the suspend field set to true,
-	the RayCluster will not be created and will wait for the transition to false.
-	If the RayCluster is already created, it will be deleted.
-	In case of transition to false a new RayCluster will be created.
 * Submission configuration
   * `submissionMode` (Optional): `submissionMode` specifies how RayJob submits the Ray job to the RayCluster. In "K8sJobMode", the KubeRay operator creates a submitter Kubernetes Job to submit the Ray job. In "HTTPMode", the KubeRay operator sends a request to the RayCluster to create a Ray job. The default value is "K8sJobMode".
   * `submitterPodTemplate` (Optional): Defines the Pod template for the submitter Kubernetes Job. This field is only effective when `submissionMode` is "K8sJobMode".
@@ -68,7 +63,8 @@ To understand the following content better, you should understand the difference
   * `ttlSecondsAfterFinished` (Optional): Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
   * `activeDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Complete` or `Failed` within `activeDeadlineSeconds`, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed`, citing `DeadlineExceeded` as the reason.
   * `DELETE_RAYJOB_CR_AFTER_JOB_FINISHES` (Optional, added in version 1.2.0): Set this environment variable for the KubeRay operator, not the RayJob resource. If you set this environment variable to true, the RayJob custom resource itself is deleted if you also set `shutdownAfterJobFinishes` to true. Note that KubeRay deletes all resources created by the RayJob, including the Kubernetes Job.
-
+* Others
+  * `suspend` (Optional): If `suspend` is true, KubeRay deletes both the RayCluster and the submitter. Note that Kueue also implements scheduling strategies by mutating this field. Avoid manually updating this field if you use Kueue to schedule RayJob.
 ## Example: Run a simple Ray job with RayJob
 
 ## Step 1: Create a Kubernetes cluster with Kind
