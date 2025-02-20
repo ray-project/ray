@@ -511,26 +511,21 @@ class EnvRunnerGroup:
             if config.update_worker_filter_stats:
                 self.local_env_runner.set_state(env_runner_states)
 
-            # Do send all model weights to all remote EnvRunners.
+            # Send the model weights only to remote EnvRunners.
+            # In case the local EnvRunner is ever needed for evaluation,
+            # RLlib updates its weight right before such an eval step.
             if rl_module_state:
                 env_runner_states.update(rl_module_state)
 
-            # Put the state dictionary into Ray's object store to avoid having to make n
-            # pickled copies of the state dict.
-            ref_env_runner_states = ray.put(env_runner_states)
-
-            #def _update(_env_runner: EnvRunner) -> None:
-            #    _env_runner.set_state(ray.get(ref_env_runner_states))
-
             # Broadcast updated states back to all workers.
             self.foreach_env_runner(
-                "set_state",
+                "set_state",  # Call the `set_state()` remote method.
                 kwargs=dict(state=env_runner_states),
                 remote_worker_ids=env_runner_indices_to_update,
                 local_env_runner=False,
                 timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
-            
+
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
