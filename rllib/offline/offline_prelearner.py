@@ -1,6 +1,7 @@
 import gymnasium as gym
 import logging
 import numpy as np
+import tree
 import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
@@ -212,7 +213,7 @@ class OfflinePreLearner:
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                to_numpy=True,
+                to_numpy=False,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
@@ -255,27 +256,12 @@ class OfflinePreLearner:
             #  LearnerConnector pipeline.
             metrics=None,
         )
-        # Convert to `MultiAgentBatch`.
-        batch = MultiAgentBatch(
-            {
-                module_id: SampleBatch(module_data)
-                for module_id, module_data in batch.items()
-            },
-            # TODO (simon): This can be run once for the batch and the
-            # metrics, but we run it twice: here and later in the learner.
-            env_steps=sum(e.env_steps() for e in episodes),
-        )
         # Remove all data from modules that should not be trained. We do
-        # not want to pass around more data than necessaty.
-        for module_id in list(batch.policy_batches.keys()):
+        # not want to pass around more data than necessary.
+        for module_id in batch:
             if not self._should_module_be_updated(module_id, batch):
-                del batch.policy_batches[module_id]
+                del batch[module_id]
 
-        # TODO (simon): Log steps trained for metrics (how?). At best in learner
-        # and not here. But we could precompute metrics here and pass it to the learner
-        # for logging. Like this we do not have to pass around episode lists.
-
-        # TODO (simon): episodes are only needed for logging here.
         return {"batch": [batch]}
 
     @property
@@ -638,3 +624,27 @@ class OfflinePreLearner:
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
+
+    @staticmethod
+    def flatten_dict(nested, sep="/", env_steps=0):
+        """
+        Flattens a nested dict into a flat dict with joined keys.
+
+        Note, this is used to return a `Dict[str, numpy.ndarray] from the
+        `__call__` method which is expected by Ray Data.
+
+        Args:
+            nested: A nested dictionary.
+            sep: Separator to use when joining keys.
+
+        Returns:
+            A flat dictionary where each key is a path of keys in the nested dict.
+        """
+        flat = {}
+        # dm_tree.flatten_with_path returns a list of (path, leaf) tuples.
+        for path, leaf in tree.flatten_with_path(nested):
+            # Create a single string key from the path.
+            key = sep.join(str(p) for p in path)
+            flat[key] = leaf
+
+        return flat

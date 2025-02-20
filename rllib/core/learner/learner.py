@@ -731,7 +731,13 @@ class Learner(Checkpointable):
         """
 
     @abc.abstractmethod
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
+    def _convert_batch_type(
+        self,
+        batch: MultiAgentBatch,
+        to_device: bool = False,
+        pin_memory: bool = False,
+        use_stream: bool = False,
+    ) -> MultiAgentBatch:
         """Converts the elements of a MultiAgentBatch to Tensors on the correct device.
 
         Args:
@@ -1119,11 +1125,45 @@ class Learner(Checkpointable):
         # preparations-, logging-, and update logic to happen.
         self.before_gradient_based_update(timesteps=timesteps or {})
 
-        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
-            # Note, the incoming batch is a dictionary with a numpy array
-            # holding the `MultiAgentBatch`.
-            batch = self._convert_batch_type(batch["batch"][0])
-            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
+        def unflatten_dict(flat, sep="/"):
+            """
+            Reconstructs a nested dict from a flat dict with joined keys.
+
+            Args:
+                flat: A flat dictionary with keys that are paths joined by `sep`.
+                sep: The separator used in the flat dictionary keys.
+
+            Returns:
+                A nested dictionary.
+            """
+            nested = {}
+            env_steps = 0
+            for compound_key, value in flat.items():
+                if env_steps == 0:
+                    env_steps = value.shape[0]
+                keys = compound_key.split(sep)
+                current = nested
+                for key in keys[:-1]:
+                    if key not in current:
+                        current[key] = {}
+                    current = current[key]
+                current[keys[-1]] = value
+
+            return MultiAgentBatch(
+                {
+                    module_id: SampleBatch(module_data)
+                    for module_id, module_data in nested.items()
+                },
+                env_steps=env_steps,
+            )
+
+        def _collate_fn(batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
+            batch = self.unflatten_dict(batch)
+            batch = self._convert_batch_type(batch, to_device=False)
+            return self._set_slicing_by_batch_id(batch, value=True)
+
+        def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
+            return self._convert_batch_type(batch, to_device=True, use_stream=True)
 
         i = 0
         logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
@@ -1131,7 +1171,8 @@ class Learner(Checkpointable):
             for batch in self.iterator.iter_batches(
                 # Note, this needs to be one b/c data is already mapped to
                 # `MultiAgentBatch`es of `minibatch_size`.
-                batch_size=1,
+                batch_size=minibatch_size,
+                _collate_fn=_collate_fn,
                 _finalize_fn=_finalize_fn,
                 **kwargs,
             ):
@@ -1139,8 +1180,7 @@ class Learner(Checkpointable):
                 # Update the iteration counter.
                 i += 1
 
-                # Note, `_finalize_fn`  must return a dictionary.
-                batch = batch["batch"]
+                # Note, `_finalize_fn`  must return a MultiAgentBatch.
                 logger.debug(
                     f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
                 )

@@ -160,8 +160,8 @@ tune.register_env("WrappedALE/Pong-v5", _env_creator)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 parser = add_rllib_example_script_args(
-    default_reward=float("inf"),
-    default_timesteps=3000000,
+    default_reward=21.0,
+    default_timesteps=3000000000,
     default_iters=100000000000,
 )
 args = parser.parse_args()
@@ -213,6 +213,7 @@ def default_logger_creator(config):
     timestr = time.strftime("%Y-%m-%d_%H:%M:%S")
     return UnifiedLogger(
         config,
+        # TODO (simon): Change to a default one.
         f"/home/ray/default/repos/ray_results/single_learner_gpu_all_data_{timestr}",
         loggers=None,
     )
@@ -239,8 +240,6 @@ config = (
     )
     .learners(
         num_learners=args.num_learners,
-        # if args.num_learners and args.num_learners > 1
-        # else 0,
         num_gpus_per_learner=args.num_gpus_per_learner,
     )
     # Note, the `input_` argument is the major argument for the
@@ -268,19 +267,17 @@ config = (
         # Increase the parallelism in transforming batches, such that while
         # training, new batches are transformed while others are used in updating.
         map_batches_kwargs={
-            "concurrency": 24,
+            "concurrency": 40,
             "num_cpus": 1,
         },
         # When iterating over batches in the dataset, prefetch at least 4
         # batches per learner.
         iter_batches_kwargs={
-            "prefetch_batches": 4,
+            "prefetch_batches": 10,
         },
         # Iterate over 10 batches per RLlib iteration if multiple learners
         # are used.
-        dataset_num_iters_per_learner=100,
-        # if args.num_learners and args.num_learners > 1
-        # else 1,
+        dataset_num_iters_per_learner=200,
     )
     .training(
         # To increase learning speed with multiple learners,
@@ -291,7 +288,6 @@ config = (
             (args.num_learners if args.num_learners and args.num_learners > 1 else 1)
             ** 0.5,
         ),
-        bc_logstd_coeff=0.2,
         train_batch_size_per_learner=2048,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,
@@ -314,8 +310,8 @@ config = (
 # Stop, if either the maximum point in Pong is reached (21.0) or 10 million steps
 # were trained.
 stop = {
-    f"{EVALUATION_RESULTS} / {ENV_RUNNER_RESULTS} / {EPISODE_RETURN_MEAN}": 21.0,
-    f"{LEARNER_RESULTS} / {ALL_MODULES} / {NUM_ENV_STEPS_TRAINED_LIFETIME}": 10e6,
+    f"{EVALUATION_RESULTS} / {ENV_RUNNER_RESULTS} / {EPISODE_RETURN_MEAN}": args.stop_reward,
+    f"{LEARNER_RESULTS} / {ALL_MODULES} / {NUM_ENV_STEPS_TRAINED_LIFETIME}": args.stop_timesteps,
 }
 
 # Build the algorithm.
@@ -338,7 +334,7 @@ if args.wandb_key:
 
 i = 0
 while True:
-    print("-----------------------------------------")
+    print("---------------------------------------------------------------")
     print(f"Iteration {i + 1}")
     results = algo.train()
     print(results)
@@ -352,3 +348,14 @@ while True:
             algo.cleanup()
             break
     i += 1
+
+print("------------------------------------------------")
+print()
+print("Training finished:\n")
+print(
+    f"Mean Episode Return in Evaluation: {results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
+)
+print(
+    f"Number of Environment Steps trained: {results[LEARNER_RESULTS][ALL_MODULES][NUM_ENV_STEPS_TRAINED_LIFETIME]}"
+)
+print("================================================")
