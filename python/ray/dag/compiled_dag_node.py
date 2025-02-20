@@ -2245,7 +2245,6 @@ class CompiledDAG:
                     key=lambda kv: kv[0],
                 )
             ]
-            assert execution_index not in self._result_buffer
         else:
             result = [self._result_buffer[execution_index].pop(channel_index)]
 
@@ -2300,9 +2299,9 @@ class CompiledDAG:
         if not should_release:
             return False
 
-        self._result_buffer.pop(execution_index, set())
-        self._destructed_ref_idxs.pop(execution_index, set())
-        self._got_ref_idxs.pop(execution_index, set())
+        self._result_buffer.pop(execution_index, None)
+        self._destructed_ref_idxs.pop(execution_index, None)
+        self._got_ref_idxs.pop(execution_index, None)
         return True
 
     def _try_release_native_buffer(
@@ -2461,10 +2460,6 @@ class CompiledDAG:
                 if not self._try_release_native_buffer(
                     self._max_finished_execution_index + 1, timeout
                 ):
-                    logger.info(
-                        f"getting results for execution index {self._max_finished_execution_index + 1}",
-                        stack_info=False,
-                    )
                     result = self._dag_output_fetcher.read(timeout)
                     self._cache_execution_results(
                         self._max_finished_execution_index + 1,
