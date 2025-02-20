@@ -4,19 +4,21 @@ import pyarrow
 import pytest
 
 from pyarrow import compute as pac
-from ray.data.aggregate import Min, Max, Sum, Mean, Std, Quantile
+from ray.data.aggregate import Min, Max, Sum, Mean, Std, Quantile, AbsMax, Unique
 from ray.data._internal.util import is_nan
 
 
 @pytest.mark.parametrize(
     "agg_cls,pac_method",
     [
-        (Min, pac.min),
-        (Max, pac.max),
-        (Sum, pac.sum),
-        (Mean, pac.mean),
-        (Std, lambda col, **kwargs: pac.stddev(col, ddof=1, **kwargs)),
-        (Quantile, lambda col, **kwargs: pac.quantile(col, q=0.5, **kwargs)[0]),
+        (Min, lambda col, **kwargs: pac.min(col, **kwargs).as_py()),
+        (Max, lambda col, **kwargs: pac.max(col, **kwargs).as_py()),
+        (Sum, lambda col, **kwargs: pac.sum(col, **kwargs).as_py()),
+        (Mean, lambda col, **kwargs: pac.mean(col, **kwargs).as_py()),
+        (Std, lambda col, **kwargs: pac.stddev(col, ddof=1, **kwargs).as_py()),
+        (Quantile, lambda col, **kwargs: pac.quantile(col, q=0.5, **kwargs)[0].as_py()),
+        (AbsMax, lambda col, **kwargs: pac.max(pac.abs(col), **kwargs).as_py()),
+        (Unique, lambda col, **kwargs: set(pac.unique(col).to_pylist())),
     ],
 )
 @pytest.mark.parametrize("ignore_nulls", [True, False])
@@ -28,9 +30,13 @@ def test_null_safe_aggregation_protocol(agg_cls, pac_method, ignore_nulls):
     col = pyarrow.array([0, 1, 2, None])
     t = pyarrow.table([col], names=["A"])
 
-    expected = pac_method(col, skip_nulls=ignore_nulls).as_py()
+    expected = pac_method(col, skip_nulls=ignore_nulls)
 
-    agg = agg_cls(on="A", ignore_nulls=ignore_nulls)
+    agg_kwargs = {} if agg_cls is Unique else {
+        "ignore_nulls": ignore_nulls
+    }
+
+    agg = agg_cls(on="A", **agg_kwargs)
 
     # Step 1: Initialize accumulator
     init_val = agg.init(None)
