@@ -161,8 +161,7 @@ comes down to _two types_ of documents:
   [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.rst) or
   [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in
-  the browser like `.md` or `.rst` files, but have the added benefit of adding launch buttons to the top of the
-  document, so that users can run the code themselves in either Binder or Google Colab.
+  the browser like `.md` or `.rst` files, but have the added benefit that users can easily run the code themselves.
 
 ## Fixing typos and improving explanations
 
