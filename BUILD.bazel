@@ -2141,6 +2141,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
+        "//src/ray/util:process",
         "@com_google_googletest//:gtest_main",
     ],
 )

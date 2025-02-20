@@ -14,9 +14,13 @@
 
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
+#include <gtest/gtest.h>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/common/test_util.h"
 
 namespace ray {
