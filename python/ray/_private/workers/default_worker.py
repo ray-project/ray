@@ -298,7 +298,8 @@ if __name__ == "__main__":
     worker.set_err_file(err_filepath)
 
     # Disable file offset fetch if rotation enabled (since file offset doesn't make sense for rotated files).
-    if os.getenv("RAY_ROTATION_MAX_BYTES", None):
+    rotation_max_bytes = os.getenv("RAY_ROTATION_MAX_BYTES", None)
+    if not rotation_max_bytes and int(rotation_max_bytes) > 0:
         worker.set_file_rotation_enabled(True)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
