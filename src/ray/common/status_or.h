@@ -277,7 +277,7 @@ class StatusOr {
   //
   // `data_` is effective iff `ok() == true`.
   union {
-    T data_;
+    T data_{};
   };
 };
 
