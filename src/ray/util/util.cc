@@ -212,12 +212,6 @@ void QuickExit() {
   _Exit(1);
 }
 
-std::string FormatFloat(float value, int32_t precision) {
-  std::stringstream ss;
-  ss << std::fixed << std::setprecision(precision) << value;
-  return ss.str();
-}
-
 std::optional<std::chrono::steady_clock::time_point> ToTimeoutPoint(int64_t timeout_ms) {
   std::optional<std::chrono::steady_clock::time_point> timeout_point;
   if (timeout_ms == -1) {

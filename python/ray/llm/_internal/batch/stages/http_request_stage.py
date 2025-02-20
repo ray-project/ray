@@ -101,7 +101,3 @@ class HttpRequestStage(StatefulStage):
     """
 
     fn: Type[StatefulStageUDF] = HttpRequestUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )

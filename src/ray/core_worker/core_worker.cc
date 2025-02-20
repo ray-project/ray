@@ -2003,23 +2003,6 @@ Status CoreWorker::Contains(const ObjectID &object_id,
   return Status::OK();
 }
 
-// For any objects that are ErrorType::OBJECT_IN_PLASMA, we need to move them from
-// the ready set into the plasma_object_ids set to wait on them there.
-void MoveReadyPlasmaObjectsToPlasmaSet(
-    std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
-    const absl::flat_hash_set<ObjectID> &memory_object_ids,
-    absl::flat_hash_set<ObjectID> &plasma_object_ids,
-    absl::flat_hash_set<ObjectID> &ready) {
-  for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end(); iter++) {
-    const auto &obj_id = *iter;
-    auto found = memory_store->GetIfExists(obj_id);
-    if (found != nullptr && found->IsInPlasmaError()) {
-      plasma_object_ids.insert(obj_id);
-      ready.erase(obj_id);
-    }
-  }
-}
-
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int num_objects,
                         int64_t timeout_ms,
@@ -2039,7 +2022,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   if (memory_object_ids.size() != ids.size()) {
@@ -2078,25 +2060,26 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
-  absl::flat_hash_set<ObjectID> ready;
   int64_t start_time = current_time_ms();
-  RAY_RETURN_NOT_OK(memory_store_->Wait(
-      memory_object_ids,
-      std::min(static_cast<int>(memory_object_ids.size()), num_objects),
-      timeout_ms,
-      worker_context_,
-      &ready));
+  std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>
+      ready_and_plasma_object_ids;
+  RAY_ASSIGN_OR_RETURN(
+      ready_and_plasma_object_ids,
+      memory_store_->Wait(
+          memory_object_ids,
+          std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+          timeout_ms,
+          worker_context_));
+  auto &[ready, plasma_object_ids] = ready_and_plasma_object_ids;
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
   }
   if (fetch_local) {
-    MoveReadyPlasmaObjectsToPlasmaSet(
-        memory_store_, memory_object_ids, plasma_object_ids, ready);
-    // We make the request to the plasma store even if we have num_objects ready since we
-    // want to at least make the request to pull these objects if the user specified
-    // fetch_local so the pulling can start.
+    // With fetch_local we want to start fetching plasma_object_ids from other nodes'
+    // plasma stores. We make the request to the plasma store even if we have num_objects
+    // ready since we want to at least make the request to start pulling these objects.
     if (!plasma_object_ids.empty()) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
@@ -2105,6 +2088,15 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
           timeout_ms,
           worker_context_,
           &ready));
+    }
+  } else {
+    // When we don't need to fetch_local, we don't need to wait for the objects to be
+    // pulled to the local object store, so we can directly add them to the ready set.
+    for (const auto &object_id : plasma_object_ids) {
+      if (ready.size() == static_cast<size_t>(num_objects)) {
+        break;
+      }
+      ready.insert(object_id);
     }
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
