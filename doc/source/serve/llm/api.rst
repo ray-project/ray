@@ -16,19 +16,5 @@ Builders
    build_vllm_deployment
    build_openai_app
 
-Configs
----------------------
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-   :template: autosummary/autopydantic.rst
-
-   LLMConfig
-   LLMServingArgs
-   ModelLoadingConfig
-   S3MirrorConfig
-   S3AWSCredentials
-   GCSMirrorConfig
-   LoraConfig
 
 
