@@ -44,3 +44,24 @@ Deployments
    :toctree: doc/
 
    VLLMDeploymentImpl
+   LLMModelRouterDeploymentImpl
+
+
+.. currentmodule:: ray.serve.llm.openai_api_models
+
+OpenAI API Models
+---------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic_show_json.rst
+
+   ChatCompletionRequest
+   CompletionRequest
+   ChatCompletionStreamResponse
+   ChatCompletionResponse
+   CompletionStreamResponse
+   CompletionResponse
+   ErrorResponse
+
