@@ -44,4 +44,3 @@ Deployments
    :toctree: doc/
 
    VLLMDeploymentImpl
-   LLMModelRouterDeploymentImpl
