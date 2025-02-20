@@ -30,7 +30,7 @@ from openai.types.chat import (
 from openai.types.chat import (
     ChatCompletionContentPartParam as OpenAIChatCompletionContentPartParam,
 )
-from pydantic import (
+from ray._private.pydantic_compat import (
     BaseModel,
     Field,
 )

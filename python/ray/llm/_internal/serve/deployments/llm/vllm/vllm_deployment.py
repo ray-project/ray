@@ -2,7 +2,7 @@ import asyncio
 import os
 from typing import AsyncGenerator, Optional, Type, Union
 
-from pydantic import ValidationError as PydanticValidationError
+from ray._private.pydantic_compat import ValidationError as PydanticValidationError
 from ray import serve
 from ray._private.utils import import_attr
 
