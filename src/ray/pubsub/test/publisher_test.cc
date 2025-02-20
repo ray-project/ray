@@ -32,7 +32,6 @@ namespace {
 const NodeID kDefaultPublisherId = NodeID::FromRandom();
 }
 
-using pub_internal::Publisher;
 using pub_internal::SubscriberState;
 using pub_internal::SubscriptionIndex;
 
