@@ -544,18 +544,18 @@ def get_aws_credentials(
 
 class CloudObjectCache:
     """A cache that works with both sync and async fetch functions.
-    
+
     The purpose of this data structure is to cache the result of a function call
     usually used to fetch a value from a cloud object store.
-    
-    The idea is this: 
+
+    The idea is this:
     - Cloud operations are expensive
-    - In LoRA specifically, we would fetch remote storage to download the model weights 
+    - In LoRA specifically, we would fetch remote storage to download the model weights
     at each request.
     - If the same model is requested many times, we don't want to inflate the time to first token.
     - We control the cache via not only the least recently used eviction policy, but also
     by expiring cache entries after a certain time.
-    - If the object is missing, we cache the missing status for a small duration while if 
+    - If the object is missing, we cache the missing status for a small duration while if
     the object exists, we cache the object for a longer duration.
     """
 
@@ -588,14 +588,14 @@ class CloudObjectCache:
         value, should_fetch = self._check_cache(key)
         if not should_fetch:
             return value
-            
+
         if self._is_async:
             value = await self._fetch_fn(key)
         else:
-            # Runs the sync fetch function in a separate thread 
+            # Runs the sync fetch function in a separate thread
             # to avoid blocking the main thread.
             value = await asyncio.to_thread(self._fetch_fn, key)
-            
+
         self._update_cache(key, value)
         return value
 
@@ -603,11 +603,11 @@ class CloudObjectCache:
         """Sync get value from cache or fetch it if needed."""
         if self._is_async:
             raise ValueError("Cannot use sync get() with async fetch function")
-            
+
         value, should_fetch = self._check_cache(key)
         if not should_fetch:
             return value
-            
+
         # Fetch new value
         value = self._fetch_fn(key)
         self._update_cache(key, value)
@@ -615,40 +615,52 @@ class CloudObjectCache:
 
     def _check_cache(self, key: str) -> tuple[Any, bool]:
         """Check if key exists in cache and is valid.
-        
+
         Returns:
             Tuple of (value, should_fetch)
             where should_fetch is True if we need to fetch a new value
         """
         now = time.monotonic()
-        
+
         if key in self._cache:
             value, expire_time = self._cache[key]
             if expire_time is None or now < expire_time:
                 return value, False
-                
+
         return None, True
 
     def _update_cache(self, key: str, value: Any) -> None:
         """Update cache with new value."""
         now = time.monotonic()
-        
+
         # Calculate expiration
         expire_time = None
-        if self._missing_expire_seconds is not None or self._exists_expire_seconds is not None:
+        if (
+            self._missing_expire_seconds is not None
+            or self._exists_expire_seconds is not None
+        ):
             if value is self._missing_object_value:
-                expire_time = now + self._missing_expire_seconds if self._missing_expire_seconds else None
+                expire_time = (
+                    now + self._missing_expire_seconds
+                    if self._missing_expire_seconds
+                    else None
+                )
             else:
-                expire_time = now + self._exists_expire_seconds if self._exists_expire_seconds else None
-            
+                expire_time = (
+                    now + self._exists_expire_seconds
+                    if self._exists_expire_seconds
+                    else None
+                )
+
         # Enforce size limit by removing oldest entry if needed
         # This is an O(n) operation but it's fine since the cache size is usually small.
         if len(self._cache) >= self._max_size:
-            oldest_key = min(self._cache, key=lambda k: self._cache[k][1] or float('inf'))
+            oldest_key = min(
+                self._cache, key=lambda k: self._cache[k][1] or float("inf")
+            )
             del self._cache[oldest_key]
-            
-        self._cache[key] = (value, expire_time)
 
+        self._cache[key] = (value, expire_time)
 
     def __len__(self) -> int:
         return len(self._cache)
