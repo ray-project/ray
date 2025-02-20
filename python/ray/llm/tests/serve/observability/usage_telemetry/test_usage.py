@@ -10,7 +10,6 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    AutoscalingConfig,
     LLMConfig,
     LLMEngine,
     LoraConfig,
@@ -55,7 +54,7 @@ def test_push_telemetry_report_for_all_models():
         llm_engine=LLMEngine.VLLM,
         accelerator_type="A10G",
         deployment_config=dict(
-            autoscaling_config=AutoscalingConfig(
+            autoscaling_config=dict(
                 initial_replicas=2,
                 min_replicas=1,
                 max_replicas=3,
