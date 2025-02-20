@@ -50,8 +50,8 @@ def test_null_safe_aggregation_protocol(agg_cls, ignore_nulls):
     for permuted_accumulators in itertools.permutations(accumulators):
         # Step 3: Combine accumulators holding partial aggregations
         #         into final result
-        cur = init_val
-        for new in permuted_accumulators:
+        cur = permuted_accumulators[0]
+        for new in permuted_accumulators[1:]:
             cur = agg.merge(cur, new)
 
         res = agg.finalize(cur)
