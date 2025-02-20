@@ -29,12 +29,15 @@ from ray.util.tracing.tracing_helper import (
     _inject_tracing_into_function,
     _tracing_task_invocation,
 )
+from ray._private.usage import usage_lib
 
 logger = logging.getLogger(__name__)
 
 
 # Hook to call with (fn, resources, strategy) on each local task submission.
 _task_launch_hook = None
+# Whether we have recorded core is used or not.
+_core_usage_recorded = False
 
 
 @PublicAPI
@@ -316,6 +319,10 @@ class RemoteFunction:
 
         worker = ray._private.worker.global_worker
         worker.check_connected()
+
+        if worker.mode != ray._private.worker.WORKER_MODE and not _core_usage_recorded:
+            _core_usage_recorded = True
+            usage_lib.record_library_usage("core")
 
         # We cannot do this when the function is first defined, because we need
         # ray.init() to have been called when this executes
