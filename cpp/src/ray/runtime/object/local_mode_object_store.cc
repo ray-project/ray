@@ -100,7 +100,6 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
   if (!status.ok()) {
     throw RayException("Wait object error: " + status.ToString());
   }
-  const auto &ready = status_or_ready_and_plasma_object_ids.value().first;
   std::vector<bool> result;
   result.reserve(ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
