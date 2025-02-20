@@ -156,7 +156,9 @@ class TorchLearner(Learner):
         with contextlib.ExitStack() as stack:
             if self.config.num_learners > 1:
                 for mod in self.module.values():
-                    stack.enter_context(mod.no_sync())
+                    # Skip non-torch modules, b/c they may not have the `no_sync` API.
+                    if isinstance(mod, torch.nn.Module):
+                        stack.enter_context(mod.no_sync())
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
