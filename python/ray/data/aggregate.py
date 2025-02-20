@@ -141,6 +141,7 @@ class AggregateFnV2(AggregateFn):
         _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self._finalize)
+
         _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
 
         super().__init__(
@@ -565,6 +566,37 @@ def _is_null(a: Optional[AggType]) -> bool:
 
 
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
+    """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
+
+    Null-safe zero factory is crucial for implementing proper aggregation
+    protocol (monoid) w/o the need for additional containers.
+
+    Main hurdle for implementing proper aggregation semantic is to be able to encode
+    semantic of an "empty accumulator" and be able to tell it from the case when
+    accumulator is actually holding null value:
+
+        - Empty container can be overridden with any value
+        - Container holding null can't be overridden if ignore_nulls=False
+
+    However, it's possible for us to exploit asymmetry in cases of ignore_nulls being
+    True or False:
+
+        - Case of ignore_nulls=False entails that if there's any "null" in the sequence,
+         aggregation is undefined and correspondingly expected to return null
+
+        - Case of ignore_nulls=True in turn, entails that if aggregation returns "null"
+        if and only if the sequence does NOT have any non-null value
+
+    Therefore, we apply this difference in semantic to zero-factory to make sure that
+    our aggregation protocol is adherent to that definition:
+
+        - If ignore_nulls=True, zero-factory returns null, therefore encoding empty
+        container
+        - If ignore_nulls=False, couldn't return null as aggregation will incorrectly
+        prioritize it, and instead it returns true zero value for the aggregation
+        (ie 0 for count/sum, -inf for max, etc).
+    """
+
     def _safe_zero_factory(_):
         if ignore_nulls:
             return None
