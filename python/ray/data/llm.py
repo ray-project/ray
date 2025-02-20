@@ -23,6 +23,7 @@ class ProcessorConfig(_ProcessorConfig):
             Default to None, meaning that only the CPU will be used.
         concurrency: The number of workers for data parallelism. Default to 1.
     """
+
     pass
 
 
