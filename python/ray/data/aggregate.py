@@ -629,11 +629,9 @@ def _null_safe_finalize(
     finalize: Callable[[AggType], AggType]
 ) -> Callable[[Optional[AggType]], AggType]:
     def _safe_finalize(acc: Optional[AggType]) -> AggType:
-        # If accumulator container is empty, simply return null
-        if acc is None:
-            return None
-
-        return finalize(acc) if not _is_null(acc) else acc
+        # If accumulator container is not null, finalize.
+        # Otherwise, return as is.
+        return acc if _is_null(acc) else finalize(acc)
 
     return _safe_finalize
 
