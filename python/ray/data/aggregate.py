@@ -494,9 +494,6 @@ class Quantile(AggregateFnV2):
         return ls
 
     def _finalize(self, accumulator: List[Any]) -> Optional[U]:
-        if not accumulator:
-            return None
-
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not _is_null(v)]
         else:
@@ -504,6 +501,9 @@ class Quantile(AggregateFnV2):
             if len(nulls) > 0:
                 # NOTE: We return the null itself to preserve column type
                 return nulls[0]
+
+        if not accumulator:
+            return None
 
         key = lambda x: x  # noqa: E731
 
