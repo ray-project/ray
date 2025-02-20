@@ -3,6 +3,13 @@
 Training with TensorFlow and Ray Train
 ======================================
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-tensorflow_mnist_example" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=tensorflow_mnist_example">
+      <img src="../../../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart" />
+      <br/><br/>
+    </a>
+
 This basic example runs distributed training of a TensorFlow model on MNIST with Ray Train.
 
 Code example
