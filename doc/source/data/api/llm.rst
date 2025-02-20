@@ -30,7 +30,6 @@ Processor configs
     :nosignatures:
     :template: autosummary/class_without_autosummary_noinheritance.rst
     :toctree: doc/
-    :template: autosummary/autopydantic.rst
 
     ~ProcessorConfig
     ~HttpRequestProcessorConfig
