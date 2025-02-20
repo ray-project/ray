@@ -4905,7 +4905,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
-        # cpython.Py_DECREF(user_callback)
+        cpython.Py_DECREF(user_callback)
         pass
 
 
