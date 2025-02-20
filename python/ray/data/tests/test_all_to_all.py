@@ -1414,17 +1414,11 @@ def test_groupby_multi_agg_with_nans_v2(
         cur = aggregated_sub_blocks[0]
         for next_ in aggregated_sub_blocks[1:]:
             cur, _ = TableBlockAccessor._combine_aggregated_blocks(
-                [cur, next_],
-                group_by_key,
-                aggs,
-                finalize=False
+                [cur, next_], group_by_key, aggs, finalize=False
             )
 
         finalized_block, _ = TableBlockAccessor._combine_aggregated_blocks(
-            [cur],
-            group_by_key,
-            aggs,
-            finalize=True
+            [cur], group_by_key, aggs, finalize=True
         )
 
         if ds_format == "pyarrow":

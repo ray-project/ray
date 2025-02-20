@@ -157,9 +157,7 @@ class AggregateFnV2(AggregateFn):
             init=lambda _: _OPTIONAL_EMPTY,
             merge=_safe_combine,
             accumulate_block=(
-                lambda acc, block: _safe_combine(
-                    acc, _safe_aggregate(block)
-                )
+                lambda acc, block: _safe_combine(acc, _safe_aggregate(block))
             ),
             finalize=_safe_finalize,
         )
@@ -574,6 +572,7 @@ def _null_safe_aggregate(
 
     return _safe_aggregate
 
+
 def _null_safe_finalize(
     finalize: Callable[[AggType], AggType]
 ) -> Callable[[_Optional[AggType]], AggType]:
@@ -587,6 +586,7 @@ def _null_safe_finalize(
         return finalize(val) if not _is_null(val) else val
 
     return _safe_finalize
+
 
 def _null_safe_combine(
     combine: Callable[[AggType, AggType], AggType],
@@ -630,8 +630,10 @@ def _null_safe_combine(
 def _is_empty_optional(acc: _Optional[AggType]) -> bool:
     return len(acc) == 0
 
+
 def _unwrap_optional(acc: _Optional[AggType]) -> AggType:
     return acc[0]
+
 
 def _wrap_optional(value: AggType) -> _Optional[AggType]:
     return [value]

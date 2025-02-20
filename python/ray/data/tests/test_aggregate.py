@@ -8,14 +8,17 @@ from ray.data.aggregate import Min, Max, Sum, Mean, Std, Quantile
 from ray.data._internal.util import is_nan
 
 
-@pytest.mark.parametrize("agg_cls,pac_method", [
-    (Min, pac.min),
-    (Max, pac.max),
-    (Sum, pac.sum),
-    (Mean, pac.mean),
-    (Std, lambda col, **kwargs: pac.stddev(col, ddof=1, **kwargs)),
-    (Quantile, lambda col, **kwargs: pac.quantile(col, q=0.5, **kwargs)[0]),
-])
+@pytest.mark.parametrize(
+    "agg_cls,pac_method",
+    [
+        (Min, pac.min),
+        (Max, pac.max),
+        (Sum, pac.sum),
+        (Mean, pac.mean),
+        (Std, lambda col, **kwargs: pac.stddev(col, ddof=1, **kwargs)),
+        (Quantile, lambda col, **kwargs: pac.quantile(col, q=0.5, **kwargs)[0]),
+    ],
+)
 @pytest.mark.parametrize("ignore_nulls", [True, False])
 def test_null_safe_aggregation_protocol(agg_cls, pac_method, ignore_nulls):
     """This test verifies that all aggregation implementations
@@ -49,4 +52,6 @@ def test_null_safe_aggregation_protocol(agg_cls, pac_method, ignore_nulls):
 
         # Assert that combining aggregations is an associative operation,
         # ie invariant of the order of combining partial aggregations
-        assert res == expected or (is_nan(res) and is_nan(expected)), permuted_accumulators
+        assert res == expected or (
+            is_nan(res) and is_nan(expected)
+        ), permuted_accumulators
