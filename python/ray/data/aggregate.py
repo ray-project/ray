@@ -645,6 +645,24 @@ def _null_safe_combine(
     def _safe_combine(
         cur: Optional[AggType], new: Optional[AggType]
     ) -> Optional[AggType]:
+        """Null-safe combination have to be an associative operation
+        with an identity element (zero) or in other words implement a monoid.
+
+        To achieve that in the presence of null values following semantic is
+        established:
+
+            - Case of ignore_nulls=True:
+                - If current accumulator is null (ie empty), return new accumulator
+                - If new accumulator is null (ie empty), return cur
+                - Otherwise combine (current and new)
+
+            - Case of ignore_nulls=False:
+                - If new accumulator is null (ie has null in the sequence, b/c we're
+                NOT ignoring nulls), return it
+                - If current accumulator is null (ie had null in the prior sequence,
+                b/c we're NOT ignoring nulls), return it
+                - Otherwise combine (current and new)
+        """
 
         if ignore_nulls:
             if _is_null(cur):
