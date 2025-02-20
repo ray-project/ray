@@ -684,14 +684,22 @@ class Worker:
 
     def get_current_out_offset(self) -> int:
         """Get the current offset of the out file if seekable, else 0"""
-        if self._out_filepath is not None:
-            return os.path.getsize(self._out_filepath)
+        try:
+            if self._out_filepath is not None:
+                return os.path.getsize(self._out_filepath)
+        # When rotation enabled, C++ spdlog deletes file before rename.
+        except FileNotFoundError:
+            return 0
         return 0
 
     def get_current_err_offset(self) -> int:
         """Get the current offset of the err file if seekable, else 0"""
-        if self._err_filepath is not None:
-            return os.path.getsize(self._err_filepath)
+        try:
+            if self._err_filepath is not None:
+                return os.path.getsize(self._err_filepath)
+        # When rotation enabled, C++ spdlog deletes file before rename.
+        except FileNotFoundError:
+            return 0
         return 0
 
     def get_serialization_context(self):
