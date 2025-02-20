@@ -1,5 +1,4 @@
 import itertools
-from typing import Callable
 
 import pyarrow
 import pytest
