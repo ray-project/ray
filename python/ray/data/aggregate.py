@@ -11,6 +11,17 @@ if TYPE_CHECKING:
     from ray.data import Schema
 
 
+# _Optional implements container protocol similar to standalone Optional class
+# object in other languages (like Java, Scala, etc) by utilizing Python's `List`
+#
+# Unlike default Python's `Optional` it allows to encode following states:
+#   - Holding no value (ie empty)
+#   - Holding value (that could still be null)
+_Optional = List
+
+_OPTIONAL_EMPTY = []
+
+
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
 @PublicAPI
 class AggregateFn:
@@ -135,20 +146,18 @@ class AggregateFnV2(AggregateFn):
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
 
-        def _safe_finalize(acc):
-            if _is_null(acc):
-                return acc
-
-            return self._finalize(acc)
-
-        _safe_combine = _null_safe_merge(self.combine, ignore_nulls)
+        _safe_combine = _null_safe_combine(self.combine)
+        _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
+        _safe_finalize = _null_safe_finalize(self._finalize)
 
         super().__init__(
             name=name,
-            init=lambda _: None,
+            init=lambda _: _OPTIONAL_EMPTY,
             merge=_safe_combine,
-            accumulate_block=lambda acc, block: _safe_combine(
-                acc, self.aggregate_block(block)
+            accumulate_block=(
+                lambda acc, block: _safe_combine(
+                    acc, _safe_aggregate(block)
+                )
             ),
             finalize=_safe_finalize,
         )
@@ -544,27 +553,79 @@ def _is_null(a: Optional[AggType]) -> bool:
     return a is None or is_nan(a)
 
 
-def _null_safe_merge(
-    merge: Callable[[AggType, AggType], AggType],
+def _null_safe_aggregate(
+    aggregate: Callable[[Block], AggType],
     ignore_nulls: bool,
-) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
-    def _safe_merge(
-        cur: Optional[AggType], new: Optional[AggType]
-    ) -> Optional[AggType]:
-        # Null-safe merge implements following semantic (see in-line)
-        if _is_null(cur):
-            #   - If the current accumulated value is null (NaN or None), return
-            #       newly aggregated value (from new block)
-            return new
-        elif _is_null(new):
-            #   - If the null (NaN or None) has been produced by the aggregation AND
-            #       ignore_nulls=False, returned value is prioritized and returned immediately
-            #   - If ignore_nulls=True, aggregation could only produce nulls if the block
-            #       holds only null values. In that case we consider this case same as block
-            #       being empty and return currently accumulated value
-            return new if not ignore_nulls else cur
-        else:
-            #   - Otherwise, values are merged (using provided merging util)
-            return merge(cur, new)
+) -> Callable[[Block], _Optional[AggType]]:
+    def _safe_aggregate(block: Block) -> _Optional[AggType]:
+        result = aggregate(block)
+        # NOTE: If `ignore_nulls=True`, aggregation will only be returning
+        #       null if the block does NOT contain any non-null elements
+        if _is_null(result) and ignore_nulls:
+            return _OPTIONAL_EMPTY
 
-    return _safe_merge
+        return _wrap_optional(result)
+
+    return _safe_aggregate
+
+def _null_safe_finalize(
+    finalize: Callable[[AggType], AggType]
+) -> Callable[[_Optional[AggType]], AggType]:
+    def _safe_finalize(acc: _Optional[AggType]) -> AggType:
+        # If accumulator container is empty, simply return null
+        if _is_empty_optional(acc):
+            return None
+
+        val = _unwrap_optional(acc)
+
+        return finalize(val) if not _is_null(val) else val
+
+    return _safe_finalize
+
+def _null_safe_combine(
+    combine: Callable[[AggType, AggType], AggType],
+) -> Callable[[_Optional[AggType], _Optional[AggType]], _Optional[AggType]]:
+    def _safe_combine(
+        cur: _Optional[AggType], new: _Optional[AggType]
+    ) -> _Optional[AggType]:
+
+        cur_empty = _is_empty_optional(cur)
+        new_empty = _is_empty_optional(new)
+
+        # Null-safe merge implements following semantic (see inline):
+        #
+        #   - If both current and new accumulators are empty, return empty
+        #   - If one and only one of the accumulators is non-empty, return it
+        if cur_empty and new_empty:
+            return _OPTIONAL_EMPTY
+        elif cur_empty:
+            return new
+        elif new_empty:
+            return cur
+        else:
+            cur_val = _unwrap_optional(cur)
+            new_val = _unwrap_optional(new)
+
+            # - If both accumulators are non-empty, then
+            #    - If either of the values is null, return it (null could only
+            #       be returned by aggregation when ignore_nulls=False)
+            #    - If neither of the values is null, combine them using provided
+            #       method
+            if _is_null(cur_val):
+                return cur
+            elif _is_null(new_val):
+                return new
+            else:
+                return _wrap_optional(combine(cur_val, new_val))
+
+    return _safe_combine
+
+
+def _is_empty_optional(acc: _Optional[AggType]) -> bool:
+    return len(acc) == 0
+
+def _unwrap_optional(acc: _Optional[AggType]) -> AggType:
+    return acc[0]
+
+def _wrap_optional(value: AggType) -> _Optional[AggType]:
+    return [value]
