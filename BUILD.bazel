@@ -824,6 +824,13 @@ ray_cc_library(
     ],
     linkopts = select({
         "@platforms//os:windows": [],
+        "@platforms//os:macos": [
+         "-pthread",
+        ],
+        "@platforms//os:linux": [
+            "-lpthread",
+        ],
+        "//conditions:default": [],
     }),
     deps = [
         ":stats_metric",
