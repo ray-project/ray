@@ -4,11 +4,12 @@ import time
 import asyncio
 from ray.llm._internal.serve.deployments.utils.cloud_utils import CloudObjectCache
 
+
 class MockSyncFetcher:
     def __init__(self):
         self.call_count = 0
         self.calls = []
-    
+
     def __call__(self, key: str):
         self.call_count += 1
         self.calls.append(key)
@@ -16,17 +17,19 @@ class MockSyncFetcher:
             return -1
         return f"value-{key}"
 
+
 class MockAsyncFetcher:
     def __init__(self):
         self.call_count = 0
         self.calls = []
-    
+
     async def __call__(self, key: str):
         self.call_count += 1
         self.calls.append(key)
         if key == "missing":
             return -1
         return f"value-{key}"
+
 
 def test_sync_cache_basic():
     """Test basic synchronous cache functionality."""
@@ -72,8 +75,8 @@ def test_sync_cache_missing_object_expiration():
     cache = CloudObjectCache(
         max_size=2,
         fetch_fn=fetcher,
-        missing_expire_seconds=1, # 1 second to expire missing object
-        exists_expire_seconds=3, # 3 seconds to expire existing object
+        missing_expire_seconds=1,  # 1 second to expire missing object
+        exists_expire_seconds=3,  # 3 seconds to expire existing object
         missing_object_value=-1,
     )
 
@@ -81,12 +84,12 @@ def test_sync_cache_missing_object_expiration():
     assert cache.get("missing") is -1  # First fetch
     assert fetcher.call_count == 1
     assert fetcher.calls == ["missing"]
-    
+
     # Should still be cached
     assert cache.get("missing") is -1  # Cache hit
     assert fetcher.call_count == 1  # No new fetch
     assert fetcher.calls == ["missing"]
-    
+
     time.sleep(1.5)  # Wait for missing object to expire
     assert cache.get("missing") is -1  # Should fetch again after expiration
     assert fetcher.call_count == 2  # New fetch
@@ -99,29 +102,29 @@ def test_sync_cache_existing_object_expiration():
     cache = CloudObjectCache(
         max_size=2,
         fetch_fn=fetcher,
-        missing_expire_seconds=1, # 1 second to expire missing object
-        exists_expire_seconds=3, # 3 seconds to expire existing object
+        missing_expire_seconds=1,  # 1 second to expire missing object
+        exists_expire_seconds=3,  # 3 seconds to expire existing object
         missing_object_value=-1,
     )
-    
+
     # Test existing object expiration
     assert cache.get("key1") == "value-key1"  # First fetch
     assert fetcher.call_count == 1
     assert fetcher.calls == ["key1"]
-    
+
     # Should still be cached (not expired)
     assert cache.get("key1") == "value-key1"  # Cache hit
     assert fetcher.call_count == 1  # No new fetch
-    
+
     time.sleep(1.5)  # Not expired yet (exists_expire_seconds=3)
     assert cache.get("key1") == "value-key1"  # Should still hit cache
     assert fetcher.call_count == 1  # No new fetch
-    
+
     time.sleep(2)  # Now expired (total > 3 seconds)
     assert cache.get("key1") == "value-key1"  # Should fetch again
     assert fetcher.call_count == 2  # New fetch
     assert fetcher.calls == ["key1", "key1"]
-    
+
     # Verify final cache state
     assert len(cache) == 1
 
@@ -142,12 +145,12 @@ async def test_async_cache_missing_object_expiration():
     assert await cache.aget("missing") is -1  # First fetch
     assert fetcher.call_count == 1
     assert fetcher.calls == ["missing"]
-    
+
     # Should still be cached
     assert await cache.aget("missing") is -1  # Cache hit
     assert fetcher.call_count == 1  # No new fetch
     assert fetcher.calls == ["missing"]
-    
+
     await asyncio.sleep(1.5)  # Wait for missing object to expire
     assert await cache.aget("missing") is -1  # Should fetch again after expiration
     assert fetcher.call_count == 2  # New fetch
@@ -165,26 +168,26 @@ async def test_async_cache_existing_object_expiration():
         exists_expire_seconds=3,  # 3 seconds to expire existing object
         missing_object_value=-1,
     )
-    
+
     # Test existing object expiration
     assert await cache.aget("key1") == "value-key1"  # First fetch
     assert fetcher.call_count == 1
     assert fetcher.calls == ["key1"]
-    
+
     # Should still be cached (not expired)
     assert await cache.aget("key1") == "value-key1"  # Cache hit
     assert fetcher.call_count == 1  # No new fetch
-    
+
     await asyncio.sleep(1.5)  # Not expired yet (exists_expire_seconds=3)
     assert await cache.aget("key1") == "value-key1"  # Should still hit cache
     assert fetcher.call_count == 1  # No new fetch
     assert fetcher.calls == ["key1"]  # No change in calls
-    
+
     await asyncio.sleep(2)  # Now expired (total > 2 seconds)
     assert await cache.aget("key1") == "value-key1"  # Should fetch again
     assert fetcher.call_count == 2  # New fetch
     assert fetcher.calls == ["key1", "key1"]
-    
+
     # Verify final cache state
     assert len(cache) == 1
 
