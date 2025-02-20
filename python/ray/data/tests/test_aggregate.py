@@ -40,10 +40,9 @@ def test_null_safe_aggregation_protocol(agg_cls, ignore_nulls):
     agg = agg_cls(on="A", **agg_kwargs)
 
     # Step 1: Initialize accumulator
-    init_val = agg.init(None)
     # Step 2: Partially aggregate individual rows
     accumulators = [
-        agg.accumulate_block(init_val, t.slice(i, 1)) for i in range(t.num_rows)
+        agg.accumulate_block(agg.init(None), t.slice(i, 1)) for i in range(t.num_rows)
     ]
 
     # NOTE: This test intentionally permutes all accumulators to verify
