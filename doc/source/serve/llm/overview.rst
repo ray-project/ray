@@ -52,13 +52,12 @@ Single Model Deployment through ``VLLMDeploymentImpl``
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
+    from ray.serve.llm.configs import LLMConfig
     from ray.serve.llm.deployments import VLLMDeploymentImpl
-    from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
     # Configure the model
     llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
+        model_loading_config=dict(
             model_id="qwen-0.5b",
             model_source="Qwen/Qwen2.5-0.5B-Instruct",
         ),
@@ -80,44 +79,46 @@ Single Model Deployment through ``VLLMDeploymentImpl``
 
     model_handle = serve.run(vllm_app)
 
+
 Multi-Model Deployment through ``LLMModelRouterDeploymentImpl``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.config import AutoscalingConfig
-    from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
-    from ray.serve.llm.deployments import VLLMDeploymentImpl
-    from ray.serve.llm.openai_api_models import ChatCompletionRequest
+    from ray.serve.llm.configs import LLMConfig
+    from ray.serve.llm.deployments import VLLMDeploymentImpl, LLMModelRouterDeploymentImpl
 
     llm_config1 = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            served_model_name="llama-3.1-8b",  # Name shown in /v1/models
-            model_source="meta-llama/Llama-3.1-8b-instruct",
+        model_loading_config=dict(
+            model_id="qwen-0.5b",
+            model_source="Qwen/Qwen2.5-0.5B-Instruct",
         ),
-        deployment_config=DeploymentConfig(
-            autoscaling_config=AutoscalingConfig(
-                min_replicas=1, max_replicas=8,
+        deployment_config=dict(
+            autoscaling_config=dict(
+                min_replicas=1, max_replicas=2,
             )
         ),
+        accelerator_type="A10G",
     )
+
     llm_config2 = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            served_model_name="llama-3.2-3b",  # Name shown in /v1/models
-            model_source="meta-llama/Llama-3.2-3b-instruct",
+        model_loading_config=dict(
+            model_id="qwen-1.5b",
+            model_source="Qwen/Qwen2.5-1.5B-Instruct",
         ),
-        deployment_config=DeploymentConfig(
-            autoscaling_config=AutoscalingConfig(
-                min_replicas=1, max_replicas=8,
+        deployment_config=dict(
+            autoscaling_config=dict(
+                min_replicas=1, max_replicas=2,
             )
         ),
+        accelerator_type="A10G",
     )
 
     # Deploy the application
-    vllm_deployment1 = VLLMDeploymentImpl.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
-    vllm_deployment2 = VLLMDeploymentImpl.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
-    llm_app = LLMModelRouterDeploymentImpl.as_deployment().bind([vllm_deployment1, vllm_deployment2])
+    deployment1 = VLLMDeploymentImpl.as_deployment().bind(llm_config1)
+    deployment2 = VLLMDeploymentImpl.as_deployment().bind(llm_config2)
+    llm_app = LLMModelRouterDeploymentImpl.as_deployment().bind([deployment1, deployment2])
     serve.run(llm_app)
 
 Querying Models
@@ -136,7 +137,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
                  -H "Content-Type: application/json" \
                  -H "Authorization: Bearer fake-key" \
                  -d '{
-                       "model": "llama-3.2-3b",
+                       "model": "qwen-0.5b",
                        "messages": [{"role": "user", "content": "Hello!"}]
                      }'
 
@@ -149,11 +150,11 @@ You can query the deployed models using either cURL or the OpenAI Python client:
             from openai import OpenAI
             
             # Initialize client
-            client = OpenAI(base_url="http://localhost:8000", api_key="fake-key")
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
             
             # Basic completion
             response = client.chat.completions.create(
-                model="llama-3.2-3b",
+                model="qwen-0.5b",
                 messages=[{"role": "user", "content": "Hello!"}]
             )
 
@@ -170,21 +171,29 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
         .. code-block:: yaml
 
             # config.yaml
-            application:
-              name: llm_app
-              route_prefix: "/"
-              import_path: ray.serve.llm.builders:build_openai_app
-              args: 
+            applications:
+            - args: 
                 llm_configs:
-                - model_loading_config:
-                    model_id: meta-llama/Meta-Llama-3.1-8B-Instruct
-                  accelerator_type: A10G
-                  tensor_parallelism:
-                    degree: 1
-                  deployment_config:
-                    autoscaling_config: 
-                      min_replicas: 1
-                      max_replicas: 2
+                    - model_loading_config:
+                        model_id: qwen-0.5b
+                        model_source: Qwen/Qwen2.5-0.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                        autoscaling_config: 
+                        min_replicas: 1
+                        max_replicas: 2
+                    - model_loading_config:
+                        model_id: qwen-1.5b
+                        model_source: Qwen/Qwen2.5-1.5B-Instruct
+                    accelerator_type: A10G
+                    deployment_config:
+                        autoscaling_config: 
+                        min_replicas: 1
+                        max_replicas: 2
+                import_path: ray.serve.llm.builders:build_openai_app
+                name: llm_app
+                route_prefix: "/"
+
 
     .. tab-item:: Standalone Config
         :sync: standalone
@@ -192,21 +201,35 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
         .. code-block:: yaml
 
             # config.yaml
-            application:
-              name: llm_app
-              route_prefix: "/"
-              import_path: ray.serve.llm.builders:build_openai_app
-              args: 
-                - examples/llama-3.1-8b.yaml
+            applications:
+            - args: 
+                llm_configs:
+                    - models/qwen-0.5b.yaml
+                    - models/qwen-1.5b.yaml
+                import_path: ray.serve.llm.builders:build_openai_app
+                name: llm_app
+                route_prefix: "/"
+
 
         .. code-block:: yaml
 
-            # examples/llama-3.1-8b.yaml
+            # models/qwen-0.5b.yaml
             model_loading_config:
-              model_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+              model_id: qwen-0.5b
+              model_source: Qwen/Qwen2.5-0.5B-Instruct
             accelerator_type: A10G
-            tensor_parallelism:
-              degree: 1
+            deployment_config:
+              autoscaling_config: 
+                min_replicas: 1
+                max_replicas: 2
+
+        .. code-block:: yaml
+
+            # models/qwen-1.5b.yaml
+            model_loading_config:
+              model_id: qwen-1.5b
+              model_source: Qwen/Qwen2.5-1.5B-Instruct
+            accelerator_type: A10G
             deployment_config:
               autoscaling_config: 
                 min_replicas: 1
@@ -234,35 +257,35 @@ You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by config
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.config import AutoscalingConfig
-            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, LoraConfig, DeploymentConfig
+            from ray.serve.llm.configs import LLMConfig
             from ray.serve.llm.builders import build_openai_app
 
             # Configure the model with LoRA
             llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    served_model_name="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
                 ),
-                lora_config=LoraConfig(
+                lora_config=dict(
                     # Let's pretend this is where LoRA weights are stored on S3.
                     # For example
-                    # s3://ray-serve-llm-lora/llama-3.1-8b-instruct-lora/llama-3.1-8b:abc/
-                    # and s3://ray-serve-llm-lora/llama-3.1-8b-instruct-lora/llama-3.1-8b:def/
-                    # are two of the LoRA checkpoints (i.e. in form of <base_model>:<lora_id>)
-                    dynamic_lora_loading_path="s3://ray-serve-llm-lora/llama-3.1-8b-instruct-lora",
+                    # s3://my_dynamic_lora_path/lora_model_1_ckpt
+                    # s3://my_dynamic_lora_path/lora_model_2_ckpt
+                    # are two of the LoRA checkpoints
+                    dynamic_lora_loading_path="s3://my_dynamic_lora_path",
                     max_num_adapters_per_replica=16,
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1,
                         max_replicas=2,
                     )
                 ),
+                accelerator_type="A10G",
             )
 
             # Build and deploy the model
-            app = build_openai_app([llm_config])
+            app = build_openai_app({"llm_configs": [llm_config]})
             serve.run(app)
 
     .. tab-item:: Client
@@ -273,11 +296,11 @@ You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by config
             from openai import OpenAI
 
             # Initialize client
-            client = OpenAI(base_url="http://localhost:8000", api_key="fake-key")
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
             # Make a request to the desired lora checkpoint
             response = client.chat.completions.create(
-                model="llama-3.1-8b:abc",
+                model="qwen-0.5b:lora_model_1_ckpt",
                 messages=[{"role": "user", "content": "Hello!"}]
             )
 
@@ -294,26 +317,26 @@ For structured output, you can use JSON mode similar to OpenAI's API:
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.config import AutoscalingConfig
-            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
+            from ray.serve.llm.configs import LLMConfig
             from ray.serve.llm.builders import build_openai_app
 
-            # Configure and deploy the model
+            # Configure the model with LoRA
             llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    served_model_name="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1,
                         max_replicas=2,
                     )
                 ),
+                accelerator_type="A10G",
             )
 
             # Build and deploy the model
-            app = build_openai_app([llm_config])
+            app = build_openai_app({"llm_configs": [llm_config]})
             serve.run(app)
 
     .. tab-item:: Client
@@ -321,14 +344,15 @@ For structured output, you can use JSON mode similar to OpenAI's API:
 
         .. code-block:: python
 
+
             from openai import OpenAI
 
             # Initialize client
-            client = OpenAI(base_url="http://localhost:8000", api_key="fake-key")
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
             # Request structured JSON output
             response = client.chat.completions.create(
-                model="llama-3.1-8b",
+                model="qwen-0.5b",
                 response_format={"type": "json_object"},
                 messages=[
                     {
@@ -339,8 +363,13 @@ For structured output, you can use JSON mode similar to OpenAI's API:
                         "role": "user",
                         "content": "List three colors in JSON format"
                     }
-                ]
+                ],
+                stream=True,
             )
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    print(chunk.choices[0].delta.content, end="", flush=True)
             # Example response:
             # {
             #   "colors": [
@@ -363,26 +392,27 @@ For multimodal models that can process both text and images:
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.config import AutoscalingConfig
-            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
+            from ray.serve.llm.configs import LLMConfig
             from ray.serve.llm.builders import build_openai_app
+
 
             # Configure a vision model
             llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    served_model_name="llava-1.5-13b",
-                    model_source="liuhaotian/llava-v1.5-13b",
+                model_loading_config=dict(
+                    model_id="qwen-vl-7b",
+                    model_source="Qwen/Qwen2.5-VL-7B-Instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1,
                         max_replicas=2,
                     )
                 ),
+                accelerator_type="A10G",
             )
 
             # Build and deploy the model
-            app = build_openai_app([llm_config])
+            app = build_openai_app({"llm_configs": [llm_config]})
             serve.run(app)
 
     .. tab-item:: Client
@@ -393,11 +423,11 @@ For multimodal models that can process both text and images:
             from openai import OpenAI
 
             # Initialize client
-            client = OpenAI(base_url="http://localhost:8000", api_key="fake-key")
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
             # Create and send a request with an image
             response = client.chat.completions.create(
-                model="llava-1.5-13b",
+                model="qwen-vl-7b",
                 messages=[
                     {
                         "role": "user",
