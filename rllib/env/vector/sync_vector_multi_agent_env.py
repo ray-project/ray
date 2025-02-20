@@ -1,6 +1,5 @@
 import gymnasium as gym
 import numpy as np
-import tree
 
 from copy import deepcopy
 from gymnasium.core import ActType, RenderFrame
