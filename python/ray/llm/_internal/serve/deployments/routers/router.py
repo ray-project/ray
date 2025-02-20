@@ -404,7 +404,8 @@ class LLMModelRouterDeploymentImpl:
             A Ray Serve deployment.
         """
 
-        @serve.deployment(
+        ingress_cls = serve.ingress(fastapi_router_app)(cls)
+        deployment_decorator = serve.deployment(
             # TODO (Kourosh): make this configurable
             autoscaling_config={
                 "min_replicas": int(os.environ.get("RAYLLM_ROUTER_MIN_REPLICAS", 0)),
@@ -426,8 +427,7 @@ class LLMModelRouterDeploymentImpl:
             ),
             max_ongoing_requests=1000,  # Maximum backlog for a single replica
         )
-        @serve.ingress(fastapi_router_app)
-        class LLMModelRouterDeployment(cls):
-            pass
 
-        return LLMModelRouterDeployment
+        deployment_cls = deployment_decorator(ingress_cls)
+
+        return deployment_cls

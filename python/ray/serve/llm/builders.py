@@ -57,6 +57,7 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
     the given llm serving args. This is the main entry point for users to create a
     Serve application serving LLMs.
 
+
     Examples:
         .. testcode::
             :skipif: True

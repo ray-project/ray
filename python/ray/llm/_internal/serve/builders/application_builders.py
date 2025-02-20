@@ -25,7 +25,7 @@ def _set_deployment_placement_options(llm_config: LLMConfig) -> dict:
     deployment_config = llm_config.deployment_config
     engine_config = llm_config.get_engine_config()
 
-    ray_actor_options = deployment_config["ray_actor_options"] or {}
+    ray_actor_options = deployment_config.get("ray_actor_options", {})
     deployment_config["ray_actor_options"] = ray_actor_options
 
     replica_actor_resources = {

@@ -52,28 +52,31 @@ Single Model Deployment through ``VLLMDeploymentImpl``
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.config import AutoscalingConfig
-    from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
+    from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
     from ray.serve.llm.deployments import VLLMDeploymentImpl
     from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
     # Configure the model
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
-            served_model_name="llama-3.1-8b",
-            model_source="meta-llama/Llama-3.1-8b-instruct",
+            model_id="qwen-0.5b",
+            model_source="Qwen/Qwen2.5-0.5B-Instruct",
         ),
-        deployment_config=DeploymentConfig(
-            autoscaling_config=AutoscalingConfig(
+        deployment_config=dict(
+            autoscaling_config=dict(
                 min_replicas=1,
                 max_replicas=2,
             )
         ),
+        accelerator_type="A10G",
     )
 
     # Build the deployment directly
     VLLMDeploymentImpl = VLLMDeploymentImpl.as_deployment()
-    vllm_app = VLLMDeploymentImpl.options(**llm_config.get_serve_options()).bind(llm_config)
+
+    # You can also use .options() to configure the deployment
+    # e.g. VLLMDeploymentImpl.options(**llm_config.get_serve_options()).bind(llm_config)
+    vllm_app = VLLMDeploymentImpl.bind(llm_config)
 
     model_handle = serve.run(vllm_app)
 
