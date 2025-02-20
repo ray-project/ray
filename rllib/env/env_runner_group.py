@@ -130,6 +130,7 @@ class EnvRunnerGroup:
         self._env_creator = env_creator
         self._policy_class = default_policy_class
         self._remote_config = config
+        self._remote_config_obj_ref = ray.put(self._remote_config)
         self._remote_args = {
             "num_cpus": self._remote_config.num_cpus_per_env_runner,
             "num_gpus": self._remote_config.num_gpus_per_env_runner,
@@ -665,7 +666,10 @@ class EnvRunnerGroup:
                 validate_env=None,
                 worker_index=old_num_workers + i + 1,
                 num_workers=old_num_workers + num_workers,
-                config=self._remote_config,
+                # self._remote_config can be large
+                # and it's best practice to pass it by reference
+                # instead of value (https://docs.ray.io/en/latest/ray-core/patterns/pass-large-arg-by-value.html)
+                config=self._remote_config_obj_ref,
             )
             for i in range(num_workers)
         ]
