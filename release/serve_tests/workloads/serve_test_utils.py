@@ -281,8 +281,7 @@ def run_wrk_on_all_nodes(
     all_metrics = defaultdict(list)
     all_wrk_stdout = []
     rst_ray_refs = []
-    nodes = ray.nodes()
-    for node in nodes:
+    for node in ray.nodes():
         if exclude_head and node["Resources"].get("node:__internal_head__") == 1.0:
             continue
 
