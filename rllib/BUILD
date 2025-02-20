@@ -299,6 +299,16 @@ py_test(
     srcs = ["tuned_examples/appo/pendulum_appo.py"],
     args = ["--as-test", "--num-cpus=6", "--num-env-runners=4"]
 )
+# MultiAgentPong (multi-GPU smoke test)
+py_test(
+    name = "learning_tests_multi_agent_pong_appo_multi_gpu",
+    main = "tuned_examples/appo/multi_agent_pong_appo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only", "multi_gpu"],
+    size = "large",
+    srcs = ["tuned_examples/appo/multi_agent_pong_appo.py"],
+    args = ["--stop-iters=3", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1", "--num-aggregator-actors-per-learner=1"]
+)
+
 
 #@OldAPIStack
 py_test(
