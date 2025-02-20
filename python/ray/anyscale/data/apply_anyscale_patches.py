@@ -22,6 +22,10 @@ from ray.data._internal.logical.optimizers import (
     register_physical_rule,
 )
 from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+from ray.data._internal.execution.execution_callback import add_execution_callback
+from ray.anyscale.data._internal.execution.callbacks.insert_issue_detectors import (
+    IssueDetectionExecutionCallback,
+)
 
 ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED = env_bool(
     "ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED", False
@@ -41,11 +45,18 @@ def _patch_class_with_dataclass_mixin(original_cls, dataclass_mixin_cls):
         setattr(original_cls, field.name, getattr(mixin_instance, field.name))
 
 
+def _patch_default_execution_callbacks():
+    add_execution_callback(
+        IssueDetectionExecutionCallback(), ray.data.DataContext.get_current()
+    )
+
+
 def apply_anyscale_patches():
     """Apply Anyscale-specific patches for Ray Data."""
     # Patch ray.data.Dataset
     _patch_class_with_mixin(ray.data.Dataset, DatasetMixin)
     _patch_class_with_dataclass_mixin(ray.data.DataContext, DataContextMixin)
+    _patch_default_execution_callbacks()
 
     _register_anyscale_plan_logical_op_fns()
 
