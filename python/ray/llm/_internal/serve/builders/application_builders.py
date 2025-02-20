@@ -11,7 +11,9 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     LLMEngine,
 )
-from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
+from ray.llm._internal.serve.deployments.routers.router import (
+    LLMModelRouterDeploymentImpl,
+)
 from ray.llm._internal.serve.configs.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
 )
@@ -20,10 +22,10 @@ logger = get_logger(__name__)
 
 
 def _set_deployment_placement_options(llm_config: LLMConfig) -> dict:
-    deployment_config = llm_config.deployment_config.model_copy(deep=True).model_dump()
+    deployment_config = llm_config.deployment_config
     engine_config = llm_config.get_engine_config()
 
-    ray_actor_options = deployment_config["ray_actor_options"] or {}
+    ray_actor_options = deployment_config.get("ray_actor_options", {})
     deployment_config["ray_actor_options"] = ray_actor_options
 
     replica_actor_resources = {
@@ -149,4 +151,6 @@ def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
 
     llm_deployments = _get_llm_deployments(llm_configs)
 
-    return LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    return LLMModelRouterDeploymentImpl.as_deployment().bind(
+        llm_deployments=llm_deployments
+    )

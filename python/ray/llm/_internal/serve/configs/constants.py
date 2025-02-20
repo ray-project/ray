@@ -20,7 +20,6 @@ DEFAULT_MULTIPLEX_DOWNLOAD_TRIES = int(
 
 DEFAULT_TARGET_ONGOING_REQUESTS = 16
 
-FALLBACK_MAX_ONGOING_REQUESTS = 64
 
 # If true, a default runtime_env will be injected to import rayllm on worker startup.
 # This is a startup time optimization to avoid the latency penalty of sequentially

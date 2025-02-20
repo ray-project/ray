@@ -5,6 +5,7 @@ from typing import (
     Literal,
     Optional,
     Union,
+    TYPE_CHECKING,
 )
 
 from pydantic import (
@@ -14,7 +15,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from transformers import AutoProcessor
+from ray.llm._internal.utils import try_import
+
+if TYPE_CHECKING:
+    from transformers import AutoProcessor
+
+transformers = try_import("transformers")
 
 
 class Text(BaseModel):
@@ -122,13 +128,13 @@ class AbstractPromptFormat(BaseModel):
 
 
 class HuggingFacePromptFormat(AbstractPromptFormat):
-    _processor: AutoProcessor = PrivateAttr()
+    _processor: "AutoProcessor" = PrivateAttr()
 
     def set_processor(self, model_id_or_path: str, trust_remote_code: bool = False):
         if hasattr(self, "_processor"):
             return
 
-        self._processor = AutoProcessor.from_pretrained(
+        self._processor = transformers.AutoProcessor.from_pretrained(
             model_id_or_path,
             trust_remote_code=trust_remote_code,
         )

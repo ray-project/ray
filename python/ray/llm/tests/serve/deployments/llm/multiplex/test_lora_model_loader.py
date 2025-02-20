@@ -9,7 +9,6 @@ from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import 
     LoraModelLoader,
 )
 from ray.llm._internal.serve.configs.server_models import (
-    DeploymentConfig,
     LLMConfig,
     LLMEngine,
     LoraConfig,
@@ -29,7 +28,6 @@ async def test_lora_model_loader():
         ),
         llm_engine=LLMEngine.VLLM,
         accelerator_type="L4",
-        deployment_config=DeploymentConfig(),
         lora_config=LoraConfig(dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"),
     )
     lora_model_id = "base_model:lora_id"
@@ -91,7 +89,6 @@ async def test_lora_model_loader_task():
         ),
         llm_engine=LLMEngine.VLLM,
         accelerator_type="L4",
-        deployment_config=DeploymentConfig(),
         lora_config=LoraConfig(dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"),
     )
     with patch(
@@ -243,7 +240,6 @@ async def test_lora_model_loader_task_retry():
         ),
         llm_engine=LLMEngine.VLLM,
         accelerator_type="L4",
-        deployment_config=DeploymentConfig(),
         lora_config=LoraConfig(dynamic_lora_loading_path="s3://fake-bucket-uri-abcd"),
     )
     with patch(
