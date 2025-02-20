@@ -487,9 +487,9 @@ GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
       bool is_infeasible_shape = false;
       auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
       for (const auto &shape : autoscaler_infeasible_resource_shapes) {
-        if (resource_load_by_shape.resource_demands(i).num_infeasible_requests_queued() >
-                0 &&
-            MapEqual(shape, resource_load_by_shape.resource_demands(i).shape())) {
+        const auto &resource_demand = resource_load_by_shape.resource_demands(i);
+        if (resource_demand.num_infeasible_requests_queued() > 0
+            && MapEqual(shape, resource_demand.shape())) {
           is_infeasible_shape = true;
           infeasible_resource_shape = shape;
           break;
