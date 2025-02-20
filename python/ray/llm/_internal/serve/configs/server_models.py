@@ -182,6 +182,10 @@ class ServeMultiplexConfig(BaseModelExtended):
 
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
 class DeploymentConfig(BaseModelExtended):
+    
+    class Config:
+        extra = "forbid"
+    
     autoscaling_config: Optional[AutoscalingConfig] = Field(
         default=None,
         description="Configuration for autoscaling the number of workers",

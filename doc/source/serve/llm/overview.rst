@@ -71,11 +71,11 @@ Single Model Deployment through ``VLLMDeploymentImpl``
     )
 
     # Build the deployment directly
-    VLLMDeploymentImpl = VLLMDeploymentImpl.as_deployment()
+    vllm_deployment = VLLMDeploymentImpl.as_deployment()
 
     # You can also use .options() to configure the deployment
-    # e.g. VLLMDeploymentImpl.options(**llm_config.get_serve_options()).bind(llm_config)
-    vllm_app = VLLMDeploymentImpl.bind(llm_config)
+    # e.g. vllm_deployment.options(**llm_config.get_serve_options()).bind(llm_config)
+    vllm_app = vllm_deployment.bind(llm_config)
 
     model_handle = serve.run(vllm_app)
 
@@ -247,7 +247,9 @@ Advanced Usage Patterns
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the ``LoraConfig``:
+You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the ``LoraConfig``. 
+We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model. 
+This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
 
 .. tab-set::
 

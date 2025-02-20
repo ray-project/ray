@@ -16,29 +16,29 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
             :skipif: True
 
             from ray import serve
-            from ray.serve.config import AutoscalingConfig
-            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
+            from ray.serve.llm.configs import LLMConfig
             from ray.serve.llm.builders import build_vllm_deployment
 
             # Configure the model
             llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    served_model_name="llama-3.1-8b",
+                model_loading_config=dict(
+                    model_id="llama-3.1-8b",
                     model_source="meta-llama/Llama-3.1-8b-instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1,
-                        max_replicas=8,
+                        max_replicas=2,
                     )
                 ),
+                accelerator_type="A10G",
             )
 
             # Build the deployment
-            llm_app = build_vllm_deployment(llm_config)
+            vllm_app = build_vllm_deployment(llm_config)
 
             # Deploy the application
-            serve.run(llm_app)
+            serve.run(vllm_app)
 
     Args:
         llm_config: The llm config to build vllm deployment.
@@ -63,18 +63,17 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
             :skipif: True
 
             from ray import serve
-            from ray.serve.config import AutoscalingConfig
-            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
+            from ray.serve.llm.configs import LLMConfig
             from ray.serve.llm.builders import build_openai_app
 
             # Configure multiple models
             llm_config1 = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    served_model_name="llama-3.1-8b",
+                model_loading_config=dict(
+                    model_id="llama-3.1-8b",
                     model_source="meta-llama/Llama-3.1-8b-instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1,
                         max_replicas=8,
                     )
@@ -82,16 +81,17 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
             )
 
             llm_config2 = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    served_model_name="llama-3.2-3b",
+                model_loading_config=dict(
+                    model_id="llama-3.2-3b",
                     model_source="meta-llama/Llama-3.2-3b-instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1,
-                        max_replicas=8,
+                        max_replicas=2,
                     )
                 ),
+                accelerator_type="A10G",
             )
 
             # Build the application
