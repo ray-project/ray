@@ -191,5 +191,6 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
     ) -> List[Dict[str, gym.Space]]:
 
         return [
-            {aid: agent_space for aid, agent_space in space.items()} for _ in range(n)
+            {aid: agent_space.sample() for aid, agent_space in space.items()}
+            for _ in range(n)
         ]
