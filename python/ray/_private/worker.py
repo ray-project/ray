@@ -627,7 +627,7 @@ class Worker:
             ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
     def set_file_rotation_enabled(self, rotation_enabled: bool) -> None:
-        """Set whether rotation is enabled for errfile."""
+        """Set whether rotation is enabled for outfile and errfile."""
         self._file_rotation_enabled = rotation_enabled
 
     def set_err_file(self, err_filepath=Optional[AnyStr]) -> None:
