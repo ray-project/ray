@@ -58,7 +58,7 @@ class TestModelConfig:
                 accelerator_type="L4",
                 generation_config="invalid_config",  # Should be a dictionary, not a string
             )
-            
+
     def test_deployment_config_extra_forbid(self):
         """Test that deployment config extra is forbid."""
         with pytest.raises(
