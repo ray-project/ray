@@ -20,7 +20,7 @@ from typing import (
     Literal,
     Optional,
     Union,
-    TYPE_CHECKING
+    TYPE_CHECKING,
 )
 
 
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from openai.types.chat import (
         ChatCompletionContentPartParam as OpenAIChatCompletionContentPartParam,
     )
-    
+
 from pydantic import (
     BaseModel,
     Field,
