@@ -605,6 +605,7 @@ class CloudObjectCache:
             raise ValueError("Cannot use sync get() with async fetch function")
 
         value, should_fetch = self._check_cache(key)
+        print(f"{value=} {should_fetch=}")
         if not should_fetch:
             return value
 
