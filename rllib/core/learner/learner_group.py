@@ -466,7 +466,8 @@ class LearnerGroup(Checkpointable):
             # Some requests were dropped, record lost ts/data.
             if num_sent_requests != len(self):
                 factor = 1 - (num_sent_requests / len(self))
-                # TODO (sven): Move this into a TrainingData API as well.
+                # TODO (sven): Move this logic into a TrainingData API as well
+                #  (`TrainingData.env_steps()`).
                 if training_data.batch_refs is not None:
                     dropped = (
                         len(training_data.batch_refs)
@@ -476,7 +477,7 @@ class LearnerGroup(Checkpointable):
                     dropped = len(training_data.batch)
                 # List of Ray ObjectRefs (each object ref is a list of episodes of
                 # total len=`rollout_fragment_length * num_envs_per_env_runner`)
-                elif training_data.episodes_refs:
+                elif training_data.episodes_refs is not None:
                     dropped = (
                         len(training_data.episodes_refs)
                         * self.config.get_rollout_fragment_length()

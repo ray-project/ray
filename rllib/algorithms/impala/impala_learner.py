@@ -188,6 +188,7 @@ class IMPALALearner(Learner):
         episodes: Any,
         **kwargs,
     ) -> ResultDict:
+        raise NotImplementedError
         if isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
             try:
                 episodes = tree.flatten(ray.get(episodes))

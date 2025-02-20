@@ -786,7 +786,7 @@ class FaultTolerantActorManager:
             for i, actor_id in enumerate(remote_actor_ids):
                 calls.append(
                     getattr(self._actors[actor_id], func).remote(
-                        **kwargs[i] if isinstance(kwargs, list) else kwargs
+                        **(kwargs[i] if isinstance(kwargs, list) else kwargs)
                     )
                 )
         else:
