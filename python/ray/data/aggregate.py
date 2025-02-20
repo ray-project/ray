@@ -252,7 +252,7 @@ class Min(AggregateFnV2):
             alias_name if alias_name else f"min({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: float("+inf")
+            zero_factory=lambda: float("+inf"),
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -279,7 +279,7 @@ class Max(AggregateFnV2):
             alias_name if alias_name else f"max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: float("-inf")
+            zero_factory=lambda: float("-inf"),
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -641,8 +641,7 @@ def _null_safe_finalize(
 
 
 def _null_safe_combine(
-    combine: Callable[[AggType, AggType], AggType],
-    ignore_nulls: bool
+    combine: Callable[[AggType, AggType], AggType], ignore_nulls: bool
 ) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
     def _safe_combine(
         cur: Optional[AggType], new: Optional[AggType]
