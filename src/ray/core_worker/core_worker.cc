@@ -2061,16 +2061,15 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   int64_t start_time = current_time_ms();
-  std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>
-      ready_and_plasma_object_ids;
-  RAY_ASSIGN_OR_RETURN(
-      ready_and_plasma_object_ids,
-      memory_store_->Wait(
-          memory_object_ids,
-          std::min(static_cast<int>(memory_object_ids.size()), num_objects),
-          timeout_ms,
-          worker_context_));
-  auto &[ready, plasma_object_ids] = ready_and_plasma_object_ids;
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+  ready.reserve(num_objects);
+  RAY_RETURN_NOT_OK(memory_store_->Wait(
+      memory_object_ids,
+      std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+      timeout_ms,
+      worker_context_,
+      &ready,
+      &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =

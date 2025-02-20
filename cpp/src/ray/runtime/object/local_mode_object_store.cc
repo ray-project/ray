@@ -89,16 +89,17 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
   for (const auto &object_id : ids) {
     memory_object_ids.insert(object_id);
   }
-  auto status_or_ready_and_plasma_object_ids =
-      memory_store_->Wait(memory_object_ids,
-                          num_objects,
-                          timeout_ms,
-                          local_mode_ray_tuntime_.GetWorkerContext());
-  if (!status_or_ready_and_plasma_object_ids.ok()) {
-    throw RayException("Wait object error: " +
-                       status_or_ready_and_plasma_object_ids.status().ToString());
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+
+  ::ray::Status status = memory_store_->Wait(memory_object_ids,
+                                             num_objects,
+                                             timeout_ms,
+                                             local_mode_ray_tuntime_.GetWorkerContext(),
+                                             &ready,
+                                             &plasma_object_ids);
+  if (!status.ok()) {
+    throw RayException("Wait object error: " + status.ToString());
   }
-  const auto &ready = status_or_ready_and_plasma_object_ids.value().first;
   std::vector<bool> result;
   result.reserve(ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
