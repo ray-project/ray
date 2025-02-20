@@ -30,7 +30,9 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     )
     engine_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
-        description="The kwargs to pass to the vLLM engine.",
+        description="The kwargs to pass to the vLLM engine. See "
+        "https://docs.vllm.ai/en/latest/serving/engine_args.html "
+        "for more details.",
     )
     task_type: vLLMTaskType = Field(
         default=vLLMTaskType.GENERATE,
