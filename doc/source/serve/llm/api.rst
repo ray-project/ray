@@ -6,6 +6,28 @@ Ray Serve LLM API
 
 
 
+Builders
+---------------------
 
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
 
+   builders.build_vllm_deployment
+   builders.build_openai_app
+
+Configs
+---------------------
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   configs.LLMConfig
+   configs.LLMServingArgs
+   configs.ModelLoadingConfig
+   configs.S3MirrorConfig
+   configs.S3AWSCredentials
+   configs.GCSMirrorConfig
+   configs.LoraConfig
 
