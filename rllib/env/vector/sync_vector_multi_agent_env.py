@@ -34,8 +34,12 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self.render_mode = self.envs[0].render_mode
 
         # TODO (simon, sven): Check, if we need to define `get_observation_space(agent)`.
-        self.single_action_spaces = self.envs[0].unwrapped.action_spaces
-        self.single_observation_spaces = self.envs[0].unwrapped.observation_spaces
+        self.single_action_spaces = self.envs[0].unwrapped.action_spaces or dict(
+            self.envs[0].unwrapped.action_space
+        )
+        self.single_observation_spaces = self.envs[
+            0
+        ].unwrapped.observation_spaces or dict(self.envs[0].unwrapped.observation_space)
 
         # TODO (simon): Decide if we want to include a spaces check here.
 

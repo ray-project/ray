@@ -196,6 +196,12 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         self.par_env.reset()
         self._agent_ids = set(self.par_env.agents)
 
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
+
         self.observation_space = gym.spaces.Dict(
             {aid: self.par_env.observation_space(aid) for aid in self._agent_ids}
         )
