@@ -313,7 +313,7 @@ class Mean(AggregateFnV2):
 
     def aggregate_block(self, block: Block) -> AggType:
         block_acc = BlockAccessor.for_block(block)
-        count = block_acc.count(self._target_col_name)
+        count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
         if count == 0 or count is None:
             # Empty or all null.
@@ -366,7 +366,7 @@ class Std(AggregateFnV2):
 
     def aggregate_block(self, block: Block) -> AggType:
         block_acc = BlockAccessor.for_block(block)
-        count = block_acc.count(self._target_col_name)
+        count = block_acc.count(self._target_col_name, ignore_nulls=self._ignore_nulls)
         if count == 0 or count is None:
             # Empty or all null.
             return None
