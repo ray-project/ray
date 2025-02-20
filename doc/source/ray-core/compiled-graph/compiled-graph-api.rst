@@ -22,7 +22,7 @@ DAG Construction
     ray.dag.DAGNode.with_tensor_transport
 
 Compiled Graph Operations
-------------------------
+-------------------------
 
 .. autosummary::
     :nosignatures:
