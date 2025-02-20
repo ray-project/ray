@@ -10,14 +10,37 @@ from ray.data.aggregate import Min, Max, Sum, Mean, Std, Quantile, AbsMax, Uniqu
 @pytest.mark.parametrize(
     "agg_cls,pac_method",
     [
-        (Count, lambda col, ignore_nulls: pac.count(col, mode=('only_valid' if ignore_nulls else 'all')).as_py()),
+        (
+            Count,
+            lambda col, ignore_nulls: pac.count(
+                col, mode=("only_valid" if ignore_nulls else "all")
+            ).as_py(),
+        ),
         (Min, lambda col, ignore_nulls: pac.min(col, skip_nulls=ignore_nulls).as_py()),
         (Max, lambda col, ignore_nulls: pac.max(col, skip_nulls=ignore_nulls).as_py()),
         (Sum, lambda col, ignore_nulls: pac.sum(col, skip_nulls=ignore_nulls).as_py()),
-        (Mean, lambda col, ignore_nulls: pac.mean(col, skip_nulls=ignore_nulls).as_py()),
-        (Std, lambda col, ignore_nulls: pac.stddev(col, ddof=1, skip_nulls=ignore_nulls).as_py()),
-        (Quantile, lambda col, ignore_nulls: pac.quantile(col, q=0.5, skip_nulls=ignore_nulls)[0].as_py()),
-        (AbsMax, lambda col, ignore_nulls: pac.max(pac.abs(col), skip_nulls=ignore_nulls).as_py()),
+        (
+            Mean,
+            lambda col, ignore_nulls: pac.mean(col, skip_nulls=ignore_nulls).as_py(),
+        ),
+        (
+            Std,
+            lambda col, ignore_nulls: pac.stddev(
+                col, ddof=1, skip_nulls=ignore_nulls
+            ).as_py(),
+        ),
+        (
+            Quantile,
+            lambda col, ignore_nulls: pac.quantile(col, q=0.5, skip_nulls=ignore_nulls)[
+                0
+            ].as_py(),
+        ),
+        (
+            AbsMax,
+            lambda col, ignore_nulls: pac.max(
+                pac.abs(col), skip_nulls=ignore_nulls
+            ).as_py(),
+        ),
         (Unique, lambda col, ignore_nulls: set(pac.unique(col).to_pylist())),
     ],
 )
@@ -32,9 +55,7 @@ def test_null_safe_aggregation_protocol(agg_cls, pac_method, ignore_nulls):
 
     expected = pac_method(col, ignore_nulls)
 
-    agg_kwargs = {} if agg_cls is Unique else {
-        "ignore_nulls": ignore_nulls
-    }
+    agg_kwargs = {} if agg_cls is Unique else {"ignore_nulls": ignore_nulls}
 
     agg = agg_cls(on="A", **agg_kwargs)
 
