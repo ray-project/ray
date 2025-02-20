@@ -33,6 +33,7 @@ from openai.types.chat import (
 from pydantic import (
     BaseModel,
     Field,
+    model_validator,
 )
 from ray.serve._private.utils import (
     generate_request_id,
@@ -546,6 +547,11 @@ class DeltaMessage(BaseModel):
     content: Optional[str] = None
     reasoning_content: Optional[str] = None
     tool_calls: List[DeltaToolCall] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _non_null_content(self):
+        self.content = self.content or ""
+        return self
 
 
 class ChatCompletionResponseStreamChoice(BaseModel):
