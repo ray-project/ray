@@ -4,21 +4,21 @@ import pyarrow
 import pytest
 
 from pyarrow import compute as pac
-from ray.data.aggregate import Min, Max, Sum, Mean, Std, Quantile, AbsMax, Unique
-from ray.data._internal.util import is_nan
+from ray.data.aggregate import Min, Max, Sum, Mean, Std, Quantile, AbsMax, Unique, Count
 
 
 @pytest.mark.parametrize(
     "agg_cls,pac_method",
     [
-        (Min, lambda col, **kwargs: pac.min(col, **kwargs).as_py()),
-        (Max, lambda col, **kwargs: pac.max(col, **kwargs).as_py()),
-        (Sum, lambda col, **kwargs: pac.sum(col, **kwargs).as_py()),
-        (Mean, lambda col, **kwargs: pac.mean(col, **kwargs).as_py()),
-        (Std, lambda col, **kwargs: pac.stddev(col, ddof=1, **kwargs).as_py()),
-        (Quantile, lambda col, **kwargs: pac.quantile(col, q=0.5, **kwargs)[0].as_py()),
-        (AbsMax, lambda col, **kwargs: pac.max(pac.abs(col), **kwargs).as_py()),
-        (Unique, lambda col, **kwargs: set(pac.unique(col).to_pylist())),
+        (Count, lambda col, ignore_nulls: pac.count(col, mode=('only_valid' if ignore_nulls else 'all')).as_py()),
+        (Min, lambda col, ignore_nulls: pac.min(col, skip_nulls=ignore_nulls).as_py()),
+        (Max, lambda col, ignore_nulls: pac.max(col, skip_nulls=ignore_nulls).as_py()),
+        (Sum, lambda col, ignore_nulls: pac.sum(col, skip_nulls=ignore_nulls).as_py()),
+        (Mean, lambda col, ignore_nulls: pac.mean(col, skip_nulls=ignore_nulls).as_py()),
+        (Std, lambda col, ignore_nulls: pac.stddev(col, ddof=1, skip_nulls=ignore_nulls).as_py()),
+        (Quantile, lambda col, ignore_nulls: pac.quantile(col, q=0.5, skip_nulls=ignore_nulls)[0].as_py()),
+        (AbsMax, lambda col, ignore_nulls: pac.max(pac.abs(col), skip_nulls=ignore_nulls).as_py()),
+        (Unique, lambda col, ignore_nulls: set(pac.unique(col).to_pylist())),
     ],
 )
 @pytest.mark.parametrize("ignore_nulls", [True, False])
@@ -30,7 +30,7 @@ def test_null_safe_aggregation_protocol(agg_cls, pac_method, ignore_nulls):
     col = pyarrow.array([0, 1, 2, None])
     t = pyarrow.table([col], names=["A"])
 
-    expected = pac_method(col, skip_nulls=ignore_nulls)
+    expected = pac_method(col, ignore_nulls)
 
     agg_kwargs = {} if agg_cls is Unique else {
         "ignore_nulls": ignore_nulls
@@ -58,6 +58,4 @@ def test_null_safe_aggregation_protocol(agg_cls, pac_method, ignore_nulls):
 
         # Assert that combining aggregations is an associative operation,
         # ie invariant of the order of combining partial aggregations
-        assert res == expected or (
-            is_nan(res) and is_nan(expected)
-        ), permuted_accumulators
+        assert res == expected, permuted_accumulators
