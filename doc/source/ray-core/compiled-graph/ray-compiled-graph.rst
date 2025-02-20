@@ -72,3 +72,4 @@ Learn more details about Ray Compiled Graph from the following links.
     visualization
     profiling
     overlap
+    compiled-graph-api
