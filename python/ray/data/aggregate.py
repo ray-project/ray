@@ -313,9 +313,11 @@ class Mean(AggregateFnV2):
 
         sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
 
-        if sum_ is None:
-            # ignore_nulls=False and at least one null.
-            return None
+        if _is_null(sum_):
+            # In case of ignore_nulls=False and column containing 'null'
+            # return as is (to prevent unnecessary type conversions, when, for ex,
+            # using Pandas and returning None)
+            return sum_
 
         return [sum_, count]
 
@@ -361,9 +363,11 @@ class Std(AggregateFnV2):
             # Empty or all null.
             return None
         sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
-        if sum_ is None:
-            # ignore_nulls=False and at least one null.
-            return None
+        if _is_null(sum_):
+            # In case of ignore_nulls=False and column containing 'null'
+            # return as is (to prevent unnecessary type conversions, when, for ex,
+            # using Pandas and returning None)
+            return sum_
         mean = sum_ / count
         M2 = block_acc.sum_of_squared_diffs_from_mean(
             self._target_col_name, self._ignore_nulls, mean
