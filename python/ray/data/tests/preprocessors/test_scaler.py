@@ -88,7 +88,7 @@ def test_min_max_scaler():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 def test_max_abs_scaler():
@@ -119,7 +119,7 @@ def test_max_abs_scaler():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    pd.testing.assert_frame_equal(out_df, expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = [1, 2, 3]
@@ -142,7 +142,7 @@ def test_max_abs_scaler():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
     # append mode
     with pytest.raises(ValueError):
@@ -168,7 +168,7 @@ def test_max_abs_scaler():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 def test_robust_scaler():
@@ -206,7 +206,7 @@ def test_robust_scaler():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    pd.testing.assert_frame_equal(out_df, expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = [1, 2, 3]
@@ -229,7 +229,7 @@ def test_robust_scaler():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
     # append mode
     with pytest.raises(ValueError):
@@ -255,7 +255,7 @@ def test_robust_scaler():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 def test_standard_scaler():
@@ -292,7 +292,7 @@ def test_standard_scaler():
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
 
-    pd.testing.assert_frame_equal(out_df, expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = [1, 2, 3]
@@ -315,7 +315,7 @@ def test_standard_scaler():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
     # append mode
     with pytest.raises(ValueError):
@@ -341,7 +341,7 @@ def test_standard_scaler():
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 if __name__ == "__main__":
