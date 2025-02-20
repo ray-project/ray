@@ -272,7 +272,7 @@ class ClientCallManager {
     // pointer.
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(
-        &call->reply_, &call->status_, reinterpret_cast<void *>(tag));
+        &call->reply_, &call->status_, static_cast<void *>(tag));
     return call;
   }
 
