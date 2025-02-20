@@ -2,6 +2,8 @@ import abc
 import math
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
+import numpy as np
+
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
@@ -395,8 +397,8 @@ class Std(AggregateFnV2):
         # Compute the final standard deviation from the accumulated
         # sum of squared differences from current mean and the count.
         M2, mean, count = accumulator
-        if count < 2:
-            return 0.0
+        if count == self._ddof:
+            return np.nan
         return math.sqrt(M2 / (count - self._ddof))
 
 
