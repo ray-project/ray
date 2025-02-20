@@ -37,14 +37,15 @@ on the graph.
         dag = MultiOutputNode([w1, w2])
 
     compiled_dag = dag.experimental_compile()
-    compiled_dag.visualize()
+    compiled_dag.visualize(filename="compiled_graph_viz", format="png")
 
 By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
-Note that this requires you to install ``graphviz``.
+You can override the filename or format by specifying the ``filename`` and ``format`` arguments. The ``format``
+can be any ``graphviz`` supported format, note that this requires you to install ``graphviz``.
 
-The following is the visualization for the preceding code:
+The preceding code generates a ``compiled_graph_viz.png`` file:
 
-.. image:: ../../images/compiled_graph.png
+.. image:: ../../images/compiled_graph_viz.png
     :alt: Visualization of Graph Structure
     :align: center
 
