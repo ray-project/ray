@@ -404,7 +404,7 @@ class Std(AggregateFnV2):
         # Compute the final standard deviation from the accumulated
         # sum of squared differences from current mean and the count.
         M2, mean, count = accumulator
-        if count == self._ddof:
+        if count - self._ddof <= 0:
             return np.nan
         return math.sqrt(M2 / (count - self._ddof))
 
