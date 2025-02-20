@@ -512,13 +512,19 @@ class LLMConfig(BaseModelExtended):
         This method is used to generate the Serve options for the given LLM config.
 
         Examples:
-            from ray.serve.llm.configs import LLMConfig
+            from ray import serve
+            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
+            from ray.serve.llm.deployments import VLLMDeployment
 
-            serve_options = LLMConfig(
+
+            llm_config = LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
                 accelerator_type="L4",
                 runtime_env={"env_vars": {"FOO": "bar"}},
-            ).get_serve_options(name_prefix="Test:")
+            )
+            serve_options = llm_config.get_serve_options(name_prefix="Test:")
+            vllm_app = VLLMDeployment.options(**serve_options).bind(llm_config)
+            serve.run(vllm_app)
 
         Keyword Args:
             name_prefix: The prefix to use for the deployment name.
