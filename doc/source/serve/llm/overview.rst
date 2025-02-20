@@ -16,12 +16,12 @@ Key Components
 
 The ``ray.serve.llm`` module provides two key deployment types for serving LLMs:
 
-VLLMDeploymentImpl
+VLLMService
 ~~~~~~~~~~~~~~~~~~
 
-The VLLMDeploymentImpl sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
+The VLLMService sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
 
-LLMModelRouterDeploymentImpl
+LLMRouter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This deployment provides an OpenAI-compatible FastAPI ingress and routes traffic to the appropriate model for multi-model services. The following endpoints are supported:
 
@@ -46,14 +46,14 @@ The ``LLMConfig`` class specifies model details such as:
 Quickstart Examples
 -------------------
 
-Single Model Deployment through ``VLLMDeploymentImpl``
+Single Model Deployment through ``VLLMService``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
     from ray import serve
     from ray.serve.llm.configs import LLMConfig
-    from ray.serve.llm.deployments import VLLMDeploymentImpl
+    from ray.serve.llm.deployments import VLLMService
 
     # Configure the model
     llm_config = LLMConfig(
@@ -71,7 +71,7 @@ Single Model Deployment through ``VLLMDeploymentImpl``
     )
 
     # Build the deployment directly
-    vllm_deployment = VLLMDeploymentImpl.as_deployment()
+    vllm_deployment = VLLMService.as_deployment()
 
     # You can also use .options() to configure the deployment
     # e.g. vllm_deployment.options(**llm_config.get_serve_options()).bind(llm_config)
@@ -80,14 +80,14 @@ Single Model Deployment through ``VLLMDeploymentImpl``
     model_handle = serve.run(vllm_app)
 
 
-Multi-Model Deployment through ``LLMModelRouterDeploymentImpl``
+Multi-Model Deployment through ``LLMRouter``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
     from ray import serve
     from ray.serve.llm.configs import LLMConfig
-    from ray.serve.llm.deployments import VLLMDeploymentImpl, LLMModelRouterDeploymentImpl
+    from ray.serve.llm.deployments import VLLMService, LLMRouter
 
     llm_config1 = LLMConfig(
         model_loading_config=dict(
@@ -116,9 +116,9 @@ Multi-Model Deployment through ``LLMModelRouterDeploymentImpl``
     )
 
     # Deploy the application
-    deployment1 = VLLMDeploymentImpl.as_deployment().bind(llm_config1)
-    deployment2 = VLLMDeploymentImpl.as_deployment().bind(llm_config2)
-    llm_app = LLMModelRouterDeploymentImpl.as_deployment().bind([deployment1, deployment2])
+    deployment1 = VLLMService.as_deployment().bind(llm_config1)
+    deployment2 = VLLMService.as_deployment().bind(llm_config2)
+    llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
     serve.run(llm_app)
 
 Querying Models
