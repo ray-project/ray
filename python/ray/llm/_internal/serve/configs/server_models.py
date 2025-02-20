@@ -507,7 +507,24 @@ class LLMConfig(BaseModelExtended):
         *,
         name_prefix: str,
     ) -> Dict[str, Any]:
-        """Get the Serve options for the given LLM config."""
+        """Get the Serve options for the given LLM config.
+
+        This method is used to generate the Serve options for the given LLM config.
+
+        Examples:
+            from ray.serve.llm.configs import LLMConfig
+
+            serve_options = LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                runtime_env={"env_vars": {"FOO": "bar"}},
+            ).get_serve_options(name_prefix="Test:")
+
+        Keyword Args:
+            name_prefix: The prefix to use for the deployment name.
+        Returns:
+            The dictionary to use in .options() when creating the deployment.
+        """
 
         deployment_config = self._set_deployment_placement_options()
 
