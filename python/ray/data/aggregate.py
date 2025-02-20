@@ -330,6 +330,9 @@ class Mean(AggregateFnV2):
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
     def _finalize(self, accumulator: AggType) -> Optional[U]:
+        if accumulator[1] == 0:
+            return np.nan
+
         return accumulator[0] / accumulator[1]
 
 
