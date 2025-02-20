@@ -205,7 +205,13 @@ class Count(AggregateFnV2):
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        return BlockAccessor.for_block(block).count(
+        block_accessor = BlockAccessor.for_block(block)
+
+        if self._target_col_name is None:
+            # In case of global count, simply fetch number of rows
+            return block_accessor.num_rows()
+
+        return block_accessor.count(
             self._target_col_name, ignore_nulls=self._ignore_nulls
         )
 

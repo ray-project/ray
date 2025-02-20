@@ -73,9 +73,9 @@ def _map_to_pa_compute_method(agg_cls: type):
         Std: lambda col, ignore_nulls: pac.stddev(
             col, ddof=1, skip_nulls=ignore_nulls
         ).as_py(),
-        Quantile: lambda col, ignore_nulls: pac.quantile(col, q=0.5, skip_nulls=ignore_nulls)[
-            0
-        ].as_py(),
+        Quantile: lambda col, ignore_nulls: pac.quantile(
+            col, q=0.5, skip_nulls=ignore_nulls
+        )[0].as_py(),
         AbsMax: lambda col, ignore_nulls: pac.max(
             pac.abs(col), skip_nulls=ignore_nulls
         ).as_py(),
