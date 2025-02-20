@@ -236,7 +236,10 @@ def push_telemetry_report_for_all_models(
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
             from ray.llm._internal.serve.configs.server_models import AutoscalingConfig
-            autoscaling_config = AutoscalingConfig(**model.deployment_config["autoscaling_config"])
+
+            autoscaling_config = AutoscalingConfig(
+                **model.deployment_config["autoscaling_config"]
+            )
             num_replicas = autoscaling_config.initial_replicas
             min_replicas = autoscaling_config.min_replicas
             max_replicas = autoscaling_config.max_replicas

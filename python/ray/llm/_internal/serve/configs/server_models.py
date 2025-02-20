@@ -37,7 +37,6 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     DEFAULT_TARGET_ONGOING_REQUESTS,
-    FALLBACK_MAX_ONGOING_REQUESTS,
     MAX_NUM_STOPPING_SEQUENCES,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
@@ -191,7 +190,7 @@ class DeploymentConfig(BaseModelExtended):
         None,
         description="Sets the maximum number of queries in flight that are sent to a single replica.",
     )
-    
+
     ray_actor_options: Optional[Dict[str, Any]] = Field(
         None, description="the Ray actor options to pass into the replica's actor."
     )
@@ -199,7 +198,6 @@ class DeploymentConfig(BaseModelExtended):
         300,
         description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
     )
-
 
 
 class InputModality(str, Enum):
