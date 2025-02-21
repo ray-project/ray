@@ -17,6 +17,10 @@
 #include <google/protobuf/map.h>
 
 #include <boost/range/join.hpp>
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
