@@ -1,16 +1,23 @@
+import os
+
+os.environ["RAY_DEDUP_LOGS"] = "0"
+
 import ray
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
+import numpy as np
 
 
 @ray.remote
 def generate_response(request):
-    return "Response to " + request
+    print(request)
+    array = np.ones(100000)
+    return array
 
 
-def process_response(response):
-    print(response)
-    return "Processed " + response
+def process_response(response, idx):
+    print(f"Processing response {idx}")
+    return response
 
 
 def main():
@@ -23,7 +30,7 @@ def main():
     with ProcessPoolExecutor(max_workers=4) as executor:
         future_to_task = {}
         for idx, response in enumerate(responses):
-            future_to_task[executor.submit(process_response, response)] = idx
+            future_to_task[executor.submit(process_response, response, idx)] = idx
 
         for future in as_completed(future_to_task):
             idx = future_to_task[future]
