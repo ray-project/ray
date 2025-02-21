@@ -3471,10 +3471,16 @@ void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
   if (task_manager_->TryDelObjectRefStream(generator_id)) {
     return;
   }
-  deleted_generator_ids_.insert(generator_id);
+
+  {
+    absl::MutexLock lock(&deleted_generator_ids_mutex_);
+    deleted_generator_ids_.insert(generator_id);
+  }
 }
 
 void CoreWorker::TryDeleteObjectRefStreams() {
+  absl::MutexLock lock(&deleted_generator_ids_mutex_);
+
   std::vector<ObjectID> out_of_scope_generator_ids;
   for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
        it++) {
