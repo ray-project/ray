@@ -94,8 +94,7 @@ NodeResourceSet RandomNodeResourceSet() {
               ResourceID("custom2")};
   NodeResourceSet resource_set;
   for (auto &id : ids) {
-    unsigned int seed = static_cast<unsigned int>(time(nullptr));
-    if (rand_r(&seed) % 3 != 0) {
+    if (rand() % 3 != 0) {
       resource_set.Set(id, rand() % 10);
     }
   }
