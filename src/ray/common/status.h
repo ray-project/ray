@@ -313,6 +313,8 @@ class RAY_EXPORT Status {
   // Returns the string "OK" for success.
   std::string ToString() const;
 
+  std::string StatusString() const { return ToString(); }
+
   // Return a string representation of the status code, without the message
   // text or posix code information.
   std::string CodeAsString() const;

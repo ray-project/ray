@@ -337,3 +337,16 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+ray_cc_library(
+    name = "scoped_dup2_wrapper",
+    hdrs = ["scoped_dup2_wrapper.h"],
+    srcs = select({
+        "@platforms//os:windows": ["scoped_dup2_wrapper_windows.cc"],
+        "//conditions:default": ["scoped_dup2_wrapper_posix.cc"],
+    }),
+    deps = [
+        ":compat",
+        ":logging",
+    ],
+)
