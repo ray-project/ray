@@ -410,8 +410,8 @@ For multimodal models that can process both text and images:
             # Configure a vision model
             llm_config = LLMConfig(
                 model_loading_config=dict(
-                    model_id="qwen-vl-7b",
-                    model_source="Qwen/Qwen2.5-VL-7B-Instruct",
+                    model_id="pixtral-12b",
+                    model_source="mistral-community/pixtral-12b",
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
@@ -438,7 +438,7 @@ For multimodal models that can process both text and images:
 
             # Create and send a request with an image
             response = client.chat.completions.create(
-                model="qwen-vl-7b",
+                model="pixtral-12b",
                 messages=[
                     {
                         "role": "user",
