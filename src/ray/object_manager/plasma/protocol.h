@@ -41,13 +41,6 @@ using flatbuf::MessageType;
 using flatbuf::ObjectSource;
 using flatbuf::PlasmaError;
 
-inline constexpr std::string_view DEBUG_STRING = "debug_string";
-inline constexpr std::string_view OBJECT_ID = "object_id";
-inline constexpr std::string_view OBJECT_IDS = "object_ids";
-inline constexpr std::string_view OWNER_RAYLET_ID = "owner_raylet_id";
-inline constexpr std::string_view OWNER_IP_ADDRESS = "owner_ip_address";
-inline constexpr std::string_view OWNER_WORKER_ID = "owner_worker_id";
-
 Status PlasmaErrorStatus(flatbuf::PlasmaError plasma_error);
 
 template <class T>

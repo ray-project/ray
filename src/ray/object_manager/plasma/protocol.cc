@@ -34,6 +34,13 @@ using fb::PlasmaObjectSpec;
 
 using flatbuffers::uoffset_t;
 
+inline constexpr std::string_view kDebugString = "debug_string";
+inline constexpr std::string_view kObjectId = "object_id";
+inline constexpr std::string_view kObjectIds = "object_ids";
+inline constexpr std::string_view kOwnerRayletId = "owner_raylet_id";
+inline constexpr std::string_view kOwnerIpAddress = "owner_ip_address";
+inline constexpr std::string_view kOnwerWorkerId = "owner_worker_id";
+
 namespace internal {
 
 static uint8_t non_null_filler;
@@ -183,7 +190,7 @@ Status ReadGetDebugStringReply(uint8_t *data, size_t size, std::string *debug_st
   auto message = flatbuffers::GetRoot<fb::PlasmaGetDebugStringReply>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   VerifyNotNullPtr(
-      message->debug_string(), DEBUG_STRING, MessageType::PlasmaGetDebugStringReply);
+      message->debug_string(), kDebugString, MessageType::PlasmaGetDebugStringReply);
   *debug_string = message->debug_string()->str();
   return Status::OK();
 }
@@ -236,17 +243,17 @@ void ReadCreateRequest(uint8_t *data,
   object_info->is_mutable = message->is_mutable();
   object_info->data_size = message->data_size();
   object_info->metadata_size = message->metadata_size();
-  VerifyNotNullPtr(message->object_id(), OBJECT_ID, MessageType::PlasmaCreateRequest);
+  VerifyNotNullPtr(message->object_id(), kObjectId, MessageType::PlasmaCreateRequest);
   object_info->object_id = ObjectID::FromBinary(message->object_id()->str());
   VerifyNotNullPtr(
-      message->owner_raylet_id(), OWNER_RAYLET_ID, MessageType::PlasmaCreateRequest);
+      message->owner_raylet_id(), kOwnerRayletId, MessageType::PlasmaCreateRequest);
   object_info->owner_raylet_id = NodeID::FromBinary(message->owner_raylet_id()->str());
   VerifyNotNullPtr(
-      message->owner_ip_address(), OWNER_IP_ADDRESS, MessageType::PlasmaCreateRequest);
+      message->owner_ip_address(), kOwnerIpAddress, MessageType::PlasmaCreateRequest);
   object_info->owner_ip_address = message->owner_ip_address()->str();
   object_info->owner_port = message->owner_port();
   VerifyNotNullPtr(
-      message->owner_worker_id(), OWNER_WORKER_ID, MessageType::PlasmaCreateRequest);
+      message->owner_worker_id(), kOnwerWorkerId, MessageType::PlasmaCreateRequest);
   object_info->owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());
   *source = message->source();
   *device_num = message->device_num();
@@ -345,7 +352,7 @@ Status ReadAbortRequest(uint8_t *data, size_t size, ObjectID *object_id) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaAbortRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  VerifyNotNullPtr(message->object_id(), OBJECT_ID, MessageType::PlasmaAbortRequest);
+  VerifyNotNullPtr(message->object_id(), kObjectId, MessageType::PlasmaAbortRequest);
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return Status::OK();
 }
@@ -376,7 +383,7 @@ Status ReadSealRequest(uint8_t *data, size_t size, ObjectID *object_id) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaSealRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  VerifyNotNullPtr(message->object_id(), OBJECT_ID, MessageType::PlasmaSealRequest);
+  VerifyNotNullPtr(message->object_id(), kObjectId, MessageType::PlasmaSealRequest);
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return Status::OK();
 }
@@ -416,7 +423,7 @@ Status ReadReleaseRequest(uint8_t *data,
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaReleaseRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  VerifyNotNullPtr(message->object_id(), OBJECT_ID, MessageType::PlasmaReleaseRequest);
+  VerifyNotNullPtr(message->object_id(), kObjectId, MessageType::PlasmaReleaseRequest);
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   *may_unmap = message->may_unmap();
   return Status::OK();
@@ -463,10 +470,10 @@ Status ReadDeleteRequest(uint8_t *data, size_t size, std::vector<ObjectID> *obje
   RAY_DCHECK(object_ids);
   auto message = flatbuffers::GetRoot<PlasmaDeleteRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  VerifyNotNullPtr(message->object_ids(), OBJECT_IDS, MessageType::PlasmaDeleteRequest);
+  VerifyNotNullPtr(message->object_ids(), kObjectIds, MessageType::PlasmaDeleteRequest);
   ToVector(*message, object_ids, [](const PlasmaDeleteRequest &request, int i) {
     VerifyNotNullPtr(
-        request.object_ids()->Get(i), OBJECT_ID, MessageType::PlasmaDeleteRequest);
+        request.object_ids()->Get(i), kObjectId, MessageType::PlasmaDeleteRequest);
     return ObjectID::FromBinary(request.object_ids()->Get(i)->str());
   });
   return Status::OK();
@@ -520,7 +527,7 @@ Status ReadContainsRequest(uint8_t *data, size_t size, ObjectID *object_id) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaContainsRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  VerifyNotNullPtr(message->object_id(), OBJECT_ID, MessageType::PlasmaContainsRequest);
+  VerifyNotNullPtr(message->object_id(), kObjectId, MessageType::PlasmaContainsRequest);
   *object_id = ObjectID::FromBinary(message->object_id()->str());
   return Status::OK();
 }
@@ -621,10 +628,10 @@ Status ReadGetRequest(uint8_t *data,
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetRequest>(data);
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
-  VerifyNotNullPtr(message->object_ids(), OBJECT_IDS, MessageType::PlasmaGetRequest);
+  VerifyNotNullPtr(message->object_ids(), kObjectIds, MessageType::PlasmaGetRequest);
   for (uoffset_t i = 0; i < message->object_ids()->size(); ++i) {
     VerifyNotNullPtr(
-        message->object_ids()->Get(i), OBJECT_ID, MessageType::PlasmaGetRequest);
+        message->object_ids()->Get(i), kObjectId, MessageType::PlasmaGetRequest);
     auto object_id = message->object_ids()->Get(i)->str();
     object_ids.push_back(ObjectID::FromBinary(object_id));
   }
