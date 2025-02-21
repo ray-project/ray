@@ -10,29 +10,19 @@ Throughput benchmarks:
 """
 import asyncio
 import click
-from functools import partial
 import json
 import logging
 
-import grpc
 import pandas as pd
-import requests
 from typing import Dict, List, Optional
 
 from ray import serve
 from ray.serve._private.benchmarks.common import (
     Benchmarker,
-    do_single_grpc_batch,
-    do_single_http_batch,
     generate_payload,
     Noop,
-    IntermediateRouter,
-    run_latency_benchmark,
-    run_throughput_benchmark,
-    Streamer,
 )
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.config import gRPCOptions
+from ray.serve.generated import serve_pb2
 from ray.serve.handle import DeploymentHandle
 
 from serve_test_utils import save_test_results
@@ -139,7 +129,6 @@ async def _main(
             )
             perf_metrics.extend(convert_throughput_to_perf_metrics("handle", mean, std))
             serve.shutdown()
-
 
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
