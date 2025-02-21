@@ -57,6 +57,7 @@ ray_cc_library(
         ":thread_utils",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/debugging:failure_signal_handler",
+        "@com_google_absl//absl/strings:internal",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
