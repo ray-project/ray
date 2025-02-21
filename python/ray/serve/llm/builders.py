@@ -58,7 +58,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
 
                 resp = model_handle.chat.remote(request)
                 async for message in resp:
-                    print(message)
+                    print("message: ", message)
 
             asyncio.run(query_model(model_handle))
 
