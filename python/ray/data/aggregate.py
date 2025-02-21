@@ -604,11 +604,12 @@ def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
         (ie 0 for count/sum, -inf for max, etc).
     """
 
-    def _safe_zero_factory(_):
-        if ignore_nulls:
+    if ignore_nulls:
+        def _safe_zero_factory(_):
             return None
-
-        return zero_factory()
+    else:
+        def _safe_zero_factory(_):
+            return zero_factory()
 
     return _safe_zero_factory
 
@@ -643,29 +644,30 @@ def _null_safe_finalize(
 def _null_safe_combine(
     combine: Callable[[AggType, AggType], AggType], ignore_nulls: bool
 ) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
-    def _safe_combine(
-        cur: Optional[AggType], new: Optional[AggType]
-    ) -> Optional[AggType]:
-        """Null-safe combination have to be an associative operation
-        with an identity element (zero) or in other words implement a monoid.
+    """Null-safe combination have to be an associative operation
+     with an identity element (zero) or in other words implement a monoid.
 
-        To achieve that in the presence of null values following semantic is
-        established:
+     To achieve that in the presence of null values following semantic is
+     established:
 
-            - Case of ignore_nulls=True:
-                - If current accumulator is null (ie empty), return new accumulator
-                - If new accumulator is null (ie empty), return cur
-                - Otherwise combine (current and new)
+         - Case of ignore_nulls=True:
+             - If current accumulator is null (ie empty), return new accumulator
+             - If new accumulator is null (ie empty), return cur
+             - Otherwise combine (current and new)
 
-            - Case of ignore_nulls=False:
-                - If new accumulator is null (ie has null in the sequence, b/c we're
-                NOT ignoring nulls), return it
-                - If current accumulator is null (ie had null in the prior sequence,
-                b/c we're NOT ignoring nulls), return it
-                - Otherwise combine (current and new)
-        """
+         - Case of ignore_nulls=False:
+             - If new accumulator is null (ie has null in the sequence, b/c we're
+             NOT ignoring nulls), return it
+             - If current accumulator is null (ie had null in the prior sequence,
+             b/c we're NOT ignoring nulls), return it
+             - Otherwise combine (current and new)
+     """
 
-        if ignore_nulls:
+    if ignore_nulls:
+        def _safe_combine(
+            cur: Optional[AggType], new: Optional[AggType]
+        ) -> Optional[AggType]:
+
             if _is_null(cur):
                 return new
             elif _is_null(new):
@@ -673,7 +675,11 @@ def _null_safe_combine(
             else:
                 return combine(cur, new)
 
-        else:
+    else:
+        def _safe_combine(
+            cur: Optional[AggType], new: Optional[AggType]
+        ) -> Optional[AggType]:
+
             if _is_null(new):
                 return new
             elif _is_null(cur):
