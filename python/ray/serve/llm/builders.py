@@ -38,7 +38,29 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
             vllm_app = build_vllm_deployment(llm_config)
 
             # Deploy the application
-            serve.run(vllm_app)
+            model_handle = serve.run(vllm_app)
+
+            # Querying the model handle
+            import asyncio
+            model_handle = model_handle.options(stream=True)
+            async def query_model(model_handle):
+                from ray.serve.llm.openai_api_models import ChatCompletionRequest
+
+                request = ChatCompletionRequest(
+                    model="qwen-0.5b",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": "Hello, world!"
+                        }
+                    ]
+                )
+
+                resp = model_handle.chat.remote(request)
+                async for message in resp:
+                    print("message: ", message)
+
+            asyncio.run(query_model(model_handle))
 
     Args:
         llm_config: The llm config to build vllm deployment.
@@ -64,41 +86,52 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
             from ray import serve
             from ray.serve.llm.configs import LLMConfig
-            from ray.serve.llm.builders import build_openai_app
+            from ray.serve.llm.deployments import VLLMService, LLMRouter
 
-            # Configure multiple models
             llm_config1 = LLMConfig(
                 model_loading_config=dict(
-                    model_id="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
                 ),
                 deployment_config=dict(
                     autoscaling_config=dict(
-                        min_replicas=1,
-                        max_replicas=8,
-                    )
-                ),
-            )
-
-            llm_config2 = LLMConfig(
-                model_loading_config=dict(
-                    model_id="llama-3.2-3b",
-                    model_source="meta-llama/Llama-3.2-3b-instruct",
-                ),
-                deployment_config=dict(
-                    autoscaling_config=dict(
-                        min_replicas=1,
-                        max_replicas=2,
+                        min_replicas=1, max_replicas=2,
                     )
                 ),
                 accelerator_type="A10G",
             )
 
-            # Build the application
-            llm_app = build_openai_app([llm_config1, llm_config2])
+            llm_config2 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-1.5b",
+                    model_source="Qwen/Qwen2.5-1.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
 
             # Deploy the application
+            deployment1 = VLLMService.as_deployment().bind(llm_config1)
+            deployment2 = VLLMService.as_deployment().bind(llm_config2)
+            llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
             serve.run(llm_app)
+
+
+            # Querying the model via openai client
+            from openai import OpenAI
+
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+            # Basic completion
+            response = client.chat.completions.create(
+                model="qwen-0.5b",
+                messages=[{"role": "user", "content": "Hello!"}]
+            )
 
     Args:
         llm_serving_args: The list of llm configs or the paths to the llm config to
