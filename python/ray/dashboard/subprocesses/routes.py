@@ -17,6 +17,9 @@ from ray.dashboard.subprocesses.message import (
     StreamResponseStartMessage,
 )
 from ray.dashboard.subprocesses.module import SubprocessModule
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SubprocessRouteTable(BaseRouteTable):
