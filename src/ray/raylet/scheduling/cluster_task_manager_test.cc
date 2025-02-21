@@ -18,6 +18,11 @@
 
 #include <memory>
 #include <string>
+#include <list>
+#include <utility>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -201,7 +206,7 @@ RayTask CreateTask(
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
  public:
-  MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects)
+  explicit MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects)
       : missing_objects_(missing_objects) {}
 
   bool RequestTaskDependencies(const TaskID &task_id,
