@@ -46,42 +46,76 @@ The ``LLMConfig`` class specifies model details such as:
 Quickstart Examples
 -------------------
 
-Single Model Deployment through ``VLLMService``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Deployment through ``LLMRouter``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
     from ray import serve
     from ray.serve.llm.configs import LLMConfig
-    from ray.serve.llm.deployments import VLLMService
+    from ray.serve.llm.deployments import VLLMService, LLMRouter
 
-    # Configure the model
-    llm_config = LLMConfig(
+    llm_config1 = LLMConfig(
         model_loading_config=dict(
             model_id="qwen-0.5b",
             model_source="Qwen/Qwen2.5-0.5B-Instruct",
         ),
         deployment_config=dict(
             autoscaling_config=dict(
-                min_replicas=1,
-                max_replicas=2,
+                min_replicas=1, max_replicas=2,
             )
         ),
+        # Pass the desired accelerator type (e.g. A10G, L4, etc.)
         accelerator_type="A10G",
+        # You can customize the engine arguments (e.g. vLLM engine kwargs)
+        engine_kwargs=dict(
+            tensor_parallel_size=2,
+        ),
     )
 
-    # Build the deployment directly
-    vllm_deployment = VLLMService.as_deployment()
 
-    # You can also use .options() to configure the deployment
-    # e.g. vllm_deployment.options(**llm_config.get_serve_options()).bind(llm_config)
-    vllm_app = vllm_deployment.bind(llm_config)
+You can query the deployed models using either cURL or the OpenAI Python client:
 
-    model_handle = serve.run(vllm_app)
+.. tab-set::
 
+    .. tab-item:: cURL
+        :sync: curl
 
-Multi-Model Deployment through ``LLMRouter``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        .. code-block:: bash
+
+            curl -X POST http://localhost:8000/v1/chat/completions \
+                 -H "Content-Type: application/json" \
+                 -H "Authorization: Bearer fake-key" \
+                 -d '{
+                       "model": "qwen-0.5b",
+                       "messages": [{"role": "user", "content": "Hello!"}]
+                     }'
+
+    .. tab-item:: Python
+        :sync: python
+
+        .. code-block:: python
+
+            from openai import OpenAI
+            
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+            
+            # Basic chat completion with streaming
+            response = client.chat.completions.create(
+                model="qwen-0.5b",
+                messages=[{"role": "user", "content": "Hello!"}]
+                stream=True
+            )
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    print(chunk.choices[0].delta.content, end="", flush=True)
+            
+
+For deploying multiple models, you can pass a list of ``LLMConfig`` objects to the ``LLMRouter`` deployment:
 
 .. code-block:: python
 
@@ -121,42 +155,6 @@ Multi-Model Deployment through ``LLMRouter``
     llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
     serve.run(llm_app)
 
-Querying Models
----------------
-
-You can query the deployed models using either cURL or the OpenAI Python client:
-
-.. tab-set::
-
-    .. tab-item:: cURL
-        :sync: curl
-
-        .. code-block:: bash
-
-            curl -X POST http://localhost:8000/v1/chat/completions \
-                 -H "Content-Type: application/json" \
-                 -H "Authorization: Bearer fake-key" \
-                 -d '{
-                       "model": "qwen-0.5b",
-                       "messages": [{"role": "user", "content": "Hello!"}]
-                     }'
-
-    .. tab-item:: Python
-        :sync: python
-
-        .. code-block:: python
-
-            # Query
-            from openai import OpenAI
-            
-            # Initialize client
-            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
-            
-            # Basic completion
-            response = client.chat.completions.create(
-                model="qwen-0.5b",
-                messages=[{"role": "user", "content": "Hello!"}]
-            )
 
 Production Deployment
 ---------------------
@@ -177,22 +175,22 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                     - model_loading_config:
                         model_id: qwen-0.5b
                         model_source: Qwen/Qwen2.5-0.5B-Instruct
-                    accelerator_type: A10G
-                    deployment_config:
+                      accelerator_type: A10G
+                      deployment_config:
                         autoscaling_config: 
-                        min_replicas: 1
-                        max_replicas: 2
+                            min_replicas: 1
+                            max_replicas: 2
                     - model_loading_config:
                         model_id: qwen-1.5b
                         model_source: Qwen/Qwen2.5-1.5B-Instruct
-                    accelerator_type: A10G
-                    deployment_config:
+                      accelerator_type: A10G
+                      deployment_config:
                         autoscaling_config: 
-                        min_replicas: 1
-                        max_replicas: 2
-                import_path: ray.serve.llm.builders:build_openai_app
-                name: llm_app
-                route_prefix: "/"
+                            min_replicas: 1
+                            max_replicas: 2
+              import_path: ray.serve.llm.builders:build_openai_app
+              name: llm_app
+              route_prefix: "/"
 
 
     .. tab-item:: Standalone Config
@@ -206,9 +204,9 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                 llm_configs:
                     - models/qwen-0.5b.yaml
                     - models/qwen-1.5b.yaml
-                import_path: ray.serve.llm.builders:build_openai_app
-                name: llm_app
-                route_prefix: "/"
+              import_path: ray.serve.llm.builders:build_openai_app
+              name: llm_app
+              route_prefix: "/"
 
 
         .. code-block:: yaml
@@ -243,6 +241,8 @@ To deploy using either configuration file:
 
 Advanced Usage Patterns
 -----------------------
+
+For each usage pattern, we provide a server and client code snippet.
 
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
@@ -305,6 +305,11 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
                 model="qwen-0.5b:lora_model_1_ckpt",
                 messages=[{"role": "user", "content": "Hello!"}]
             )
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    print(chunk.choices[0].delta.content, end="", flush=True)
+
 
 Structured Output
 ~~~~~~~~~~~~~~~~~
@@ -448,3 +453,7 @@ For multimodal models that can process both text and images:
                     }
                 ]
             )
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    print(chunk.choices[0].delta.content, end="", flush=True)
