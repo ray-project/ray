@@ -136,6 +136,7 @@ class AggregateFnV2(AggregateFn):
     def __init__(
         self,
         name: str,
+        zero_factory: Callable[[], AggType],
         *,
         on: Optional[str],
         ignore_nulls: bool,
@@ -148,13 +149,15 @@ class AggregateFnV2(AggregateFn):
         self._target_col_name = on
         self._ignore_nulls = ignore_nulls
 
-        _safe_combine = _null_safe_combine(self.combine)
+        _safe_combine = _null_safe_combine(self.combine, ignore_nulls)
         _safe_aggregate = _null_safe_aggregate(self.aggregate_block, ignore_nulls)
         _safe_finalize = _null_safe_finalize(self._finalize)
 
+        _safe_zero_factory = _null_safe_zero_factory(zero_factory, ignore_nulls)
+
         super().__init__(
             name=name,
-            init=lambda _: _OPTIONAL_EMPTY,
+            init=_safe_zero_factory,
             merge=_safe_combine,
             accumulate_block=(
                 lambda acc, block: _safe_combine(acc, _safe_aggregate(block))
@@ -202,10 +205,19 @@ class Count(AggregateFnV2):
             alias_name if alias_name else f"count({on or ''})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: 0,
         )
 
     def aggregate_block(self, block: Block) -> AggType:
-        return BlockAccessor.for_block(block).num_rows()
+        block_accessor = BlockAccessor.for_block(block)
+
+        if self._target_col_name is None:
+            # In case of global count, simply fetch number of rows
+            return block_accessor.num_rows()
+
+        return block_accessor.count(
+            self._target_col_name, ignore_nulls=self._ignore_nulls
+        )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
         return current_accumulator + new
@@ -225,6 +237,7 @@ class Sum(AggregateFnV2):
             alias_name if alias_name else f"sum({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: 0,
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -250,6 +263,7 @@ class Min(AggregateFnV2):
             alias_name if alias_name else f"min({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: float("+inf"),
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -276,6 +290,7 @@ class Max(AggregateFnV2):
             alias_name if alias_name else f"max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: float("-inf"),
         )
 
     def aggregate_block(self, block: Block) -> AggType:
@@ -301,11 +316,14 @@ class Mean(AggregateFnV2):
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            # NOTE: We've to copy returned list here, as some
+            #       aggregations might be modifying elements in-place
+            zero_factory=lambda: list([0, 0]),  # noqa: C410
         )
 
     def aggregate_block(self, block: Block) -> AggType:
         block_acc = BlockAccessor.for_block(block)
-        count = block_acc.count(self._target_col_name)
+        count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
         if count == 0 or count is None:
             # Empty or all null.
@@ -325,6 +343,9 @@ class Mean(AggregateFnV2):
         return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
 
     def _finalize(self, accumulator: AggType) -> Optional[U]:
+        if accumulator[1] == 0:
+            return np.nan
+
         return accumulator[0] / accumulator[1]
 
 
@@ -352,13 +373,16 @@ class Std(AggregateFnV2):
             alias_name if alias_name else f"std({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            # NOTE: We've to copy returned list here, as some
+            #       aggregations might be modifying elements in-place
+            zero_factory=lambda: list([0, 0, 0]),  # noqa: C410
         )
 
         self._ddof = ddof
 
     def aggregate_block(self, block: Block) -> AggType:
         block_acc = BlockAccessor.for_block(block)
-        count = block_acc.count(self._target_col_name)
+        count = block_acc.count(self._target_col_name, ignore_nulls=self._ignore_nulls)
         if count == 0 or count is None:
             # Empty or all null.
             return None
@@ -395,7 +419,7 @@ class Std(AggregateFnV2):
         # Compute the final standard deviation from the accumulated
         # sum of squared differences from current mean and the count.
         M2, mean, count = accumulator
-        if count == self._ddof:
+        if count - self._ddof <= 0:
             return np.nan
         return math.sqrt(M2 / (count - self._ddof))
 
@@ -417,6 +441,7 @@ class AbsMax(AggregateFnV2):
             alias_name if alias_name else f"abs_max({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=lambda: 0,
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
@@ -428,14 +453,13 @@ class AbsMax(AggregateFnV2):
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
         min_ = block_accessor.min(self._target_col_name, self._ignore_nulls)
 
-        return max(
-            self._null_safe_abs(max_),
-            self._null_safe_abs(min_),
-        )
+        if _is_null(max_) or _is_null(min_):
+            return None
 
-    @staticmethod
-    def _null_safe_abs(v):
-        return abs(v) if not _is_null(v) else None
+        return max(
+            abs(max_),
+            abs(min_),
+        )
 
 
 @PublicAPI
@@ -455,6 +479,7 @@ class Quantile(AggregateFnV2):
             alias_name if alias_name else f"quantile({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
+            zero_factory=list,
         )
 
     def combine(self, current_accumulator: List[Any], new: List[Any]) -> List[Any]:
@@ -532,6 +557,7 @@ class Unique(AggregateFnV2):
             alias_name if alias_name else f"unique({str(on)})",
             on=on,
             ignore_nulls=False,
+            zero_factory=set,
         )
 
     def combine(self, current_accumulator: AggType, new: AggType) -> AggType:
@@ -557,83 +583,124 @@ def _is_null(a: Optional[AggType]) -> bool:
     return a is None or is_nan(a)
 
 
+def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
+    """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
+
+    Null-safe zero factory is crucial for implementing proper aggregation
+    protocol (monoid) w/o the need for additional containers.
+
+    Main hurdle for implementing proper aggregation semantic is to be able to encode
+    semantic of an "empty accumulator" and be able to tell it from the case when
+    accumulator is actually holding null value:
+
+        - Empty container can be overridden with any value
+        - Container holding null can't be overridden if ignore_nulls=False
+
+    However, it's possible for us to exploit asymmetry in cases of ignore_nulls being
+    True or False:
+
+        - Case of ignore_nulls=False entails that if there's any "null" in the sequence,
+         aggregation is undefined and correspondingly expected to return null
+
+        - Case of ignore_nulls=True in turn, entails that if aggregation returns "null"
+        if and only if the sequence does NOT have any non-null value
+
+    Therefore, we apply this difference in semantic to zero-factory to make sure that
+    our aggregation protocol is adherent to that definition:
+
+        - If ignore_nulls=True, zero-factory returns null, therefore encoding empty
+        container
+        - If ignore_nulls=False, couldn't return null as aggregation will incorrectly
+        prioritize it, and instead it returns true zero value for the aggregation
+        (ie 0 for count/sum, -inf for max, etc).
+    """
+
+    if ignore_nulls:
+
+        def _safe_zero_factory(_):
+            return None
+
+    else:
+
+        def _safe_zero_factory(_):
+            return zero_factory()
+
+    return _safe_zero_factory
+
+
 def _null_safe_aggregate(
     aggregate: Callable[[Block], AggType],
     ignore_nulls: bool,
-) -> Callable[[Block], _Optional[AggType]]:
-    def _safe_aggregate(block: Block) -> _Optional[AggType]:
+) -> Callable[[Block], Optional[AggType]]:
+    def _safe_aggregate(block: Block) -> Optional[AggType]:
         result = aggregate(block)
         # NOTE: If `ignore_nulls=True`, aggregation will only be returning
         #       null if the block does NOT contain any non-null elements
         if _is_null(result) and ignore_nulls:
-            return _OPTIONAL_EMPTY
+            return None
 
-        return _wrap_optional(result)
+        return result
 
     return _safe_aggregate
 
 
 def _null_safe_finalize(
     finalize: Callable[[AggType], AggType]
-) -> Callable[[_Optional[AggType]], AggType]:
-    def _safe_finalize(acc: _Optional[AggType]) -> AggType:
-        # If accumulator container is empty, simply return null
-        if _is_empty_optional(acc):
-            return None
-
-        val = _unwrap_optional(acc)
-
-        return finalize(val) if not _is_null(val) else val
+) -> Callable[[Optional[AggType]], AggType]:
+    def _safe_finalize(acc: Optional[AggType]) -> AggType:
+        # If accumulator container is not null, finalize.
+        # Otherwise, return as is.
+        return acc if _is_null(acc) else finalize(acc)
 
     return _safe_finalize
 
 
 def _null_safe_combine(
-    combine: Callable[[AggType, AggType], AggType],
-) -> Callable[[_Optional[AggType], _Optional[AggType]], _Optional[AggType]]:
-    def _safe_combine(
-        cur: _Optional[AggType], new: _Optional[AggType]
-    ) -> _Optional[AggType]:
+    combine: Callable[[AggType, AggType], AggType], ignore_nulls: bool
+) -> Callable[[Optional[AggType], Optional[AggType]], Optional[AggType]]:
+    """Null-safe combination have to be an associative operation
+    with an identity element (zero) or in other words implement a monoid.
 
-        cur_empty = _is_empty_optional(cur)
-        new_empty = _is_empty_optional(new)
+    To achieve that in the presence of null values following semantic is
+    established:
 
-        # Null-safe merge implements following semantic (see inline):
-        #
-        #   - If both current and new accumulators are empty, return empty
-        #   - If one and only one of the accumulators is non-empty, return it
-        if cur_empty and new_empty:
-            return _OPTIONAL_EMPTY
-        elif cur_empty:
-            return new
-        elif new_empty:
-            return cur
-        else:
-            cur_val = _unwrap_optional(cur)
-            new_val = _unwrap_optional(new)
+        - Case of ignore_nulls=True:
+            - If current accumulator is null (ie empty), return new accumulator
+            - If new accumulator is null (ie empty), return cur
+            - Otherwise combine (current and new)
 
-            # - If both accumulators are non-empty, then
-            #    - If either of the values is null, return it (null could only
-            #       be returned by aggregation when ignore_nulls=False)
-            #    - If neither of the values is null, combine them using provided
-            #       method
-            if _is_null(cur_val):
-                return cur
-            elif _is_null(new_val):
+        - Case of ignore_nulls=False:
+            - If new accumulator is null (ie has null in the sequence, b/c we're
+            NOT ignoring nulls), return it
+            - If current accumulator is null (ie had null in the prior sequence,
+            b/c we're NOT ignoring nulls), return it
+            - Otherwise combine (current and new)
+    """
+
+    if ignore_nulls:
+
+        def _safe_combine(
+            cur: Optional[AggType], new: Optional[AggType]
+        ) -> Optional[AggType]:
+
+            if _is_null(cur):
                 return new
+            elif _is_null(new):
+                return cur
             else:
-                return _wrap_optional(combine(cur_val, new_val))
+                return combine(cur, new)
+
+    else:
+
+        def _safe_combine(
+            cur: Optional[AggType], new: Optional[AggType]
+        ) -> Optional[AggType]:
+
+            if _is_null(new):
+                return new
+            elif _is_null(cur):
+                return cur
+            else:
+                return combine(cur, new)
 
     return _safe_combine
-
-
-def _is_empty_optional(acc: _Optional[AggType]) -> bool:
-    return len(acc) == 0
-
-
-def _unwrap_optional(acc: _Optional[AggType]) -> AggType:
-    return acc[0]
-
-
-def _wrap_optional(value: AggType) -> _Optional[AggType]:
-    return [value]
