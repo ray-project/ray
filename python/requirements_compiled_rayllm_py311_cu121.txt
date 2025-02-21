@@ -253,15 +253,15 @@ blake3==1.0.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   vllm
-boto3==1.36.3 \
-    --hash=sha256:53a5307f6a3526ee2f8590e3c45efa504a3ea4532c1bfe4926c0c19bf188d141 \
-    --hash=sha256:f9843a5d06f501d66ada06f5a5417f671823af2cf319e36ceefa1bafaaaaa953
+boto3==1.26.76 \
+    --hash=sha256:30c7d967ed1c6b5a05643e42cae9d4d36c3f1cb6782637ddc7007a104cfd9027 \
+    --hash=sha256:b4c2969b7677762914394b8273cc1905dfe5b71f250741c1a575487ae357e729
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   -r python/requirements/llm/llm-requirements.txt
-botocore==1.36.3 \
-    --hash=sha256:536ab828e6f90dbb000e3702ac45fd76642113ae2db1b7b1373ad24104e89255 \
-    --hash=sha256:775b835e979da5c96548ed1a0b798101a145aec3cd46541d62e27dda5a94d7f8
+botocore==1.29.76 \
+    --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
+    --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   boto3
@@ -2591,9 +2591,9 @@ rsa==4.7.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   google-auth
-s3transfer==0.11.2 \
-    --hash=sha256:3b39185cb72f5acc77db1a58b6e25b977f28d20496b6e58d6813d75f464d632f \
-    --hash=sha256:be6ecb39fadd986ef1701097771f87e4d2f821f27f6071c872143884d2950fbc
+s3transfer==0.6.2 \
+    --hash=sha256:b014be3a8a2aab98cfe1abc7229cc5a9a0cf05eb9c1f2b86b230fd8df3f78084 \
+    --hash=sha256:cab66d3380cca3e70939ef2255d01cd8aece6a4907a9528740f668c4b0611861
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   boto3
@@ -2882,9 +2882,9 @@ torchvision==0.20.1+cu121 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   vllm
-tqdm==4.67.1 \
-    --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
-    --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
+tqdm==4.64.1 \
+    --hash=sha256:5f4f682a004951c1b450bc753c710e9280c5746ce6ffedee253ddbcbf54cf1e4 \
+    --hash=sha256:6fee160d6ffcd1b1c68c65f14c829c22832bc401726335ce92c52d395944a6a1
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   gguf
