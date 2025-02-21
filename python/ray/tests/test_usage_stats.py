@@ -835,6 +835,7 @@ with joblib.parallel_backend("ray"):
         "util.multiprocessing.Pool",
         "util.Queue",
         "util.joblib",
+        "core",
     }
     if sys.platform != "win32":
         expected.add("job_submission")
@@ -1231,7 +1232,7 @@ provider:
         if os.environ.get("RAY_MINIMAL") == "1":
             assert set(payload["library_usages"]) == set()
         else:
-            assert set(payload["library_usages"]) == {"rllib", "train", "tune"}
+            assert set(payload["library_usages"]) == {"rllib", "train", "tune", "core"}
         assert payload["hardware_usages"] == ["TestCPU"]
         validate(instance=payload, schema=schema)
         """
@@ -1456,7 +1457,7 @@ if os.environ.get("RAY_MINIMAL") != "1":
             if os.environ.get("RAY_MINIMAL") == "1":
                 return set(lib_usages) == set()
             else:
-                return set(lib_usages) == {"rllib", "train", "tune"}
+                return set(lib_usages) == {"rllib", "train", "tune", "core"}
 
         wait_for_condition(verify)
 
@@ -1506,7 +1507,7 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
 
         def verify():
             lib_usages = read_file(temp_dir, "usage_stats")["library_usages"]
-            return set(lib_usages) == {"tune", "rllib", "train"}
+            return set(lib_usages) == {"tune", "rllib", "train", "core"}
 
         wait_for_condition(verify)
 
