@@ -67,6 +67,34 @@ def _take_outputs(op: PhysicalOperator) -> List[Any]:
     return output
 
 
+def test_name_and_repr(ray_start_regular_shared):
+    inputs = make_ref_bundles([[1, 2], [3], [4, 5]])
+    input_op = InputDataBuffer(DataContext.get_current(), inputs)
+    map_op1 = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op,
+        DataContext.get_current(),
+        name="map1",
+    )
+
+    assert map_op1.name == "map1"
+    assert map_op1.dag_str == "InputDataBuffer[Input] -> TaskPoolMapOperator[map1]"
+    assert str(map_op1) == "TaskPoolMapOperator[map1]"
+
+    map_op2 = MapOperator.create(
+        _mul2_map_data_prcessor,
+        map_op1,
+        DataContext.get_current(),
+        name="map2",
+    )
+    assert map_op2.name == "map2"
+    assert (
+        map_op2.dag_str
+        == "InputDataBuffer[Input] -> TaskPoolMapOperator[map1] -> TaskPoolMapOperator[map2]"
+    )
+    assert str(map_op2) == "TaskPoolMapOperator[map2]"
+
+
 def test_input_data_buffer(ray_start_regular_shared):
     # Create with bundles.
     inputs = make_ref_bundles([[1, 2], [3], [4, 5]])
