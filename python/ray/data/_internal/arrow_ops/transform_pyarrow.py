@@ -662,6 +662,10 @@ def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table
     extended `ChunkedArray` combination protocol.
 
     For more details check out `combine_chunked_array` py-doc
+
+    Args:
+        table: Table with chunked columns to be combined into contiguous arrays.
+        copy: Skip copying when copy is False and there is exactly 1 chunk.
     """
 
     new_column_values_arrays = []
@@ -674,7 +678,7 @@ def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table
 
 def combine_chunked_array(
     array: "pyarrow.ChunkedArray",
-    copy: bool = False,
+    ensure_copy: bool = False,
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
 
@@ -686,6 +690,11 @@ def combine_chunked_array(
            most of its native types, other than "large" kind).
 
     For more details check py-doc of `_try_combine_chunks_safe` method.
+
+    Args:
+        array: The chunked array to be combined into a single contiguous array.
+        ensure_copy: Skip copying when ensure_copy is False and there is exactly
+        1 chunk.
     """
 
     import pyarrow as pa
@@ -702,13 +711,14 @@ def combine_chunked_array(
     if _is_column_extension_type(array):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
-        return _concatenate_extension_column(array)
+        return _concatenate_extension_column(array, ensure_copy)
     elif len(array.chunks) == 0:
         # NOTE: In case there's no chunks, we need to explicitly create
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
-    elif len(array.chunks) == 1 and not copy:
+    elif len(array.chunks) == 1 and not ensure_copy:
+        # Skip copying
         return array
     else:
         return _try_combine_chunks_safe(array)
