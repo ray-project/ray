@@ -487,6 +487,11 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
 def test_torch_tensor_nccl_send_overlap_result_across_actors(
     ray_start_regular, overlap_gpu_communication
 ):
+    """
+    A GPU future cannot be sent across actors. This test checks that the
+    SharedMemoryChannel waits for the future to complete before writing the
+    result.
+    """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -544,6 +549,10 @@ def test_torch_tensor_nccl_send_overlap_result_across_actors(
 def test_torch_tensor_nccl_same_future_multiple_waits(
     ray_start_regular, overlap_gpu_communication
 ):
+    """
+    A GPU future destroys its CUDA event after the first wait. This test
+    checks that waiting on the same future multiple times does not error.
+    """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 

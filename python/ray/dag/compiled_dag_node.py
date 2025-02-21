@@ -228,7 +228,7 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                done = tasks[operation.exec_task_idx].exec_operation_in_contexts(
+                done = tasks[operation.exec_task_idx].exec_operation_with_contexts(
                     self, overlap_gpu_communication
                 )
                 if done:
@@ -270,7 +270,9 @@ def do_profile_tasks(
             for operation in schedule:
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
-                done = task.exec_operation_in_contexts(self, overlap_gpu_communication)
+                done = task.exec_operation_with_contexts(
+                    self, overlap_gpu_communication
+                )
                 end_t = time.perf_counter()
 
                 self.__ray_cgraph_events.append(
@@ -644,7 +646,7 @@ class ExecutableTask:
             assert isinstance(self.nccl_op, _CollectiveOperation)
             self.stream = self.nccl_op.get_communicator().coll_stream
 
-    def exec_operation_in_contexts(
+    def exec_operation_with_contexts(
         self,
         class_handle: "ray.actor.ActorHandle",
         overlap_gpu_communication: bool = False,
@@ -716,12 +718,6 @@ class ExecutableTask:
         # If an exception occurs, pass it to the downstream task.
         if input_exc is not None:
             try:
-                # The output writer always exists because:
-                # 1. Only NCCL send operations do not have output writers.
-                # 2. If the input to a NCCL send operation is an exception,
-                #    the exception is treated as an input value and written
-                #    to the downstream task by the NCCL send operation and
-                #    the input exception is reset to None.
                 assert self.output_writer is not None
                 self.output_writer.write(input_exc)
                 return False

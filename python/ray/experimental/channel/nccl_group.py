@@ -92,9 +92,6 @@ class _NcclGroup(Communicator):
             # Driver does not have a rank.
             self._comm = None
 
-        self._send_stream: "cp.cuda.ExternalStream"
-        self._recv_stream: "cp.cuda.ExternalStream"
-        self._coll_stream: "cp.cuda.ExternalStream"
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
 
@@ -174,6 +171,8 @@ class _NcclGroup(Communicator):
                 actor's default device.
             peer_rank: The rank of the actor to send to.
         """
+        import torch
+
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
@@ -185,8 +184,8 @@ class _NcclGroup(Communicator):
             # TODO(rui): find a better approach
             self._send_stream.synchronize()
 
-        import torch
-
+        # Record buf is used by the send stream so that its memory is not
+        # deallocated before the send operation finishes.
         buf.record_stream(torch.cuda.ExternalStream(self._send_stream.ptr))
 
         # TODO(swang): Handle send/recv async NCCL errors such as network
@@ -262,6 +261,8 @@ class _NcclGroup(Communicator):
         recv_buf: "torch.Tensor",
         op: ReduceOp = ReduceOp.SUM,
     ):
+        import torch
+
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
@@ -271,10 +272,8 @@ class _NcclGroup(Communicator):
             "If you see this error, please file an issue at Ray repository."
         )
 
-        import torch
-
-        # Record send_buf is used by the collective stream
-        # so that torch's CudaCachingAllocator does not reuse the memory.
+        # Record send_buf is used by the collective stream so that its memory is
+        # not deallocated before the allreduce operation finishes.
         send_buf.record_stream(torch.cuda.ExternalStream(self._coll_stream.ptr))
 
         self._comm.allReduce(

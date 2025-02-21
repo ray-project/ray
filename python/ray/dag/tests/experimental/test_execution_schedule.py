@@ -554,10 +554,8 @@ class TestGenerateActorToExecutionSchedule:
         on the same actor.
 
         Args:
-            operations_1: A dictionary where the key is the operation type and the value
-                is the operation node of the task with bind_index i.
-            operations_2: A dictionary where the key is the operation type and the value
-                is the operation node of the task with bind_index i+1.
+            ops_prev: The operation node representing the task with bind_index i.
+            ops_next: The operation node representing the task with bind_index i+1.
         """
         _add_edge(ops_prev, ops_next)
 
@@ -1094,9 +1092,9 @@ class TestGenerateActorToExecutionSchedule:
                -> fake_actor.allreduce ->
         """
 
-        # This hack allows the actor handle to be "deep-copied" when
-        # `actor_to_execution_schedule` is deep-copied in
-        # `_generate_overlapped_execution_schedule`.
+        # `_generate_actor_to_execution_schedule` deep-copies the actor handles
+        # when copying `actor_to_execution_schedule`. Without this hack, copying
+        # an actor handle would error because we also use `mock_actor_handle_init`.
         class MockActorHandle(ActorHandle):
             def __deepcopy__(self, memo):
                 return self
@@ -1136,8 +1134,8 @@ class TestGenerateActorToExecutionSchedule:
         )
         extracted_overlapped_schedule = _extract_execution_schedule(overlapped_schedule)
         assert len(extracted_overlapped_schedule) == 1
-        # After overlapping, the collective operation is launched first so that the
-        # compute operation and the collective operation can occur concurrently.
+        # The collective operation is launched first so that the compute operation and
+        # the collective operation can overlap.
         assert extracted_overlapped_schedule[fake_actor] == [
             graph[task_idx_2].op,
             graph[task_idx_1].op,

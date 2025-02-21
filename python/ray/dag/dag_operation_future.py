@@ -36,11 +36,11 @@ class GPUFuture:
         if stream is None:
             stream = cp.cuda.get_current_stream()
 
-        self.ready: bool = False
         self._buf = buf
         self._event = cp.cuda.Event()
         self._event.record(stream)
         self._fut_id: Optional[int] = None
+        self._ready: bool = False
 
     def wait(self, blocking: bool = False) -> Any:
         """
@@ -49,24 +49,29 @@ class GPUFuture:
         by this future finishes.
 
         Args:
-            blocking: Whether this operation blocks CPU.
+            blocking: Whether this operation blocks CPU. This is used when
+                the future is sent across actors (e.g., by SharedMemoryChannel),
+                in which case the future should be resolved immediately.
 
         Return:
             Result from the GPU operation. The returned result is immediately
             ready to use iff blocking.
         """
-        if self.ready:
-            return self._buf
-        self.ready = True
-
         import cupy as cp
+        from ray.experimental.channel.common import ChannelContext
 
         current_stream = cp.cuda.get_current_stream()
+        if self._ready:
+            # The current stream has been told to wait on the event,
+            # but the wait might not have finished yet.
+            if blocking:
+                current_stream.synchronize()
+            return self._buf
+        self._ready = True
+
         current_stream.wait_event(self._event)
         if blocking:
             current_stream.synchronize()
-
-        from ray.experimental.channel.common import ChannelContext
 
         ctx = ChannelContext.get_current().serialization_context
         # This GPU future is no longer needed. Destroy the CUDA event it contains.
@@ -83,18 +88,18 @@ class GPUFuture:
         """
         from ray.experimental.channel.common import ChannelContext
 
+        self._fut_id = fut_id
         ctx = ChannelContext.get_current().serialization_context
         ctx.set_gpu_future(fut_id, self)
-        self._fut_id = fut_id
 
     def destroy_event(self) -> None:
         """
         Destroys the CUDA event contained in this future.
         """
+        import cupy as cp
+
         if self._event is None:
             return
-
-        import cupy as cp
 
         cp.cuda.runtime.eventDestroy(self._event.ptr)
         self._event.ptr = 0

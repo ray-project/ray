@@ -40,7 +40,7 @@ class _P2PSendOperation(_P2POperation):
             send_ch: A channel that sends the data during execution.
         """
         super().__init__()
-        self.send_ch: ChannelInterface = send_ch
+        self.send_ch = send_ch
 
     def execute(self, data: Any) -> None:
         """
@@ -63,7 +63,7 @@ class _P2PRecvOperation(_P2POperation):
             recv_ch: A channel that receives data during execution.
         """
         super().__init__()
-        self.recv_ch: ChannelInterface = recv_ch
+        self.recv_ch = recv_ch
 
     def execute(self) -> Any:
         """

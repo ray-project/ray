@@ -445,8 +445,11 @@ class Channel(ChannelInterface):
         if isinstance(value, GPUFuture):
             logger.warning(
                 "Sending the result of an asynchronous NCCL operation across actors. "
-                "This will block the CPU while waiting for the NCCL operation to finish."
+                "This blocks the CPU while waiting for the NCCL operation to finish."
             )
+            # The GPU future cannot be sent directly across actors. We need to use
+            # `blocking=True` to ensure the future is ready so that the serialized
+            # value is correct.
             value = value.wait(blocking=True)
 
         if not isinstance(value, SerializedObject):
