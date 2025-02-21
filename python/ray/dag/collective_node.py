@@ -128,7 +128,15 @@ class _CollectiveOperation:
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
 
-        if isinstance(self._op, AllReduceOp):
+        if isinstance(self._op, AllGatherOp):
+            world_size = len(self._actor_handles)
+            recv_buf = torch.empty(
+                (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
+                dtype=send_buf.dtype,
+                device=send_buf.device,
+            )
+            communicator.allgather(send_buf, recv_buf)
+        elif isinstance(self._op, AllReduceOp):
             recv_buf = torch.empty_like(send_buf)
             communicator.allreduce(send_buf, recv_buf, self._op.reduceOp)
         elif isinstance(self._op, ReduceScatterOp):
@@ -144,14 +152,6 @@ class _CollectiveOperation:
                 device=send_buf.device,
             )
             communicator.reducescatter(send_buf, recv_buf, self._op.reduceOp)
-        elif isinstance(self._op, AllGatherOp):
-            world_size = len(self._actor_handles)
-            recv_buf = torch.empty(
-                (send_buf.shape[0] * world_size, *send_buf.shape[1:]),
-                dtype=send_buf.dtype,
-                device=send_buf.device,
-            )
-            communicator.allgather(send_buf, recv_buf)
         else:
             raise ValueError("Expected a collective operation")
         return recv_buf
