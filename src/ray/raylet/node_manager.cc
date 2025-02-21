@@ -597,8 +597,6 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force
     RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
     // Force kill worker
     worker->GetProcess().Kill();
-    // XXX.
-    DisconnectClient(worker->Connection(), rpc::WorkerExitType::SYSTEM_ERROR, "IMPORTANT REASON");
   });
 }
 
@@ -606,6 +604,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
                                 bool force) {
+  DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
