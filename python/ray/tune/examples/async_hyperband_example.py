@@ -28,8 +28,8 @@ def easy_objective(config: Dict[str, Any]) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AsyncHyperBand optimization example")
     parser.add_argument(
-        "--smoke-test", 
-        action="store_true", 
+        "--smoke-test",
+        action="store_true",
         help="Finish quickly for testing"
     )
     args, _ = parser.parse_known_args()
