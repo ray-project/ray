@@ -14,8 +14,8 @@ Features
 Requirements
 --------------
 
-- Ray[serve,llm] 2.43.0+
-- vllm 0.7.2+
+- Ray[serve,llm]>=2.43.0
+- vllm>=0.7.2
 
 Suggested dependencies when using vllm 0.7.2:
   - xgrammar==0.1.11
