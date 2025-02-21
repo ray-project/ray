@@ -409,15 +409,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                     # Create a new episode object with no data in it and execute
                     # `on_episode_created` callback (before the `env.reset()` call).
-                    episodes[env_index] = SingleAgentEpisode(
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
-                    )
-                    self._make_on_episode_callback(
-                        "on_episode_created",
-                        env_index,
-                        episodes,
-                    )
+                    self._new_episode(env_index, episodes)
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -760,7 +752,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         )
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, idx: int, episodes):
+    def _make_on_episode_callback(
+        self, which: str, idx: int, episodes: List[SingleAgentEpisode] = None
+    ):
         make_callback(
             which,
             callbacks_objects=self._callbacks,
