@@ -875,9 +875,13 @@ ray_cc_library(
     linkopts = select({
         "@platforms//os:windows": [
         ],
-        "//conditions:default": [
+        "@platforms//os:macos": [
+            "-pthread",
+        ],
+        "@platforms//os:linux": [
             "-lpthread",
         ],
+        "//conditions:default": [],
     }),
     deps = [
         ":gcs_client_lib",
