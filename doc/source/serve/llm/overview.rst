@@ -57,7 +57,7 @@ Deployment through ``LLMRouter``
     from ray.serve.llm.configs import LLMConfig
     from ray.serve.llm.deployments import VLLMService, LLMRouter
 
-    llm_config1 = LLMConfig(
+    llm_config = LLMConfig(
         model_loading_config=dict(
             model_id="qwen-0.5b",
             model_source="Qwen/Qwen2.5-0.5B-Instruct",
@@ -75,6 +75,10 @@ Deployment through ``LLMRouter``
         ),
     )
 
+    # Deploy the application
+    deployment = VLLMService.as_deployment().bind(llm_config)
+    llm_app = LLMRouter.as_deployment().bind(deployment)
+    serve.run(llm_app)
 
 You can query the deployed models using either cURL or the OpenAI Python client:
 
