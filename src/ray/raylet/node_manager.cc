@@ -594,7 +594,7 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force
     // Force kill worker
     worker->GetProcess().Kill();
     // XXX.
-    DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
+    DisconnectClient(worker->Connection(), rpc::WorkerExitType::SYSTEM_ERROR, "IMPORTANT REASON");
   });
 }
 
