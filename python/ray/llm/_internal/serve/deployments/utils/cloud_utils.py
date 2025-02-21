@@ -580,22 +580,24 @@ class CloudObjectCache:
         self._fetch_fn = fetch_fn
         self._missing_expire_seconds = missing_expire_seconds
         self._exists_expire_seconds = exists_expire_seconds
-        self._is_async = inspect.iscoroutinefunction(fetch_fn)
+        self._is_async = (
+            inspect.iscoroutinefunction(fetch_fn) or 
+            (hasattr(fetch_fn, '__call__') and inspect.iscoroutinefunction(fetch_fn.__call__))
+        )
         self._missing_object_value = missing_object_value
 
     async def aget(self, key: str) -> Any:
         """Async get value from cache or fetch it if needed."""
+        
+        if not self._is_async:
+            raise ValueError("Cannot use async get() with sync fetch function")
+
         value, should_fetch = self._check_cache(key)
         if not should_fetch:
             return value
 
-        if self._is_async:
-            value = await self._fetch_fn(key)
-        else:
-            # Runs the sync fetch function in a separate thread
-            # to avoid blocking the main thread.
-            value = await asyncio.to_thread(self._fetch_fn, key)
 
+        value =await self._fetch_fn(key)
         self._update_cache(key, value)
         return value
 
@@ -605,7 +607,6 @@ class CloudObjectCache:
             raise ValueError("Cannot use sync get() with async fetch function")
 
         value, should_fetch = self._check_cache(key)
-        print(f"{value=} {should_fetch=}")
         if not should_fetch:
             return value
 
