@@ -1158,7 +1158,7 @@ class Learner(Checkpointable):
             )
 
         def _collate_fn(batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
-            batch = self.unflatten_dict(batch)
+            batch = unflatten_dict(batch)
             batch = self._convert_batch_type(batch, to_device=False)
             return self._set_slicing_by_batch_id(batch, value=True)
 
