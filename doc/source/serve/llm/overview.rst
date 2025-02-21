@@ -77,7 +77,7 @@ Deployment through ``LLMRouter``
 
     # Deploy the application
     deployment = VLLMService.as_deployment().bind(llm_config)
-    llm_app = LLMRouter.as_deployment().bind(deployment)
+    llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
 
 You can query the deployed models using either cURL or the OpenAI Python client:
@@ -461,3 +461,83 @@ For multimodal models that can process both text and images:
             for chunk in response:
                 if chunk.choices[0].delta.content is not None:
                     print(chunk.choices[0].delta.content, end="", flush=True)
+
+Frequently Asked Questions
+--------------------------
+
+How do I use gated Huggingface models?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use `runtime_env` to specify the env variables that are required to access the model.
+To set the deployment options, you can use the ``get_serve_options`` method on the ``LLMConfig`` object.
+
+.. code-block:: python
+
+    from ray import serve
+    from ray.serve.llm.configs import LLMConfig
+    from ray.serve.llm.deployments import VLLMService, LLMRouter
+    import os
+
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="llama-3-8b-instruct",
+            model_source="meta-llama/Meta-Llama-3-8B-Instruct",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(
+                min_replicas=1, max_replicas=2,
+            )
+        ),
+        # Pass the desired accelerator type (e.g. A10G, L4, etc.)
+        accelerator_type="A10G",
+        runtime_env=dict(
+            env_vars=dict(
+                HF_TOKEN=os.environ["HF_TOKEN"]
+            )
+        ),
+    )
+
+    # Deploy the application
+    deployment = VLLMService.as_deployment(llm_config.get_serve_options(name_prefix="VLLM:")).bind(llm_config)
+    llm_app = LLMRouter.as_deployment().bind([deployment])
+    serve.run(llm_app)
+
+Why is downloading the model so slow?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you are using huggingface models, you can enable fast download by setting `HF_HUB_ENABLE_HF_TRANSFER` and installing `pip install hf_transfer`.
+
+
+
+.. code-block:: python
+
+    from ray import serve
+    from ray.serve.llm.configs import LLMConfig
+    from ray.serve.llm.deployments import VLLMService, LLMRouter
+    import os
+
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="llama-3-8b-instruct",
+            model_source="meta-llama/Meta-Llama-3-8B-Instruct",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(
+                min_replicas=1, max_replicas=2,
+            )
+        ),
+        # Pass the desired accelerator type (e.g. A10G, L4, etc.)
+        accelerator_type="A10G",
+        runtime_env=dict(
+            env_vars=dict(
+                HF_TOKEN=os.environ["HF_TOKEN"],
+                HF_HUB_ENABLE_HF_TRANSFER="1"
+            )
+        ),
+    )
+
+    # Deploy the application
+    deployment = VLLMService.as_deployment(llm_config.get_serve_options(name_prefix="VLLM:")).bind(llm_config)
+    llm_app = LLMRouter.as_deployment().bind([deployment])
+    serve.run(llm_app)
+
