@@ -10,6 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
@@ -1700,6 +1701,28 @@ def test_stats_manager(shutdown_only):
     # Check that a new different thread is spawned.
     assert StatsManager._update_thread != prev_thread
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+
+
+def test_task_duration_stats():
+    """Test that OpTaskDurationStats correctly tracks running statistics using Welford's algorithm."""
+    stats = TaskDurationStats()
+
+    # Test initial state
+    assert stats.count() == 0
+    assert stats.mean() == 0.0
+    assert stats.stddev() == 0.0
+
+    # Add some task durations and verify stats
+    durations = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    for d in durations:
+        stats.add_duration(d)
+
+    # Compare with numpy's implementations
+    assert stats.count() == len(durations)
+    assert pytest.approx(stats.mean()) == np.mean(durations)
+    assert pytest.approx(stats.stddev()) == np.std(
+        durations, ddof=1
+    )  # ddof=1 for sample standard deviation
 
 
 if __name__ == "__main__":
