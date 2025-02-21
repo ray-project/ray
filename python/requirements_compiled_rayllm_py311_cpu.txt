@@ -1586,7 +1586,6 @@ nvidia-ml-py==12.570.86 \
     --hash=sha256:58907de35a845abd13dcb227f18298f3b5dd94a72d04c9e594e77711e95c0b51
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   pynvml
     #   vllm
 openai==1.63.2 \
     --hash=sha256:1f38b27b5a40814c2b7d8759ec78110df58c4a614c25f182809ca52b080ff4d4 \
@@ -2103,12 +2102,6 @@ pygments==2.18.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   rich
-pynvml==12.0.0 \
-    --hash=sha256:299ce2451a6a17e6822d6faee750103e25b415f06f59abb8db65d30f794166f5 \
-    --hash=sha256:fdff84b62a27dbe98e08e1a647eb77342bef1aebe0878bcd15e99a83fcbecb9e
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   -r python/requirements/llm/llm-requirements.txt
 pyopenssl==24.2.1 \
     --hash=sha256:4247f0dbe3748d560dcbb2ff3ea01af0f9a1a001ef5f7c4c647956ed8cbf0e95 \
     --hash=sha256:967d5719b12b243588573f39b0c677637145c7a1ffedcd495a487e58177fbb8d
@@ -3147,7 +3140,6 @@ xgrammar==0.1.11 \
     --hash=sha256:b293443725eddad31cf7b407bb24d5f3156c4b12a2c8041743cb7068a69fadcb
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   -r python/requirements/llm/llm-requirements.txt
     #   vllm
 yarl==1.9.4 \
     --hash=sha256:008d3e808d03ef28542372d01057fd09168419cdc8f848efe2804f894ae03e51 \

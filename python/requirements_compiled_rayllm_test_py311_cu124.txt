@@ -2753,7 +2753,7 @@ pygments==2.18.0 \
 pynvml==12.0.0 \
     --hash=sha256:299ce2451a6a17e6822d6faee750103e25b415f06f59abb8db65d30f794166f5 \
     --hash=sha256:fdff84b62a27dbe98e08e1a647eb77342bef1aebe0878bcd15e99a83fcbecb9e
-    # via -r python/requirements/llm/llm-requirements.txt
+    # via -r python/requirements/llm/llm-test-requirements.txt
 pyopenssl==24.2.1 \
     --hash=sha256:4247f0dbe3748d560dcbb2ff3ea01af0f9a1a001ef5f7c4c647956ed8cbf0e95 \
     --hash=sha256:967d5719b12b243588573f39b0c677637145c7a1ffedcd495a487e58177fbb8d
@@ -3975,7 +3975,7 @@ xgrammar==0.1.11 \
     --hash=sha256:b2106bceb2ce313628af915f2c2b1c9865612026dd3c9feddbfcc69e4ee6c971 \
     --hash=sha256:b293443725eddad31cf7b407bb24d5f3156c4b12a2c8041743cb7068a69fadcb
     # via
-    #   -r python/requirements/llm/llm-requirements.txt
+    #   -r python/requirements/llm/llm-test-requirements.txt
     #   vllm
 y-py==0.6.2 \
     --hash=sha256:015f7f6c1ce8a83d57955d1dc7ddd57cb633ae00576741a4fc9a0f72ed70007d \

@@ -370,8 +370,6 @@ if setup_spec.type == SetupType.RAY:
                 "aiobotocore",
                 "boto3",
                 "async_timeout",
-                "pynvml>=12.0.0",
-                "xgrammar==0.1.11",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]

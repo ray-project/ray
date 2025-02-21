@@ -5,5 +5,3 @@ jsonref>=1.1.0
 aiobotocore
 boto3
 async_timeout
-pynvml>=12.0.0
-xgrammar==0.1.11
