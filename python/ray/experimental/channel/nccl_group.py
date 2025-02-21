@@ -1,6 +1,6 @@
 import logging
 from types import ModuleType
-from typing import TYPE_CHECKING, List, Optional, Tuple, Callable
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
@@ -282,15 +282,18 @@ class _NcclGroup(Communicator):
         send_buf: "torch.Tensor",
         recv_buf: "torch.Tensor",
     ):
-        self._exec_collective(
-            send_buf,
-            recv_buf,
-            self._comm.allGather,
+        operation_args = [
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             self._cuda_stream.ptr,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.allGather,
+            *operation_args,
         )
 
     def allreduce(
@@ -299,16 +302,19 @@ class _NcclGroup(Communicator):
         recv_buf: "torch.Tensor",
         op: ReduceOp = ReduceOp.SUM,
     ):
-        self._exec_collective(
-            send_buf,
-            recv_buf,
-            self._comm.allReduce,
+        operation_args = [
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
             send_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
             self._cuda_stream.ptr,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.allReduce,
+            *operation_args,
         )
 
     def reducescatter(
@@ -317,16 +323,19 @@ class _NcclGroup(Communicator):
         recv_buf: "torch.Tensor",
         op: ReduceOp = ReduceOp.SUM,
     ):
-        self._exec_collective(
-            send_buf,
-            recv_buf,
-            self._comm.reduceScatter,
+        operation_args = [
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
             recv_buf.numel(),
             self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
             self._cuda_stream.ptr,
+        ]
+        self._exec_collective(
+            send_buf,
+            recv_buf,
+            self._comm.reduceScatter,
+            *operation_args,
         )
 
     @property
