@@ -566,9 +566,9 @@ class Learner(Checkpointable):
             )
             if config.grad_clip:
                 # Perform gradient clipping, if configured.
-                global_norm = self._get_clip_function(
-                    optimizer_name, config, grad_dict_to_clip
-                )(grad_dict_to_clip)
+                global_norm = self._get_clip_function(optimizer_name, config)(
+                    grad_dict_to_clip
+                )
                 if config.grad_clip_by == "global_norm" or config.log_gradients:
                     # If we want to log gradients, but do not use the global norm
                     # for clipping compute it here.
@@ -1717,7 +1717,6 @@ class Learner(Checkpointable):
         self,
         optimizer_name: str,
         config: "AlgorithmConfig",
-        gradiend_dict: Dict,
     ) -> Callable:
         """Returns the gradient clipping function to use."""
 

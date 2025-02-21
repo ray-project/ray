@@ -43,6 +43,7 @@ def _env_creator(cfg):
 
 
 MultiAgentPong = make_multi_agent(_env_creator)
+NUM_POLICIES = 5
 main_spec = RLModuleSpec(
     model_config=DefaultModelConfig(
         vf_share_layers=True,
@@ -87,22 +88,18 @@ config = (
     )
     .rl_module(
         rl_module_spec=MultiRLModuleSpec(
-            rl_module_specs={
-                "p0": main_spec,
-                "p1": main_spec,
-                "p2": main_spec,
-                "p3": main_spec,
-                "p4": main_spec,
-                "random": RLModuleSpec(module_class=RandomRLModule),
-            },
+            rl_module_specs=(
+                {f"p{i}": main_spec for i in range(NUM_POLICIES)}
+                | {"random": RLModuleSpec(module_class=RandomRLModule)}
+            ),
         ),
     )
     .multi_agent(
-        policies={"p0", "p1", "p2", "p3", "p4", "random"},
+        policies={f"p{i}" for i in range(NUM_POLICIES)} | {"random"},
         policy_mapping_fn=lambda aid, eps, **kw: (
-            random.choice([f"p{i}" for i in range(5)] + ["random"])
+            random.choice([f"p{i}" for i in range(NUM_POLICIES)] + ["random"])
         ),
-        policies_to_train=[f"p{i}" for i in range(5)],
+        policies_to_train=[f"p{i}" for i in range(NUM_POLICIES)],
     )
 )
 

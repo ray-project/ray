@@ -189,6 +189,11 @@ class TorchLearner(Learner):
         else:
             total_loss = sum(loss_per_module.values())
 
+        # If we don't have any loss computations, `sum` returns 0.
+        if isinstance(total_loss, int):
+            assert total_loss == 0
+            return {}
+
         total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
@@ -668,16 +673,13 @@ class TorchLearner(Learner):
         self,
         optimizer_name: str,
         config: "AlgorithmConfig",
-        gradient_dict: Dict,
     ) -> Callable:
         if optimizer_name not in self._grad_clips_per_optimizer:
             # Cache the grad-clip value tensor (already on correct device) to avoid
             # having to make CPU<>GPU copies during updating, forcing cuda syncs.
             self._grad_clips_per_optimizer[optimizer_name] = functools.partial(
                 clip_gradients,
-                grad_clip=torch.tensor(config.grad_clip).to(
-                    next(iter(gradient_dict.values())).device
-                ),
+                grad_clip=torch.tensor(config.grad_clip).to(self._device),
                 grad_clip_by=config.grad_clip_by,
             )
         return self._grad_clips_per_optimizer[optimizer_name]
