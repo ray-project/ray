@@ -235,7 +235,7 @@ class ProjectionPushdown(Rule):
                         prev_op=prev_options, cur_op=cur_options
                     )
                     self._handle_rename_columns(
-                        prev_op=prev_options, cur_op=projecting_op
+                        prev_op=prev_options, cur_op=cur_options
                     )
                     readfiles.columns = prev_options.cols
                     readfiles.columns_rename = prev_options.cols_rename
