@@ -3,9 +3,9 @@ import logging
 import re
 import threading
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import contextmanager
-from typing import List, Optional
+from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -1705,6 +1705,14 @@ def test_stats_manager(shutdown_only):
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
 
 
+def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
+    sum_metrics = defaultdict(float)
+    for metrics in per_node_metrics.values():
+        for metric, value in metrics.items():
+            sum_metrics[metric] += value
+    return sum_metrics
+
+
 def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
     """Basic test to ensure per-node metrics are populated."""
     ctx = DataContext.get_current()
@@ -1714,7 +1722,8 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
-        _ = ray.data.range(20).map_batches(lambda batch: batch).materialize()
+        ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
+        metrics = ds._plan.stats().extra_metrics
 
         calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
         assert len(calls) > 0
@@ -1739,6 +1748,16 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
         assert any(
             nm["blocks_outputs_of_finished_tasks"] > 0
             for nm in per_node_metrics.values()
+        )
+
+        net_metrics = _sum_net_metrics(per_node_metrics)
+        assert net_metrics["num_tasks_finished"] == metrics["num_tasks_finished"]
+        assert net_metrics["obj_store_mem_used"] == metrics["obj_store_mem_used"]
+        assert net_metrics["obj_store_mem_freed"] == metrics["obj_store_mem_freed"]
+        assert net_metrics["obj_store_mem_spilled"] == metrics["obj_store_mem_spilled"]
+        assert (
+            net_metrics["bytes_outputs_of_finished_tasks"]
+            == metrics["bytes_outputs_of_finished_tasks"]
         )
 
 
