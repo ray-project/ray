@@ -1,4 +1,4 @@
-from ray.experimental.collective.collective_ops import (
+from ray.experimental.collective.operations import (
     allgather,
     allreduce,
     reducescatter,

@@ -13,6 +13,7 @@ from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_communicator
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
+    _CollectiveOp,
     AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
@@ -38,7 +39,7 @@ class _CollectiveOperation:
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        op: Union[AllGatherOp, AllReduceOp, ReduceScatterOp] = None,
+        op: _CollectiveOp = None,
         transport: Optional[Union[str, Communicator]] = None,
     ):
         if len(input_nodes) == 0:
@@ -135,7 +136,7 @@ class _CollectiveOperation:
             if not send_buf.shape[0] % world_size == 0:
                 raise ValueError(
                     "Input tensor's first dimension should be divisible by "
-                    "the number of ators participated."
+                    "the number of actors participated"
                 )
             recv_buf = torch.empty(
                 (send_buf.shape[0] // world_size, *send_buf.shape[1:]),

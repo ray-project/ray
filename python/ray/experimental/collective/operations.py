@@ -9,17 +9,46 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
-from ray.experimental.util.types import AllGatherOp, AllReduceOp, ReduceScatterOp
+from ray.experimental.util.types import (
+    _CollectiveOp,
+    AllGatherOp,
+    AllReduceOp,
+    ReduceScatterOp,
+)
 from ray.util.collective.types import ReduceOp as RayReduceOp
 
 logger = logging.getLogger(__name__)
 
 
-def create_output_node(
+def _bind(
     input_nodes: List["ray.dag.DAGNode"],
-    op: Union[AllGatherOp, AllReduceOp, ReduceScatterOp],
+    op: _CollectiveOp,
     transport: Optional[Union[str, Communicator]] = None,
 ):
+    """
+    Bind input nodes with a collective operation. The collective operation is
+    directly applied to the torch tensors from the input nodes. The output nodes
+    are the results of the collective operation in the same torch tensors.
+
+    Requirements:
+    1. Each input node returns a torch tensor.
+    2. Each input node is from a different actor.
+    3. If a custom transport is specified, its actor set matches the actor set
+        of the input nodes.
+    4. All tensors have the same shape.
+
+    Requirements 1-3 are checked in the `CollectiveGroup` constructor.
+    Requirement 4 is not checked yet.
+
+    Args:
+        input_nodes: A list of DAG nodes.
+        op: The collective operation.
+        transport: GPU communicator for the collective operation. If not
+            specified, the default NCCL is used.
+
+    Returns:
+        A list of collective output nodes.
+    """
     if transport is None:
         transport = TorchTensorType.NCCL
     collective_op = _CollectiveOperation(input_nodes, op, transport)
@@ -37,7 +66,7 @@ def create_output_node(
         elif isinstance(op, AllGatherOp):
             method_name = "allgather"
         else:
-            raise ValueError(f"Unexpected operation: {op}.")
+            raise ValueError(f"Unexpected operation: {op}")
 
         collective_output_node = CollectiveOutputNode(
             method_name=method_name,
@@ -64,34 +93,10 @@ class AllGatherWrapper:
         op: AllGatherOp,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        """
-        Bind input nodes with a collective operation. The collective operation is
-        directly applied to the torch tensors from the input nodes. The output nodes
-        are the results of the collective operation in the same torch tensors.
-
-        Requirements:
-        1. Each input node returns a torch tensor.
-        2. Each input node is from a different actor.
-        3. If a custom transport is specified, its actor set matches the actor set
-           of the input nodes.
-        4. All tensors have the same shape.
-
-        Requirements 1-3 are checked in the `CollectiveGroup` constructor.
-        Requirement 4 is not checked yet.
-
-        Args:
-            input_nodes: A list of DAG nodes.
-            op: The collective operation.
-            transport: GPU communicator for the collective operation. If not
-                specified, the default NCCL is used.
-
-        Returns:
-            A list of collective output nodes.
-        """
         if not isinstance(op, AllGatherOp):
-            raise ValueError(f"Unexpected operation: {op}.")
+            raise ValueError(f"Unexpected operation: {op}")
 
-        return create_output_node(input_nodes, op, transport)
+        return _bind(input_nodes, op, transport)
 
     def __call__(
         self,
@@ -113,34 +118,10 @@ class AllReduceWrapper:
         op: AllReduceOp,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        """
-        Bind input nodes with a collective operation. The collective operation is
-        directly applied to the torch tensors from the input nodes. The output nodes
-        are the results of the collective operation in the same torch tensors.
-
-        Requirements:
-        1. Each input node returns a torch tensor.
-        2. Each input node is from a different actor.
-        3. If a custom transport is specified, its actor set matches the actor set
-           of the input nodes.
-        4. All tensors have the same shape.
-
-        Requirements 1-3 are checked in the `CollectiveGroup` constructor.
-        Requirement 4 is not checked yet.
-
-        Args:
-            input_nodes: A list of DAG nodes.
-            op: The collective operation.
-            transport: GPU communicator for the collective operation. If not
-                specified, the default NCCL is used.
-
-        Returns:
-            A list of collective output nodes.
-        """
         if not isinstance(op, AllReduceOp):
-            raise ValueError(f"Unexpected operation: {op}.")
+            raise ValueError(f"Unexpected operation: {op}")
 
-        return create_output_node(input_nodes, op, transport)
+        return _bind(input_nodes, op, transport)
 
     def __call__(
         self,
@@ -162,34 +143,10 @@ class ReduceScatterWrapper:
         op: ReduceScatterOp,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        """
-        Bind input nodes with a collective operation. The collective operation is
-        directly applied to the torch tensors from the input nodes. The output nodes
-        are the results of the collective operation in the same torch tensors.
-
-        Requirements:
-        1. Each input node returns a torch tensor.
-        2. Each input node is from a different actor.
-        3. If a custom transport is specified, its actor set matches the actor set
-           of the input nodes.
-        4. All tensors have the same shape.
-
-        Requirements 1-3 are checked in the `CollectiveGroup` constructor.
-        Requirement 4 is not checked yet.
-
-        Args:
-            input_nodes: A list of DAG nodes.
-            op: The collective operation.
-            transport: GPU communicator for the collective operation. If not
-                specified, the default NCCL is used.
-
-        Returns:
-            A list of collective output nodes.
-        """
         if not isinstance(op, ReduceScatterOp):
-            raise ValueError(f"Unexpected operation: {op}.")
+            raise ValueError(f"Unexpected operation: {op}")
 
-        return create_output_node(input_nodes, op, transport)
+        return _bind(input_nodes, op, transport)
 
     def __call__(
         self,
