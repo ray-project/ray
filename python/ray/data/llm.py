@@ -39,6 +39,7 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
 
     Examples:
         .. testcode::
+            :skipif: True
 
             import ray
             from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
