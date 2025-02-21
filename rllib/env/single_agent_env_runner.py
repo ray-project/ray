@@ -752,7 +752,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         )
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, idx: int, episodes):
+    def _make_on_episode_callback(
+        self, which: str, idx: int, episodes: List[SingleAgentEpisode] = None
+    ):
         make_callback(
             which,
             callbacks_objects=self._callbacks,

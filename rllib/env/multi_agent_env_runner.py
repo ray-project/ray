@@ -880,14 +880,16 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, idx: int, episode=None):
-        episode = episode if episode is not None else self._episode
+    def _make_on_episode_callback(
+        self, which: str, idx: int, episodes: List[MultiAgentEpisode] = None
+    ):
+        # episode = episode if episode is not None else self._episode
         make_callback(
             which,
             callbacks_objects=self._callbacks,
             callbacks_functions=getattr(self.config, f"callbacks_{which}"),
             kwargs=dict(
-                episode=episode,
+                episode=episodes[idx],
                 env_runner=self,
                 metrics_logger=self.metrics,
                 env=self.env.unwrapped,
