@@ -46,8 +46,6 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
 _actor_launch_hook = None
-# Whether we have recorded core is used or not.
-_core_usage_recorded = False
 
 
 @PublicAPI
@@ -1030,11 +1028,9 @@ class ActorClass:
         worker = ray._private.worker.global_worker
         worker.check_connected()
 
-        global _core_usage_recorded
-        if worker.mode != ray._private.worker.WORKER_MODE and not _core_usage_recorded:
+        if worker.mode != ray._private.worker.WORKER_MODE:
             from ray._private.usage import usage_lib
 
-            _core_usage_recorded = True
             usage_lib.record_library_usage("core")
 
         # Check whether the name is already taken.

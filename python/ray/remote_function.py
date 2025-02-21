@@ -35,8 +35,6 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (fn, resources, strategy) on each local task submission.
 _task_launch_hook = None
-# Whether we have recorded core is used or not.
-_core_usage_recorded = False
 
 
 @PublicAPI
@@ -319,11 +317,12 @@ class RemoteFunction:
         worker = ray._private.worker.global_worker
         worker.check_connected()
 
-        global _core_usage_recorded
-        if worker.mode != ray._private.worker.WORKER_MODE and not _core_usage_recorded:
+        if worker.mode != ray._private.worker.WORKER_MODE:
+            # Only need to record on the driver side
+            # since workers are created via tasks or actors
+            # launched from the driver.
             from ray._private.usage import usage_lib
 
-            _core_usage_recorded = True
             usage_lib.record_library_usage("core")
 
         # We cannot do this when the function is first defined, because we need
