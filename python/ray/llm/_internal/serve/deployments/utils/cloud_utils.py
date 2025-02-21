@@ -584,8 +584,7 @@ class CloudObjectCache:
         self._missing_expire_seconds = missing_expire_seconds
         self._exists_expire_seconds = exists_expire_seconds
         self._is_async = inspect.iscoroutinefunction(fetch_fn) or (
-            hasattr(fetch_fn, "__call__")
-            and inspect.iscoroutinefunction(fetch_fn.__call__)
+            callable(fetch_fn) and inspect.iscoroutinefunction(fetch_fn.__call__)
         )
         self._missing_object_value = missing_object_value
         # Lock for thread-safe cache access

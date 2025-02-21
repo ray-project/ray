@@ -1,6 +1,5 @@
 import sys
 import pytest
-import time
 import asyncio
 from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     CloudObjectCache,
