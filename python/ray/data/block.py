@@ -476,7 +476,7 @@ class BlockAccessor:
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
-    def count(self, on: str) -> Optional[U]:
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
         """Returns a count of the distinct values in the provided column"""
         raise NotImplementedError
 

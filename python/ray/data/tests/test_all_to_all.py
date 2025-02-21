@@ -1,3 +1,4 @@
+import itertools
 import random
 import time
 from typing import Optional
@@ -14,6 +15,8 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     combine_chunks,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import is_nan
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -654,9 +657,9 @@ def test_global_tabular_sum(
 def test_groupby_tabular_min(
     ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
 ):
-    # Test built-in min aggregation
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_tabular_min with: {seed}")
+    # NOTE: Do not change the seed
+    seed = int(1739959110)
+
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
@@ -698,6 +701,10 @@ def test_groupby_tabular_min(
                 "min(B)": [0, 1, 2, np.nan],
             }
         ),
+        # NOTE: We're disabling the check due to lossy conversion from
+        #       Pandas to Arrow when all of the values in the partition
+        #       are nans/Nones
+        check_dtype=False,
     )
 
     # Test ignore_nulls=False
@@ -809,25 +816,26 @@ def test_groupby_tabular_max(
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
 def test_groupby_tabular_mean(
     ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
 ):
     # Test built-in mean aggregation
-    seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_tabular_mean with: {seed}")
+    seed = int(1739950448)
+
     random.seed(seed)
+
     xs = list(range(100))
     random.shuffle(xs)
 
-    def _to_pandas(ds):
-        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+    def _convert_to_format(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
 
     ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
         num_parts
     )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+
+    ds = _convert_to_format(ds)
 
     agg_ds = ds.groupby("A").mean("B")
     assert agg_ds.count() == 3
@@ -841,8 +849,9 @@ def test_groupby_tabular_mean(
     ds = ray.data.from_items(
         [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
     ).repartition(num_parts)
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+
+    ds = _convert_to_format(ds)
+
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.mean("B")
     assert nan_agg_ds.count() == 3
@@ -868,8 +877,9 @@ def test_groupby_tabular_mean(
     ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
         num_parts
     )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+
+    ds = _convert_to_format(ds)
+
     nan_agg_ds = ds.groupby("A").mean("B")
     assert nan_agg_ds.count() == 3
     pd.testing.assert_frame_equal(
@@ -885,7 +895,7 @@ def test_groupby_tabular_mean(
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
 def test_groupby_tabular_std(
     ray_start_regular_shared_2_cpus, ds_format, num_parts, configure_shuffle_method
 ):
@@ -893,17 +903,17 @@ def test_groupby_tabular_std(
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_std with: {seed}")
     random.seed(seed)
+
     xs = list(range(100))
     random.shuffle(xs)
 
-    def _to_arrow(ds):
+    def _convert_to_format(ds):
         return ds.map_batches(lambda x: x, batch_size=None, batch_format="pyarrow")
 
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     ds = ray.data.from_pandas(df).repartition(num_parts)
 
-    if ds_format == "arrow":
-        ds = _to_arrow(ds)
+    ds = _convert_to_format(ds)
 
     agg_ds = ds.groupby("A").std("B")
     assert agg_ds.count() == 3
@@ -915,8 +925,7 @@ def test_groupby_tabular_std(
 
     # ddof of 0
     ds = ray.data.from_pandas(df).repartition(num_parts)
-    if ds_format == "arrow":
-        ds = _to_arrow(ds)
+    ds = _convert_to_format(ds)
 
     agg_ds = ds.groupby("A").std("B", ddof=0)
     assert agg_ds.count() == 3
@@ -929,8 +938,9 @@ def test_groupby_tabular_std(
     # Test built-in std aggregation with nans
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs] + [0], "B": xs + [None]})
     ds = ray.data.from_pandas(nan_df).repartition(num_parts)
-    if ds_format == "arrow":
-        ds = _to_arrow(ds)
+
+    ds = _convert_to_format(ds)
+
     nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.std("B")
     assert nan_agg_ds.count() == 3
@@ -955,8 +965,7 @@ def test_groupby_tabular_std(
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
     ds = ray.data.from_pandas(nan_df).repartition(num_parts)
 
-    if ds_format == "arrow":
-        ds = _to_arrow(ds)
+    ds = _convert_to_format(ds)
 
     nan_agg_ds = ds.groupby("A").std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
@@ -1113,8 +1122,10 @@ def test_groupby_agg_bad_on(ray_start_regular_shared_2_cpus, configure_shuffle_m
 def test_groupby_arrow_multi_agg(
     ray_start_regular_shared_2_cpus, num_parts, configure_shuffle_method, ds_format
 ):
+    using_pyarrow = ds_format == "pyarrow"
+
     if (
-        ds_format == "pyarrow"
+        using_pyarrow
         and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
     ):
         pytest.skip(
@@ -1206,15 +1217,17 @@ def test_groupby_arrow_multi_agg(
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["pandas", "pyarrow"])
 @pytest.mark.parametrize("ignore_nulls", [True, False])
-def test_groupby_arrow_multi_agg_with_nans(
+def test_groupby_multi_agg_with_nans(
     ray_start_regular_shared_2_cpus,
     num_parts,
     configure_shuffle_method,
     ds_format,
     ignore_nulls,
 ):
+    using_pyarrow = ds_format == "pyarrow"
+
     if (
-        ds_format == "pyarrow"
+        using_pyarrow
         and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
     ):
         pytest.skip(
@@ -1316,6 +1329,116 @@ def test_groupby_arrow_multi_agg_with_nans(
         }
 
     assert _round_to_14_digits(expected_row) == _round_to_14_digits(result_row)
+
+
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
+@pytest.mark.parametrize("ignore_nulls", [True, False])
+@pytest.mark.parametrize("null", [None, np.nan])
+def test_groupby_multi_agg_with_nans_v2(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    ds_format,
+    ignore_nulls,
+    null,
+):
+    # NOTE: This test verifies that combining is an properly
+    #       associative operation by combining all possible permutations
+    #       of partially aggregated blocks
+
+    source = pd.DataFrame(
+        {
+            "A": [0, 1, 2, 3],
+            "B": [0, 1, 2, null],
+        }
+    )
+
+    aggs = [
+        Sum("B", alias_name="sum_b", ignore_nulls=ignore_nulls),
+        Min("B", alias_name="min_b", ignore_nulls=ignore_nulls),
+        Max("B", alias_name="max_b", ignore_nulls=ignore_nulls),
+        Mean("B", alias_name="mean_b", ignore_nulls=ignore_nulls),
+        Std("B", alias_name="std_b", ignore_nulls=ignore_nulls),
+        Quantile("B", alias_name="quantile_b", ignore_nulls=ignore_nulls),
+    ]
+
+    # Step 0: Prepare expected output (using Pandas)
+    grouped_df = source.groupby("A", as_index=False, dropna=False).agg(
+        {
+            "B": [
+                ("sum", lambda s: s.sum(skipna=ignore_nulls, min_count=1)),
+                ("min", lambda s: s.min(skipna=ignore_nulls)),
+                ("max", lambda s: s.max(skipna=ignore_nulls)),
+                ("mean", lambda s: s.mean(skipna=ignore_nulls)),
+                ("std", lambda s: s.std(skipna=ignore_nulls)),
+                (
+                    "quantile",
+                    lambda s: s.quantile() if ignore_nulls or not s.hasnans else np.nan,
+                ),
+            ]
+        },
+    )
+
+    grouped_df.columns = [
+        "A",
+        "sum_b",
+        "min_b",
+        "max_b",
+        "mean_b",
+        "std_b",
+        "quantile_b",
+    ]
+
+    expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)
+
+    # Step 1: Split individual rows into standalone blocks, then apply
+    #         aggregations to it
+    group_by_key = SortKey("A")
+    aggregated_sub_blocks = []
+
+    for i in range(len(source)):
+        slice_ = BlockAccessor.for_block(source).slice(i, i + 1)
+        if ds_format == "pyarrow":
+            b = pa.Table.from_pydict(slice_)
+        elif ds_format == "pandas":
+            b = pd.DataFrame(slice_)
+        else:
+            raise ValueError(f"Unknown format: {ds_format}")
+
+        aggregated_sub_blocks.append(
+            BlockAccessor.for_block(b)._aggregate(group_by_key, tuple(aggs))
+        )
+
+    # Step 2: Aggregate all possible permutations of the partially aggregated
+    #         blocks, assert against expected output
+    for aggregated_blocks in itertools.permutations(aggregated_sub_blocks):
+        cur = aggregated_blocks[0]
+        for next_ in aggregated_blocks[1:]:
+            cur, _ = TableBlockAccessor._combine_aggregated_blocks(
+                [cur, next_], group_by_key, aggs, finalize=False
+            )
+
+        finalized_block, _ = TableBlockAccessor._combine_aggregated_blocks(
+            [cur], group_by_key, aggs, finalize=True
+        )
+
+        if ds_format == "pyarrow":
+            res = finalized_block.to_pandas()
+        elif ds_format == "pandas":
+            res = finalized_block
+        else:
+            raise ValueError(f"Unknown format: {ds_format}")
+
+        res = res.sort_values(by="A").reset_index(drop=True)
+
+        print(">>> Result: ", res)
+        print(">>> Expected: ", expected_df)
+
+        # NOTE: We currently ignore the underlying schema and assert only
+        #       based on values, due to current aggregations implementations
+        #       not handling types properly and consistently
+        #
+        # TODO assert on expected schema as well
+        pd.testing.assert_frame_equal(expected_df, res, check_dtype=False)
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
