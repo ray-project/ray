@@ -53,7 +53,7 @@ template <class T>
 void VerifyNotNullPtr(T *object, std::string_view obj_name, MessageType msg_type) {
   RAY_CHECK(object != nullptr) << "Corrupted " << EnumNameMessageType(msg_type)
                                << " message: " << obj_name << " is null. "
-                               << corruptedRequestErrorMessage;
+                               << kCorruptedRequestErrorMessage;
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
