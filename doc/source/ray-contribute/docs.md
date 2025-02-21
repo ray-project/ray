@@ -161,8 +161,7 @@ comes down to _two types_ of documents:
   [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.rst) or
   [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in
-  the browser like `.md` or `.rst` files, but have the added benefit of adding launch buttons to the top of the
-  document, so that users can run the code themselves in either Binder or Google Colab.
+  the browser like `.md` or `.rst` files, but have the added benefit that users can easily run the code themselves.
 
 ## Fixing typos and improving explanations
 
@@ -257,7 +256,7 @@ top of this page to get the `.ipynb` file) and start modifying it.
 All the example notebooks in Ray Tune get automatically tested by our CI system, provided you place them in the
 [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples).
 If you have questions about how to test your notebook when contributing to other Ray sub-projects, please make
-sure to ask a question in [the Ray community Slack](https://forms.gle/9TSdDYUgxYs8SA9e8) or directly on GitHub,
+sure to ask a question in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub,
 when opening your pull request.
 
 To work off of an existing example, you could also have a look at the
@@ -343,6 +342,21 @@ not want to do to contribute a piece of documentation.
 Apart from `hide-cell`, you also have `hide-input` and `hide-output` tags that hide the input and output of a cell.
 Also, if you need code that gets executed in the notebook, but you don't want to show it in the documentation,
 you can use the `remove-cell`, `remove-input`, and `remove-output` tags in the same way.
+
+### Reference section labels
+
+[Reference sections labels](https://jupyterbook.org/en/stable/content/references.html#reference-section-labels) are a way to link to specific parts of the documentation from within a notebook. Creating one inside a markdown cell is simple:
+
+```markdown
+(my-label)=
+# The thing to label
+```
+
+Then, you can link it in .rst files with the following syntax:
+
+```rst
+See {ref}`the thing that I labeled <my-label>` for more information.
+```
 
 ### Testing notebooks
 

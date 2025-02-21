@@ -12,7 +12,6 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
@@ -558,27 +557,6 @@ class TestReservationOpResourceAllocator:
         o2.completed = MagicMock(return_value=True)
         allocator.update_usages()
         assert o2 not in allocator._op_budgets
-
-    def test_only_enable_for_ops_with_accurate_memory_accouting(
-        self, restore_data_context
-    ):
-        """Test that ReservationOpResourceAllocator is not enabled when
-        there are ops not in ResourceManager._ACCURRATE_MEMORY_ACCOUNTING_OPS
-        """
-        DataContext.get_current().op_resource_reservation_enabled = True
-
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1)
-        o3 = InputDataBuffer(DataContext.get_current(), [])
-        o4 = mock_map_op(o3)
-        o3 = UnionOperator(DataContext.get_current(), o2, o4)
-
-        topo, _ = build_streaming_topology(o3, ExecutionOptions())
-
-        resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
-        )
-        assert not resource_manager.op_resource_allocator_enabled()
 
 
 if __name__ == "__main__":
