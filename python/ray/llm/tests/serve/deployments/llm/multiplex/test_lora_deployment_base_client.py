@@ -12,9 +12,6 @@ from ray.llm._internal.serve.configs.server_models import LLMConfig, LoraConfig
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter,
 )
-from ray.llm._internal.serve.builders.application_builders import (
-    get_serve_deployment_args,
-)
 from ray.llm._internal.serve.configs.server_models import ModelData
 from ray.llm.tests.serve.deployments.fake_image_retriever import FakeImageRetriever
 from ray.llm.tests.serve.deployments.mock_vllm_engine import MockEchoVLLMEngine
@@ -62,9 +59,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     llm_deployments = []
     for llm_config in llm_configs:
         model_id = llm_config.model_id
-        deployment_args = get_serve_deployment_args(
-            llm_config, name_prefix=f"{model_id}:"
-        )
+        deployment_args = llm_config.get_serve_options(name_prefix=f"{model_id}:")
         deployment = VLLMDeployment.options(**deployment_args)
         llm_deployments.append(
             deployment.bind(

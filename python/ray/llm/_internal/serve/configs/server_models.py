@@ -1,5 +1,6 @@
 import pydantic
 import os
+import ray
 
 from enum import Enum
 from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
@@ -38,6 +39,7 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     MAX_NUM_STOPPING_SEQUENCES,
+    ENABLE_WORKER_PROCESS_SETUP_HOOK,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
@@ -441,6 +443,112 @@ class LLMConfig(BaseModelExtended):
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
             raise ValueError(f"Unsupported engine: {self.llm_engine}")
+
+    def _set_deployment_placement_options(self) -> Dict[str, Any]:
+        deployment_config = self.deployment_config
+        engine_config = self.get_engine_config()
+
+        ray_actor_options = deployment_config.get("ray_actor_options", {})
+        deployment_config["ray_actor_options"] = ray_actor_options
+
+        replica_actor_resources = {
+            "CPU": ray_actor_options.get("num_cpus", 1),
+            "GPU": ray_actor_options.get("num_gpus", 0),
+            **ray_actor_options.get("resources", {}),
+        }
+        if "memory" in ray_actor_options:
+            replica_actor_resources["memory"] = ray_actor_options["memory"]
+
+        if (
+            "placement_group_bundles" in deployment_config
+            or "placement_group_strategy" in deployment_config
+        ):
+            raise ValueError(
+                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. "
+                "Use scaling_config to configure replica placement group."
+            )
+
+        # TODO (Kourosh): There is some test code leakage happening here that should be removed.
+        try:
+            # resources.mock_resource is a special key we used in tests to skip placement
+            # group on the gpu nodes.
+            if "mock_resource" in ray_actor_options.get("resources", {}):
+                bundles = []
+            else:
+                bundles = engine_config.placement_bundles
+        except ValueError:
+            # May happen if all bundles are empty.
+            bundles = []
+
+        bundles = [replica_actor_resources] + bundles
+        deployment_config.update(
+            {
+                "placement_group_bundles": bundles,
+                "placement_group_strategy": engine_config.placement_strategy,
+            }
+        )
+
+        return deployment_config
+
+    def _get_deployment_name(self, name_prefix: str) -> str:
+        unsanitized_deployment_name = name_prefix + self.model_id
+        return unsanitized_deployment_name.replace("/", "--").replace(".", "_")
+
+    def get_serve_options(
+        self,
+        *,
+        name_prefix: str,
+    ) -> Dict[str, Any]:
+        """Get the Serve options for the given LLM config.
+
+        This method is used to generate the Serve options for the given LLM config.
+
+
+        Examples:
+            .. testcode::
+                :skipif: True
+
+                from ray import serve
+                from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
+                from ray.serve.llm.deployments import VLLMDeployment
+
+
+                llm_config = LLMConfig(
+                    model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                    accelerator_type="L4",
+                    runtime_env={"env_vars": {"FOO": "bar"}},
+                )
+                serve_options = llm_config.get_serve_options(name_prefix="Test:")
+                vllm_app = VLLMDeployment.options(**serve_options).bind(llm_config)
+                serve.run(vllm_app)
+
+        Keyword Args:
+            name_prefix: The prefix to use for the deployment name.
+
+        Returns:
+            The dictionary to use in .options() when creating the deployment.
+        """
+
+        deployment_config = self._set_deployment_placement_options()
+
+        default_runtime_env = ray.get_runtime_context().runtime_env
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            default_runtime_env[
+                "worker_process_setup_hook"
+            ] = "ray.llm._internal.serve._worker_process_setup_hook"
+
+        ray_actor_options = deployment_config.get("ray_actor_options", {})
+        ray_actor_options["runtime_env"] = {
+            **default_runtime_env,
+            # Existing runtime_env should take precedence over the default.
+            **ray_actor_options.get("runtime_env", {}),
+            **(self.runtime_env if self.runtime_env else {}),
+        }
+        deployment_config["ray_actor_options"] = ray_actor_options
+
+        # Set the name of the deployment config to map to the model ID.
+        deployment_config["name"] = self._get_deployment_name(name_prefix)
+        return deployment_config
 
 
 def _is_yaml_file(filename: str) -> bool:

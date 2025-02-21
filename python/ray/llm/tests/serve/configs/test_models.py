@@ -69,6 +69,43 @@ class TestModelConfig:
                 deployment_config={"extra": "invalid"},
             )
 
+    def test_get_serve_options(self):
+        """Test that get_serve_options returns the correct options."""
+        serve_options = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        ).get_serve_options(name_prefix="Test:")
+        expected_options = {
+            "autoscaling_config": {
+                "min_replicas": 0,
+                "initial_replicas": 1,
+                "max_replicas": 10,
+                "target_num_ongoing_requests_per_replica": 16,
+                "target_ongoing_requests": 16,
+            },
+            "ray_actor_options": {
+                "runtime_env": {
+                    "env_vars": {"FOO": "bar"},
+                    "worker_process_setup_hook": "ray.llm._internal.serve._worker_process_setup_hook",
+                }
+            },
+            "placement_group_bundles": [
+                {"CPU": 1, "GPU": 0},
+                {"GPU": 1, "accelerator_type:L4": 0.001},
+            ],
+            "placement_group_strategy": "STRICT_PACK",
+            "name": "Test:test_model",
+        }
+        assert serve_options == expected_options
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
