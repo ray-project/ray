@@ -1,3 +1,5 @@
+import random
+
 import gymnasium as gym
 
 from ray.rllib.algorithms.appo import APPOConfig
@@ -41,6 +43,14 @@ def _env_creator(cfg):
 
 
 MultiAgentPong = make_multi_agent(_env_creator)
+main_spec = RLModuleSpec(
+    model_config=DefaultModelConfig(
+        vf_share_layers=True,
+        conv_filters=[(16, 4, 2), (32, 4, 2), (64, 4, 2), (128, 4, 2)],
+        conv_activation="relu",
+        head_fcnet_hiddens=[256],
+    ),
+)
 
 
 config = (
@@ -78,22 +88,21 @@ config = (
     .rl_module(
         rl_module_spec=MultiRLModuleSpec(
             rl_module_specs={
-                "main": RLModuleSpec(
-                    model_config=DefaultModelConfig(
-                        vf_share_layers=True,
-                        conv_filters=[(16, 4, 2), (32, 4, 2), (64, 4, 2), (128, 4, 2)],
-                        conv_activation="relu",
-                        head_fcnet_hiddens=[256],
-                    ),
-                ),
+                "p0": main_spec,
+                "p1": main_spec,
+                "p2": main_spec,
+                "p3": main_spec,
+                "p4": main_spec,
                 "random": RLModuleSpec(module_class=RandomRLModule),
             },
         ),
     )
     .multi_agent(
-        policies={"main", "random"},
-        policy_mapping_fn=lambda aid, eps, **kw: "main" if aid == 0 else "random",
-        policies_to_train=["main"],
+        policies={"p0", "p1", "p2", "p3", "p4", "random"},
+        policy_mapping_fn=lambda aid, eps, **kw: (
+            random.choice([f"p{i}" for i in range(5)] + ["random"])
+        ),
+        policies_to_train=[f"p{i}" for i in range(5)],
     )
 )
 
