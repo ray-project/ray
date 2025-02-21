@@ -125,5 +125,22 @@ class FIFOBundleQueue(BundleQueue):
     def estimate_size_bytes(self) -> int:
         return self._nbytes
 
+    def estimate_size_bytes_per_node(self) -> Dict[str, int]:
+        from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+            NODE_UNKNOWN,
+        )
+
+        usage_per_node = defaultdict(int)
+        for bundle in self._bundle_to_nodes:
+            for _, meta in bundle.blocks:
+                node_id = (
+                    meta.exec_stats.node_id
+                    if meta.exec_stats and meta.exec_stats.node_id
+                    else NODE_UNKNOWN
+                )
+                usage_per_node[node_id] += meta.size_bytes
+
+        return usage_per_node
+
     def is_empty(self):
         return not self._bundle_to_nodes and self._head is None and self._tail is None

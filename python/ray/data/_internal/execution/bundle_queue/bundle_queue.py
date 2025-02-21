@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -51,6 +51,11 @@ class BundleQueue(abc.ABC):
     @abc.abstractmethod
     def estimate_size_bytes(self) -> int:
         """Return an estimate of the total size of objects in the queue."""
+        ...
+
+    @abc.abstractmethod
+    def estimate_size_bytes_per_node(self) -> Dict[str, int]:
+        """Return an estimate of the size of objects in the queue per node."""
         ...
 
     @abc.abstractmethod
