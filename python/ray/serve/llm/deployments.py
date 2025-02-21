@@ -1,8 +1,8 @@
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import (
-    VLLMDeploymentImpl as _VLLMDeploymentImpl,
+    VLLMService as _VLLMService,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
-    LLMModelRouterDeploymentImpl as _LLMModelRouterDeploymentImpl,
+    LLMRouter as _LLMRouter,
 )
 
 
@@ -10,7 +10,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class VLLMDeploymentImpl(_VLLMDeploymentImpl):
+class VLLMService(_VLLMService):
     """The implementation of the VLLM engine deployment.
 
     To build a VLLMDeployment object you should use `build_vllm_deployment` function.
@@ -42,7 +42,7 @@ class VLLMDeploymentImpl(_VLLMDeploymentImpl):
             )
 
             # Build the deployment directly
-            VLLMDeployment = VLLMDeploymentImpl.as_deployment(llm_config.get_serve_options())
+            VLLMDeployment = VLLMService.as_deployment(llm_config.get_serve_options())
             vllm_app = VLLMDeployment.bind(llm_config)
 
             model_handle = serve.run(vllm_app)
@@ -66,7 +66,7 @@ class VLLMDeploymentImpl(_VLLMDeploymentImpl):
 
 
 @PublicAPI(stability="alpha")
-class LLMModelRouterDeploymentImpl(_LLMModelRouterDeploymentImpl):
+class LLMRouter(_LLMRouter):
 
     """The implementation of the OpenAI compatiple model router.
 
