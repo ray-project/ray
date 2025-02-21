@@ -1,8 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-
-if TYPE_CHECKING:
-    import torch
-
+from typing import Any, Dict, List, Tuple
 from ray.dag import ClassMethodNode, DAGNode
 from ray.dag.constants import P2P_OPERATION_KEY
 from ray.dag.nccl_operation import _NcclOperation
