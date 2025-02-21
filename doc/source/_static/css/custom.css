@@ -401,3 +401,8 @@ table.autosummary tr > td:first-child > p > a > code > span {
 readthedocs-flyout {
   display: none !important;
 }
+
+/* Styling the experimental Anyscale upsell CTA */
+.anyscale-cta {
+  margin-bottom: 16px;
+}
