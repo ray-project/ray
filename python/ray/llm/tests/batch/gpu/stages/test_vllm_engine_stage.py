@@ -235,7 +235,8 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        gpu_memory_utilization=0.3,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
         task=vLLMTaskType.GENERATE,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
@@ -280,7 +281,8 @@ async def test_vllm_wrapper_embed(model_opt_125m):
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        gpu_memory_utilization=0.3,
+        gpu_memory_utilization=0.8,
+        max_model_len=2048,
         task=vLLMTaskType.EMBED,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
@@ -307,8 +309,9 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         max_pending_requests=10,
         # Skip CUDA graph capturing to reduce the start time.
         enforce_eager=True,
-        gpu_memory_utilization=0.3,
+        gpu_memory_utilization=0.8,
         task=vLLMTaskType.GENERATE,
+        max_model_len=2048,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
         enable_lora=True,
