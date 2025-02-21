@@ -52,7 +52,7 @@ inline constexpr std::string_view kCorruptedRequestErrorMessage =
     "sharing the same Plasma store socket. Please ensure that there are no "
     "process forking in any of the application core worker or driver code. Follow the "
     "link here to learn more about the issue and how to fix it: "
-    "https://docs.ray.io/en/latest/ray-core/patterns/create-new-processes.html";
+    "https://docs.ray.io/en/latest/ray-core/patterns/fork-new-processes.html";
 
 // Represents a chunk of allocated memory.
 struct Allocation {
