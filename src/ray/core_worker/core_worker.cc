@@ -4807,6 +4807,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
        success_callback = std::move(success_callback),
        fallback_callback =
            std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
+        RAY_LOG(ERROR) << "About to call callback from GetAsync - " << ray_object->IsInPlasmaError();
         if (ray_object->IsInPlasmaError()) {
           fallback_callback(ray_object, object_id, python_user_callback);
         } else {

@@ -4887,6 +4887,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
 
     try:
+        print("Inside async_callback")
         # Object is retrieved from in memory store.
         # Here we go through the code path used to deserialize objects.
         objects_to_deserialize.push_back(obj)
@@ -4898,6 +4899,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
         user_callback = <object>user_callback_ptr
         user_callback(result)
+        print("async_callback done")
     except Exception:
         # Only log the error here because this callback is called from Cpp
         # and Cython will ignore the exception anyway
