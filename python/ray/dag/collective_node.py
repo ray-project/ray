@@ -39,7 +39,7 @@ class _CollectiveOperation:
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        op: _CollectiveOp = None,
+        op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
     ):
         if len(input_nodes) == 0:
@@ -133,10 +133,10 @@ class _CollectiveOperation:
             communicator.allreduce(send_buf, recv_buf, self._op.reduceOp)
         elif isinstance(self._op, ReduceScatterOp):
             world_size = len(self._actor_handles)
-            if not send_buf.shape[0] % world_size == 0:
+            if send_buf.shape[0] % world_size != 0:
                 raise ValueError(
-                    "Input tensor's first dimension should be divisible by "
-                    "the number of actors participated"
+                    "Expected the first dimension of the input tensor to be divisible "
+                    f"by the world size {world_size}"
                 )
             recv_buf = torch.empty(
                 (send_buf.shape[0] // world_size, *send_buf.shape[1:]),
@@ -153,7 +153,7 @@ class _CollectiveOperation:
             )
             communicator.allgather(send_buf, recv_buf)
         else:
-            raise ValueError(f"Unexpected operation: {self._op}.")
+            raise ValueError("Expected a collective operation")
         return recv_buf
 
 

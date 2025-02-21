@@ -5,14 +5,13 @@ import sys
 import ray.experimental.collective as collective
 
 import pytest
+from ray.dag import InputNode, MultiOutputNode
 from ray.experimental.collective.conftest import (
     AbstractNcclGroup,
     CPUTorchTensorWorker,
     check_nccl_group_init,
     check_nccl_group_teardown,
 )
-from ray.experimental.util.types import AllReduceOp
-from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ def test_all_reduce_duplicate_actors(ray_start_regular):
             ValueError,
             match="Expected unique actor handles for a collective operation",
         ):
-            collective.allreduce.bind(computes, AllReduceOp())
+            collective.allreduce.bind(computes)
 
     with InputNode() as inp:
         compute = worker.return_tensor.bind(inp)
@@ -45,7 +44,7 @@ def test_all_reduce_duplicate_actors(ray_start_regular):
             ValueError,
             match="Expected unique input nodes for a collective operation",
         ):
-            collective.allreduce.bind(computes, AllReduceOp())
+            collective.allreduce.bind(computes)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -66,7 +65,7 @@ def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
             ValueError,
             match="Expected actor handles to match the custom NCCL group",
         ):
-            collective.allreduce.bind(computes, AllReduceOp(), transport=nccl_group)
+            collective.allreduce.bind(computes, transport=nccl_group)
 
 
 @pytest.mark.parametrize(
@@ -85,9 +84,7 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers]
         # There are two all-reduces, each on one actor.
-        collectives = [
-            collective.allreduce.bind([compute], AllReduceOp()) for compute in computes
-        ]
+        collectives = [collective.allreduce.bind([compute]) for compute in computes]
         # collective[0] is the only CollectiveOutputNode for each all-reduce.
         dag = MultiOutputNode([collective[0] for collective in collectives])
 
@@ -118,8 +115,8 @@ def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
 
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
-        collectives = collective.allreduce.bind(tensors, AllReduceOp())
-        collectives = collective.allreduce.bind(collectives, AllReduceOp())
+        collectives = collective.allreduce.bind(tensors)
+        collectives = collective.allreduce.bind(collectives)
         dag = MultiOutputNode(collectives)
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
@@ -146,7 +143,7 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
 
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers]
-        collectives = collective.allreduce.bind(computes, AllReduceOp())
+        collectives = collective.allreduce.bind(computes)
         recvs = [
             # Each of the 2 workers receives from the other.
             workers[0].recv.bind(
@@ -169,7 +166,7 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
 
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers]
-        collectives = collective.allreduce.bind(computes, AllReduceOp())
+        collectives = collective.allreduce.bind(computes)
         # Sender is workers[0] and receiver is workers[1].
         dag = workers[1].recv.bind(
             collectives[0].with_tensor_transport(transport="nccl")
@@ -201,8 +198,8 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     comm = AbstractNcclGroup(workers)
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers]
-        collectives = collective.allreduce.bind(computes, AllReduceOp(), transport=comm)
-        collectives = collective.allreduce.bind(collectives, AllReduceOp())
+        collectives = collective.allreduce.bind(computes, transport=comm)
+        collectives = collective.allreduce.bind(collectives)
         dag = workers[0].recv.bind(
             collectives[1].with_tensor_transport(transport="nccl")
         )
@@ -220,8 +217,8 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     comm = AbstractNcclGroup(workers)
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers]
-        collectives = collective.allreduce.bind(computes, AllReduceOp())
-        collectives = collective.allreduce.bind(collectives, AllReduceOp())
+        collectives = collective.allreduce.bind(computes)
+        collectives = collective.allreduce.bind(collectives)
         dag = workers[0].recv.bind(collectives[1].with_tensor_transport(transport=comm))
         dag = MultiOutputNode([dag, collectives[0]])
 
@@ -254,7 +251,7 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
 
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
-        allreduce = collective.allreduce.bind(tensors, AllReduceOp(), transport=comm)
+        allreduce = collective.allreduce.bind(tensors, transport=comm)
         dag = workers[0].recv.bind(allreduce[1].with_tensor_transport(transport=comm))
         dag = MultiOutputNode([dag, allreduce[0]])
 
@@ -273,10 +270,8 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
 
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
-        allreduce1 = collective.allreduce.bind(tensors, AllReduceOp(), transport=comm_1)
-        allreduce2 = collective.allreduce.bind(
-            allreduce1, AllReduceOp(), transport=comm_2
-        )
+        allreduce1 = collective.allreduce.bind(tensors, transport=comm_1)
+        allreduce2 = collective.allreduce.bind(allreduce1, transport=comm_2)
         dag = workers[0].recv.bind(
             allreduce2[1].with_tensor_transport(transport=comm_3)
         )
