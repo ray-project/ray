@@ -2044,10 +2044,7 @@
   team: serve
 
   cluster:
-    byod:
-      runtime_env:
-        - RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE=0
-        - RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS=0
+    byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
 
