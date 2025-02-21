@@ -1,4 +1,3 @@
-import yaml
 import pydantic
 import os
 
@@ -28,7 +27,8 @@ from pydantic import (
     model_validator,
 )
 
-from transformers import PretrainedConfig
+from ray.llm._internal.utils import try_import
+
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
@@ -37,7 +37,6 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     DEFAULT_TARGET_ONGOING_REQUESTS,
-    FALLBACK_MAX_ONGOING_REQUESTS,
     MAX_NUM_STOPPING_SEQUENCES,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
@@ -48,25 +47,13 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
+from ray.llm._internal.serve.configs.base import BaseModelExtended
+
+transformers = try_import("transformers")
+
 
 GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
-
-
-class BaseModelExtended(BaseModel):
-    # NOTE(edoakes): Pydantic protects the namespace `model_` by default and prints
-    # warnings if you define fields with that prefix. However, we added such fields
-    # before this behavior existed. To avoid spamming user-facing logs, we mark the
-    # namespace as not protected. This means we need to be careful about overriding
-    # internal attributes starting with `model_`.
-    # See: https://github.com/anyscale/ray-llm/issues/1425
-    model_config = ConfigDict(protected_namespaces=tuple())
-
-    @classmethod
-    def parse_yaml(cls: Type[ModelT], file, **kwargs) -> ModelT:
-        kwargs.setdefault("Loader", yaml.SafeLoader)
-        dict_args = yaml.load(file, **kwargs)
-        return cls.model_validate(dict_args)
 
 
 logger = get_logger(__name__)
@@ -160,6 +147,9 @@ class AutoscalingConfig(BaseModel, extra="allow"):
 
     @model_validator(mode="before")
     def sync_target_ongoing_requests(cls, values):
+        """This is a temporary validator to sync the target_ongoing_requests
+        and target_num_ongoing_requests_per_replica fields.
+        """
         target_ongoing_requests = values.get("target_ongoing_requests", None)
         target_num_ongoing_requests_per_replica = values.get(
             "target_num_ongoing_requests_per_replica", None
@@ -192,44 +182,25 @@ class ServeMultiplexConfig(BaseModelExtended):
 
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
 class DeploymentConfig(BaseModelExtended):
+    class Config:
+        extra = "forbid"
+
     autoscaling_config: Optional[AutoscalingConfig] = Field(
-        AutoscalingConfig(),
+        default=None,
         description="Configuration for autoscaling the number of workers",
     )
     max_ongoing_requests: Optional[int] = Field(
         None,
         description="Sets the maximum number of queries in flight that are sent to a single replica.",
     )
-    # max_concurrent_queries is the deprecated field
-    # max_ongoing_requests should be used instead
-    max_concurrent_queries: Optional[int] = Field(
-        None,
-        description="This field is deprecated. max_ongoing_requests should be used instead.",
-        exclude=True,
-    )
+
     ray_actor_options: Optional[Dict[str, Any]] = Field(
         None, description="the Ray actor options to pass into the replica's actor."
     )
     graceful_shutdown_timeout_s: int = Field(
         300,
         description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
-    )  # XXX: hardcoded
-
-    @model_validator(mode="before")
-    def populate_max_ongoing_requests(cls, values):
-        max_ongoing_requests = values.get("max_ongoing_requests", None)
-        max_concurrent_queries = values.get("max_concurrent_queries", None)
-        # max_concurrent_queries takes priority because users may have set this value
-        # before max_ongoing_requests exists
-        final_value = (
-            max_ongoing_requests
-            or max_concurrent_queries
-            or FALLBACK_MAX_ONGOING_REQUESTS
-        )
-        values["max_ongoing_requests"] = final_value
-        values["max_concurrent_queries"] = final_value
-
-        return values
+    )
 
 
 class InputModality(str, Enum):
@@ -289,7 +260,6 @@ class LoraConfig(BaseModelExtended):
 
 class ModelLoadingConfig(BaseModelExtended):
     model_id: str = Field(
-        default=...,
         description="The ID that should be used by end users to access this model.",
     )
     model_source: Optional[Union[str, S3MirrorConfig, GCSMirrorConfig]] = Field(
@@ -315,7 +285,6 @@ class LLMConfig(BaseModelExtended):
     # model_config is a Pydantic setting. This setting merges with
     # model_configs in parent classes.
     model_config = ConfigDict(
-        use_enum_values=True,
         extra="forbid",
     )
 
@@ -331,8 +300,8 @@ class LLMConfig(BaseModelExtended):
         description="The settings for how to download and expose the model."
     )
 
-    llm_engine: LLMEngine = Field(
-        default=LLMEngine.VLLM,
+    llm_engine: str = Field(
+        default=LLMEngine.VLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -346,7 +315,7 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    accelerator_type: GPUType = Field(
+    accelerator_type: str = Field(
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
@@ -354,9 +323,9 @@ class LLMConfig(BaseModelExtended):
         default=None, description="Settings for LoRA adapter."
     )
 
-    deployment_config: DeploymentConfig = Field(
-        default_factory=DeploymentConfig,
-        description="The Ray Serve deployment settings for the model deployment.",
+    deployment_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The Ray @server.deployment options. See @server.deployment for more details.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -370,7 +339,7 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = PretrainedConfig.from_pretrained(model_id_or_path)
+        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
     def apply_checkpoint_info(
@@ -413,8 +382,31 @@ class LLMConfig(BaseModelExtended):
     def validate_accelerator_type(cls, value: str):
         # Ensure A10 is converted to A10G.
         if value == "A10":
-            return "A10G"
+            value = "A10G"
 
+        if value not in [t.value for t in GPUType]:
+            raise ValueError(f"Unsupported accelerator type: {value}")
+
+        return value
+
+    @field_validator("llm_engine")
+    def validate_llm_engine(cls, value: str) -> str:
+        """Validates the llm_engine string value."""
+        try:
+            # Validate the engine
+            LLMEngine(value)
+        except ValueError as e:
+            raise ValueError(f"Unsupported engine: {value}") from e
+        return value
+
+    @field_validator("deployment_config")
+    def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the deployment config dictionary."""
+        try:
+            # Only validate the deployment config
+            DeploymentConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid deployment config: {value}") from e
         return value
 
     def ray_accelerator_type(self) -> str:

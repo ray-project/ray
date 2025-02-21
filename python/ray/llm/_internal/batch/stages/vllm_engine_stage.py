@@ -18,7 +18,7 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-vllm = try_import("vllm", warning=True)
+vllm = try_import("vllm")
 
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,10 @@ class vLLMEngineWrapper:
         kwargs["task"] = self.task_type.value
 
         if vllm is None:
-            raise ImportError("vLLM is not installed or failed to import")
+            raise ImportError(
+                "vLLM is not installed or failed to import. Please run "
+                "`pip install ray[llm]` to install required dependencies."
+            )
 
         # Construct PoolerConfig if override_pooler_config is specified.
         if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
@@ -441,7 +444,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         return ret
 
     def __del__(self):
-        self.llm.shutdown()
+        if hasattr(self, "llm"):
+            self.llm.shutdown()
 
 
 def _ray_scheduling_strategy_fn(num_gpus_per_instance: int, accelerator_type: str):

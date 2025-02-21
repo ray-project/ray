@@ -20,19 +20,13 @@ from typing import (
     Literal,
     Optional,
     Union,
+    TypeVar,
 )
 
-from openai.types.chat import (
-    ChatCompletionContentPartInputAudioParam,
-    ChatCompletionContentPartRefusalParam,
-    ChatCompletionMessageToolCallParam,
-)
-from openai.types.chat import (
-    ChatCompletionContentPartParam as OpenAIChatCompletionContentPartParam,
-)
 from pydantic import (
     BaseModel,
     Field,
+    model_validator,
 )
 from ray.serve._private.utils import (
     generate_request_id,
@@ -47,6 +41,23 @@ from ray.llm._internal.serve.configs.server_models import (
     ModelData,
     LLMConfig,
     LLMRawResponse,
+)
+
+
+# openai.types.chat aliases.
+# We use aliases becasuse openai.types.chat is not installed in the docs build.
+# This is a hack to make the docs build pass.
+ChatCompletionContentPartInputAudioParam = TypeVar(
+    "ChatCompletionContentPartInputAudioParam", bound=Any
+)
+ChatCompletionContentPartRefusalParam = TypeVar(
+    "ChatCompletionContentPartRefusalParam", bound=Any
+)
+ChatCompletionMessageToolCallParam = TypeVar(
+    "ChatCompletionMessageToolCallParam", bound=Any
+)
+OpenAIChatCompletionContentPartParam = TypeVar(
+    "OpenAIChatCompletionContentPartParam", bound=Any
 )
 
 _LONG_INFO = Namespace(min=-9223372036854775808, max=9223372036854775807)
@@ -546,6 +557,11 @@ class DeltaMessage(BaseModel):
     content: Optional[str] = None
     reasoning_content: Optional[str] = None
     tool_calls: List[DeltaToolCall] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _non_null_content(self):
+        self.content = self.content or ""
+        return self
 
 
 class ChatCompletionResponseStreamChoice(BaseModel):
