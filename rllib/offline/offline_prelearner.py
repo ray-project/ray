@@ -262,7 +262,8 @@ class OfflinePreLearner:
             if not self._should_module_be_updated(module_id, batch):
                 del batch[module_id]
 
-        return {"batch": [batch]}
+        # Flatten the dictionary to increase serialization performance.
+        return self.flatten_dict(batch)
 
     @property
     def default_prelearner_buffer_class(self) -> ReplayBuffer:
