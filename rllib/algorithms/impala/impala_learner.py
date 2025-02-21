@@ -4,11 +4,14 @@ import threading
 import time
 from typing import Any, Dict, Union
 
+import tree  # pip install dm_tree
+
 import ray
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -95,7 +98,6 @@ class IMPALALearner(Learner):
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
-            metrics_logger=self.metrics,
             learner=self,
         )
         self._learner_thread.start()
@@ -134,13 +136,67 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, batch, self.metrics
                 )
 
+        # TODO (sven): Find a better way to limit the number of (mostly) unnecessary
+        #  metrics reduces.
         with self._num_updates_lock:
             count = self._num_updates
-        if count >= 100:
+        if count >= 20:
             with self._num_updates_lock:
                 self._num_updates = 0
             return self.metrics.reduce()
         return {}
+
+    @override(Learner)
+    def update_from_episodes(
+        self,
+        episodes: Any,
+        *,
+        timesteps: Dict[str, Any],
+        **kwargs,
+    ) -> ResultDict:
+        global _CURRENT_GLOBAL_TIMESTEPS
+        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
+
+        if isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
+            try:
+                episodes = tree.flatten(ray.get(episodes))
+            except ray.exceptions.OwnerDiedError:
+                episode_refs = episodes
+                episodes = []
+                for ref in episode_refs:
+                    try:
+                        episodes.extend(ray.get(ref))
+                    except ray.exceptions.OwnerDiedError:
+                        pass
+
+        # Call the learner connector pipeline.
+        shared_data = {}
+        batch = self._learner_connector(
+            rl_module=self.module,
+            batch={},
+            episodes=episodes,
+            shared_data=shared_data,
+            metrics=self.metrics,
+        )
+        # Convert to a batch.
+        # TODO (sven): Try to not require MultiAgentBatch anymore.
+        batch = MultiAgentBatch(
+            {
+                module_id: (
+                    SampleBatch(module_data, _zero_padded=True)
+                    if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                    else SampleBatch(module_data)
+                )
+                for module_id, module_data in batch.items()
+            },
+            env_steps=sum(len(e) for e in episodes),
+        )
+
+        return self.update_from_batch(
+            batch=batch,
+            timesteps=timesteps,
+            **kwargs,
+        )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -222,12 +278,10 @@ class _LearnerThread(threading.Thread):
         *,
         update_method,
         in_queue: deque,
-        metrics_logger,
         learner,
     ):
         super().__init__(name="_LearnerThread")
         self.daemon = True
-        self.metrics: MetricsLogger = metrics_logger
         self.learner = learner
         self.stopped = False
 
@@ -242,14 +296,16 @@ class _LearnerThread(threading.Thread):
         global _CURRENT_GLOBAL_TIMESTEPS
 
         # Get a new batch from the GPU-data (deque.pop -> newest item first).
-        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+        with self.learner.metrics.log_time(
+            (ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)
+        ):
             # Get a new batch from the GPU-data (learner queue OR circular buffer).
             if isinstance(self._in_queue, CircularBuffer):
                 ma_batch_on_gpu = self._in_queue.sample()
             else:
                 # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
                 while not self._in_queue:
-                    time.sleep(0.001)
+                    time.sleep(0.0001)
                 # Consume from the left (oldest batches first).
                 # If we consumed from the right, we would run into the danger of
                 # learning from newer batches (left side) most times, BUT sometimes
@@ -257,7 +313,7 @@ class _LearnerThread(threading.Thread):
                 ma_batch_on_gpu = self._in_queue.popleft()
 
         # Call the update method on the batch.
-        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
+        with self.learner.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
             # TODO (sven): For multi-agent AND SGD iter > 1, we need to make sure
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.

@@ -37,18 +37,19 @@ on the graph.
         dag = MultiOutputNode([w1, w2])
 
     compiled_dag = dag.experimental_compile()
-    compiled_dag.visualize()
+    compiled_dag.visualize(filename="compiled_graph_viz", format="png")
 
 By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
-Note that this requires ``graphviz`` to be installed.
+You can override the filename or format by specifying the ``filename`` and ``format`` arguments. The ``format``
+can be any ``graphviz`` supported format, note that this requires you to install ``graphviz``.
 
-The visualization for the preceding code is shown below:
+The preceding code generates a ``compiled_graph_viz.png`` file:
 
-.. image:: ../../images/compiled_graph.png
+.. image:: ../../images/compiled_graph_viz.png
     :alt: Visualization of Graph Structure
     :align: center
 
-Note that tasks of the same actor are shown in the same color.
+Note that the visualization shows tasks of the same actor as the same color.
 
 .. _execution-schedule:
 
@@ -67,7 +68,7 @@ and run the following command:
     RAY_CGRAPH_VISUALIZE_SCHEDULE=1 python3 example.py
 
 When Ray executes ``experimental_compile``, it generates a PNG image named ``compiled_graph_schedule.png`` and
-saves it in the current working directory. The visualization for the preceding code is shown below:
+saves it in the current working directory. The following is the visualization for the preceding code:
 
 .. image:: ../../images/compiled_graph_schedule.png
     :alt: Visualization of Execution Schedule
