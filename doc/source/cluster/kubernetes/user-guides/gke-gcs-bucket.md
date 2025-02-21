@@ -29,6 +29,11 @@ Now get credentials for the cluster to use with `kubectl`:
 gcloud container clusters get-credentials cloud-bucket-cluster --zone us-west1-b --project my-project-id
 ```
 
+## Install the KubeRay operator
+
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
+The KubeRay operator Pod must be on the CPU node if you set up the taint for the GPU node pool correctly.
+
 ## Create an IAM Service Account
 
 ```bash
