@@ -1903,6 +1903,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Worker's PID
   uint32_t pid_;
 
+  // XXX.
+  absl::Mutex deleted_generator_ids_mutex_;
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
 
   /// TODO(hjiang):
