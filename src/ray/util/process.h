@@ -30,6 +30,8 @@
 #include <utility>
 #include <vector>
 
+#include "ray/util/compat.h"
+
 #ifndef PID_MAX_LIMIT
 // This is defined by Linux to be the maximum allowable number of processes
 // There's no guarantee for other OSes, but it's useful for testing purposes.
@@ -46,10 +48,6 @@ class EnvironmentVariableLess {
 };
 
 typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvironment;
-
-#ifdef _WIN32
-using pid_t = int;
-#endif
 
 using StartupToken = int64_t;
 
