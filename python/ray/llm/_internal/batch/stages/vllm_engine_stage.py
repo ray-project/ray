@@ -191,7 +191,8 @@ class vLLMEngineWrapper:
         else:
             image = []
 
-        # The request is for LoRA.
+        # If the model name is given and is different from the model
+        # set in the config, then this is a LoRA.
         lora_request = None
         if "model" in row and row["model"] != self.model:
             if self.vllm_use_v1:

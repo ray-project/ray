@@ -237,6 +237,8 @@ async def test_vllm_wrapper_generate(model_llama_3_2_216M):
         enforce_eager=True,
         gpu_memory_utilization=0.3,
         task=vLLMTaskType.GENERATE,
+        # Older GPUs (e.g. T4) don't support bfloat16.
+        dtype="half",
     )
 
     batch = [
@@ -280,6 +282,8 @@ async def test_vllm_wrapper_embed(model_opt_125m):
         enforce_eager=True,
         gpu_memory_utilization=0.3,
         task=vLLMTaskType.EMBED,
+        # Older GPUs (e.g. T4) don't support bfloat16.
+        dtype="half",
     )
 
     batch = [
@@ -305,6 +309,8 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
         enforce_eager=True,
         gpu_memory_utilization=0.3,
         task=vLLMTaskType.GENERATE,
+        # Older GPUs (e.g. T4) don't support bfloat16.
+        dtype="half",
         enable_lora=True,
         max_lora_rank=16,
     )
