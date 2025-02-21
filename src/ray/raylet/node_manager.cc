@@ -371,6 +371,10 @@ NodeManager::NodeManager(
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
+  periodical_runner_->RunFnPeriodically([this]() { CheckWorkerSockets(); },
+                                        1000,
+                                        "NodeManager.CheckWorkerSockets");
+
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false);
@@ -653,6 +657,19 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
     }
   }
   worker_pool_.HandleJobFinished(job_id);
+}
+
+void NodeManager::CheckWorkerSockets() {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+  for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
+    all_workers.push_back(driver);
+  }
+
+  for (const auto &worker : all_workers) {
+    if (!worker->Connection()->CheckOpen()) {
+      RAY_LOG(ERROR) << "WORKER CONNECTION CLOSED! " << worker->WorkerId();
+    }
+  }
 }
 
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {

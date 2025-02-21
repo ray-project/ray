@@ -126,6 +126,12 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
     socket_.close(ec);
   }
 
+  bool CheckOpen() {
+    boost::system::error_code ec;
+		boost::asio::write(socket_, boost::asio::buffer("", 0), ec);
+    return !ec;
+  }
+
   /// Get the native handle of the socket.
   int GetNativeHandle() { return socket_.native_handle(); }
 
