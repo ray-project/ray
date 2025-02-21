@@ -2,7 +2,10 @@ import sys
 import pytest
 import time
 import asyncio
-from ray.llm._internal.serve.deployments.utils.cloud_utils import CloudObjectCache, asyncache
+from ray.llm._internal.serve.deployments.utils.cloud_utils import (
+    CloudObjectCache,
+    asyncache,
+)
 
 
 class MockSyncFetcher:
@@ -54,7 +57,9 @@ class TestCloudObjectCache:
         assert fetcher.call_count == 2
         assert fetcher.calls == ["key1", "key2"]
 
-        assert cache.get("key3") == "value-key3"  # Miss, should call fetcher and evict key1
+        assert (
+            cache.get("key3") == "value-key3"
+        )  # Miss, should call fetcher and evict key1
         assert fetcher.call_count == 3
         assert fetcher.calls == ["key1", "key2", "key3"]
 

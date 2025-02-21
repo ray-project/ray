@@ -583,9 +583,9 @@ class CloudObjectCache:
         self._fetch_fn = fetch_fn
         self._missing_expire_seconds = missing_expire_seconds
         self._exists_expire_seconds = exists_expire_seconds
-        self._is_async = (
-            inspect.iscoroutinefunction(fetch_fn) or 
-            (hasattr(fetch_fn, '__call__') and inspect.iscoroutinefunction(fetch_fn.__call__))
+        self._is_async = inspect.iscoroutinefunction(fetch_fn) or (
+            hasattr(fetch_fn, "__call__")
+            and inspect.iscoroutinefunction(fetch_fn.__call__)
         )
         self._missing_object_value = missing_object_value
         # Lock for thread-safe cache access
@@ -593,7 +593,7 @@ class CloudObjectCache:
 
     async def aget(self, key: str) -> Any:
         """Async get value from cache or fetch it if needed."""
-        
+
         if not self._is_async:
             raise ValueError("Cannot use async get() with sync fetch function")
 
@@ -676,7 +676,6 @@ class CloudObjectCache:
         return len(self._cache)
 
 
-
 def asyncache(
     max_size: int,
     missing_expire_seconds: Optional[int] = None,
@@ -684,16 +683,17 @@ def asyncache(
     missing_object_value: Any = None,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """A decorator that provides async caching using CloudObjectCache.
-    
+
     This is a direct replacement for the asyncache/cachetools combination,
     using CloudObjectCache internally to maintain cache state.
-    
+
     Args:
         max_size: Maximum number of items to store in cache
         missing_expire_seconds: How long to cache missing objects
         exists_expire_seconds: How long to cache existing objects
         missing_object_value: Value to use for missing objects
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         # Create a single cache instance for this function
         cache = CloudObjectCache(
@@ -703,11 +703,12 @@ def asyncache(
             exists_expire_seconds=exists_expire_seconds,
             missing_object_value=missing_object_value,
         )
-        
+
         async def wrapper(*args, **kwargs):
             # Extract the key from either first positional arg or object_uri kwarg
             key = args[0] if args else kwargs.get("object_uri")
             return await cache.aget(key)
-            
+
         return wrapper
+
     return decorator
