@@ -4,6 +4,7 @@ import dataclasses
 import logging
 import math
 import time
+import threading
 import uuid
 from enum import Enum
 from functools import partial
@@ -50,6 +51,8 @@ class vLLMEngineRequest(BaseModel):
     prompt_token_ids: Optional[List[int]]
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
+    # LoRA request.
+    lora_request: Optional[Any] = None
 
     class Config:
         validate_assignment = True
@@ -116,7 +119,6 @@ class vLLMEngineWrapper:
 
     def __init__(
         self,
-        *args,
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
         **kwargs,
@@ -124,6 +126,12 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.model = kwargs.get("model", None)
+        assert self.model is not None
+
+        # LoRA related.
+        self.lora_lock = threading.Lock()
+        self.lora_name_to_request = {}
 
         # Convert the task type back to a string to pass to the engine.
         kwargs["task"] = self.task_type.value
@@ -142,14 +150,14 @@ class vLLMEngineWrapper:
 
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
-            *args,
             **kwargs,
             disable_log_requests=True,
         )
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
         # Determine the generate function based on vLLM v0 or v1.
-        if vllm.envs.VLLM_USE_V1:
+        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
+        if self.vllm_use_v1:
             self._generate_async = self.generate_async_v1
         else:
             self._generate_async = self.generate_async_v0
@@ -183,6 +191,27 @@ class vLLMEngineWrapper:
         else:
             image = []
 
+        # The request is for LoRA.
+        lora_request = None
+        if "model" in row and row["model"] != self.model:
+            if self.vllm_use_v1:
+                raise ValueError("We do not support LoRA with vLLM v1")
+
+            lora_name = row["model"]
+            if lora_name not in self.lora_name_to_request:
+                # Load a new LoRA adapter if it is not loaded yet.
+                with self.lora_lock:
+                    # Make sure no other thread has loaded the same LoRA adapter.
+                    if lora_name not in self.lora_name_to_request:
+                        lora_request = vllm.lora.request.LoRARequest(
+                            lora_name=lora_name,
+                            # LoRA ID starts from 1.
+                            lora_int_id=len(self.lora_name_to_request) + 1,
+                            lora_path=lora_name,
+                        )
+                        self.lora_name_to_request[lora_name] = lora_request
+            lora_request = self.lora_name_to_request[lora_name]
+
         if self.task_type == vLLMTaskType.GENERATE:
             params = vllm.SamplingParams(**row.pop("sampling_params"))
         elif self.task_type == vLLMTaskType.EMBED:
@@ -197,6 +226,7 @@ class vLLMEngineWrapper:
             prompt_token_ids=tokenized_prompt,
             images=image,
             params=params,
+            lora_request=lora_request,
         )
         self.request_id += 1
         return request
@@ -251,6 +281,7 @@ class vLLMEngineWrapper:
             request_id=str(request.request_id),
             prompt=llm_prompt,
             params=request.params,
+            lora_request=request.lora_request,
         )
         # Consume the stream until the request is finished.
         async for request_output in stream:
