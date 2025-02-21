@@ -1,4 +1,4 @@
-Anti-pattern: Forking new Processes in Application Code
+Anti-pattern: Forking new processes in application code
 ========================================================
 
 **Summary:** Don't fork new processes in Ray application code-for example, in  
