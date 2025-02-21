@@ -1,4 +1,5 @@
 import itertools
+import sys
 
 import pyarrow
 import pytest
@@ -82,3 +83,7 @@ def _map_to_pa_compute_method(agg_cls: type):
     }
 
     return _map[agg_cls]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
