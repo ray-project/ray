@@ -126,6 +126,34 @@ initializes slowly, you can increase `downscale_delay_s` to make the downscaling
 happen more infrequently and avoid reinitialization when the application needs
 to upscale again in the future.
 
+:::{note}
+Upscaling and downscaling calculations are made periodically by the Serve
+Controller which by default runs every `0.1` seconds). You can set and check
+this value using the `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` environment variable.
+`down/upscale_delay_s` restricts the autoscaler from adding or removing 
+replicas unless *all* calculations over the delay period unanimously agree to
+either upscale or downscale. Any single *non-consistent* calculation will reset
+the decision timer. In general `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` should not
+be changed for the purpose of balancing autoscaling.
+:::
+
+* **scaling_function [default_value="last"]: One of `"last","mean","min","max"`. 
+This parameter determines how delayed scaling decisions are made. Scaling
+calculations are cached over the `upscale_delay_s` and `downscale_delay_s`
+periods, and once *consistent* this parameter determines how the final number
+of replicas is decided. 
+  * `"last"`: The most recent scaling calculation is used.
+  * `"mean"`: The rounded mean value of all calculations is used.
+  * `"min"`: The minimum value of all calculations is used.
+  * `"max"`: The maximum value of all calculations is used.
+
+:::{note}
+Previously, the autoscaler would only use the most recent (`"last"`) scaling
+calculation. This is maintained as the default behavior for backwards
+compatibility, however it is recommended to use `"mean"` or `"max"` to better
+accommodate traffic patterns.
+:::
+
 * **upscale_smoothing_factor [default_value=1.0] (DEPRECATED)**: This parameter
 is renamed to `upscaling_factor`. `upscale_smoothing_factor` will be removed in
 a future release.
