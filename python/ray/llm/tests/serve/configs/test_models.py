@@ -23,6 +23,12 @@ class TestModelConfig:
             model_loading_config=ModelLoadingConfig(
                 model_id="llm_model_id",
             ),
+            deployment_config=dict(
+                autoscaling_config=dict(
+                    min_replicas=1,
+                    max_replicas=2,
+                )
+            ),
             accelerator_type="L4",
         )
 

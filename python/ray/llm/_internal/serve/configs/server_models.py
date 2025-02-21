@@ -32,11 +32,11 @@ from ray.llm._internal.utils import try_import
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
+from ray.serve.config import AutoscalingConfig
 
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
-    DEFAULT_TARGET_ONGOING_REQUESTS,
     MAX_NUM_STOPPING_SEQUENCES,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
@@ -99,71 +99,6 @@ class S3MirrorConfig(MirrorConfig):
                 'Expected a URI that starts with "s3://".'
             )
         return value
-
-
-class AutoscalingConfig(BaseModel, extra="allow"):
-    """
-    The model here provides reasonable defaults for llm model serving.
-
-    Please note that field descriptions may be exposed to the end users.
-    """
-
-    min_replicas: int = Field(
-        1,
-        description="min_replicas is the minimum number of replicas for the deployment.",
-    )
-    initial_replicas: int = Field(
-        1,
-        description="The number of replicas that are started initially for the deployment.",
-    )
-    max_replicas: int = Field(
-        100,
-        description="max_replicas is the maximum number of replicas for the deployment.",
-    )
-    target_ongoing_requests: Optional[int] = Field(
-        None,
-        description="target_ongoing_requests is the maximum number of queries that are sent to a replica of this deployment without receiving a response.",
-    )
-    target_num_ongoing_requests_per_replica: Optional[int] = Field(
-        None,
-        description="target_num_ongoing_requests_per_replica is the deprecated field."
-        "If it is set, the model will set target_ongoing_requests to that value too."
-        "If neither field is set, DEFAULT_TARGET_ONGOING_REQUESTS will be used.",
-        exclude=True,
-    )
-
-    metrics_interval_s: float = Field(
-        10.0, description="How often to scrape for metrics in seconds."
-    )
-    look_back_period_s: float = Field(
-        30.0, description="Time window to average over for metrics, in seconds."
-    )
-    downscale_delay_s: float = Field(
-        300.0, description="How long to wait before scaling down replicas, in seconds."
-    )
-    upscale_delay_s: float = Field(
-        10.0, description="How long to wait before scaling up replicas, in seconds."
-    )
-
-    @model_validator(mode="before")
-    def sync_target_ongoing_requests(cls, values):
-        """This is a temporary validator to sync the target_ongoing_requests
-        and target_num_ongoing_requests_per_replica fields.
-        """
-        target_ongoing_requests = values.get("target_ongoing_requests", None)
-        target_num_ongoing_requests_per_replica = values.get(
-            "target_num_ongoing_requests_per_replica", None
-        )
-
-        final_val = (
-            target_ongoing_requests
-            or target_num_ongoing_requests_per_replica
-            or DEFAULT_TARGET_ONGOING_REQUESTS
-        )
-        values["target_ongoing_requests"] = final_val
-        values["target_num_ongoing_requests_per_replica"] = final_val
-
-        return values
 
 
 class ServeMultiplexConfig(BaseModelExtended):
@@ -402,11 +337,22 @@ class LLMConfig(BaseModelExtended):
     @field_validator("deployment_config")
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the deployment config dictionary."""
+
+        autoscaling_config = value.pop("autoscaling_config", None)
         try:
-            # Only validate the deployment config
             DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
+
+        if autoscaling_config is not None:
+            try:
+                validated_autoscaling_config = AutoscalingConfig(**autoscaling_config)
+                value["autoscaling_config"] = validated_autoscaling_config
+            except Exception as e:
+                raise ValueError(
+                    f"Invalid autoscaling config: {autoscaling_config}"
+                ) from e
+
         return value
 
     def ray_accelerator_type(self) -> str:
