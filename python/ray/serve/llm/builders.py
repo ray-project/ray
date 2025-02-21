@@ -39,7 +39,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
 
             # Deploy the application
             model_handle = serve.run(vllm_app)
-    
+
             # Querying the model handle
             import asyncio
             model_handle = model_handle.options(stream=True)
@@ -59,7 +59,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
                 resp = model_handle.chat.remote(request)
                 async for message in resp:
                     print(message)
-                    
+
             asyncio.run(query_model(model_handle))
 
     Args:
@@ -119,8 +119,8 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
             deployment2 = VLLMService.as_deployment().bind(llm_config2)
             llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
             serve.run(llm_app)
-            
-            
+
+
             # Querying the model via openai client
             from openai import OpenAI
 
