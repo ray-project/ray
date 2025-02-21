@@ -14,12 +14,13 @@ Features
 Requirements
 --------------
 
-- Ray[serve,llm]>=2.43.0
-- vllm>=0.7.2
+.. code-block:: bash
 
-Suggested dependencies when using vllm 0.7.2:
-  - xgrammar==0.1.11
-  - pynvml==12.0.0
+    pip install ray[serve,llm]>=2.43.0 vllm>=0.7.2
+
+    # Suggested dependencies when using vllm 0.7.2:
+    pip install xgrammar==0.1.11 pynvml==12.0.0
+
 
 Key Components
 --------------
