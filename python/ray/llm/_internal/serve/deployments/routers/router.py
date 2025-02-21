@@ -156,7 +156,7 @@ async def _peek_at_openai_json_generator(
     return first_response, _openai_json_wrapper(generator, first_response)
 
 
-class LLMModelRouterDeploymentImpl:
+class LLMRouter:
     def __init__(
         self,
         llm_deployments: List[DeploymentHandle],

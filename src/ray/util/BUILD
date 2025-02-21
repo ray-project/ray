@@ -96,6 +96,7 @@ ray_cc_library(
     ],
     deps = [
         ":cmd_line_utils",
+        ":compat",
         ":filesystem",
         ":logging",
         ":macros",
