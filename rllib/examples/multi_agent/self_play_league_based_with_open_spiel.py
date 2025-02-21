@@ -111,10 +111,6 @@ if __name__ == "__main__":
         "open_spiel_env",
         lambda _: OpenSpielEnv(pyspiel.load_game(args.env)),
     )
-    args.local_mode = True
-    args.no_tune = True
-    args.num_agents = 2
-    args.enable_new_api_stack = True
 
     def policy_mapping_fn(agent_id, episode, worker=None, **kwargs):
         # At first, only have main play against the random main exploiter.

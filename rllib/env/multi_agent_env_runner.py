@@ -451,15 +451,31 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Env-to-module connector pass (cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration).
-            # Note, performing the forward pass here ensures that we are not executing
-            # forward passes for agents that have died. This increases performance in
+            # Note, running the pipeline here ensures that we are not executing a
+            # pipeline run for agents that have died. This increases performance in
             # case of environments in which 1000's of agents exist. Because the
             # `VectorMultiAgentEnv` calls `reset()` for any terminated/truncated sub-
             # environment `observations` and `infos` will always be returned for the
             # `MultiAgentEpisode.add_reset_step`.
             if self.module is not None:
+                if done_episodes_to_run_env_to_module:
+                    # Run the env-to-module connector pipeline for all done episodes. Note,
+                    # this is needed to postprocess last-step data, e.g. if the user uses
+                    # a connector that one-hot encodes observations.
+                    self._env_to_module(
+                        episodes=done_episodes_to_run_env_to_module,
+                        explore=explore,
+                        rl_module=self.module,
+                        shared_data=shared_data,
+                        metrics=self.metrics,
+                    )
+                # if any(any(terminated.values()) for terminated in terminateds):
+                # #if any(any(e.is_done for e in episode.agent_episodes.values()) for episode in episodes if len(episode) > 0):
+                #     print("At least one agent died")
+                #     if any(len(e.agent_episodes) == 0 for e in episodes) and any(any(e.is_done for e in episode.agent_episodes.values()) for episode in episodes if len(episode) > 0):
+                #         print("Start debugging.")
                 self._cached_to_module = self._env_to_module(
-                    episodes=episodes + done_episodes_to_run_env_to_module,
+                    episodes=episodes,
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,

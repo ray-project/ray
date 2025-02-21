@@ -94,7 +94,9 @@ parser.set_defaults(enable_new_api_stack=True)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
+    args.num_agents = 2
+    args.local_mode = True
+    args.enable_new_api_stack = True
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
         return FlattenObservations(multi_agent=args.num_agents > 0)
