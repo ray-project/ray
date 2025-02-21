@@ -179,12 +179,12 @@ Status RayletClient::NotifyDirectCallTaskUnblocked() {
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }
 
-Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
-                          const std::vector<rpc::Address> &owner_addresses,
-                          int num_returns,
-                          int64_t timeout_milliseconds,
-                          const TaskID &current_task_id,
-                          WaitResultPair *result) {
+StatusOr<absl::flat_hash_set<ObjectID>> RayletClient::Wait(
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses,
+    int num_returns,
+    int64_t timeout_milliseconds,
+    const TaskID &current_task_id) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(fbb,
@@ -199,19 +199,13 @@ Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
       MessageType::WaitRequest, MessageType::WaitReply, &reply, &fbb));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<protocol::WaitReply>(reply.data());
-  auto found = reply_message->found();
-  result->first.reserve(found->size());
+  auto *found = reply_message->found();
+  absl::flat_hash_set<ObjectID> result;
+  result.reserve(found->size());
   for (size_t i = 0; i < found->size(); i++) {
-    ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
-    result->first.push_back(object_id);
+    result.insert(ObjectID::FromBinary(found->Get(i)->str()));
   }
-  auto remaining = reply_message->remaining();
-  result->second.reserve(remaining->size());
-  for (size_t i = 0; i < remaining->size(); i++) {
-    ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
-    result->second.push_back(object_id);
-  }
-  return Status::OK();
+  return result;
 }
 
 Status RayletClient::WaitForDirectActorCallArgs(
