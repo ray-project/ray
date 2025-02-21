@@ -5,6 +5,7 @@ from typing import List
 
 import pandas as pd
 import pytest
+import pyarrow
 from pyarrow.fs import FileSelector
 from pytest_lazyfixture import lazy_fixture
 
@@ -81,24 +82,12 @@ def generate_sample_physical_plan(generate_sample_data_csv, tmp_path):
     yield physical_plan
 
 
-def generate_ckpt_config(
-    backend, checkpoint_path, id_col, fs, delete_checkpoint_on_success=True
-):
-    return CheckpointConfig(
-        backend=backend,
-        checkpoint_path=checkpoint_path,
-        id_column=id_col,
-        fs=fs,
-        delete_checkpoint_on_success=delete_checkpoint_on_success,
-    )
-
-
 def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[int]:
     """Reads the checkpoint files and returns a sorted list of IDs
     which have been checkpointed."""
     backend = config.backend
     ckpt_path = config.checkpoint_path
-    fs = config.fs
+    fs = config.filesystem
 
     if backend in (
         CheckpointBackend.FILE_STORAGE_ROW,
@@ -166,19 +155,88 @@ def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[int]:
     raise Exception(f"Invalid backend: {backend}")
 
 
-@pytest.mark.parametrize("backend", [None, 1])
-def test_config_invalid_backend(backend):
-    with pytest.raises(InvalidCheckpointingConfig, match="Checkpoint backend"):
-        generate_ckpt_config(backend, "", "id", None)
+class TestCheckpointConfig:
+    @pytest.mark.parametrize("id_column", [None, "", 1])
+    def test_invalid_id_column(self, id_column, local_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="Checkpoint ID column",
+        ):
+            CheckpointConfig(id_column, local_path)
 
+    def test_default_checkpoint_path(self, s3_path, monkeypatch):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="CheckpointConfig.checkpoint_path",
+        ):
+            CheckpointConfig("id", None)
 
-@pytest.mark.parametrize("id_column", [None, "", 1])
-def test_config_invalid_id_column(id_column):
-    with pytest.raises(
-        InvalidCheckpointingConfig,
-        match="Checkpoint ID column",
-    ):
-        generate_ckpt_config(CheckpointBackend.FILE_STORAGE, "", id_column, None)
+        default_bucket = s3_path
+        monkeypatch.setenv(
+            CheckpointConfig.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR, default_bucket
+        )
+
+        config = CheckpointConfig("id", None)
+        assert (
+            config.checkpoint_path
+            == f"{default_bucket}/{CheckpointConfig.DEFAULT_CHECKPOINT_PATH_DIR}"
+        )
+
+    @pytest.mark.parametrize("checkpoint_path", ["tmp/", "s3:/tmp", "s4://tmp"])
+    def test_invalid_checkpoint_path(self, checkpoint_path):
+        with pytest.raises(
+            InvalidCheckpointingConfig,
+            match="Invalid checkpoint path",
+        ):
+            CheckpointConfig("id", checkpoint_path)
+
+    @pytest.mark.parametrize(
+        "checkpoint_path",
+        [
+            lazy_fixture("local_path"),
+            lazy_fixture("s3_path"),
+        ],
+    )
+    def test_infer_filesystem_and_backend(self, checkpoint_path):
+        config = CheckpointConfig("id", checkpoint_path)
+        if checkpoint_path.startswith("/"):
+            assert isinstance(config.filesystem, pyarrow.fs.LocalFileSystem)
+            assert config.backend == CheckpointBackend.FILE_STORAGE
+        else:
+            assert isinstance(config.filesystem, pyarrow.fs.S3FileSystem)
+            assert config.backend == CheckpointBackend.CLOUD_OBJECT_STORAGE
+
+    @pytest.mark.parametrize(
+        "checkpoint_path,fs,backend",
+        [
+            (
+                lazy_fixture("local_path"),
+                lazy_fixture("local_fs"),
+                CheckpointBackend.FILE_STORAGE_ROW,
+            ),
+            (
+                lazy_fixture("s3_path"),
+                lazy_fixture("s3_fs"),
+                CheckpointBackend.FILE_STORAGE_ROW,
+            ),
+            (
+                lazy_fixture("local_path"),
+                lazy_fixture("local_fs"),
+                CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
+            ),
+            (
+                lazy_fixture("s3_path"),
+                lazy_fixture("s3_fs"),
+                CheckpointBackend.CLOUD_OBJECT_STORAGE_ROW,
+            ),
+        ],
+    )
+    def test_override_filesystem_and_backend(self, checkpoint_path, fs, backend):
+        config = CheckpointConfig(
+            "id", checkpoint_path, override_filesystem=fs, override_backend=backend
+        )
+        assert config.filesystem is fs
+        assert config.backend is backend
 
 
 class TestInsertCheckpointingLayerRule:
@@ -202,8 +260,9 @@ class TestInsertCheckpointingLayerRule:
         physical_plan = Planner().plan(optimized_logical_plan)
 
         ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
-        ctx.checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.FILE_STORAGE_ROW, ckpt_path, "id", None
+        ctx.checkpoint_config = CheckpointConfig(
+            "id",
+            ckpt_path,
         )
 
         with pytest.raises(InvalidCheckpointingOperators, match="Sort"):
@@ -215,11 +274,9 @@ class TestInsertCheckpointingLayerRule:
         generate_sample_physical_plan,
         tmp_path,
     ):
-        checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.FILE_STORAGE_ROW,
-            os.path.join(tmp_path, "ckpt"),
+        checkpoint_config = CheckpointConfig(
             "id",
-            None,
+            os.path.join(tmp_path, "ckpt"),
         )
 
         rule = InsertCheckpointingLayerRule()
@@ -242,11 +299,9 @@ class TestInsertCheckpointingLayerRule:
         tmp_path,
     ):
         ctx = ray.data.DataContext.get_current()
-        ctx.checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.FILE_STORAGE_ROW,
-            os.path.join(tmp_path, "ckpt"),
+        ctx.checkpoint_config = CheckpointConfig(
             "id",
-            None,
+            os.path.join(tmp_path, "ckpt"),
         )
 
         physical_plan = generate_sample_physical_plan
@@ -310,7 +365,12 @@ def test_checkpoint(
 
     ctx = ray.data.DataContext.get_current()
     ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
+    ctx.checkpoint_config = CheckpointConfig(
+        ID_COL,
+        ckpt_path,
+        override_filesystem=fs,
+        override_backend=backend,
+    )
 
     if read_code_path == "runtime":
         ds = ray.data.read_csv(generate_sample_data_csv)
@@ -386,7 +446,12 @@ def test_full_dataset_executed_for_non_write(
 
     ctx = ray.data.DataContext.get_current()
     ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
+    ctx.checkpoint_config = CheckpointConfig(
+        ID_COL,
+        ckpt_path,
+        override_filesystem=fs,
+        override_backend=backend,
+    )
 
     ds = ray.data.read_parquet(generate_sample_data_parquet)
 
@@ -455,7 +520,12 @@ def test_recovery_skips_checkpointed_rows(
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.preserve_order = True
     ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
+    ctx.checkpoint_config = CheckpointConfig(
+        ID_COL,
+        ckpt_path,
+        override_filesystem=fs,
+        override_backend=backend,
+    )
     # Catch the custom TestException raised by FailActor.
     ctx.raise_original_map_exception = True
 
@@ -586,12 +656,12 @@ def test_skip_checkpoint_flag(
 
     ctx = ray.data.DataContext.get_current()
     ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(
-        backend,
-        ckpt_path,
+    ctx.checkpoint_config = CheckpointConfig(
         ID_COL,
-        fs,
+        ckpt_path,
         delete_checkpoint_on_success=False,
+        override_filesystem=fs,
+        override_backend=backend,
     )
 
     def generate_ds():

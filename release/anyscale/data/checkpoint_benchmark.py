@@ -32,9 +32,9 @@ def _parse_checkpoint_config(args: argparse.Namespace) -> Optional[CheckpointCon
         raise ValueError(f"Unknown checkpoint backend: {backend_str}")
 
     return CheckpointConfig(
-        backend=backend,
         id_column="id",
         checkpoint_path=args.checkpoint_output_path,
+        override_backend=backend,
     )
 
 

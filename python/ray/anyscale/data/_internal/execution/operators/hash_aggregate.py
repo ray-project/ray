@@ -76,7 +76,7 @@ class ReducingShuffleAggregation(StatefulShuffleAggregation):
         assert len(self._aggregated_blocks) > 0
 
         block_accessor = BlockAccessor.for_block(self._aggregated_blocks[0])
-        aggregated_block, _ = block_accessor.aggregate_combined_blocks(
+        aggregated_block, _ = block_accessor._combine_aggregated_blocks(
             self._aggregated_blocks,
             sort_key=self._sort_key,
             aggs=self._aggregation_fns,
@@ -208,6 +208,8 @@ def _create_aggregating_transformer(
         else:
             target_block = pruned_block
 
-        return BlockAccessor.for_block(target_block).combine(sort_key, aggregation_fns)
+        return BlockAccessor.for_block(target_block)._aggregate(
+            sort_key, aggregation_fns
+        )
 
     return _aggregate

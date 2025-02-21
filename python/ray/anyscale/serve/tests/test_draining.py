@@ -1,5 +1,4 @@
 import asyncio
-import os
 import random
 import time
 
@@ -247,10 +246,13 @@ def test_start_then_stop_replicas(ray_start_cluster):
             ray.get(signal.wait.remote())
 
         def __call__(self):
-            return os.getpid(), ray.get_runtime_context().get_node_id()
+            return (
+                serve.get_replica_context().replica_tag,
+                ray.get_runtime_context().get_node_id(),
+            )
 
     h = serve.run(A.bind())
-    pids, node_ids = zip(*[h.remote().result() for _ in range(10)])
+    tags, node_ids = zip(*[h.remote().result() for _ in range(10)])
 
     # Block initialization of new replicas to prepare for draining
     signal.send.remote(clear=True)
@@ -269,8 +271,8 @@ def test_start_then_stop_replicas(ray_start_cluster):
     # one new replacement replica should be started.
     wait_for_condition(check_num_replicas_gte, name="A", target=4)
 
-    new_pids, _ = zip(*[h.remote().result() for _ in range(10)])
-    assert set(pids) == set(new_pids)
+    new_tags, _ = zip(*[h.remote().result() for _ in range(10)])
+    assert set(tags) == set(new_tags)
 
     # Unblock initialization of new replicas.
     signal.send.remote()
@@ -279,8 +281,8 @@ def test_start_then_stop_replicas(ray_start_cluster):
     assert status.status == "HEALTHY"
 
     # At least one replica among the 3 currently running replicas is new
-    new_pids, _ = zip(*[h.remote().result() for _ in range(10)])
-    assert len(set(pids) & set(new_pids)) < 3
+    new_tags, _ = zip(*[h.remote().result() for _ in range(10)])
+    assert len(set(tags) & set(new_tags)) < 3
 
     # Shut down serve to avoid state sharing between tests.
     serve.shutdown()

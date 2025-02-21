@@ -7,7 +7,6 @@ from typing import Any, Dict
 from ray.anyscale.data.checkpoint.interfaces import (
     CheckpointConfig,
     CheckpointWriter,
-    FileStorageCheckpointIO,
     RowBasedCheckpointFilter,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -16,9 +15,7 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class RowBasedFileStorageCheckpointFilter(
-    RowBasedCheckpointFilter, FileStorageCheckpointIO
-):
+class RowBasedFileStorageCheckpointFilter(RowBasedCheckpointFilter):
     """CheckpointFilter implementation for FILE_STORAGE backend, reading
     one checkpoint file per input row.
 
@@ -76,7 +73,7 @@ class RowBasedFileStorageCheckpointFilter(
         return dict(zip(files, file_exists))
 
 
-class RowBasedFileStorageCheckpointWriter(CheckpointWriter, FileStorageCheckpointIO):
+class RowBasedFileStorageCheckpointWriter(CheckpointWriter):
     """CheckpointWriter implementation for FILE_STORAGE backend, writing
     one checkpoint file per input row.
 

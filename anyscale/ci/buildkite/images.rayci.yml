@@ -1,4 +1,4 @@
-group: runtime images
+group: rayturbo images
 steps:
   - name: min-cpubase
     label: "wanda: min.py{{matrix}}.cpu.base"
@@ -39,7 +39,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
 
   - label: ":tapioca: go download helper"
-    key: runtime-helper
+    key: rayturbo-helper
     instance_type: small
     commands:
       - bash anyscale/go/build-on-buildkite.sh
@@ -47,8 +47,8 @@ steps:
       - forge
     job_env: forge
 
-  - label: ":tapioca: runtime py{{matrix}} wheel"
-    key: runtime-wheels
+  - label: ":tapioca: rayturbo py{{matrix}} wheel"
+    key: rayturbo-wheels
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
       - bash anyscale/ci/upload-wheels.sh
@@ -72,15 +72,15 @@ steps:
     depends_on:
       - forge
 
-  - label: ":tapioca: runtime py{{matrix.py}} {{matrix.base}} image"
-    key: runtime-image
+  - label: ":tapioca: rayturbo py{{matrix.py}} {{matrix.base}} image"
+    key: rayturbo-image
     tags: docker
     commands:
       - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}}
     instance_type: medium
     depends_on:
-      - runtime-wheels
-      - runtime-helper
+      - rayturbo-wheels
+      - rayturbo-helper
       - raycpubase
       - raycudabase
       - check-ray-wheels
@@ -102,15 +102,15 @@ steps:
           - "cu12.4.1-cudnn"
           - "cu12.5.1-cudnn"
 
-  - label: ":tapioca: minimized runtime py{{matrix.py}} {{matrix.base}} image"
-    key: runtime-min-image
+  - label: ":tapioca: minimized rayturbo py{{matrix.py}} {{matrix.base}} image"
+    key: rayturbo-min-image
     tags: docker
     commands:
       - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray 1
     instance_type: medium
     depends_on:
-      - runtime-wheels
-      - runtime-helper
+      - rayturbo-wheels
+      - rayturbo-helper
       - min-cpubase
       - min-cudabase
       - check-ray-wheels
@@ -132,15 +132,35 @@ steps:
           - "cu12.4.1"
           - "cu12.5.1"
 
-  - label: ":tapioca: runtime ml py{{matrix.py}} {{matrix.base}} image"
-    key: runtime-ml-image
+  - label: ":tapioca: rayturbo llm py{{matrix.py}} {{matrix.base}} image"
+    key: rayturbo-llm-image
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray-llm
+    instance_type: medium
+    depends_on:
+      - rayturbo-wheels
+      - rayturbo-helper
+      - ray-llmbase
+      - check-ray-wheels
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.11"
+        base:
+          - "cu12.4.1-cudnn"
+
+  - label: ":tapioca: rayturbo ml py{{matrix.py}} {{matrix.base}} image"
+    key: rayturbo-ml-image
     tags: docker
     commands:
       - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray-ml
     instance_type: medium
     depends_on:
-      - runtime-wheels
-      - runtime-helper
+      - rayturbo-wheels
+      - rayturbo-helper
       - ray-mlcpubase
       - ray-mlcudabase
       - check-ray-wheels
@@ -156,12 +176,13 @@ steps:
           - "cpu"
           - "cu12.1.1-cudnn8"
 
-  - label: ":tapioca: check runtime site package tarball"
+  - label: ":tapioca: check rayturbo site package tarball"
     depends_on:
-      - runtime-image
-      - runtime-min-image
-      - runtime-ml-image
-    key: check-runtime-site-pkg
+      - rayturbo-image
+      - rayturbo-llm-image
+      - rayturbo-min-image
+      - rayturbo-ml-image
+    key: check-rayturbo-site-pkg
     tags: docker
     commands:
       - bash anyscale/ci/check-ray-site-pkg.sh
@@ -170,9 +191,9 @@ steps:
 
   # We skip production and predeploy; will copy them on final image
   # building. We need to copy to staging for release tests to run.
-  - label: ":tapioca: upload runtime site package tarball {{matrix}}"
+  - label: ":tapioca: upload rayturbo site package tarball {{matrix}}"
     key: upload-runtime-site-pkg-staging
-    depends_on: check-runtime-site-pkg
+    depends_on: check-rayturbo-site-pkg
     tags: docker
     commands:
       - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
@@ -182,10 +203,10 @@ steps:
       - development
       - staging
 
-  - label: ":tapioca: upload runtime site package tarball {{matrix}}"
+  - label: ":tapioca: upload rayturbo site package tarball {{matrix}}"
     if: build.env("RUNTIME_BUILD_ALL") == "true"
     key: upload-runtime-site-pkg-prod
-    depends_on: check-runtime-site-pkg
+    depends_on: check-rayturbo-site-pkg
     tags: docker
     commands:
       - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}

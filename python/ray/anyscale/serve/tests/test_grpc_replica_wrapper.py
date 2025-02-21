@@ -97,6 +97,11 @@ class FakeReplicaActor:
             ]
         )
         if not self._replica_queue_length_info.accepted:
+            # NOTE(edoakes): in gRPC, it's not guaranteed that the initial metadata sent
+            # by the server will be delivered for a stream with no messages. Therefore,
+            # we send a dummy message here to ensure it is populated in every case.
+            # The same is done in the actual gRPC replica implementation.
+            yield b""
             return
 
         message = args[0]

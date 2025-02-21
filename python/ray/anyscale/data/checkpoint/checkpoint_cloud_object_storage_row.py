@@ -2,13 +2,12 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict
 
-from pyarrow.fs import FileSelector, S3FileSystem
+from pyarrow.fs import FileSelector
 
 from ray.anyscale.data.checkpoint.interfaces import (
     CheckpointConfig,
     CheckpointWriter,
     RowBasedCheckpointFilter,
-    CloudObjectStorageCheckpointIO,
 )
 from ray.data import DataContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -18,9 +17,7 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-class RowBasedCloudObjectStorageCheckpointFilter(
-    RowBasedCheckpointFilter, CloudObjectStorageCheckpointIO
-):
+class RowBasedCloudObjectStorageCheckpointFilter(RowBasedCheckpointFilter):
     """CheckpointFilter implementation for CLOUD_OBJECT_STORAGE backend, reading
     one checkpoint file per input row.
 
@@ -28,9 +25,6 @@ class RowBasedCloudObjectStorageCheckpointFilter(
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
-
-        if self.fs is None:
-            self.fs = S3FileSystem()
 
     def filter_rows_for_block(self, block: Block) -> Block:
         block_accessor = BlockAccessor.for_block(block)
@@ -53,7 +47,7 @@ class RowBasedCloudObjectStorageCheckpointFilter(
         mask_file_exists = {f_name: False for f_name in files}
 
         def _get_file_info():
-            return self.fs.get_file_info(
+            return self.filesystem.get_file_info(
                 FileSelector(self.checkpoint_path, allow_not_found=True)
             )
 
@@ -73,9 +67,7 @@ class RowBasedCloudObjectStorageCheckpointFilter(
         return mask_file_exists
 
 
-class RowBasedCloudObjectStorageCheckpointWriter(
-    CheckpointWriter, CloudObjectStorageCheckpointIO
-):
+class RowBasedCloudObjectStorageCheckpointWriter(CheckpointWriter):
     """CheckpointWriter implementation for CLOUD_OBJECT_STORAGE backend, writing
     one checkpoint file per input row.
 
@@ -83,9 +75,6 @@ class RowBasedCloudObjectStorageCheckpointWriter(
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
-
-        if self.fs is None:
-            self.fs = S3FileSystem()
 
     def write_row_checkpoint(self, row: Dict[str, Any]):
         """Write a checkpoint for a single row to the checkpoint
@@ -100,7 +89,7 @@ class RowBasedCloudObjectStorageCheckpointWriter(
 
         def _write():
             # TODO: add some checkpoint metadata, like timestamp, etc. in Body
-            with self.fs.open_output_stream(f"{bucket}/{file_key}"):
+            with self.filesystem.open_output_stream(f"{bucket}/{file_key}"):
                 pass
             return row_id
 

@@ -1,10 +1,20 @@
 from collections import deque
-from typing import Iterable
+from typing import Iterable, List, Dict, Optional
 
 from ray.anyscale.data._internal.logical.graph_utils import make_copy_of_dag, remove_op
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.map_operator import Project
+
+
+class _ProjectOptions:
+    def __init__(
+        self,
+        cols: Optional[List[str]] = None,
+        cols_rename: Optional[Dict[str, str]] = None,
+    ):
+        self.cols = cols
+        self.cols_rename = cols_rename
 
 
 class ProjectionPushdown(Rule):
@@ -18,13 +28,16 @@ class ProjectionPushdown(Rule):
     the graph.
     """
 
-    def _handle_select_columns(self, prev_op: Project, cur_op: Project):
+    def _handle_select_columns(self, prev_op: _ProjectOptions, cur_op: _ProjectOptions):
         # Step 1: Get prev columns as a set (to ensure no duplicates)
         prev_cols = set(prev_op.cols or [])
 
         # Step 2: Get current columns
-        assert cur_op.cols and not cur_op.cols_rename
         cur_cols = set(cur_op.cols or [])
+
+        # If there are no columns to select, do nothing
+        if not cur_cols:
+            return
 
         # Step 3: Adjust prev_cols based on prev_op.cols_rename
         if prev_op.cols_rename:
@@ -52,14 +65,16 @@ class ProjectionPushdown(Rule):
         if prev_op.cols_rename:
             # Keep only those renames where the original column is in the selected
             # columns (cur_cols)
-            prev_op._cols_rename = {
+            prev_op.cols_rename = {
                 k: v for k, v in prev_op.cols_rename.items() if k in cur_cols
             }
 
         # Step 7: Set final columns
-        prev_op._cols = list(cur_cols if cur_cols else prev_cols)
+        prev_op.cols = list(cur_cols if cur_cols else prev_cols)
 
-    def _validate_rename_columns(self, prev_op: Project, cur_op: Project):
+    def _validate_rename_columns(
+        self, prev_op: _ProjectOptions, cur_op: _ProjectOptions
+    ):
         prev_rename = prev_op.cols_rename
         cur_rename = cur_op.cols_rename
 
@@ -91,10 +106,12 @@ class ProjectionPushdown(Rule):
                     f"columns: {', '.join(invalid_keys)}"
                 )
 
-    def _handle_rename_columns(self, prev_op: Project, cur_op: Project):
-        prev_rename = prev_op.cols_rename
-        assert not cur_op.cols and cur_op.cols_rename
-        cur_rename = cur_op.cols_rename
+    def _handle_rename_columns(self, prev_op: _ProjectOptions, cur_op: _ProjectOptions):
+        if not cur_op.cols_rename:
+            return
+
+        prev_rename = prev_op.cols_rename or {}
+        cur_rename = cur_op.cols_rename or {}
 
         self._validate_rename_columns(prev_op, cur_op)
 
@@ -132,7 +149,7 @@ class ProjectionPushdown(Rule):
             inverse_mapping[final_col] = old_col
 
         # Step 4: Apply the resolved renaming to the prev_op object
-        prev_op._cols_rename = resolved_rename
+        prev_op.cols_rename = resolved_rename
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         dag_copy = make_copy_of_dag(plan.dag)
@@ -157,10 +174,33 @@ class ProjectionPushdown(Rule):
                 else:
                     # Handle column selections
                     if op.cols:
-                        self._handle_select_columns(prev_op=projecting_op, cur_op=op)
+                        prev_options = _ProjectOptions(
+                            cols=projecting_op.cols,
+                            cols_rename=projecting_op.cols_rename,
+                        )
+                        cur_options = _ProjectOptions(
+                            cols=op.cols, cols_rename=op.cols_rename
+                        )
+                        self._handle_select_columns(
+                            prev_op=prev_options, cur_op=cur_options
+                        )
+                        projecting_op._cols = prev_options.cols
+                        projecting_op._cols_rename = prev_options.cols_rename
                     # Handle column renames
                     if op.cols_rename:
-                        self._handle_rename_columns(prev_op=projecting_op, cur_op=op)
+                        prev_options = _ProjectOptions(
+                            cols=projecting_op.cols,
+                            cols_rename=projecting_op.cols_rename,
+                        )
+                        cur_options = _ProjectOptions(
+                            cols=op.cols, cols_rename=op.cols_rename
+                        )
+                        self._handle_rename_columns(
+                            prev_op=prev_options, cur_op=cur_options
+                        )
+                        projecting_op._cols = prev_options.cols
+                        projecting_op._cols_rename = prev_options.cols_rename
+
                     plan = remove_op(op, plan)
             else:
                 projecting_op = None
@@ -179,8 +219,30 @@ class ProjectionPushdown(Rule):
             elif isinstance(op, ReadFiles) and projecting_op:
                 # Push down column selection/renames to ReadFiles
                 readfiles = op
-                readfiles.columns = projecting_op.cols
-                readfiles.columns_rename = projecting_op.cols_rename
+
+                if readfiles.columns or readfiles.columns_rename:
+                    # If readfiles has columns or columns_rename,
+                    # then we need to merge these with projecting_op
+                    prev_options = _ProjectOptions(
+                        cols=readfiles.columns,
+                        cols_rename=readfiles.columns_rename,
+                    )
+                    cur_options = _ProjectOptions(
+                        cols=projecting_op.cols,
+                        cols_rename=projecting_op.cols_rename,
+                    )
+                    self._handle_select_columns(
+                        prev_op=prev_options, cur_op=cur_options
+                    )
+                    self._handle_rename_columns(
+                        prev_op=prev_options, cur_op=projecting_op
+                    )
+                    readfiles.columns = prev_options.cols
+                    readfiles.columns_rename = prev_options.cols_rename
+                else:
+                    readfiles.columns = projecting_op.cols
+                    readfiles.columns_rename = projecting_op.cols_rename
+
                 plan = remove_op(projecting_op, plan)
                 projecting_op = None
             else:
