@@ -7,6 +7,10 @@
 
   cluster:
     byod:
+      runtime_env:
+        # Enable verbose stats for resource manager (to troubleshoot autoscaling)
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
     cluster_compute: autoscaling_cpu_compute.yaml
