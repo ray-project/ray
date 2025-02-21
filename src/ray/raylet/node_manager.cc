@@ -593,6 +593,8 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force
     RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
     // Force kill worker
     worker->GetProcess().Kill();
+    // XXX.
+    DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   });
 }
 
@@ -600,10 +602,6 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
                                 bool force) {
-  // We should disconnect the client first. Otherwise, we'll remove bundle resources
-  // before actual resources are returned. Subsequent disconnect request that comes
-  // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
