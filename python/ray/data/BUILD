@@ -154,6 +154,14 @@ py_test(
 )
 
 py_test(
+    name = "test_aggregate",
+    size = "small",
+    srcs = ["tests/test_aggregate.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -567,6 +575,15 @@ py_test(
     name = "test_util",
     size = "small",
     srcs = ["tests/test_util.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+
+py_test(
+    name = "test_union",
+    size = "small",
+    srcs = ["tests/test_union.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

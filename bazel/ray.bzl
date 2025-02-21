@@ -1,6 +1,6 @@
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS_WITHOUT_LOG = select({
@@ -14,6 +14,7 @@ COPTS_WITHOUT_LOG = select({
     "//conditions:default": [
         "-Wunused-result",
         "-Wconversion-null",
+        "-Wmisleading-indentation",
     ],
 }) + select({
     "//:clang-cl": [
@@ -116,6 +117,7 @@ def copy_to_workspace(name, srcs, dstdir = ""):
             dstdir = "." + ("/" + dstdir.replace("\\", "/")).rstrip("/") + "/",
         ),
         local = 1,
+        tags = ["no-cache"],
     )
 
 def native_java_binary(module_name, name, native_binary_name):

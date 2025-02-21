@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "absl/functional/bind_front.h"
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -1758,7 +1759,32 @@ void NodeManager::ProcessWaitRequestMessage(
                         current_task_id,
                         /*ray_get=*/false);
   }
-  uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+  if (message->num_required_objects() == 0) {
+    // If we don't need to wait for any, return immediately after making the pull
+    // requests through AsyncResolveObjects above.
+    flatbuffers::FlatBufferBuilder fbb;
+    auto wait_reply = protocol::CreateWaitReply(fbb,
+                                                to_flatbuf(fbb, std::vector<ObjectID>{}),
+                                                to_flatbuf(fbb, std::vector<ObjectID>{}));
+    fbb.Finish(wait_reply);
+    const auto status =
+        client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
+                             fbb.GetSize(),
+                             fbb.GetBufferPointer());
+    if (status.ok()) {
+      if (resolve_objects) {
+        AsyncResolveObjectsFinish(client, current_task_id);
+      }
+    } else {
+      // We failed to write to the client, so disconnect the client.
+      std::ostringstream stream;
+      stream << "Failed to write WaitReply to the client. Status " << status
+             << ", message: " << status.message();
+      DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+    }
+    return;
+  }
+  uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
   wait_manager_.Wait(
       object_ids,
       message->timeout(),
@@ -3090,10 +3116,10 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     float usage_threshold) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
-  std::string used_bytes_gb =
-      FormatFloat(static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
-  std::string total_bytes_gb =
-      FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
+  std::string used_bytes_gb = absl::StrFormat(
+      "%.2f", static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024);
+  std::string total_bytes_gb = absl::StrFormat(
+      "%.2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
   std::stringstream oom_kill_details_ss;
 
   auto pid = worker->GetProcess().GetId();
@@ -3107,7 +3133,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
         << "Can't find memory usage for PID, reporting zero. PID: " << pid;
   }
   std::string process_used_bytes_gb =
-      FormatFloat(static_cast<float>(used_bytes) / 1024 / 1024 / 1024, 2);
+      absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id

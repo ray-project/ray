@@ -230,15 +230,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_serve_ray_minimal.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "minimal", "team:serve"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_4.py",
@@ -308,6 +299,7 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_widgets.py",
     "accelerators/test_accelerators.py",
+    "test_wait.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -733,6 +725,7 @@ py_test_module_list(
     "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
+    "test_wait.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",

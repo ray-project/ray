@@ -293,6 +293,7 @@ genrule(
         done
     """,
     local = 1,
+    tags = ["no-cache"],
 )
 
 # Generates the dependencies needed by maven.
@@ -323,6 +324,7 @@ genrule(
         done
     """,
     local = 1,
+    tags = ["no-cache"],
 )
 
 genrule(
@@ -351,6 +353,7 @@ genrule(
         if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$${FILES[@]}" > $@ ; else sha1sum "$${FILES[@]}" >> $@ ; fi
     """,
     local = 1,
+    tags = ["no-cache"],
 )
 
 java_binary(
@@ -394,4 +397,5 @@ genrule(
         if [[ "$$OSTYPE" =~ ^darwin ]]; then shasum "$$OUTPUT_JAR" >> $@ ; else sha1sum "$$OUTPUT_JAR" >> $@ ; fi
     """,
     local = 1,
+    tags = ["no-cache"],
 )
