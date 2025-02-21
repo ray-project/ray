@@ -58,7 +58,6 @@ def _bind(
         actor_handle: Optional["ray.actor.ActorHandle"] = input_node._get_actor_handle()
         if actor_handle is None:
             raise ValueError("Expected an actor handle from the input node")
-
         if isinstance(op, AllReduceOp):
             method_name = f"allreduce.{op.reduceOp}"
         elif isinstance(op, ReduceScatterOp):
@@ -67,7 +66,6 @@ def _bind(
             method_name = "allgather"
         else:
             raise ValueError(f"Expected a collective operation, but found {op}")
-
         collective_output_node = CollectiveOutputNode(
             method_name=method_name,
             method_args=(input_node,),
