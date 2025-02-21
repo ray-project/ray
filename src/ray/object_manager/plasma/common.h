@@ -46,7 +46,7 @@ enum class ObjectState : int {
   PLASMA_SEALED = 2,
 };
 
-inline constexpr std::string_view kcorruptedRequestErrorMessage =
+inline constexpr std::string_view kCorruptedRequestErrorMessage =
     "This could be due to "
     "process forking in core worker or driver code which results in multiple processes "
     "sharing the same Plasma store socket. Please ensure that there are no "
