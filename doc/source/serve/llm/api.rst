@@ -43,8 +43,8 @@ Deployments
    :nosignatures:
    :toctree: doc/
 
-   VLLMDeploymentImpl
-   LLMModelRouterDeploymentImpl
+   VLLMService
+   LLMRouter
 
 
 .. currentmodule:: ray.serve.llm.openai_api_models
