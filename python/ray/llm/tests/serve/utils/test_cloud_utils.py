@@ -2,7 +2,7 @@ import sys
 import pytest
 import time
 import asyncio
-from ray.llm._internal.serve.deployments.utils.cloud_utils import CloudObjectCache
+from ray.llm._internal.serve.deployments.utils.cloud_utils import CloudObjectCache, asyncache
 
 
 class MockSyncFetcher:
@@ -31,165 +31,237 @@ class MockAsyncFetcher:
         return f"value-{key}"
 
 
-def test_sync_cache_basic():
-    """Test basic synchronous cache functionality."""
-    fetcher = MockSyncFetcher()
-    cache = CloudObjectCache(max_size=2, fetch_fn=fetcher)
+class TestCloudObjectCache:
+    """Tests for the CloudObjectCache class."""
 
-    # Test fetching a value (should be a miss)
-    assert cache.get("key1") == "value-key1"
-    assert fetcher.call_count == 1
-    assert fetcher.calls == ["key1"]
+    def test_sync_cache_basic(self):
+        """Test basic synchronous cache functionality."""
+        fetcher = MockSyncFetcher()
+        cache = CloudObjectCache(max_size=2, fetch_fn=fetcher)
 
-    # Test cache hit (should not call fetcher)
-    assert cache.get("key1") == "value-key1"
-    assert fetcher.call_count == 1  # Count should not increase
-    assert fetcher.calls == ["key1"]  # Calls should not change
+        # Test fetching a value (should be a miss)
+        assert cache.get("key1") == "value-key1"
+        assert fetcher.call_count == 1
+        assert fetcher.calls == ["key1"]
 
-    # Test cache size limit
-    assert cache.get("key2") == "value-key2"  # Miss, should call fetcher
-    assert fetcher.call_count == 2
-    assert fetcher.calls == ["key1", "key2"]
+        # Test cache hit (should not call fetcher)
+        assert cache.get("key1") == "value-key1"
+        assert fetcher.call_count == 1  # Count should not increase
+        assert fetcher.calls == ["key1"]  # Calls should not change
 
-    assert cache.get("key3") == "value-key3"  # Miss, should call fetcher and evict key1
-    assert fetcher.call_count == 3
-    assert fetcher.calls == ["key1", "key2", "key3"]
+        # Test cache size limit
+        assert cache.get("key2") == "value-key2"  # Miss, should call fetcher
+        assert fetcher.call_count == 2
+        assert fetcher.calls == ["key1", "key2"]
 
-    assert len(cache) == 2
+        assert cache.get("key3") == "value-key3"  # Miss, should call fetcher and evict key1
+        assert fetcher.call_count == 3
+        assert fetcher.calls == ["key1", "key2", "key3"]
 
-    # Verify key1 was evicted by checking if it's fetched again
-    assert cache.get("key1") == "value-key1"  # Miss, should call fetcher
-    assert fetcher.call_count == 4
-    assert fetcher.calls == ["key1", "key2", "key3", "key1"]
+        assert len(cache) == 2
 
-    # Verify final cache state
-    assert len(cache) == 2
-    assert "key3" in cache._cache  # key3 should still be in cache
-    assert "key1" in cache._cache  # key1 should be back in cache
-    assert "key2" not in cache._cache  # key2 should have been evicted
+        # Verify key1 was evicted by checking if it's fetched again
+        assert cache.get("key1") == "value-key1"  # Miss, should call fetcher
+        assert fetcher.call_count == 4
+        assert fetcher.calls == ["key1", "key2", "key3", "key1"]
 
+        # Verify final cache state
+        assert len(cache) == 2
+        assert "key3" in cache._cache  # key3 should still be in cache
+        assert "key1" in cache._cache  # key1 should be back in cache
+        assert "key2" not in cache._cache  # key2 should have been evicted
 
-def test_sync_cache_missing_object_expiration():
-    """Test cache expiration for both missing and existing objects."""
-    fetcher = MockSyncFetcher()
-    cache = CloudObjectCache(
-        max_size=2,
-        fetch_fn=fetcher,
-        missing_expire_seconds=1,  # 1 second to expire missing object
-        exists_expire_seconds=3,  # 3 seconds to expire existing object
-        missing_object_value=-1,
-    )
+    @pytest.mark.asyncio
+    async def test_async_cache_missing_object_expiration(self):
+        """Test cache expiration for missing objects in async mode."""
+        fetcher = MockAsyncFetcher()
+        cache = CloudObjectCache(
+            max_size=2,
+            fetch_fn=fetcher,
+            missing_expire_seconds=1,  # 1 second to expire missing object
+            exists_expire_seconds=3,  # 3 seconds to expire existing object
+            missing_object_value=-1,
+        )
 
-    # Test missing object expiration
-    assert cache.get("missing") is -1  # First fetch
-    assert fetcher.call_count == 1
-    assert fetcher.calls == ["missing"]
+        # Test missing object expiration
+        assert await cache.aget("missing") is -1  # First fetch
+        assert fetcher.call_count == 1
+        assert fetcher.calls == ["missing"]
 
-    # Should still be cached
-    assert cache.get("missing") is -1  # Cache hit
-    assert fetcher.call_count == 1  # No new fetch
-    assert fetcher.calls == ["missing"]
+        # Should still be cached
+        assert await cache.aget("missing") is -1  # Cache hit
+        assert fetcher.call_count == 1  # No new fetch
+        assert fetcher.calls == ["missing"]
 
-    time.sleep(1.5)  # Wait for missing object to expire
-    assert cache.get("missing") is -1  # Should fetch again after expiration
-    assert fetcher.call_count == 2  # New fetch
-    assert fetcher.calls == ["missing", "missing"]
+        await asyncio.sleep(1.5)  # Wait for missing object to expire
+        assert await cache.aget("missing") is -1  # Should fetch again after expiration
+        assert fetcher.call_count == 2  # New fetch
+        assert fetcher.calls == ["missing", "missing"]
 
+    @pytest.mark.asyncio
+    async def test_async_cache_existing_object_expiration(self):
+        """Test expiration of existing objects in async mode."""
+        fetcher = MockAsyncFetcher()
+        cache = CloudObjectCache(
+            max_size=2,
+            fetch_fn=fetcher,
+            missing_expire_seconds=1,  # 1 second to expire missing object
+            exists_expire_seconds=3,  # 3 seconds to expire existing object
+            missing_object_value=-1,
+        )
 
-def test_sync_cache_existing_object_expiration():
-    """Test expiration of existing objects in sync mode."""
-    fetcher = MockSyncFetcher()
-    cache = CloudObjectCache(
-        max_size=2,
-        fetch_fn=fetcher,
-        missing_expire_seconds=1,  # 1 second to expire missing object
-        exists_expire_seconds=3,  # 3 seconds to expire existing object
-        missing_object_value=-1,
-    )
+        # Test existing object expiration
+        assert await cache.aget("key1") == "value-key1"  # First fetch
+        assert fetcher.call_count == 1
+        assert fetcher.calls == ["key1"]
 
-    # Test existing object expiration
-    assert cache.get("key1") == "value-key1"  # First fetch
-    assert fetcher.call_count == 1
-    assert fetcher.calls == ["key1"]
+        # Should still be cached (not expired)
+        assert await cache.aget("key1") == "value-key1"  # Cache hit
+        assert fetcher.call_count == 1  # No new fetch
 
-    # Should still be cached (not expired)
-    assert cache.get("key1") == "value-key1"  # Cache hit
-    assert fetcher.call_count == 1  # No new fetch
+        await asyncio.sleep(1.5)  # Not expired yet (exists_expire_seconds=3)
+        assert await cache.aget("key1") == "value-key1"  # Should still hit cache
+        assert fetcher.call_count == 1  # No new fetch
+        assert fetcher.calls == ["key1"]  # No change in calls
 
-    time.sleep(1.5)  # Not expired yet (exists_expire_seconds=3)
-    assert cache.get("key1") == "value-key1"  # Should still hit cache
-    assert fetcher.call_count == 1  # No new fetch
+        await asyncio.sleep(2)  # Now expired (total > 2 seconds)
+        assert await cache.aget("key1") == "value-key1"  # Should fetch again
+        assert fetcher.call_count == 2  # New fetch
+        assert fetcher.calls == ["key1", "key1"]
 
-    time.sleep(2)  # Now expired (total > 3 seconds)
-    assert cache.get("key1") == "value-key1"  # Should fetch again
-    assert fetcher.call_count == 2  # New fetch
-    assert fetcher.calls == ["key1", "key1"]
-
-    # Verify final cache state
-    assert len(cache) == 1
-
-
-@pytest.mark.asyncio
-async def test_async_cache_missing_object_expiration():
-    """Test cache expiration for missing objects in async mode."""
-    fetcher = MockAsyncFetcher()
-    cache = CloudObjectCache(
-        max_size=2,
-        fetch_fn=fetcher,
-        missing_expire_seconds=1,  # 1 second to expire missing object
-        exists_expire_seconds=3,  # 3 seconds to expire existing object
-        missing_object_value=-1,
-    )
-
-    # Test missing object expiration
-    assert await cache.aget("missing") is -1  # First fetch
-    assert fetcher.call_count == 1
-    assert fetcher.calls == ["missing"]
-
-    # Should still be cached
-    assert await cache.aget("missing") is -1  # Cache hit
-    assert fetcher.call_count == 1  # No new fetch
-    assert fetcher.calls == ["missing"]
-
-    await asyncio.sleep(1.5)  # Wait for missing object to expire
-    assert await cache.aget("missing") is -1  # Should fetch again after expiration
-    assert fetcher.call_count == 2  # New fetch
-    assert fetcher.calls == ["missing", "missing"]
+        # Verify final cache state
+        assert len(cache) == 1
 
 
-@pytest.mark.asyncio
-async def test_async_cache_existing_object_expiration():
-    """Test expiration of existing objects in async mode."""
-    fetcher = MockAsyncFetcher()
-    cache = CloudObjectCache(
-        max_size=2,
-        fetch_fn=fetcher,
-        missing_expire_seconds=1,  # 1 second to expire missing object
-        exists_expire_seconds=3,  # 3 seconds to expire existing object
-        missing_object_value=-1,
-    )
+class TestAsyncacheDecorator:
+    """Tests for the asyncache decorator."""
 
-    # Test existing object expiration
-    assert await cache.aget("key1") == "value-key1"  # First fetch
-    assert fetcher.call_count == 1
-    assert fetcher.calls == ["key1"]
+    @pytest.mark.asyncio
+    async def test_basic_functionality(self):
+        """Test basic asyncache decorator functionality."""
+        call_count = 0
+        MISSING = object()
 
-    # Should still be cached (not expired)
-    assert await cache.aget("key1") == "value-key1"  # Cache hit
-    assert fetcher.call_count == 1  # No new fetch
+        @asyncache(
+            max_size=2,
+            missing_expire_seconds=1,
+            exists_expire_seconds=3,
+            missing_object_value=MISSING,
+        )
+        async def fetch(key: str):
+            nonlocal call_count
+            call_count += 1
+            if key == "missing":
+                return MISSING
+            return f"value-{key}"
 
-    await asyncio.sleep(1.5)  # Not expired yet (exists_expire_seconds=3)
-    assert await cache.aget("key1") == "value-key1"  # Should still hit cache
-    assert fetcher.call_count == 1  # No new fetch
-    assert fetcher.calls == ["key1"]  # No change in calls
+        # Test cache hit
+        assert await fetch("key1") == "value-key1"
+        assert call_count == 1
+        assert await fetch("key1") == "value-key1"  # Should hit cache
+        assert call_count == 1  # Count should not increase
 
-    await asyncio.sleep(2)  # Now expired (total > 2 seconds)
-    assert await cache.aget("key1") == "value-key1"  # Should fetch again
-    assert fetcher.call_count == 2  # New fetch
-    assert fetcher.calls == ["key1", "key1"]
+        # Test cache size limit
+        assert await fetch("key2") == "value-key2"
+        assert call_count == 2
+        assert await fetch("key3") == "value-key3"  # Should evict key1
+        assert call_count == 3
 
-    # Verify final cache state
-    assert len(cache) == 1
+        # Verify key1 was evicted
+        assert await fetch("key1") == "value-key1"
+        assert call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_expiration(self):
+        """Test cache expiration for both missing and existing objects."""
+        call_count = 0
+        MISSING = object()
+
+        @asyncache(
+            max_size=2,
+            missing_expire_seconds=1,  # 1 second to expire missing object
+            exists_expire_seconds=3,  # 3 seconds to expire existing object
+            missing_object_value=MISSING,
+        )
+        async def fetch(key: str):
+            nonlocal call_count
+            call_count += 1
+            if key == "missing":
+                return MISSING
+            return f"value-{key}"
+
+        # Test missing object expiration
+        assert await fetch("missing") is MISSING
+        assert call_count == 1
+        assert await fetch("missing") is MISSING  # Should hit cache
+        assert call_count == 1
+
+        await asyncio.sleep(1.5)  # Wait for missing object to expire
+        assert await fetch("missing") is MISSING  # Should fetch again
+        assert call_count == 2
+
+        # Test existing object expiration
+        assert await fetch("key1") == "value-key1"
+        assert call_count == 3
+        assert await fetch("key1") == "value-key1"  # Should hit cache
+        assert call_count == 3
+
+        await asyncio.sleep(1.5)  # Not expired yet
+        assert await fetch("key1") == "value-key1"  # Should still hit cache
+        assert call_count == 3
+
+        await asyncio.sleep(2)  # Now expired (total > 3 seconds)
+        assert await fetch("key1") == "value-key1"  # Should fetch again
+        assert call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        """Test error handling in asyncache decorator."""
+        call_count = 0
+
+        @asyncache(max_size=2)
+        async def fetch(key: str):
+            nonlocal call_count
+            call_count += 1
+            if key == "error":
+                raise ValueError("Test error")
+            return f"value-{key}"
+
+        # Test successful case
+        assert await fetch("key1") == "value-key1"
+        assert call_count == 1
+
+        # Test error case
+        with pytest.raises(ValueError, match="Test error"):
+            await fetch("error")
+        assert call_count == 2
+
+        # Verify error wasn't cached
+        with pytest.raises(ValueError, match="Test error"):
+            await fetch("error")
+        assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_concurrent_access(self):
+        """Test concurrent access to cached function."""
+        call_count = 0
+        DELAY = 0.1
+
+        @asyncache(max_size=2)
+        async def slow_fetch(key: str):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(DELAY)  # Simulate slow operation
+            return f"value-{key}"
+
+        # Launch multiple concurrent calls
+        tasks = [slow_fetch("key1") for _ in range(5)]
+        results = await asyncio.gather(*tasks)
+
+        # All results should be the same
+        assert all(r == "value-key1" for r in results)
+        # Should only call once despite multiple concurrent requests
+        assert call_count == 1
 
 
 if __name__ == "__main__":

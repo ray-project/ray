@@ -1,5 +1,5 @@
 # TODO (genesu): clean up these utils.
-from typing import List, Optional, Tuple, Union, Dict, Any, Callable, Awaitable
+from typing import List, Optional, Tuple, Union, Dict, Any, Callable, Awaitable, TypeVar
 import os
 
 # TODO (genesu): remove dependency on boto3. Lazy import in the functions.
@@ -12,6 +12,9 @@ import asyncio
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.configs.server_models import S3AWSCredentials
+
+
+T = TypeVar("T")
 
 logger = get_logger(__name__)
 
@@ -585,6 +588,8 @@ class CloudObjectCache:
             (hasattr(fetch_fn, '__call__') and inspect.iscoroutinefunction(fetch_fn.__call__))
         )
         self._missing_object_value = missing_object_value
+        # Lock for thread-safe cache access
+        self._lock = asyncio.Lock()
 
     async def aget(self, key: str) -> Any:
         """Async get value from cache or fetch it if needed."""
@@ -592,20 +597,23 @@ class CloudObjectCache:
         if not self._is_async:
             raise ValueError("Cannot use async get() with sync fetch function")
 
-        value, should_fetch = self._check_cache(key)
-        if not should_fetch:
+        async with self._lock:
+            value, should_fetch = self._check_cache(key)
+            if not should_fetch:
+                return value
+
+            # Fetch new value
+            value = await self._fetch_fn(key)
+            self._update_cache(key, value)
             return value
-
-
-        value =await self._fetch_fn(key)
-        self._update_cache(key, value)
-        return value
 
     def get(self, key: str) -> Any:
         """Sync get value from cache or fetch it if needed."""
         if self._is_async:
             raise ValueError("Cannot use sync get() with async fetch function")
 
+        # For sync access, we use a simple check-then-act pattern
+        # This is safe because sync functions are not used in async context
         value, should_fetch = self._check_cache(key)
         if not should_fetch:
             return value
@@ -666,3 +674,40 @@ class CloudObjectCache:
 
     def __len__(self) -> int:
         return len(self._cache)
+
+
+
+def asyncache(
+    max_size: int,
+    missing_expire_seconds: Optional[int] = None,
+    exists_expire_seconds: Optional[int] = None,
+    missing_object_value: Any = None,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """A decorator that provides async caching using CloudObjectCache.
+    
+    This is a direct replacement for the asyncache/cachetools combination,
+    using CloudObjectCache internally to maintain cache state.
+    
+    Args:
+        max_size: Maximum number of items to store in cache
+        missing_expire_seconds: How long to cache missing objects
+        exists_expire_seconds: How long to cache existing objects
+        missing_object_value: Value to use for missing objects
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        # Create a single cache instance for this function
+        cache = CloudObjectCache(
+            max_size=max_size,
+            fetch_fn=func,
+            missing_expire_seconds=missing_expire_seconds,
+            exists_expire_seconds=exists_expire_seconds,
+            missing_object_value=missing_object_value,
+        )
+        
+        async def wrapper(*args, **kwargs):
+            # Extract the key from either first positional arg or object_uri kwarg
+            key = args[0] if args else kwargs.get("object_uri")
+            return await cache.aget(key)
+            
+        return wrapper
+    return decorator
