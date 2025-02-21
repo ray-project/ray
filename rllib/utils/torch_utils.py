@@ -149,8 +149,10 @@ def clip_gradients(
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.
-        device = gradients_list[0].device
-        clip_coeff = grad_clip / torch.maximum(grad_clip, total_norm + 1e-6)
+        clip_coeff = (
+            grad_clip
+            / torch.clamp(total_norm + 1e-6, min=grad_clip)
+        )
         # Note: multiplying by the clamped coefficient is redundant when the coefficient
         # is clamped to 1, but doing so avoids a `if clip_coeff < 1:` conditional which
         # can require a CPU <=> device synchronization when the gradients reside in GPU

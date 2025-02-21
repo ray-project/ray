@@ -1,6 +1,5 @@
 from collections import defaultdict
 import contextlib
-import functools
 import logging
 from typing import (
     Any,
@@ -47,7 +46,7 @@ from ray.rllib.utils.metrics import (
     WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor, clip_gradients
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -112,8 +111,6 @@ class TorchLearner(Learner):
         self._lr_scheduler_classes = None
         if self.config._torch_lr_scheduler_classes:
             self._lr_scheduler_classes = self.config._torch_lr_scheduler_classes
-
-        self._grad_clips_per_optimizer = {}
 
     @OverrideToImplementCustomLogic
     @override(Learner)
@@ -668,21 +665,12 @@ class TorchLearner(Learner):
         for g in optimizer.param_groups:
             g["lr"] = lr
 
+    @staticmethod
     @override(Learner)
-    def _get_clip_function(
-        self,
-        optimizer_name: str,
-        config: "AlgorithmConfig",
-    ) -> Callable:
-        if optimizer_name not in self._grad_clips_per_optimizer:
-            # Cache the grad-clip value tensor (already on correct device) to avoid
-            # having to make CPU<>GPU copies during updating, forcing cuda syncs.
-            self._grad_clips_per_optimizer[optimizer_name] = functools.partial(
-                clip_gradients,
-                grad_clip=torch.tensor(config.grad_clip).to(self._device),
-                grad_clip_by=config.grad_clip_by,
-            )
-        return self._grad_clips_per_optimizer[optimizer_name]
+    def _get_clip_function() -> Callable:
+        from ray.rllib.utils.torch_utils import clip_gradients
+
+        return clip_gradients
 
     @staticmethod
     @override(Learner)
