@@ -4,7 +4,6 @@ import threading
 import time
 from typing import Any, Dict, Union
 
-import numpy as np
 import tree  # pip install dm_tree
 
 import ray
