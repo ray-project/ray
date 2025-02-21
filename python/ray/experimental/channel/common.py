@@ -109,8 +109,6 @@ class ChannelOutputType:
         """
         Return the custom NCCL group if one is specified.
         """
-        if self._contains_type is not None:
-            return self._contains_type.get_custom_nccl_group()
         return None
 
     def set_communicator_id(self, group_id: str) -> None:
@@ -421,6 +419,12 @@ class SynchronousReader(ReaderInterface):
     def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
         for c in self._input_channels:
             start_time = time.monotonic()
+            assert hasattr(
+                c, "release_buffer"
+            ), "release_buffer() is only supported for shared memory channel "
+            "(e.g., Channel, BufferedSharedMemoryChannel, CompositeChannel) "
+            "and used between the last actor and the driver, but got a channel"
+            f" of type {type(c)}."
             c.release_buffer(timeout)
             if timeout is not None:
                 timeout -= time.monotonic() - start_time

@@ -1,3 +1,5 @@
+.. _ray-compiled-graph:
+
 Ray Compiled Graph
 ==================
 
@@ -66,5 +68,7 @@ Learn more details about Ray Compiled Graph from the following links.
     :maxdepth: 1
 
     quickstart
+    execution
     visualization
     profiling
+    overlap
