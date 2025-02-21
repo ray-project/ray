@@ -4,6 +4,7 @@ import threading
 import time
 from typing import Any, Dict, Union
 
+import numpy as np
 import tree  # pip install dm_tree
 
 import ray
@@ -76,9 +77,8 @@ class IMPALALearner(Learner):
         # computations.
         self._gpu_loader_in_queue = queue.Queue()
 
-        # Default is to have a learner thread.
-        if not hasattr(self, "_learner_thread_in_queue"):
-            self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
+        # Default is to have a learner thread with one input queue (deque).
+        self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:

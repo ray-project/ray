@@ -1342,7 +1342,7 @@ class Learner(Checkpointable):
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         num_total_minibatches: int = 0,
-    ):
+    ) -> None:
 
         self._check_is_built()
 
@@ -1403,8 +1403,12 @@ class Learner(Checkpointable):
             )
         # If we have already an `MultiAgentBatch` but with `numpy` array, convert to
         # tensors.
-        elif isinstance(batch, MultiAgentBatch) and batch.policy_batches and isinstance(
-            next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+        elif (
+            isinstance(batch, MultiAgentBatch)
+            and batch.policy_batches
+            and isinstance(
+                next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+            )
         ):
             batch = self._convert_batch_type(batch)
 
