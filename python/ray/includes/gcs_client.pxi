@@ -642,8 +642,7 @@ cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
     finally:
         # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
         # and we DECREF it here to balance it.
-        # cpython.Py_DECREF(fut)
-        pass
+        cpython.Py_DECREF(fut)
 
 cdef raise_or_return(tup):
     ret, exc = tup
