@@ -320,7 +320,7 @@ install_pip_packages() {
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
-  if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 ]]; then
+  if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
       # If we require a custom torch version, use that
       if [[ -n "${TORCH_VERSION-}" ]]; then
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
