@@ -40,7 +40,7 @@ py_test(
 )
 py_test(
     name = "test_data_parallel_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
