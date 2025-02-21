@@ -384,12 +384,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # Call `add_env_step()` method on episode.
                 else:
-                    # Only increase ts when we actually stepped (not reset'd as a reset
-                    # does not count as a timestep).
-                    ts += self._increase_sampled_metrics(
-                        1, observations[env_index], episodes[env_index]
-                    )
-
                     episodes[env_index].add_env_step(
                         observations=observations[env_index],
                         actions=actions[env_index],
@@ -398,6 +392,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         terminateds=terminateds[env_index],
                         truncateds=truncateds[env_index],
                         extra_model_outputs=extra_model_outputs,
+                    )
+                    # Only increase ts when we actually stepped (not reset'd as a reset
+                    # does not count as a timestep).
+                    ts += self._increase_sampled_metrics(
+                        1, observations[env_index], episodes[env_index]
                     )
 
             done_episodes_to_run_env_to_module = []
@@ -416,9 +415,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Episode is done.
                 if episodes[env_index].is_done:
                     eps += 1
-
-                    # TODO (simon): Check, if we need to run another time the
-                    # env_to_module pipeline here.
 
                     # Make the `on_episode_end` callbacks (before finalizing the episode
                     # object).
