@@ -34,7 +34,6 @@ ray_cc_library(
     srcs = ["env.cc"],
     deps = [
         ":logging",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -96,6 +95,7 @@ ray_cc_library(
     ],
     deps = [
         ":cmd_line_utils",
+        ":compat",
         ":filesystem",
         ":logging",
         ":macros",
