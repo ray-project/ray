@@ -10,7 +10,6 @@ from ray.exceptions import RayChannelError, RayTaskError
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.dag import InputNode
 import ray.experimental.collective as collective
-from ray.experimental.util.types import AllReduceOp
 from ray.dag.output_node import MultiOutputNode
 from ray.tests.conftest import *  # noqa
 
@@ -114,9 +113,7 @@ def test_allreduce_basic(ray_start_cluster):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(
-            computes, op=AllReduceOp(), transport=cpu_group
-        )
+        collectives = collective.allreduce.bind(computes, transport=cpu_group)
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -162,9 +159,7 @@ def test_allreduce_get_partial(ray_start_cluster):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(
-            computes, op=AllReduceOp(), transport=cpu_group
-        )
+        collectives = collective.allreduce.bind(computes, transport=cpu_group)
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([recv, tensor, collectives[1]])
@@ -196,7 +191,7 @@ def test_allreduce_get_partial(ray_start_cluster):
 )
 def test_allreduce_wrong_shape(ray_start_cluster):
     """
-    Test an error is thrown when Tensors participated in all-reduce have inconsistent shapes.
+    Test an error is thrown when the tensors in an all-reduce have different shapes.
     """
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
@@ -210,9 +205,7 @@ def test_allreduce_wrong_shape(ray_start_cluster):
             worker.compute_with_tuple_args.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
-        collectives = collective.allreduce.bind(
-            computes, op=AllReduceOp(), transport=cpu_group
-        )
+        collectives = collective.allreduce.bind(computes, transport=cpu_group)
         recvs = [
             worker.recv.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -228,7 +221,7 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     ref = compiled_dag.execute(
         [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
     )
-    # A task error is raised because of shape mismatch.
+    # A task error is thrown because of the shape mismatch.
     with pytest.raises(RayTaskError):
         ray.get(ref)
 
@@ -283,9 +276,7 @@ def test_allreduce_scheduling(ray_start_cluster):
         t = workers[0].send.bind(shape, dtype, inp)
         t = t.with_tensor_transport(transport=cpu_group)
 
-        collectives = collective.allreduce.bind(
-            [x, y], op=AllReduceOp(), transport=cpu_group
-        )
+        collectives = collective.allreduce.bind([x, y], transport=cpu_group)
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
@@ -328,7 +319,7 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
             ValueError,
             match="Expected unique actor handles for a collective operation",
         ):
-            collective.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+            collective.allreduce.bind(computes, transport=cpu_group)
 
     with InputNode() as inp:
         compute = worker.return_tensor.bind(inp)
@@ -337,7 +328,7 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
             ValueError,
             match="Expected unique input nodes for a collective operation",
         ):
-            collective.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+            collective.allreduce.bind(computes, transport=cpu_group)
 
 
 @pytest.mark.parametrize(
@@ -366,7 +357,7 @@ def test_allreduce_wrong_actors(ray_start_cluster):
             ValueError,
             match="Expected actor handles to match the custom NCCL group",
         ):
-            collective.allreduce.bind(computes, op=AllReduceOp(), transport=cpu_group)
+            collective.allreduce.bind(computes, transport=cpu_group)
 
 
 if __name__ == "__main__":
