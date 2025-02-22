@@ -358,34 +358,22 @@ if setup_spec.type == SetupType.RAY:
     # ray[all].
     #
     # ray[llm] depends on ray[data].
-    # ray[llm] requires Python >= 3.11
     #
     # Keep this in sync with python/requirements/llm/llm-requirements.txt
     #
-    if sys.version_info >= (3, 11):
-        setup_spec.extras["llm"] = list(
-            set(
-                [
-                    "vllm>=0.7.2",
-                    "asyncache>=0.3.1",
-                    "jsonref>=1.1.0",
-                    "boto3",
-                ]
-                + setup_spec.extras["data"]
-                + setup_spec.extras["serve"]
-            )
+    setup_spec.extras["llm"] = list(
+        set(
+            [
+                "vllm>=0.7.2; python_version >= '3.11'",
+                "vllm>=0.7.2; python_version < '3.11' and False",  # This will cause pip to error out on Python < 3.11
+                "asyncache>=0.3.1",
+                "jsonref>=1.1.0",
+                "boto3",
+            ]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
         )
-    else:
-        # For Python < 3.11, define llm extra but make it raise a clear error when installed
-        def _llm_error_on_install():
-            raise RuntimeError(
-                "ray[llm] requires Python >= 3.11. "
-                f"Current Python version is {'.'.join(map(str, sys.version_info[:3]))}"
-            )
-
-        setup_spec.extras["llm"] = [
-            f"ray-llm-error-package; python_version < '3.11' and {_llm_error_on_install()}"
-        ]
+    )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
