@@ -1,11 +1,14 @@
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+
+from ray.util.annotations import PublicAPI
 
 
 class _CollectiveOp:
     pass
 
 
+@PublicAPI
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
@@ -14,16 +17,19 @@ class ReduceOp(Enum):
     AVG = 4
 
 
+@PublicAPI
 @dataclass
 class AllGatherOp(_CollectiveOp):
     pass
 
 
+@PublicAPI
 @dataclass
 class AllReduceOp(_CollectiveOp):
     reduceOp: ReduceOp = ReduceOp.SUM
 
 
+@PublicAPI
 @dataclass
 class ReduceScatterOp(_CollectiveOp):
     reduceOp: ReduceOp = ReduceOp.SUM
