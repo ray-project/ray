@@ -484,13 +484,13 @@ def test_torch_tensor_nccl_overlap_p2p_and_collective(
 
 
 @pytest.mark.parametrize("overlap_gpu_communication", [False, True])
-def test_torch_tensor_nccl_send_overlap_result_across_actors(
+def test_torch_tensor_nccl_overlap_send_future_across_actors(
     ray_start_regular, overlap_gpu_communication
 ):
     """
     A GPU future cannot be sent across actors. This test checks that the
-    SharedMemoryChannel waits for the future to complete before writing the
-    result.
+    SharedMemoryChannel waits for the future to complete before writing
+    the result.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -504,7 +504,7 @@ def test_torch_tensor_nccl_send_overlap_result_across_actors(
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
     dtype = torch.float16
-    coll_shape = (1000,)
+    coll_shape = (1_000,)
     with InputNode() as inp:
         coll_inputs = [worker.send.bind(coll_shape, dtype, inp) for worker in workers]
         coll_values = collective.allreduce.bind(coll_inputs)
@@ -546,12 +546,12 @@ def test_torch_tensor_nccl_send_overlap_result_across_actors(
 
 
 @pytest.mark.parametrize("overlap_gpu_communication", [False, True])
-def test_torch_tensor_nccl_same_future_multiple_waits(
+def test_torch_tensor_nccl_overlap_same_future_multiple_waits(
     ray_start_regular, overlap_gpu_communication
 ):
     """
-    A GPU future destroys its CUDA event after the first wait. This test
-    checks that waiting on the same future multiple times does not error.
+    A GPU future destroys its CUDA event after the first wait. This test checks that
+    waiting on the same future multiple times does not error.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -564,11 +564,11 @@ def test_torch_tensor_nccl_same_future_multiple_waits(
     worker = actor_cls.remote()
 
     dtype = torch.float16
-    coll_shape = (1000,)
+    coll_shape = (1_000,)
     with InputNode() as inp:
         coll_input = [worker.send.bind(coll_shape, dtype, inp)]
         coll_value = collective.allreduce.bind(coll_input)[0]
-        # Waiting multiple times on the same GPU future should not error.
+        # Waiting on the same GPU future multiple times should not error.
         coll_outputs = [worker.recv.bind(coll_value), worker.recv.bind(coll_value)]
         dag = MultiOutputNode(coll_outputs)
 

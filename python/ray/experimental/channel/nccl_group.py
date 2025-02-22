@@ -184,8 +184,7 @@ class _NcclGroup(Communicator):
             # TODO(rui): find a better approach
             self._send_stream.synchronize()
 
-        # Record buf is used by the send stream so that its memory is not
-        # deallocated before the send operation finishes.
+        # Record the buffer is used by the send stream.
         buf.record_stream(torch.cuda.ExternalStream(self._send_stream.ptr))
 
         # TODO(swang): Handle send/recv async NCCL errors such as network
@@ -272,8 +271,7 @@ class _NcclGroup(Communicator):
             "If you see this error, please file an issue at Ray repository."
         )
 
-        # Record send_buf is used by the collective stream so that its memory is
-        # not deallocated before the allreduce operation finishes.
+        # Record the buffer is used by the collective stream.
         send_buf.record_stream(torch.cuda.ExternalStream(self._coll_stream.ptr))
 
         self._comm.allReduce(

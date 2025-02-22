@@ -1093,8 +1093,8 @@ class TestGenerateActorToExecutionSchedule:
         """
 
         # `_generate_actor_to_execution_schedule` deep-copies the actor handles
-        # when copying `actor_to_execution_schedule`. Without this hack, copying
-        # an actor handle would error because we also use `mock_actor_handle_init`.
+        # when copying `actor_to_execution_schedule`. Without this mock, copying
+        # an actor handle would error because `mock_actor_handle_init` is used.
         class MockActorHandle(ActorHandle):
             def __deepcopy__(self, memo):
                 return self
@@ -1134,8 +1134,8 @@ class TestGenerateActorToExecutionSchedule:
         )
         extracted_overlapped_schedule = _extract_execution_schedule(overlapped_schedule)
         assert len(extracted_overlapped_schedule) == 1
-        # The collective operation is launched first so that the compute operation and
-        # the collective operation can overlap.
+        # The collective operation is launched first such that it can overlap
+        # with computation.
         assert extracted_overlapped_schedule[fake_actor] == [
             graph[task_idx_2].op,
             graph[task_idx_1].op,

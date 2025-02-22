@@ -40,7 +40,7 @@ class GPUFuture:
         self._event = cp.cuda.Event()
         self._event.record(stream)
         self._fut_id: Optional[int] = None
-        self._ready: bool = False
+        self._waited: bool = False
 
     def wait(self, blocking: bool = False) -> Any:
         """
@@ -49,9 +49,9 @@ class GPUFuture:
         by this future finishes.
 
         Args:
-            blocking: Whether this operation blocks CPU. This is used when
+            blocking: Whether this operation blocks CPU. It is blocking when
                 the future is sent across actors (e.g., by SharedMemoryChannel),
-                in which case the future should be resolved immediately.
+                in which case the future should be resolved before channel write.
 
         Return:
             Result from the GPU operation. The returned result is immediately
@@ -61,21 +61,15 @@ class GPUFuture:
         from ray.experimental.channel.common import ChannelContext
 
         current_stream = cp.cuda.get_current_stream()
-        if self._ready:
-            # The current stream has been told to wait on the event,
-            # but the wait might not have finished yet.
-            if blocking:
-                current_stream.synchronize()
-            return self._buf
-        self._ready = True
+        if not self._waited:
+            self._waited = True
+            current_stream.wait_event(self._event)
+            # Destroy the CUDA event after it is waited on.
+            ctx = ChannelContext.get_current().serialization_context
+            ctx.pop_gpu_future(self._fut_id)
 
-        current_stream.wait_event(self._event)
         if blocking:
             current_stream.synchronize()
-
-        ctx = ChannelContext.get_current().serialization_context
-        # This GPU future is no longer needed. Destroy the CUDA event it contains.
-        ctx.pop_gpu_future(self._fut_id)
         return self._buf
 
     def cache(self, fut_id: int) -> None:
