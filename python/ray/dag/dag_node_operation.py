@@ -94,7 +94,7 @@ class _DAGOperationGraphNode:
             "_DAGOperationGraphNode("
             f"op: {self.op}, "
             f"task_idx: {self.task_idx}, "
-            f"ray_actor_id: {self.actor_handle._ray_actor_id}, "
+            f"actor_id: {self.actor_handle._ray_actor_id}, "
             f"nccl_op_type: {self.nccl_op_type})"
         )
 

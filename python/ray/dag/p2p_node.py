@@ -9,7 +9,7 @@ from ray.util.annotations import DeveloperAPI
 
 class _P2POperation(_NcclOperation):
     """
-    Represent metadata for a NCCL P2P operation.
+    Represent a NCCL P2P operation for scheduling.
     """
 
     def __init__(self):
@@ -20,8 +20,8 @@ class _P2POperation(_NcclOperation):
         Execute the P2P operation.
         """
         raise NotImplementedError(
-            "Abstract P2P operations are only used when scheduling "
-            "and cannot be executed."
+            "Abstract P2P operations are only used for scheduling "
+            "and cannot be executed"
         )
 
 
@@ -33,7 +33,7 @@ class _P2PSendOperation(_P2POperation):
     def __init__(self, send_ch: ChannelInterface):
         """
         Args:
-            send_ch: A channel that sends the data during execution.
+            send_ch: A channel that sends data.
         """
         super().__init__()
         self.send_ch = send_ch
@@ -56,7 +56,7 @@ class _P2PRecvOperation(_P2POperation):
     def __init__(self, recv_ch: ChannelInterface):
         """
         Args:
-            recv_ch: A channel that receives data during execution.
+            recv_ch: A channel that receives data.
         """
         super().__init__()
         self.recv_ch = recv_ch

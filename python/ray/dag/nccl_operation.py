@@ -8,8 +8,8 @@ class _NcclOperation(ABC):
     """
 
     def __init__(self):
-        # Task indices in a compiled DAG. The indices are appended
-        # in topological order if there are dependencies among the tasks.
+        # Task indices in a compiled DAG. The list of indices are in topological order
+        # if tasks have dependencies, such as P2P send/recv tasks.
         self.task_idxs: List[int] = []
         # Indices of tasks that are ready with a zero in-degree.
         self.ready_task_idxs: Set[int] = set()

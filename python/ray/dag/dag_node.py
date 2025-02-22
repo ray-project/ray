@@ -22,11 +22,11 @@ from typing import (
 import uuid
 import asyncio
 
-from ray.experimental.util.types import _NcclOpType
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.util.types import _NcclOpType
 
 T = TypeVar("T")
 

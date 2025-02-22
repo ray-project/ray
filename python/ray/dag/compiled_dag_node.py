@@ -20,31 +20,33 @@ import time
 import uuid
 import traceback
 
-from ray.experimental.channel.auto_transport_type import (
-    AutoTransportType,
-    TypeHintResolver,
-)
+import ray
 import ray.exceptions
 from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     P2P_OPERATION_KEY,
     BIND_INDEX_KEY,
-)
-from ray.dag.dag_operation_future import GPUFuture
-from ray.dag.nccl_operation import _NcclOperation
-from ray.experimental.channel.cached_channel import CachedChannel
-from ray.experimental.channel.communicator import Communicator
-from ray.dag.constants import (
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
-import ray
+from ray.dag.dag_node_operation import (
+    _DAGNodeOperation,
+    _DAGOperationGraphNode,
+    _build_dag_node_operation_graph,
+    _extract_execution_schedule,
+    _generate_actor_to_execution_schedule,
+    _generate_overlapped_execution_schedule,
+    _visualize_execution_schedule,
+)
+from ray.dag.dag_operation_future import GPUFuture
+from ray.dag.nccl_operation import _NcclOperation
 from ray.exceptions import RayTaskError, RayChannelError, RayChannelTimeoutError
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
     _process_return_vals,
 )
+
 from ray.experimental.channel import (
     ChannelContext,
     ChannelInterface,
@@ -59,29 +61,23 @@ from ray.experimental.channel import (
     CompositeChannel,
     IntraProcessChannel,
 )
-from ray.experimental.util.types import _NcclOpType, P2POp, _CollectiveOp
-from ray.util.annotations import DeveloperAPI
-
+from ray.experimental.channel.auto_transport_type import (
+    AutoTransportType,
+    TypeHintResolver,
+)
+from ray.experimental.channel.cached_channel import CachedChannel
+from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
 )
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_communicator,
     _destroy_communicator,
 )
 
-from ray.dag.dag_node_operation import (
-    _DAGNodeOperation,
-    _DAGOperationGraphNode,
-    _build_dag_node_operation_graph,
-    _extract_execution_schedule,
-    _generate_actor_to_execution_schedule,
-    _generate_overlapped_execution_schedule,
-    _visualize_execution_schedule,
-)
-
+from ray.experimental.util.types import _NcclOpType, P2POp, _CollectiveOp
+from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -296,7 +292,7 @@ def do_profile_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
-    # CUDA events need to be destroyed before other CUDA resources.
+    # CUDA events should be destroyed before other CUDA resources.
     for task in tasks:
         task.destroy_cuda_event()
     for task in tasks:
@@ -606,7 +602,7 @@ class ExecutableTask:
         if self.output_writer is not None:
             self.output_writer.start()
 
-        # Convert the abstract P2P operation used in scheduling to executable
+        # Convert the abstract P2P operation from scheduling to the executable P2P
         # send/recv operation.
         if self.requires_nccl_read:
             assert self.nccl_ch is not None
@@ -687,7 +683,8 @@ class ExecutableTask:
         input_exc = None
         output_val = None
 
-        # Read the inputs. There may be exceptions from upstream tasks.
+        # Resolve input values and handle exceptions. There could be exceptions from
+        # upstream tasks.
         if self.input_reader is not None:
             try:
                 input_data = self.input_reader.read()
@@ -698,7 +695,7 @@ class ExecutableTask:
                 _process_return_vals(input_data, return_single_output=False)
                 input_data_ready = []
                 for val in input_data:
-                    # The input is a GPU future. Wait on it.
+                    # Wait on a GPU future.
                     if isinstance(val, GPUFuture):
                         val = val.wait()
                         if isinstance(val, RayTaskError):
@@ -709,13 +706,13 @@ class ExecutableTask:
             except Exception as exc:
                 input_exc = exc
 
-            # A NCCL P2P send operation does not have an output writer.
-            # Pass the exception to the downstream task.
+            # A NCCL P2P send operation does not have an output writer. Write the
+            # exception to the downstream task.
             if input_exc is not None and self.requires_nccl_write:
                 input_values = [input_exc]
                 input_exc = None
 
-        # If an exception occurs, pass it to the downstream task.
+        # Write the exception to the downstream task.
         if input_exc is not None:
             try:
                 assert self.output_writer is not None
@@ -724,7 +721,7 @@ class ExecutableTask:
             except RayChannelError:
                 return True
 
-        # There are no input exceptions. Execute the task.
+        # Execute the task when there is no input exception.
         if self.nccl_op is not None:
             method = self.nccl_op.execute
         else:
@@ -740,13 +737,12 @@ class ExecutableTask:
             else:
                 output_val = _wrap_exception(exc)
 
-        # Write the output. Wrap the output in a GPU future if overlapping GPU
-        # communication.
+        # Write the output to the downstream task. Wrap the output in a GPU future
+        # if overlapping GPU communication.
         if self.output_writer is not None:
             if overlap_gpu_communication and self.nccl_op is not None:
                 output_val = GPUFuture(output_val)
-                # Cache the future so that the CUDA event it tracks can be
-                # destroyed properly upon DAG teardown.
+                # Cache the GPU future such that its CUDA event is properly destroyed.
                 output_val.cache(self.task_idx)
 
             try:
