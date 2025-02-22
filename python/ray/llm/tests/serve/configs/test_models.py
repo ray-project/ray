@@ -92,7 +92,7 @@ class TestModelConfig:
         assert llm_config.deployment_config["autoscaling_config"]["min_replicas"] == 3
         assert llm_config.deployment_config["autoscaling_config"]["max_replicas"] == 7
         assert "extra_key" not in llm_config.deployment_config["autoscaling_config"]
-        
+
     def test_get_serve_options(self):
         """Test that get_serve_options returns the correct options."""
         serve_options = LLMConfig(
