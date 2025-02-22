@@ -4,7 +4,6 @@ import dataclasses
 import logging
 import math
 import time
-import threading
 import uuid
 from enum import Enum
 from functools import partial
@@ -130,7 +129,7 @@ class vLLMEngineWrapper:
         assert self.model is not None
 
         # LoRA related.
-        self.lora_lock = threading.Lock()
+        self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
         # Convert the task type back to a string to pass to the engine.
@@ -170,7 +169,7 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
-    def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
+    async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         """Prepare the inputs for LLM inference.
 
         Args:
@@ -200,10 +199,9 @@ class vLLMEngineWrapper:
 
             lora_name = row["model"]
             if lora_name not in self.lora_name_to_request:
-                # Load a new LoRA adapter if it is not loaded yet.
-                with self.lora_lock:
-                    # Make sure no other thread has loaded the same LoRA adapter.
+                async with self.lora_lock:
                     if lora_name not in self.lora_name_to_request:
+                        # Load a new LoRA adapter if it is not loaded yet.
                         lora_request = vllm.lora.request.LoRARequest(
                             lora_name=lora_name,
                             # LoRA ID starts from 1.
@@ -243,7 +241,7 @@ class vLLMEngineWrapper:
         Returns:
             A tuple of index in batch, request output and bypassed custom fields.
         """
-        request = self._prepare_llm_request(row)
+        request = await self._prepare_llm_request(row)
 
         async with self.semaphore:
             output = await self._generate_async(request)

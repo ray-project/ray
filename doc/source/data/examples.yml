@@ -38,3 +38,12 @@ examples:
       - generative ai
     contributor: community
     link: examples/data_juicer_distributed_data_processing
+  - title: Batch Inference with LoRA Adapter
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+      - batch inference
+    link: ../llm/examples/batch/vllm-with-lora
