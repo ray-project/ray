@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 import ray
 
-# TODO (genesu): remove dependency on botocore/ aiobotocore.
+# TODO (genesu): remove dependency on botocore
 from botocore.exceptions import ClientError
 from ray import serve
 

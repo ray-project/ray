@@ -52,16 +52,18 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
             processor = build_llm_processor(
                 config,
                 preprocess=lambda row: dict(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "You are a calculator"},
-                        {"role": "user", "content": f"{row['id']} ** 3 = ?"},
-                    ],
-                    temperature=0.3,
-                    max_tokens=20,
+                    payload=dict(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are a calculator"},
+                            {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+                        ],
+                        temperature=0.3,
+                        max_tokens=20,
+                    ),
                 ),
                 postprocess=lambda row: dict(
-                    resp=row["choices"][0]["message"]["content"],
+                    resp=row["http_response"]["choices"][0]["message"]["content"],
                 ),
             )
 
