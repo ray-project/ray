@@ -45,5 +45,4 @@ examples:
     use_cases:
       - large language models
       - generative ai
-      - batch inference
     link: ../llm/examples/batch/vllm-with-lora
