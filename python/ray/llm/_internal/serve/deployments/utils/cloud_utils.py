@@ -14,8 +14,10 @@ logger = get_logger(__name__)
 AWS_EXECUTABLE = "aws"
 GCP_EXECUTABLE = "gcloud"
 
+
 def try_import_boto3():
     return try_import("boto3", error=True)
+
 
 def try_import_google_api():
     g_api = try_import("google", error=True)
@@ -34,7 +36,7 @@ def get_file_from_s3(
     Return: contents of file as string or bytes depending on value of
         decode_as_utf_8. If the file does not exist, returns None.
     """
-    
+
     boto3 = try_import_boto3()
     # Parse the S3 path string to extract bucket name and object key
     path_parts = object_uri.replace("s3://", "").split("/", 1)
@@ -143,7 +145,7 @@ def list_subfolders_s3(folder_uri: str) -> List[str]:
         have a trailing slash.
     """
     boto3 = try_import_boto3()
-    
+
     # Ensure that the folder_uri has a trailing slash.
     folder_uri = f"{folder_uri.rstrip('/')}/"
 
