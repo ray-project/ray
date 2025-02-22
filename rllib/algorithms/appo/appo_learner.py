@@ -29,13 +29,12 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
-        super().build()
-
-        # Replace default Learner queue (deque) with a circular buffer.
         self._learner_thread_in_queue = CircularBuffer(
             num_batches=self.config.circular_buffer_num_batches,
             iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
         )
+
+        super().build()
 
         # Make target networks.
         self.module.foreach_module(
