@@ -1020,13 +1020,13 @@ class CompiledDAG:
         self._is_teardown = False
         # Execution index to set of channel indices for CompiledDAGRefs
         # or CompiledDAGFuture whose destructor has been called. A "None"
-        # channel index means all channels, and when that happens, "None"
-        # should be the only value in the set.
+        # channel index means there is only one channel, and its destructor
+        # has been called.
         self._destructed_ref_idxs: Dict[int, Set[Optional[int]]] = dict()
         # Execution index to set of channel indices for CompiledDAGRefs
         # or CompiledDAGFuture whose get() has been called. A "None"
-        # channel index means all channels, and when that happens, "None"
-        # should be the only value in the set.
+        # channel index means there is only one channel, and its get()
+        # has been called.
         self._got_ref_idxs: Dict[int, Set[Optional[int]]] = dict()
 
     @property
@@ -2335,7 +2335,11 @@ class CompiledDAG:
         if not should_release:
             return False
 
+        # refs corresponding to idx_to_release are all destructed,
+        # and they are never fetched or cached.
         assert idx_to_release not in self._result_buffer
+        assert idx_to_release not in self._got_ref_idxs
+
         try:
             self._dag_output_fetcher.release_channel_buffers(timeout)
         except RayChannelTimeoutError as e:
@@ -2347,9 +2351,7 @@ class CompiledDAG:
                 "is hanging."
             ) from e
         self._destructed_ref_idxs.pop(idx_to_release)
-        # Releasing native buffer means the corresponding execution result
-        # is consumed (and discarded).
-        self._max_finished_execution_index += 1
+
         return True
 
     def _try_release_buffer(
@@ -2366,9 +2368,12 @@ class CompiledDAG:
         Returns:
             Whether the native buffer or result buffer has been released.
         """
-        return self._try_release_native_buffer(
-            idx_to_release, timeout
-        ) or self._try_release_result_buffer(idx_to_release)
+        if self._try_release_native_buffer(idx_to_release, timeout):
+            # Releasing native buffer means the corresponding execution result
+            # is consumed (and discarded).
+            self._max_finished_execution_index += 1
+            return True
+        return self._try_release_result_buffer(idx_to_release)
 
     def _try_release_buffers(self):
         """
@@ -2465,7 +2470,10 @@ class CompiledDAG:
                         self._max_finished_execution_index + 1,
                         result,
                     )
-                    self._max_finished_execution_index += 1
+                # We have either released the native buffer or fetched and
+                # cached the result buffer, therefore we always increment
+                # _max_finished_execution_index.
+                self._max_finished_execution_index += 1
             except RayChannelTimeoutError as e:
                 raise RayChannelTimeoutError(
                     "If the execution is expected to take a long time, increase "

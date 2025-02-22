@@ -204,6 +204,9 @@ class TestDAGRefDestruction:
         result = ray.get(ref)
         assert (result == val).all()
         del ref
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_get_ref_before_destructed_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -216,6 +219,9 @@ class TestDAGRefDestruction:
         # Test that ray.get() on ref still works properly even if
         # ref2 (corresponding to a later execution) is destructed first
         assert ray.get(ref) == 1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_get_ref_after_destructed_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -229,6 +235,9 @@ class TestDAGRefDestruction:
         del ref2
         # Test that ray.get() works correctly if preceding ref was destructed
         assert ray.get(ref3) == 6
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_release_buffer_on_execute(self, ray_start_regular):
         a = Actor.remote(0)
@@ -247,6 +256,9 @@ class TestDAGRefDestruction:
         # should be destructed and not counted in the inflight executions
         ref5 = compiled_dag.execute(3)
         assert ray.get(ref5) == 15
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_destruct_and_get_multioutput_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -258,6 +270,9 @@ class TestDAGRefDestruction:
         # Test that ray.get() on ref1 still works properly even if
         # ref2 was destructed
         assert ray.get(ref1) == 1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_destruct_and_get_multioutput_no_leak(self, ray_start_regular):
         a = Actor.remote(0)
@@ -277,7 +292,9 @@ class TestDAGRefDestruction:
         assert compiled_dag._result_buffer == {0: {0: 1, 1: 2}}
         ray.get(ref_list)
         # Test that that ref1 doesn't stay in result_buffer
-        assert len(compiled_dag._result_buffer) == 0
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_asyncio_destruction(self, ray_start_regular):
         a = Actor.remote(0)
