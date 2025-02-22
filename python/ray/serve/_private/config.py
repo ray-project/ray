@@ -7,7 +7,7 @@ from google.protobuf.message import Message
 
 from ray import cloudpickle
 from ray._private import ray_option_utils
-from ray._private.pydantic_compat import (
+from ray._common.pydantic_compat import (
     BaseModel,
     Field,
     NonNegativeFloat,
