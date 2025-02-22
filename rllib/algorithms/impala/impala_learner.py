@@ -94,11 +94,7 @@ class IMPALALearner(Learner):
                 t.start()
 
         # Create and start the Learner thread.
-        self._learner_thread = _LearnerThread(
-            update_method=self._update_from_batch_or_episodes,
-            in_queue=self._learner_thread_in_queue,
-            learner=self,
-        )
+        self._learner_thread = _LearnerThread(learner=self)
         self._learner_thread.start()
 
     @override(Learner)
@@ -272,20 +268,11 @@ class _GPULoaderThread(threading.Thread):
 
 
 class _LearnerThread(threading.Thread):
-    def __init__(
-        self,
-        *,
-        update_method,
-        in_queue: deque,
-        learner,
-    ):
+    def __init__(self, *, learner):
         super().__init__(name="_LearnerThread")
         self.daemon = True
         self.learner = learner
         self.stopped = False
-
-        self._update_method = update_method
-        self._in_queue: Union[deque, CircularBuffer] = in_queue
 
     def run(self) -> None:
         while not self.stopped:
@@ -299,17 +286,17 @@ class _LearnerThread(threading.Thread):
             (ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)
         ):
             # Get a new batch from the GPU-data (learner queue OR circular buffer).
-            if isinstance(self._in_queue, CircularBuffer):
-                ma_batch_on_gpu = self._in_queue.sample()
+            if isinstance(self.learner._learner_thread_in_queue, CircularBuffer):
+                ma_batch_on_gpu = self.learner._learner_thread_in_queue.sample()
             else:
                 # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
-                while not self._in_queue:
+                while not self.learner._learner_thread_in_queue:
                     time.sleep(0.0001)
                 # Consume from the left (oldest batches first).
                 # If we consumed from the right, we would run into the danger of
                 # learning from newer batches (left side) most times, BUT sometimes
                 # grabbing older batches (right area of deque).
-                ma_batch_on_gpu = self._in_queue.popleft()
+                ma_batch_on_gpu = self.learner._learner_thread_in_queue.popleft()
 
         # Call the update method on the batch.
         with self.learner.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
@@ -317,7 +304,7 @@ class _LearnerThread(threading.Thread):
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
-            self._update_method(
+            self.learner._update_from_episodes_or_batch(
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
