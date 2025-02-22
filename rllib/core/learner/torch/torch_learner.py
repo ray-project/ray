@@ -9,6 +9,7 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.algorithms.algorithm_config import (
@@ -55,6 +56,9 @@ from ray.rllib.utils.typing import (
     StateDict,
     TensorType,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
@@ -181,6 +185,11 @@ class TorchLearner(Learner):
             )
         else:
             total_loss = sum(loss_per_module.values())
+
+        # If we don't have any loss computations, `sum` returns 0.
+        if isinstance(total_loss, int):
+            assert total_loss == 0
+            return {}
 
         total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
