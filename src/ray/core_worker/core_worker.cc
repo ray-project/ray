@@ -966,7 +966,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   periodical_runner_->RunFnPeriodically(
       [this] { TryDeleteObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
-      "CoreWorker.GCStreamingGeneratorMetadata");
+      "CoreWorker.TryDeleteObjectRefStreams");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
