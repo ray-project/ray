@@ -1,5 +1,16 @@
 # TODO (genesu): clean up these utils.
-from typing import List, Optional, Tuple, Union, Dict, Any, Callable, Awaitable, TypeVar, NamedTuple
+from typing import (
+    List,
+    Optional,
+    Tuple,
+    Union,
+    Dict,
+    Any,
+    Callable,
+    Awaitable,
+    TypeVar,
+    NamedTuple,
+)
 import os
 
 # TODO (genesu): remove dependency on boto3. Lazy import in the functions.
@@ -548,6 +559,7 @@ def get_aws_credentials(
 class CacheEntry(NamedTuple):
     value: Any
     expire_time: Optional[float]
+
 
 class CloudObjectCache:
     """A cache that works with both sync and async fetch functions.
