@@ -27,6 +27,7 @@ setup(
         "pytest",
         "pyyaml",
         "pybuildkite",
+        "pydantic >= 2.5.0",
         "PyGithub",
         "requests",
         "twine == 5.0.0",
