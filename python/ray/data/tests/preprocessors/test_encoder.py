@@ -114,6 +114,33 @@ def test_ordinal_encoder():
 
     assert pred_out_df.equals(pred_expected_df)
 
+    # append mode
+    with pytest.raises(ValueError):
+        OrdinalEncoder(columns=["B", "C", "D"], output_columns=["B_encoded"])
+
+    encoder = OrdinalEncoder(
+        columns=["B", "C", "D"], output_columns=["B_encoded", "C_encoded", "D_encoded"]
+    )
+    encoder.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
+    )
+    pred_out_df = encoder.transform_batch(pred_in_df)
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "D": pred_col_d,
+            "B_encoded": pred_processed_col_b,
+            "C_encoded": pred_processed_col_c,
+            "D_encoded": pred_processed_col_d,
+        }
+    )
+
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
+
     # Test null behavior.
     null_col = [1, None]
     nonnull_col = [1, 1]
@@ -260,7 +287,7 @@ def test_one_hot_encoder():
         }
     )
 
-    pd.testing.assert_frame_equal(out_df, expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = ["blue", "yellow", None]
@@ -273,20 +300,46 @@ def test_one_hot_encoder():
 
     pred_out_df = encoder.transform_batch(pred_in_df)
 
-    pred_processed_col_a = ["blue", "yellow", None]
+    pred_processed_col_a = pred_col_a
     pred_processed_col_b_onehot = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0, 0, 0]]
     pred_processed_col_c_onehot = [[0, 0, 1], [1, 0, 0], [0, 0, 0]]
-    processed_col_d_onehot = [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0]]
+    pred_processed_col_d_onehot = [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0]]
     pred_expected_df = pd.DataFrame.from_dict(
         {
             "A": pred_processed_col_a,
             "B": pred_processed_col_b_onehot,
             "C": pred_processed_col_c_onehot,
-            "D": processed_col_d_onehot,
+            "D": pred_processed_col_d_onehot,
         }
     )
 
-    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
+
+    # append mode
+    with pytest.raises(ValueError):
+        OneHotEncoder(columns=["B", "C", "D"], output_columns=["B_encoded"])
+
+    encoder = OneHotEncoder(
+        columns=["B", "C", "D"],
+        output_columns=["B_onehot_encoded", "C_onehot_encoded", "D_onehot_encoded"],
+    )
+    encoder.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
+    )
+    pred_out_df = encoder.transform_batch(pred_in_df)
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "D": pred_col_d,
+            "B_onehot_encoded": pred_processed_col_b_onehot,
+            "C_onehot_encoded": pred_processed_col_c_onehot,
+            "D_onehot_encoded": pred_processed_col_d_onehot,
+        }
+    )
 
     # Test null behavior.
     null_col = [1, None]
@@ -334,7 +387,7 @@ def test_one_hot_encoder_with_max_categories():
             "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]],
         }
     )
-    pd.testing.assert_frame_equal(df_out, expected_df)
+    pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
 
 
 def test_multi_hot_encoder():
@@ -406,6 +459,36 @@ def test_multi_hot_encoder():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+    # append mode
+    with pytest.raises(ValueError):
+        MultiHotEncoder(columns=["B", "C", "D"], output_columns=["B_encoded"])
+
+    encoder = OneHotEncoder(
+        columns=["B", "C", "D"],
+        output_columns=[
+            "B_multihot_encoded",
+            "C_multihot_encoded",
+            "D_multihot_encoded",
+        ],
+    )
+    encoder.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
+    )
+    pred_out_df = encoder.transform_batch(pred_in_df)
+    pred_expected_df = pd.DataFrame.from_dict(
+        {
+            "A": pred_col_a,
+            "B": pred_col_b,
+            "C": pred_col_c,
+            "D": pred_col_d,
+            "B_multihot_encoded": pred_processed_col_b,
+            "C_multihot_encoded": pred_processed_col_c,
+            "D_multihot_encoded": pred_processed_col_d,
+        }
+    )
 
     # Test null behavior.
     null_col = [1, None]
@@ -486,13 +569,31 @@ def test_label_encoder():
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
     )
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
+
+    # append mode
+    append_encoder = LabelEncoder("A", output_column="A_encoded")
+    append_encoder.fit(ds)
+    append_transformed = append_encoder.transform(ds)
+    out_df = append_transformed.to_pandas()
+
+    expected_df = pd.DataFrame.from_dict(
+        {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
+    )
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Inverse transform data.
     inverse_transformed = encoder.inverse_transform(transformed)
     inverse_df = inverse_transformed.to_pandas()
 
-    assert inverse_df.equals(in_df)
+    pd.testing.assert_frame_equal(inverse_df, in_df, check_like=True)
+
+    inverse_append_transformed = append_encoder.inverse_transform(append_transformed)
+    inverse_append_df = inverse_append_transformed.to_pandas()
+    expected_df = pd.DataFrame.from_dict(
+        {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
+    )
+    pd.testing.assert_frame_equal(inverse_append_df, expected_df, check_like=True)
 
     # Inverse transform without fitting.
     new_encoder = LabelEncoder("A")
@@ -609,6 +710,28 @@ def test_categorizer(predefined_dtypes):
     assert pred_out_df.dtypes["A"] == np.object_
     assert pred_out_df.dtypes["B"] == expected_dtypes["B"]
     assert pred_out_df.dtypes["C"] == expected_dtypes["C"]
+
+    # append mode
+    with pytest.raises(ValueError):
+        Categorizer(columns=["B", "C"], output_columns=["B_categorized"])
+
+    encoder = Categorizer(
+        columns=["B", "C"],
+        output_columns=["B_categorized", "C_categorized"],
+        dtypes=dtypes,
+    )
+    encoder.fit(ds)
+
+    pred_in_df = pd.DataFrame.from_dict(
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+    )
+    pred_out_df = encoder.transform_batch(pred_in_df)
+
+    assert pred_out_df.dtypes["A"] == np.object_
+    assert pred_out_df.dtypes["B"] == np.object_
+    assert pred_out_df.dtypes["C"] == np.int64
+    assert pred_out_df.dtypes["B_categorized"] == expected_dtypes["B"]
+    assert pred_out_df.dtypes["C_categorized"] == expected_dtypes["C"]
 
 
 if __name__ == "__main__":

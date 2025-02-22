@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "ray/util/mutex_protected.h"
+
 namespace ray {
 namespace core {
 
@@ -141,13 +143,10 @@ class CoreWorkerProcessImpl {
   const CoreWorkerOptions options_;
 
   /// The core worker instance of this worker process.
-  std::shared_ptr<CoreWorker> core_worker_ ABSL_GUARDED_BY(mutex_);
+  MutexProtected<std::shared_ptr<CoreWorker>> core_worker_;
 
   /// The worker ID of this worker.
   const WorkerID worker_id_;
-
-  /// To protect access to core_worker_
-  mutable absl::Mutex mutex_;
 };
 }  // namespace core
 }  // namespace ray

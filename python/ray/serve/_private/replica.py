@@ -81,7 +81,11 @@ from ray.serve._private.utils import parse_import_path
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -344,6 +348,9 @@ class ReplicaBase(ABC):
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Flipped to `True` when health checks pass and `False` when they fail. May be
+        # used by replica subclass implementations.
+        self._healthy = False
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
@@ -801,13 +808,19 @@ class ReplicaBase(ABC):
         await self._metrics_manager.shutdown()
 
     async def check_health(self):
-        # If there's no user-defined health check, nothing runs on the user code event
-        # loop and no future is returned.
-        f: Optional[
-            concurrent.futures.Future
-        ] = self._user_callable_wrapper.call_user_health_check()
-        if f is not None:
-            await asyncio.wrap_future(f)
+        try:
+            # If there's no user-defined health check, nothing runs on the user code event
+            # loop and no future is returned.
+            f: Optional[
+                concurrent.futures.Future
+            ] = self._user_callable_wrapper.call_user_health_check()
+            if f is not None:
+                await asyncio.wrap_future(f)
+            self._healthy = True
+        except Exception as e:
+            logger.warning("Replica health check failed.")
+            self._healthy = False
+            raise e from None
 
 
 class Replica(ReplicaBase):
@@ -1614,7 +1627,10 @@ class UserCallableWrapper:
                 receive_task.cancel()
 
             return final_result
-        except Exception:
+        except Exception as e:
+            unavailable_error = isinstance(
+                e, (BackPressureError, DeploymentUnavailableError)
+            )
             if (
                 request_metadata.is_http_request
                 and asgi_args is not None
@@ -1622,12 +1638,14 @@ class UserCallableWrapper:
                 # If the callable is an ASGI app, it already sent a 500 status response.
                 and not user_method_info.is_asgi_app
             ):
-                await self._send_user_result_over_asgi(
-                    starlette.responses.Response(
+                response = (
+                    starlette.responses.Response(e.message, status_code=503)
+                    if unavailable_error
+                    else starlette.responses.Response(
                         "Internal Server Error", status_code=500
-                    ),
-                    asgi_args,
+                    )
                 )
+                await self._send_user_result_over_asgi(response, asgi_args)
 
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()

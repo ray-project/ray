@@ -14,7 +14,8 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray.data import Dataset
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -188,6 +189,27 @@ def test_callable_classes(shutdown_only):
     # flat_map with args & kwargs
     result = ds.flat_map(
         StatefulFlatMapFnWithArgs,
+        concurrency=1,
+        fn_args=(1,),
+        fn_kwargs={"kwarg": 2},
+        fn_constructor_args=(1,),
+        fn_constructor_kwargs={"kwarg": 2},
+    ).take()
+    assert sorted(extract_values("id", result)) == list(range(10)), result
+
+    class StatefulFilterFnWithArgs:
+        def __init__(self, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+
+        def __call__(self, x, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+            return True
+
+    # fiter with args & kwargs
+    result = ds.filter(
+        StatefulFilterFnWithArgs,
         concurrency=1,
         fn_args=(1,),
         fn_kwargs={"kwarg": 2},
@@ -1137,7 +1159,8 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     assert values == [11, 15, 19]
 
 
-def test_map_with_memory_resources(shutdown_only):
+@pytest.mark.parametrize("method", [Dataset.map, Dataset.map_batches, Dataset.flat_map])
+def test_map_with_memory_resources(method, shutdown_only):
     """Test that we can use memory resource to limit the concurrency."""
     num_blocks = 50
     memory_per_task = 100 * 1024**2
@@ -1146,19 +1169,35 @@ def test_map_with_memory_resources(shutdown_only):
 
     concurrency_counter = ConcurrencyCounter.remote()
 
-    def map_batches(batch):
+    def map_fn(row_or_batch):
         ray.get(concurrency_counter.inc.remote())
         time.sleep(0.5)
         ray.get(concurrency_counter.decr.remote())
-        return batch
+        if method is Dataset.flat_map:
+            return [row_or_batch]
+        else:
+            return row_or_batch
 
     ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
-    ds = ds.map_batches(
-        map_batches,
-        batch_size=None,
-        num_cpus=1,
-        memory=memory_per_task,
-    )
+    if method is Dataset.map:
+        ds = ds.map(
+            map_fn,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
+    elif method is Dataset.map_batches:
+        ds = ds.map_batches(
+            map_fn,
+            batch_size=None,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
+    elif method is Dataset.flat_map:
+        ds = ds.flat_map(
+            map_fn,
+            num_cpus=1,
+            memory=memory_per_task,
+        )
     assert len(ds.take(num_blocks)) == num_blocks
 
     actual_max_concurrency = ray.get(concurrency_counter.get_max_concurrency.remote())
@@ -1525,6 +1564,29 @@ def test_actor_udf_cleanup(ray_start_regular_shared, tmp_path):
     wait_for_condition(lambda: not os.path.exists(test_file))
 
 
+def test_warn_large_udfs(ray_start_regular_shared):
+    driver = """
+import ray
+import numpy as np
+from ray.data._internal.execution.operators.map_operator import MapOperator
+
+large_object = np.zeros(MapOperator.MAP_UDF_WARN_SIZE_THRESHOLD + 1, dtype=np.int8)
+
+class LargeUDF:
+    def __init__(self):
+        self.data = large_object
+
+    def __call__(self, batch):
+        return batch
+
+ds = ray.data.range(1)
+ds = ds.map_batches(LargeUDF, concurrency=1)
+assert ds.take_all() == [{"id": 0}]
+    """
+    output = run_string_as_driver(driver)
+    assert "The UDF of operator MapBatches(LargeUDF) is too large" in output
+
+
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
 def test_actor_pool_strategy_default_num_actors(shutdown_only):
@@ -1607,7 +1669,10 @@ def test_map_batches_async_generator(shutdown_only):
     assert runtime < sum(range(n)), runtime
 
     expected_output = [{"input": i, "output": 2**i} for i in range(n)]
-    assert output == expected_output, (output, expected_output)
+    assert sorted(output, key=lambda row: row["input"]) == expected_output, (
+        output,
+        expected_output,
+    )
 
 
 def test_map_batches_async_exception_propagation(shutdown_only):
