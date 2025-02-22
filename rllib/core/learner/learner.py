@@ -1342,7 +1342,7 @@ class Learner(Checkpointable):
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         num_total_minibatches: int = 0,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    ) -> None:
 
         self._check_is_built()
 
@@ -1401,9 +1401,14 @@ class Learner(Checkpointable):
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
-        # If we have already an `MultiAgentBatch` but with `numpy` array, convert to tensors.
-        elif isinstance(batch, MultiAgentBatch) and isinstance(
-            next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+        # If we have already an `MultiAgentBatch` but with `numpy` array, convert to
+        # tensors.
+        elif (
+            isinstance(batch, MultiAgentBatch)
+            and batch.policy_batches
+            and isinstance(
+                next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+            )
         ):
             batch = self._convert_batch_type(batch)
 
@@ -1422,6 +1427,8 @@ class Learner(Checkpointable):
         for module_id in list(batch.policy_batches.keys()):
             if not self.should_module_be_updated(module_id, batch):
                 del batch.policy_batches[module_id]
+        if not batch.policy_batches:
+            return
 
         # Log all timesteps (env, agent, modules) based on given episodes/batch.
         self._log_steps_trained_metrics(batch)
@@ -1717,7 +1724,7 @@ class Learner(Checkpointable):
     @staticmethod
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
-        """Returns the gradient clipping function to use, given the framework."""
+        """Returns the gradient clipping function to use."""
 
     @staticmethod
     @abc.abstractmethod

@@ -11,6 +11,17 @@ Features
 - 🔄 Multi-LoRA support with shared base models
 - 🚀 Engine agnostic architecture (i.e. vLLM, SGLang, etc)
 
+Requirements
+--------------
+
+.. code-block:: bash
+
+    pip install ray[serve,llm]>=2.43.0 vllm>=0.7.2
+
+    # Suggested dependencies when using vllm 0.7.2:
+    pip install xgrammar==0.1.11 pynvml==12.0.0
+
+
 Key Components
 --------------
 
@@ -103,10 +114,10 @@ You can query the deployed models using either cURL or the OpenAI Python client:
         .. code-block:: python
 
             from openai import OpenAI
-            
+
             # Initialize client
             client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
-            
+
             # Basic chat completion with streaming
             response = client.chat.completions.create(
                 model="qwen-0.5b",
@@ -117,7 +128,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
             for chunk in response:
                 if chunk.choices[0].delta.content is not None:
                     print(chunk.choices[0].delta.content, end="", flush=True)
-            
+
 
 For deploying multiple models, you can pass a list of ``LLMConfig`` objects to the ``LLMRouter`` deployment:
 
@@ -174,14 +185,14 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
 
             # config.yaml
             applications:
-            - args: 
+            - args:
                 llm_configs:
                     - model_loading_config:
                         model_id: qwen-0.5b
                         model_source: Qwen/Qwen2.5-0.5B-Instruct
                       accelerator_type: A10G
                       deployment_config:
-                        autoscaling_config: 
+                        autoscaling_config:
                             min_replicas: 1
                             max_replicas: 2
                     - model_loading_config:
@@ -189,7 +200,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                         model_source: Qwen/Qwen2.5-1.5B-Instruct
                       accelerator_type: A10G
                       deployment_config:
-                        autoscaling_config: 
+                        autoscaling_config:
                             min_replicas: 1
                             max_replicas: 2
               import_path: ray.serve.llm.builders:build_openai_app
@@ -204,7 +215,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
 
             # config.yaml
             applications:
-            - args: 
+            - args:
                 llm_configs:
                     - models/qwen-0.5b.yaml
                     - models/qwen-1.5b.yaml
@@ -221,7 +232,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
               model_source: Qwen/Qwen2.5-0.5B-Instruct
             accelerator_type: A10G
             deployment_config:
-              autoscaling_config: 
+              autoscaling_config:
                 min_replicas: 1
                 max_replicas: 2
 
@@ -233,7 +244,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
               model_source: Qwen/Qwen2.5-1.5B-Instruct
             accelerator_type: A10G
             deployment_config:
-              autoscaling_config: 
+              autoscaling_config:
                 min_replicas: 1
                 max_replicas: 2
 
@@ -251,8 +262,8 @@ For each usage pattern, we provide a server and client code snippet.
 Multi-LoRA Deployment
 ~~~~~~~~~~~~~~~~~~~~~
 
-You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the ``LoraConfig``. 
-We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model. 
+You can use LoRA (Low-Rank Adaptation) to efficiently fine-tune models by configuring the ``LoraConfig``.
+We use Ray Serve's multiplexing feature to serve multiple LoRA checkpoints from the same model.
 This allows the weights to be loaded on each replica on-the-fly and be cached via an LRU mechanism.
 
 .. tab-set::
@@ -540,4 +551,3 @@ If you are using huggingface models, you can enable fast download by setting `HF
     deployment = VLLMService.as_deployment(llm_config.get_serve_options(name_prefix="VLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
-

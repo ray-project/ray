@@ -85,7 +85,10 @@ steps:
         worker_id: ["0", "1", "2", "3"]
 
   - label: ":ray: core: redis tests"
-    tags: python
+    tags:
+      - python
+      - oss
+      - skip-on-premerge
     instance_type: large
     parallelism: 4
     commands:
@@ -125,6 +128,7 @@ steps:
     tags:
       - python
       - oss
+      - skip-on-premerge
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core

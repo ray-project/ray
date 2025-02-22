@@ -2,6 +2,7 @@ import time
 from dataclasses import Field, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
+import math
 
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -100,6 +101,7 @@ class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
     bytes_outputs: int
+    start_time: float
 
 
 class OpRuntimesMetricsMeta(type):
@@ -121,6 +123,47 @@ class OpRuntimesMetricsMeta(type):
                     map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
+
+
+class TaskDurationStats:
+    """
+    Tracks the running mean and variance incrementally with Welford's algorithm
+    by updating the current mean and a measure of total squared differences.
+    It allows stable updates of mean and variance in a single pass over the data
+    while reducing numerical instability often found in naive computations.
+
+    More on the algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+    """
+
+    def __init__(self):
+        self._count = 0
+        self._mean = 0.0
+        self._m2 = 0.0  # Sum of (x - mean)^2
+
+    def add_duration(self, duration: float) -> None:
+        """Add a new sample (task duration in seconds)."""
+        self._count += 1
+        delta = duration - self._mean
+        self._mean += delta / self._count
+        delta2 = duration - self._mean
+        self._m2 += delta * delta2
+
+    def count(self) -> int:
+        return self._count
+
+    def mean(self) -> float:
+        return self._mean
+
+    def _variance(self) -> float:
+        """Return the current variance of the observed durations."""
+        # Variance is m2/(count-1) for sample variance
+        if self._count < 2:
+            return 0.0
+        return self._m2 / (self._count - 1)
+
+    def stddev(self) -> float:
+        """Return the current standard deviation of the observed durations."""
+        return math.sqrt(self._variance())
 
 
 @dataclass
@@ -307,6 +350,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._internal_inqueue = create_bundle_queue()
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
+        self._op_task_duration_stats = TaskDurationStats()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -514,7 +558,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self._pending_task_inputs.add(inputs)
-        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
+        self._running_tasks[task_index] = RunningTaskInfo(
+            inputs, 0, 0, time.perf_counter()
+        )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -547,6 +593,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+        self._op_task_duration_stats.add_duration(
+            time.perf_counter() - task_info.start_time
+        )
 
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)

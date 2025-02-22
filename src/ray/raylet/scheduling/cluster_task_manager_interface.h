@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -25,7 +28,7 @@ class ClusterTaskManagerInterface {
 
   // Schedule and dispatch tasks.
   virtual void ScheduleAndDispatchTasks() = 0;
-  ;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.

@@ -33,6 +33,12 @@
 
 #include "ray/common/status.h"
 
+#if defined(__APPLE__) || defined(__linux__)
+#include <unistd.h>
+#else
+using pid_t = int;
+#endif
+
 // Workaround for multithreading on XCode 9, see
 // https://issues.apache.org/jira/browse/ARROW-1622 and
 // https://github.com/tensorflow/tensorflow/issues/13220#issuecomment-331579775

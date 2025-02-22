@@ -49,6 +49,13 @@ bool VerifyFlatbuffer(T *object, uint8_t *data, size_t size) {
   return object->Verify(verifier);
 }
 
+template <class T>
+void VerifyNotNullPtr(T *object, std::string_view obj_name, MessageType msg_type) {
+  RAY_CHECK(object != nullptr) << "Corrupted " << EnumNameMessageType(msg_type)
+                               << " message: " << obj_name << " is null. "
+                               << kCorruptedRequestErrorMessage;
+}
+
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 ToFlatbuffer(flatbuffers::FlatBufferBuilder *fbb,
              const ObjectID *object_ids,

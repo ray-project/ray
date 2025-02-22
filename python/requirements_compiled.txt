@@ -46,6 +46,7 @@ aiofiles==22.1.0
 aiohttp==3.9.5
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
     #   datasets
@@ -212,6 +213,7 @@ boto==2.49.0
     # via gcs-oauth2-boto-plugin
 boto3==1.26.76
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   aiobotocore
@@ -220,6 +222,7 @@ boto3==1.26.76
     #   smart-open
 botocore==1.29.76
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
     #   aws-xray-sdk
     #   boto3
@@ -268,6 +271,7 @@ clang-format==12.0.1
 click==8.1.7
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
     #   aim
     #   black
     #   click-option-group
@@ -306,8 +310,11 @@ cmdstanpy==1.2.0
     # via prophet
 colorama==0.4.6
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   bayesian-optimization
+    #   halo
+    #   log-symbols
     #   semgrep
 coloredlogs==15.0.1
     # via onnxruntime
@@ -566,6 +573,7 @@ gitdb==4.0.11
     # via gitpython
 gitpython==3.1.40
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   mlflow
     #   wandb
 glfw==2.6.3
@@ -589,6 +597,7 @@ google-apitools==0.5.32
     # via gsutil
 google-auth==2.23.4
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
@@ -687,6 +696,8 @@ h5py==3.10.0
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   tensorflow
+halo==0.0.31
+    # via -r python/requirements/cloud-requirements.txt
 hjson==3.1.0
     # via deepspeed
 holidays==0.39
@@ -729,6 +740,8 @@ humanfriendly==10.0
     # via
     #   azure-cli-core
     #   coloredlogs
+humanize==4.12.1
+    # via -r python/requirements/cloud-requirements.txt
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r python/requirements/ml/tune-requirements.txt
 identify==2.6.1
@@ -843,6 +856,7 @@ jsondiff==2.0.0
     # via moto
 jsonpatch==1.32
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   cfn-lint
 jsonpickle==3.0.2
@@ -854,6 +868,7 @@ jsonpointer==2.4
 jsonschema==4.23.0
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   altair
     #   aws-sam-translator
@@ -954,6 +969,8 @@ locket==1.0.0
     # via
     #   distributed
     #   partd
+log-symbols==0.0.14
+    # via halo
 lxml==4.9.4
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1250,6 +1267,7 @@ nvidia-nccl-cu12==2.20.5
     # via xgboost
 oauth2client==4.1.3
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   gcs-oauth2-boto-plugin
     #   google-apitools
 oauthlib==3.2.2
@@ -1321,6 +1339,7 @@ ormsgpack==1.7.0
 packaging==23.0
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
     #   accelerate
     #   aim
     #   altair
@@ -1406,7 +1425,9 @@ path-py==12.5.0
 pathable==0.4.3
     # via jsonschema-path
 pathspec==0.11.2
-    # via black
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   black
 patsy==0.5.3
     # via statsmodels
 pbr==6.0.0
@@ -1701,6 +1722,7 @@ python-box==6.1.0
     # via comet-ml
 python-dateutil==2.8.2
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   adal
     #   aim
     #   arrow
@@ -1805,6 +1827,7 @@ regex==2024.5.15
 requests==2.31.0
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
     #   adal
     #   aim
     #   azure-cli-core
@@ -1877,6 +1900,7 @@ rfc3986-validator==0.1.1
 rich==13.3.2
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
     #   comet-ml
     #   memray
@@ -1988,6 +2012,7 @@ simplejson==3.19.2
     # via comet-ml
 six==1.16.0
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   asttokens
     #   astunparse
     #   azure-core
@@ -2002,6 +2027,7 @@ six==1.16.0
     #   google-pasta
     #   gpy
     #   gsutil
+    #   halo
     #   isodate
     #   junit-xml
     #   kubernetes
@@ -2029,6 +2055,7 @@ six==1.16.0
 smart-open==6.2.0
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
 smmap==5.0.1
     # via gitdb
@@ -2066,6 +2093,8 @@ sphinxcontrib-qthelp==1.0.8
     # via sphinx
 sphinxcontrib-serializinghtml==1.1.10
     # via sphinx
+spinners==0.0.24
+    # via halo
 sqlalchemy==2.0.32
     # via
     #   aim
@@ -2106,6 +2135,7 @@ sympy==1.13.1
     #   torch
 tabulate==0.9.0
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   databricks-cli
     #   jupyter-cache
     #   knack
@@ -2150,6 +2180,7 @@ tensorflow-probability==0.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 termcolor==2.4.0
     # via
+    #   halo
     #   pytest-shutil
     #   pytest-sugar
     #   tensorflow
@@ -2249,6 +2280,7 @@ tornado==6.1
     #   terminado
 tqdm==4.64.1
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   cmdstanpy
@@ -2342,6 +2374,8 @@ typing-extensions==4.12.2
     #   tensorflow
     #   torch
     #   typer
+tzlocal==5.3
+    # via -r python/requirements/cloud-requirements.txt
 ujson==5.10.0
     # via python-lsp-jsonrpc
 uri-template==1.3.0
@@ -2350,6 +2384,7 @@ uritemplate==4.1.1
     # via google-api-python-client
 urllib3==1.26.19
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   botocore
     #   clickhouse-connect
     #   comet-ml
@@ -2445,6 +2480,7 @@ widgetsnbextension==4.0.11
     # via ipywidgets
 wrapt==1.14.1
     # via
+    #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
     #   aws-xray-sdk
     #   comet-ml

@@ -118,16 +118,21 @@ def clip_gradients(
     if grad_clip is None:
         return
 
+    if grad_clip_by not in ["value", "norm", "global_norm"]:
+        raise ValueError(
+            f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
+        )
+
     # Clip by value (each gradient individually).
     if grad_clip_by == "value":
-        for k, v in gradients_dict.copy().items():
+        for k, v in gradients_dict.items():
             gradients_dict[k] = (
                 None if v is None else torch.clip(v, -grad_clip, grad_clip)
             )
 
     # Clip by L2-norm (per gradient tensor).
     elif grad_clip_by == "norm":
-        for k, v in gradients_dict.copy().items():
+        for k, v in gradients_dict.items():
             if v is not None:
                 # Compute the L2-norm of the gradient tensor.
                 norm = v.norm(2).nan_to_num(neginf=-10e8, posinf=10e8)
@@ -137,9 +142,6 @@ def clip_gradients(
 
     # Clip by global L2-norm (across all gradient tensors).
     else:
-        assert (
-            grad_clip_by == "global_norm"
-        ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
         gradients_list = list(gradients_dict.values())
         total_norm = compute_global_norm(gradients_list)
         if len(gradients_list) == 0:
@@ -147,17 +149,15 @@ def clip_gradients(
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.
-        device = gradients_list[0].device
-        clip_coef = grad_clip / torch.maximum(
-            torch.tensor(grad_clip).to(device), total_norm + 1e-6
-        )
-        # Note: multiplying by the clamped coef is redundant when the coef is clamped to
-        # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
-        # CPU <=> device synchronization when the gradients do not reside in CPU memory.
-        clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+        clip_coeff = grad_clip / torch.clamp(total_norm + 1e-6, min=grad_clip)
+        # Note: multiplying by the clamped coefficient is redundant when the coefficient
+        # is clamped to 1, but doing so avoids a `if clip_coeff < 1:` conditional which
+        # can require a CPU <=> device synchronization when the gradients reside in GPU
+        # memory.
+        clip_coeff_clamped = torch.clamp(clip_coeff, max=1.0)
         for g in gradients_list:
             if g is not None:
-                g.detach().mul_(clip_coef_clamped.to(g.device))
+                g.detach().mul_(clip_coeff_clamped.to(g.device))
         return total_norm
 
 
@@ -176,7 +176,6 @@ def compute_global_norm(gradients_list: "ParamList") -> TensorType:
     # If we have no grads, return zero.
     if len(gradients_list) == 0:
         return torch.tensor(0.0)
-    device = gradients_list[0].device
 
     # Compute the global norm.
     total_norm = torch.norm(
@@ -186,7 +185,7 @@ def compute_global_norm(gradients_list: "ParamList") -> TensorType:
                 # Note, we want to avoid overflow in the norm computation, this does
                 # not affect the gradients themselves as we clamp by multiplying and
                 # not by overriding tensor values.
-                .nan_to_num(neginf=-10e8, posinf=10e8).to(device)
+                .nan_to_num(neginf=-10e8, posinf=10e8)
                 for g in gradients_list
                 if g is not None
             ]

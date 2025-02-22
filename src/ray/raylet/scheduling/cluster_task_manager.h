@@ -14,6 +14,10 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
@@ -55,7 +59,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<void(const RayTask &)> announce_infeasible_task,
       ILocalTaskManager &local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
-        return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
+        return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6);
       });
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.

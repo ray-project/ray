@@ -178,7 +178,8 @@ this can be done by modifying the security group to allow inbound access from yo
 
 
 .. warning::
-   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.\n
+   Anyone with Ray Client access can execute arbitrary code on the Ray Cluster.
+
    **Do not expose this to `0.0.0.0/0`.**
 
 Connect to multiple Ray clusters (Experimental)

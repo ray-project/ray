@@ -1028,6 +1028,11 @@ class ActorClass:
         worker = ray._private.worker.global_worker
         worker.check_connected()
 
+        if worker.mode != ray._private.worker.WORKER_MODE:
+            from ray._private.usage import usage_lib
+
+            usage_lib.record_library_usage("core")
+
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
         # could pass the check and then create the same named actor. We should
