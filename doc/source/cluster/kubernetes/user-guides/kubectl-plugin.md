@@ -35,7 +35,7 @@ Replace `~/.local/bin` with the directory in your `PATH`.
 
 ## Shell Completion
 
-1. Follow the instructions for installing and enabling [kubectl plugin-completion]
+Follow the instructions for installing and enabling [kubectl plugin-completion]
 
 ## Usage
 
