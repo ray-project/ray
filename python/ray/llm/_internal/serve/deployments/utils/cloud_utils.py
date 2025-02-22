@@ -1,5 +1,5 @@
 # TODO (genesu): clean up these utils.
-from typing import List, Optional, Tuple, Union, Dict, Any, Callable, Awaitable, TypeVar
+from typing import List, Optional, Tuple, Union, Dict, Any, Callable, Awaitable, TypeVar, NamedTuple
 import os
 
 # TODO (genesu): remove dependency on boto3. Lazy import in the functions.
@@ -545,6 +545,10 @@ def get_aws_credentials(
     return env
 
 
+class CacheEntry(NamedTuple):
+    value: Any
+    expire_time: Optional[float]
+
 class CloudObjectCache:
     """A cache that works with both sync and async fetch functions.
 
@@ -578,7 +582,7 @@ class CloudObjectCache:
             missing_expire_seconds: How long to cache missing objects (None for no expiration)
             exists_expire_seconds: How long to cache existing objects (None for no expiration)
         """
-        self._cache: Dict[str, tuple[Any, Optional[float]]] = {}
+        self._cache: Dict[str, CacheEntry] = {}
         self._max_size = max_size
         self._fetch_fn = fetch_fn
         self._missing_expire_seconds = missing_expire_seconds
@@ -665,17 +669,17 @@ class CloudObjectCache:
         # This is an O(n) operation but it's fine since the cache size is usually small.
         if len(self._cache) >= self._max_size:
             oldest_key = min(
-                self._cache, key=lambda k: self._cache[k][1] or float("inf")
+                self._cache, key=lambda k: self._cache[k].expire_time or float("inf")
             )
             del self._cache[oldest_key]
 
-        self._cache[key] = (value, expire_time)
+        self._cache[key] = CacheEntry(value, expire_time)
 
     def __len__(self) -> int:
         return len(self._cache)
 
 
-def asyncache(
+def remote_object_cache(
     max_size: int,
     missing_expire_seconds: Optional[int] = None,
     exists_expire_seconds: Optional[int] = None,
@@ -683,7 +687,7 @@ def asyncache(
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """A decorator that provides async caching using CloudObjectCache.
 
-    This is a direct replacement for the asyncache/cachetools combination,
+    This is a direct replacement for the remote_object_cache/cachetools combination,
     using CloudObjectCache internally to maintain cache state.
 
     Args:

@@ -3,7 +3,7 @@ import pytest
 import asyncio
 from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     CloudObjectCache,
-    asyncache,
+    remote_object_cache,
 )
 
 
@@ -137,16 +137,16 @@ class TestCloudObjectCache:
         assert len(cache) == 1
 
 
-class TestAsyncacheDecorator:
-    """Tests for the asyncache decorator."""
+class Testremote_object_cacheDecorator:
+    """Tests for the remote_object_cache decorator."""
 
     @pytest.mark.asyncio
     async def test_basic_functionality(self):
-        """Test basic asyncache decorator functionality."""
+        """Test basic remote_object_cache decorator functionality."""
         call_count = 0
         MISSING = object()
 
-        @asyncache(
+        @remote_object_cache(
             max_size=2,
             missing_expire_seconds=1,
             exists_expire_seconds=3,
@@ -181,7 +181,7 @@ class TestAsyncacheDecorator:
         call_count = 0
         MISSING = object()
 
-        @asyncache(
+        @remote_object_cache(
             max_size=2,
             missing_expire_seconds=1,  # 1 second to expire missing object
             exists_expire_seconds=3,  # 3 seconds to expire existing object
@@ -220,10 +220,10 @@ class TestAsyncacheDecorator:
 
     @pytest.mark.asyncio
     async def test_error_handling(self):
-        """Test error handling in asyncache decorator."""
+        """Test error handling in remote_object_cache decorator."""
         call_count = 0
 
-        @asyncache(max_size=2)
+        @remote_object_cache(max_size=2)
         async def fetch(key: str):
             nonlocal call_count
             call_count += 1
@@ -251,7 +251,7 @@ class TestAsyncacheDecorator:
         call_count = 0
         DELAY = 0.1
 
-        @asyncache(max_size=2)
+        @remote_object_cache(max_size=2)
         async def slow_fetch(key: str):
             nonlocal call_count
             call_count += 1

@@ -13,7 +13,7 @@ from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     get_file_from_s3,
     list_subfolders_gcs,
     list_subfolders_s3,
-    asyncache,
+    remote_object_cache,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -175,7 +175,7 @@ def _get_object_from_cloud(object_uri: str) -> Union[str, object]:
         return body_str
 
 
-@asyncache(
+@remote_object_cache(
     max_size=4096,
     missing_expire_seconds=CLOUD_OBJECT_MISSING_EXPIRE_S,
     exists_expire_seconds=CLOUD_OBJECT_EXISTS_EXPIRE_S,
