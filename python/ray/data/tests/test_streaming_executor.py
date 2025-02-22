@@ -483,9 +483,13 @@ def test_execution_callbacks():
             self._before_execution_starts_called = False
             self._after_execution_succeeds_called = False
             self._execution_error = None
+            self._on_execution_step_called = False
 
         def before_execution_starts(self, executor: StreamingExecutor):
             self._before_execution_starts_called = True
+
+        def on_execution_step(self, executor: "StreamingExecutor"):
+            self._on_execution_step_called = True
 
         def after_execution_succeeds(self, executor: StreamingExecutor):
             self._after_execution_succeeds_called = True
@@ -498,16 +502,17 @@ def test_execution_callbacks():
     ctx = ds.context
     callback = CustomExecutionCallback()
     add_execution_callback(callback, ctx)
-    assert get_execution_callbacks(ctx) == [callback]
+    assert callback in get_execution_callbacks(ctx)
 
     ds.take_all()
 
     assert callback._before_execution_starts_called
     assert callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     assert callback._execution_error is None
 
     remove_execution_callback(callback, ctx)
-    assert get_execution_callbacks(ctx) == []
+    assert callback not in get_execution_callbacks(ctx)
 
     # Test the case where the dataset fails due to an error in the UDF.
     ds = ray.data.range(10)
@@ -524,6 +529,7 @@ def test_execution_callbacks():
 
     assert callback._before_execution_starts_called
     assert not callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     error = callback._execution_error
     assert isinstance(error, ValueError), error
 
@@ -545,6 +551,7 @@ def test_execution_callbacks():
 
     assert callback._before_execution_starts_called
     assert not callback._after_execution_succeeds_called
+    assert callback._on_execution_step_called
     error = callback._execution_error
     assert isinstance(error, KeyboardInterrupt), error
 
