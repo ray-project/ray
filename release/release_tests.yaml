@@ -2056,16 +2056,12 @@
   alert: default
 
   variations:
-    - __suffix__: aws0
-    - __suffix__: aws1
-    - __suffix__: aws2
-    - __suffix__: aws3
-    - __suffix__: aws4
-    - __suffix__: aws5
-    - __suffix__: aws6
-    - __suffix__: aws7
-    - __suffix__: aws8
-    - __suffix__: aws9
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: serve_resnet_benchmark
   group: Serve tests

@@ -297,7 +297,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Attempt to delete ObjectRefStreams that were unable to be deleted when
   // AsyncDelObjectRefStream was called (stored in generator_ids_pending_deletion_).
   // This function is called periodically on the io_service_.
-  void TryDeletePendingObjectRefStreams();
+  void TryDelPendingObjectRefStreams();
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();

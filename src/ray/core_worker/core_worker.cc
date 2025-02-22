@@ -964,9 +964,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       "CoreWorker.RecordMetrics");
 
   periodical_runner_->RunFnPeriodically(
-      [this] { TryDeletePendingObjectRefStreams(); },
+      [this] { TryDelPendingObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
-      "CoreWorker.TryDeletePendingObjectRefStreams");
+      "CoreWorker.TryDelPendingObjectRefStreams");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -3479,7 +3479,7 @@ void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
   }
 }
 
-void CoreWorker::TryDeletePendingObjectRefStreams() {
+void CoreWorker::TryDelPendingObjectRefStreams() {
   absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
 
   std::vector<ObjectID> deleted;
