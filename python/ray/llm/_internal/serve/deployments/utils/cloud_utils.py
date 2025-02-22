@@ -2,18 +2,24 @@
 from typing import List, Optional, Tuple, Union, Dict
 import os
 
-# TODO (genesu): remove dependency on boto3. Lazy import in the functions.
-import boto3
 import requests
 import subprocess
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.configs.server_models import S3AWSCredentials
+from ray.llm._internal.utils import try_import
 
 logger = get_logger(__name__)
 
 AWS_EXECUTABLE = "aws"
 GCP_EXECUTABLE = "gcloud"
+
+def try_import_boto3():
+    return try_import("boto3", error=True)
+
+def try_import_google_api():
+    g_api = try_import("google", error=True)
+    return g_api
 
 
 def get_file_from_s3(
@@ -28,6 +34,8 @@ def get_file_from_s3(
     Return: contents of file as string or bytes depending on value of
         decode_as_utf_8. If the file does not exist, returns None.
     """
+    
+    boto3 = try_import_boto3()
     # Parse the S3 path string to extract bucket name and object key
     path_parts = object_uri.replace("s3://", "").split("/", 1)
     bucket_name = path_parts[0]
@@ -86,16 +94,8 @@ def get_gcs_bucket_name_and_prefix(
 
 def get_gcs_client():
     """Returns the default gcs client"""
-
-    try:
-        from google.cloud import storage
-    except ImportError as e:
-        raise ImportError(
-            "You must `pip install google-cloud-storage` "
-            "to download from Google Cloud Storage."
-        ) from e
-
-    return storage.Client()
+    google = try_import_google_api()
+    return google.cloud.storage.Client()
 
 
 def get_file_from_gcs(
@@ -111,26 +111,18 @@ def get_file_from_gcs(
     Return: contents of file as string or bytes depending on value of
         decode_as_utf_8. If the file does not exist, returns None.
     """
-
-    try:
-        from google.api_core.exceptions import Forbidden, NotFound
-    except ImportError as e:
-        raise ImportError(
-            "You must `pip install google-cloud-storage` "
-            "to download from Google Cloud Storage."
-        ) from e
-
+    google = try_import_google_api()
     bucket_name, prefix = get_gcs_bucket_name_and_prefix(object_uri, is_file=True)
 
-    storage_client = get_gcs_client()
+    storage_client = google.cloud.storage.Client()
     try:
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(prefix)
         body = blob.download_as_string()
-    except NotFound:
+    except google.api_core.exceptions.NotFound:
         logger.info(f"URI {object_uri} does not exist.")
         return None
-    except Forbidden:
+    except google.api_core.exceptions.Forbidden:
         logger.info(f"URI {object_uri} is throwing forbidden access.")
         return None
 
@@ -150,7 +142,8 @@ def list_subfolders_s3(folder_uri: str) -> List[str]:
     Return: list of subfolder names in an S3 folder. None of the subfolders
         have a trailing slash.
     """
-
+    boto3 = try_import_boto3()
+    
     # Ensure that the folder_uri has a trailing slash.
     folder_uri = f"{folder_uri.rstrip('/')}/"
 
@@ -252,18 +245,11 @@ def download_files_from_gcs(
             that do not match the provided sub-strings will be skipped by
             default.
     """
-
-    try:
-        from google.cloud import storage
-    except ImportError as e:
-        raise ImportError(
-            "You must `pip install google-cloud-storage` "
-            "to download models from Google Cloud Storage."
-        ) from e
+    google = try_import_google_api()
 
     bucket_name, prefix = get_gcs_bucket_name_and_prefix(bucket_uri)
 
-    client = storage.Client()
+    client = google.cloud.storage.Client()
     bucket = client.bucket(bucket_name)
 
     # Download all files in bucket to the path/snapshots/<f_hash>/ directory.
@@ -314,18 +300,11 @@ def download_model_from_gcs(
         tokenizer_only: If True, only the files needed for the model's
             tokenizer will be downloaded.
     """
-
-    try:
-        from google.cloud import storage
-    except ImportError as e:
-        raise ImportError(
-            "You must `pip install google-cloud-storage` "
-            "to download models from Google Cloud Storage."
-        ) from e
+    google = try_import_google_api()
 
     bucket_name, prefix = get_gcs_bucket_name_and_prefix(bucket_uri)
 
-    client = storage.Client()
+    client = google.cloud.storage.Client()
     bucket = client.bucket(bucket_name)
 
     logger.info(
