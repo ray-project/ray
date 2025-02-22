@@ -358,6 +358,7 @@ if setup_spec.type == SetupType.RAY:
     # ray[all].
     #
     # ray[llm] depends on ray[data].
+    # ray[llm] requires Python >= 3.11
     #
     # Keep this in sync with python/requirements/llm/llm-requirements.txt
     #
@@ -365,7 +366,9 @@ if setup_spec.type == SetupType.RAY:
         set(
             [
                 "vllm>=0.7.2; python_version >= '3.11'",
-                "vllm>=0.7.2; python_version < '3.11' and False",  # This will cause pip to error out on Python < 3.11
+                # Create an unsatisfiable requirement for Python < 3.11
+                # This will cause pip to error with "Cannot install ray[llm] on Python < 3.11"
+                # "ray==0.0.0; python_version < '3.11'",  # Conflicts with ray's own version
                 "asyncache>=0.3.1",
                 "jsonref>=1.1.0",
                 "boto3",
