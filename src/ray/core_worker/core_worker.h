@@ -1909,6 +1909,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // A set of generator IDs that have gone out of scope but couldn't be deleted from
   // the task manager yet (e.g., due to lineage references). We will periodically
   // attempt to delete them in the background until it succeeds.
+  // This field is accessed on the destruction path of an ObjectRefGenerator as well as
+  // by a background thread attempting later deletion, so it must be guarded by a lock.
   absl::flat_hash_set<ObjectID> generator_ids_pending_cleanup_ ABSL_GUARDED_BY(&generator_ids_pending_cleanup_mutex_);
 
   /// TODO(hjiang):
