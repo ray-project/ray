@@ -118,8 +118,9 @@ anyio==4.4.0 \
     # via
     #   starlette
     #   watchfiles
-anyscale==0.24.62 \
-    --hash=sha256:a07115a2a65ffc79852d9d65a8b313987d8850d93f2c383c394ac9af7f08485f
+anyscale==0.26.1 \
+    --hash=sha256:4da5e801e7c86848554575493c0a1f466bad58a1a11c601e21b850f6c4fbb9c4 \
+    --hash=sha256:56fd7f7b4747bf6ec2103ee811c0f90ed3407f9dbf91d5519d9053bce12e88fb
     # via -r release/requirements_buildkite.in
 appnope==0.1.4 \
     --hash=sha256:1de3860566df9caf38f01f86f65e0e13e379af54f9e4bee1e66b48f2efffd1ee \
