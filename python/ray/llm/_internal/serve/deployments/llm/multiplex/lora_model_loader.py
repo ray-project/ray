@@ -44,6 +44,7 @@ global_id_manager = GlobalCounter()
 # Type variable for the retry decorator
 T = TypeVar("T")
 
+
 def retry_with_exponential_backoff(
     max_tries: int,
     exception_to_check: type[Exception],
@@ -52,7 +53,7 @@ def retry_with_exponential_backoff(
     exponential_base: float = 2,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Retry decorator with exponential backoff.
-    
+
     Args:
         max_tries: Maximum number of retry attempts
         exception_to_check: Exception type to catch and retry on
@@ -60,6 +61,7 @@ def retry_with_exponential_backoff(
         max_delay: Maximum delay between retries in seconds
         exponential_base: Base for exponential calculation
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
@@ -73,7 +75,7 @@ def retry_with_exponential_backoff(
                     last_exception = e
                     if attempt == max_tries - 1:  # Last attempt
                         raise last_exception
-                    
+
                     # Log the failure and retry
                     logger.warning(
                         f"Attempt {attempt + 1}/{max_tries} failed: {str(e)}. "
@@ -82,11 +84,14 @@ def retry_with_exponential_backoff(
                     time.sleep(delay)
                     # Calculate next delay with exponential backoff
                     delay = min(delay * exponential_base, max_delay)
-            
+
             # This should never be reached due to the raise in the loop
-            raise last_exception if last_exception else RuntimeError("Unexpected error in retry logic")
-        
+            raise last_exception if last_exception else RuntimeError(
+                "Unexpected error in retry logic"
+            )
+
         return wrapper
+
     return decorator
 
 
