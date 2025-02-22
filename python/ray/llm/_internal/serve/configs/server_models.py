@@ -340,19 +340,21 @@ class LLMConfig(BaseModelExtended):
 
         autoscaling_config = value.pop("autoscaling_config", None)
         try:
-            DeploymentConfig(**value)
+            validated_deployment_config = DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
 
         if autoscaling_config is not None:
             try:
                 validated_autoscaling_config = AutoscalingConfig(**autoscaling_config)
-                value["autoscaling_config"] = validated_autoscaling_config
             except Exception as e:
                 raise ValueError(
                     f"Invalid autoscaling config: {autoscaling_config}"
                 ) from e
+        value = validated_deployment_config.model_dump()
 
+        # Here, we use pydantic.v1 .dict() instead of model_dump() because validated_autoscaling_config is a pydantic.v1 model.
+        value["autoscaling_config"] = validated_autoscaling_config.dict()
         return value
 
     def ray_accelerator_type(self) -> str:

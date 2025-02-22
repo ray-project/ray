@@ -23,15 +23,16 @@ class TestModelConfig:
             model_loading_config=ModelLoadingConfig(
                 model_id="llm_model_id",
             ),
-            deployment_config=dict(
-                autoscaling_config=dict(
-                    min_replicas=1,
-                    max_replicas=2,
-                )
-            ),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 3,
+                    "max_replicas": 7,
+                }
+            },
             accelerator_type="L4",
         )
-
+        assert llm_config.deployment_config["autoscaling_config"]["min_replicas"] == 3
+        assert llm_config.deployment_config["autoscaling_config"]["max_replicas"] == 7
         assert llm_config.model_loading_config.model_id == "llm_model_id"
         assert llm_config.accelerator_type == "L4"
 
@@ -66,7 +67,7 @@ class TestModelConfig:
             )
 
     def test_deployment_config_extra_forbid(self):
-        """Test that deployment config extra is forbid."""
+        """Test that deployment config extra params are forbidden."""
         with pytest.raises(
             pydantic.ValidationError,
         ):
@@ -74,6 +75,23 @@ class TestModelConfig:
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
                 deployment_config={"extra": "invalid"},
             )
+
+    def test_autoscaling_config_extra_ignore(self):
+        """Test that autoscaling config extra params are ignored."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 3,
+                    "max_replicas": 7,
+                    "extra_key": "extra_value",
+                }
+            },
+            accelerator_type="L4",
+        )
+        assert llm_config.deployment_config["autoscaling_config"]["min_replicas"] == 3
+        assert llm_config.deployment_config["autoscaling_config"]["max_replicas"] == 7
+        assert "extra_key" not in llm_config.deployment_config["autoscaling_config"]
 
 
 if __name__ == "__main__":
