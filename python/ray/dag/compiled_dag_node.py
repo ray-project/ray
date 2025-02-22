@@ -2209,7 +2209,12 @@ class CompiledDAG:
         """
         if not self._has_execution_results(execution_index):
             for chan_idx, res in enumerate(result):
-                self._result_buffer[execution_index][chan_idx] = res
+                # avoid caching for any CompiledDAGRef that has already been destructed.
+                if not (
+                    execution_index in self._destructed_ref_idxs
+                    and chan_idx in self._destructed_ref_idxs[execution_index]
+                ):
+                    self._result_buffer[execution_index][chan_idx] = res
 
     def _get_execution_results(
         self, execution_index: int, channel_index: Optional[int]
