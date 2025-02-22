@@ -13,7 +13,7 @@ import ray.actor
 from ray._private.async_compat import try_install_uvloop
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
-from ray._private.ray_logging import get_worker_log_file_name
+from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
@@ -271,35 +271,47 @@ if __name__ == "__main__":
         worker_launched_time_ms=worker_launched_time_ms,
     )
 
-    stdout_fileno = sys.stdout.fileno()
-    stderr_fileno = sys.stderr.fileno()
-    # We also manually set sys.stdout and sys.stderr because that seems to
-    # have an effect on the output buffering. Without doing this, stdout
-    # and stderr are heavily buffered resulting in seemingly lost logging
-    # statements. We never want to close the stdout file descriptor, dup2 will
-    # close it when necessary and we don't want python's GC to close it.
-    sys.stdout = ray._private.utils.open_log(
-        stdout_fileno, unbuffered=True, closefd=False
-    )
-    sys.stderr = ray._private.utils.open_log(
-        stderr_fileno, unbuffered=True, closefd=False
-    )
-
     worker = ray._private.worker.global_worker
 
-    # Setup log file.
-    out_filepath, err_filepath = node.get_log_file_names(
-        get_worker_log_file_name(args.worker_type),
-        unique=False,  # C++ core worker process already creates the file, should use a deterministic function to get the same file path.
-        create_out=True,
-        create_err=True,
-    )
-    worker.set_out_file(out_filepath)
-    worker.set_err_file(err_filepath)
+    # We use different log rotation methods for different platforms, because they provide different
+    # semantics and require different pre-requisites for file rename and deletion.
+    if sys.platform == "win32":
+        # Setup log file.
+        out_file, err_file = node.get_log_file_handles(
+            get_worker_log_file_name(args.worker_type)
+        )
+        configure_log_file(out_file, err_file)
+        worker.set_out_file(out_file.name())
+        worker.set_err_file(err_file.name())
 
-    rotation_max_bytes = os.getenv("RAY_ROTATION_MAX_BYTES", None)
-    if rotation_max_bytes and int(rotation_max_bytes) > 0:
-        worker.set_file_rotation_enabled(True)
+    else:
+        stdout_fileno = sys.stdout.fileno()
+        stderr_fileno = sys.stderr.fileno()
+        # We also manually set sys.stdout and sys.stderr because that seems to
+        # have an effect on the output buffering. Without doing this, stdout
+        # and stderr are heavily buffered resulting in seemingly lost logging
+        # statements. We never want to close the stdout file descriptor, dup2 will
+        # close it when necessary and we don't want python's GC to close it.
+        sys.stdout = ray._private.utils.open_log(
+            stdout_fileno, unbuffered=True, closefd=False
+        )
+        sys.stderr = ray._private.utils.open_log(
+            stderr_fileno, unbuffered=True, closefd=False
+        )
+
+        # Setup log file.
+        out_filepath, err_filepath = node.get_log_file_names(
+            get_worker_log_file_name(args.worker_type),
+            unique=False,  # C++ core worker process already creates the file, should use a deterministic function to get the same file path.
+            create_out=True,
+            create_err=True,
+        )
+        worker.set_out_file(out_filepath)
+        worker.set_err_file(err_filepath)
+
+        rotation_max_bytes = os.getenv("RAY_ROTATION_MAX_BYTES", None)
+        if rotation_max_bytes and int(rotation_max_bytes) > 0:
+            worker.set_file_rotation_enabled(True)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
