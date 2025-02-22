@@ -3488,7 +3488,7 @@ void CoreWorker::TryDeleteObjectRefStreams() {
        it++) {
     const auto &generator_id = *it;
     RAY_LOG(DEBUG).WithField(generator_id)
-      << "TryDelObjectRefStream from generator_ids_pending_deletion_";
+        << "TryDelObjectRefStream from generator_ids_pending_deletion_";
     if (task_manager_->TryDelObjectRefStream(generator_id)) {
       deleted.push_back(generator_id);
     }
