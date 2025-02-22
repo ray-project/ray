@@ -3473,16 +3473,16 @@ void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
   }
 
   {
-    absl::MutexLock lock(&deleted_generator_ids_mutex_);
-    deleted_generator_ids_.insert(generator_id);
+    absl::MutexLock lock(&generator_ids_pending_cleanup_mutex_);
+    generator_ids_pending_cleanup_.insert(generator_id);
   }
 }
 
 void CoreWorker::TryDeleteObjectRefStreams() {
-  absl::MutexLock lock(&deleted_generator_ids_mutex_);
+  absl::MutexLock lock(&generator_ids_pending_cleanup_mutex_);
 
   std::vector<ObjectID> out_of_scope_generator_ids;
-  for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
+  for (auto it = generator_ids_pending_cleanup_.begin(); it != generator_ids_pending_cleanup_.end();
        it++) {
     const auto &generator_id = *it;
     if (task_manager_->TryDelObjectRefStream(generator_id)) {
@@ -3491,7 +3491,7 @@ void CoreWorker::TryDeleteObjectRefStreams() {
   }
 
   for (const auto &generator_id : out_of_scope_generator_ids) {
-    deleted_generator_ids_.erase(generator_id);
+    generator_ids_pending_cleanup_.erase(generator_id);
   }
 }
 
