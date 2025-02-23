@@ -627,10 +627,6 @@ class IMPALA(Algorithm):
             )
 
             while data_packages_for_aggregators:
-
-                def _func(actor, p):
-                    return actor.get_batch(p)
-
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
@@ -639,7 +635,8 @@ class IMPALA(Algorithm):
                     data_packages_for_aggregators[num_agg:],
                 )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
-                    func=[functools.partial(_func, p=p) for p in packs],
+                    func=["get_batch" for p in packs],#TODO: <- kind of ugly
+                    kwargs=[{"episode_refs": p} for p in packs],
                     tag="batches",
                 )
                 self.metrics.log_value(
@@ -698,8 +695,8 @@ class IMPALA(Algorithm):
                     assert len(batch_ref_or_episode_list_ref) == (
                         self.config.num_learners or 1
                     )
-                    learner_results = self.learner_group.update_from_batch(
-                        batch=batch_ref_or_episode_list_ref,
+                    learner_results = self.learner_group.update(
+                        batch_refs=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
                         timesteps=timesteps,
@@ -708,8 +705,8 @@ class IMPALA(Algorithm):
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 else:
-                    learner_results = self.learner_group.update_from_episodes(
-                        episodes=batch_ref_or_episode_list_ref,
+                    learner_results = self.learner_group.update(
+                        episodes_refs=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
                         timesteps=timesteps,
