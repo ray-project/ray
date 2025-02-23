@@ -1,10 +1,10 @@
 import collections
 import inspect
 import logging
-import time
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
+from attr import dataclass
 from fastapi import APIRouter, FastAPI
 
 import ray
@@ -34,6 +34,7 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     extract_self_if_method_call,
     validate_route_prefix,
+    wait_for_interrupt,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -56,6 +57,7 @@ from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -427,6 +429,94 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@DeveloperAPI
+@dataclass(frozen=True)
+class RunTarget:
+    """Represents a Serve application to run for `serve.run_many`."""
+
+    target: Application
+    name: str = SERVE_DEFAULT_APP_NAME
+    route_prefix: Optional[str] = "/"
+    logging_config: Optional[Union[Dict, LoggingConfig]] = None
+
+
+@DeveloperAPI
+def _run_many(
+    targets: Sequence[RunTarget],
+    wait_for_ingress_deployment_creation: bool = True,
+    wait_for_applications_running: bool = True,
+    _local_testing_mode: bool = False,
+) -> List[DeploymentHandle]:
+    """Run many applications and return the handles to their ingress deployments.
+
+    This is only used internally with the _blocking not totally blocking the following
+    code indefinitely until Ctrl-C'd.
+    """
+    if not targets:
+        raise ValueError("No applications provided.")
+
+    if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
+        if not _local_testing_mode:
+            logger.info("Overriding local_testing_mode=True from environment variable.")
+
+        _local_testing_mode = True
+
+    built_apps = []
+    for t in targets:
+        if len(t.name) == 0:
+            raise RayServeException("Application name must a non-empty string.")
+
+        if not isinstance(t.target, Application):
+            raise TypeError(
+                "`serve.run` expects an `Application` returned by `Deployment.bind()`."
+            )
+
+        validate_route_prefix(t.route_prefix)
+
+        built_apps.append(
+            build_app(
+                t.target,
+                name=t.name,
+                route_prefix=t.route_prefix,
+                logging_config=t.logging_config,
+                make_deployment_handle=make_local_deployment_handle
+                if _local_testing_mode
+                else None,
+                default_runtime_env=ray.get_runtime_context().runtime_env
+                if not _local_testing_mode
+                else None,
+            )
+        )
+
+    if _local_testing_mode:
+        # implicitly use the last target's logging config (if provided) in local testing mode
+        logging_config = t.logging_config or LoggingConfig()
+        if not isinstance(logging_config, LoggingConfig):
+            logging_config = LoggingConfig(**(logging_config or {}))
+
+        configure_component_logger(
+            component_name="local_test",
+            component_id="-",
+            logging_config=logging_config,
+            stream_handler_only=True,
+        )
+        return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
+    else:
+        client = _private_api.serve_start(
+            http_options={"location": "EveryNode"},
+            global_logging_config=None,
+        )
+
+        # Record after Ray has been started.
+        ServeUsageTag.API_VERSION.record("v2")
+
+        return client.deploy_applications(
+            built_apps,
+            wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
+            wait_for_applications_running=wait_for_applications_running,
+        )
+
+
 @PublicAPI(stability="stable")
 def _run(
     target: Application,
@@ -442,57 +532,59 @@ def _run(
     This is only used internally with the _blocking not totally blocking the following
     code indefinitely until Ctrl-C'd.
     """
-    if len(name) == 0:
-        raise RayServeException("Application name must a non-empty string.")
-
-    if not isinstance(target, Application):
-        raise TypeError(
-            "`serve.run` expects an `Application` returned by `Deployment.bind()`."
-        )
-
-    if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
-        if not _local_testing_mode:
-            logger.info("Overriding local_testing_mode=True from environment variable.")
-
-        _local_testing_mode = True
-
-    validate_route_prefix(route_prefix)
-
-    if _local_testing_mode:
-        if not isinstance(logging_config, LoggingConfig):
-            logging_config = LoggingConfig(**(logging_config or {}))
-
-        configure_component_logger(
-            component_name="local_test",
-            component_id="-",
-            logging_config=logging_config,
-            stream_handler_only=True,
-        )
-        built_app = build_app(
-            target,
-            name=name,
-            make_deployment_handle=make_local_deployment_handle,
-        )
-        handle = built_app.deployment_handles[built_app.ingress_deployment_name]
-    else:
-        client = _private_api.serve_start(
-            http_options={"location": "EveryNode"},
-            global_logging_config=logging_config,
-        )
-        # Record after Ray has been started.
-        ServeUsageTag.API_VERSION.record("v2")
-        handle = client.deploy_application(
-            build_app(
-                target,
+    return _run_many(
+        [
+            RunTarget(
+                target=target,
                 name=name,
-                default_runtime_env=ray.get_runtime_context().runtime_env,
-            ),
-            blocking=_blocking,
-            route_prefix=route_prefix,
-            logging_config=logging_config,
-        )
+                route_prefix=route_prefix,
+                logging_config=logging_config,
+            )
+        ],
+        wait_for_applications_running=_blocking,
+        _local_testing_mode=_local_testing_mode,
+    )[0]
 
-    return handle
+
+@DeveloperAPI
+def run_many(
+    targets: Sequence[RunTarget],
+    blocking: bool = False,
+    wait_for_ingress_deployment_creation: bool = True,
+    wait_for_applications_running: bool = True,
+    _local_testing_mode: bool = False,
+) -> List[DeploymentHandle]:
+    """Run many applications and return the handles to their ingress deployments.
+
+    Args:
+        targets:
+            A sequence of `RunTarget`,
+            each containing information about an application to deploy.
+        blocking: Whether this call should be blocking. If True, it
+            will loop and log status until Ctrl-C'd.
+        wait_for_ingress_deployment_creation: Whether to wait for the ingress
+            deployments to be created.
+        wait_for_applications_running: Whether to wait for the applications to be
+            running. Note that this effectively implies
+            `wait_for_ingress_deployment_creation=True`,
+            because the ingress deployments must be created
+            before the applications can be running.
+
+    Returns:
+        List[DeploymentHandle]: A list of handles that can be used
+            to call the applications.
+    """
+    handles = _run_many(
+        targets,
+        wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
+        wait_for_applications_running=wait_for_applications_running,
+        _local_testing_mode=_local_testing_mode,
+    )
+
+    if blocking:
+        wait_for_interrupt()
+
+    return handles
 
 
 @PublicAPI(stability="stable")
@@ -537,18 +629,10 @@ def run(
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
     )
-    logger.info(f"Deployed app '{name}' successfully.")
 
     if blocking:
-        try:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
-        except KeyboardInterrupt:
-            logger.warning("Got KeyboardInterrupt, exiting...")
-            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
-            # from the main script.
-            raise
+        wait_for_interrupt()
+
     return handle
 
 
