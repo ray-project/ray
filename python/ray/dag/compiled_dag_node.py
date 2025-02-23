@@ -558,6 +558,17 @@ class ExecutableTask:
     def requires_nccl_collective(self) -> bool:
         return isinstance(self.nccl_op_type, _CollectiveOp)
 
+    def destroy_cuda_event(self):
+        """
+        If this executable task has produced a GPU future that is not yet waited,
+        that future is in the channel context cache. Pop the future from the cache
+        and destroy the CUDA event it contains.
+        """
+        from ray.experimental.channel.common import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.remove_gpu_future(self.task_idx)
+
     def cancel(self):
         """
         Close all the input channels and the output channel. The exact behavior
@@ -570,17 +581,6 @@ class ExecutableTask:
             self.output_writer.close()
         if self.nccl_ch is not None:
             self.nccl_ch.close()
-
-    def destroy_cuda_event(self):
-        """
-        If this executable task has produced a GPU future that is not yet waited,
-        that future is in the channel context cache. Pop the future from the cache
-        and destroy the CUDA event it contains.
-        """
-        from ray.experimental.channel.common import ChannelContext
-
-        ctx = ChannelContext.get_current().serialization_context
-        ctx.pop_gpu_future(self.task_idx)
 
     def prepare(self, overlap_gpu_communication: bool = False):
         """
@@ -741,9 +741,7 @@ class ExecutableTask:
         # if overlapping GPU communication.
         if self.output_writer is not None:
             if overlap_gpu_communication and self.nccl_op is not None:
-                output_val = GPUFuture(output_val)
-                # Cache the GPU future such that its CUDA event is properly destroyed.
-                output_val.cache(self.task_idx)
+                output_val = GPUFuture(output_val, self.task_idx)
 
             try:
                 self.output_writer.write(output_val)

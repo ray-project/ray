@@ -118,7 +118,8 @@ class CPUCommunicator(Communicator):
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
     ):
-        # See the comment on `send`.
+        # P2P operations are done via a shared memory channel, initialized in
+        # `create_channel` of `TorchTensorType`.
         pass
 
     def allreduce(

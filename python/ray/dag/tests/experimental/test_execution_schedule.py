@@ -117,7 +117,6 @@ class TestSelectNextNodes:
                 dag_node_2,
             ],
         }
-        # The graph is not accessed because there are no NCCL ops.
         next_nodes = _select_next_nodes(dict(), mock_actor_to_candidates)
         assert len(next_nodes) == 1
         assert next_nodes[0] == dag_node_1
@@ -452,7 +451,7 @@ class TestBuildDAGNodeOperationGraph:
 
         This test case aims to verify whether the function correctly adds an edge
         from the operation with `bind_index` i to the operation with `bind_index`
-        i+1 if they belong to the same actor and are non-NCCL operations.
+        i+1 if they belong to the same actor and are not NCCL operations.
         """
         monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
@@ -535,7 +534,6 @@ class TestGenerateActorToExecutionSchedule:
     ):
         """
         Add a data dependency between the upstream and downstream nodes.
-        The upstream node's output is read by the downstream node.
 
         Args:
             upstream: The upstream node.
@@ -752,7 +750,7 @@ class TestGenerateActorToExecutionSchedule:
             graph[task_idx_1_2].op,
         ]
         assert actor_to_execution_schedule[fake_actor_2] == [
-            # The order of `task_idx_2_2 (P2P recv)` and `task_idx_2_1 (P2P send)`
+            # The order of `task_idx_2_2` (P2P recv) and `task_idx_2_1` (P2P send)
             # is important.
             graph[task_idx_2_2].op,
             graph[task_idx_2_1].op,
@@ -858,7 +856,7 @@ class TestGenerateActorToExecutionSchedule:
         task_idx_1_3, exec_task_idx_1_3 = 2, 2
         task_idx_1_6, exec_task_idx_1_6 = 3, 5
         task_idx_1_8, exec_task_idx_1_8 = 4, 7
-        # worker 1 NCCL P2P operations.
+        # worker_1's NCCL P2P operations.
         task_idx_1_2, exec_task_idx_1_2 = 5, 1
         task_idx_1_4, exec_task_idx_1_4 = 6, 3
         task_idx_1_5, exec_task_idx_1_5 = 7, 4
@@ -868,7 +866,7 @@ class TestGenerateActorToExecutionSchedule:
         task_idx_2_3, exec_task_idx_2_3 = 10, 2
         task_idx_2_6, exec_task_idx_2_6 = 11, 5
         task_idx_2_7, exec_task_idx_2_7 = 12, 6
-        # worker 2 NCCL P2P operations.
+        # worker_2's NCCL P2P operations.
         task_idx_2_1, exec_task_idx_2_1 = 13, 0
         task_idx_2_4, exec_task_idx_2_4 = 14, 3
         task_idx_2_5, exec_task_idx_2_5 = 15, 4
@@ -1009,7 +1007,7 @@ class TestGenerateActorToExecutionSchedule:
         assert actor_to_execution_schedule[worker_2] == [
             graph[task_idx_2_1].op,
             graph[task_idx_2_2].op,
-            # The order of `task_idx_2_5 (P2P recv)` and `task_idx_2_4 (P2P send)`
+            # The order of `task_idx_2_5` (P2P recv) and `task_idx_2_4` (P2P send)
             # is important.
             graph[task_idx_2_5].op,
             graph[task_idx_2_3].op,
@@ -1134,7 +1132,7 @@ class TestGenerateActorToExecutionSchedule:
         )
         extracted_overlapped_schedule = _extract_execution_schedule(overlapped_schedule)
         assert len(extracted_overlapped_schedule) == 1
-        # The collective operation is launched first such that it can overlap
+        # The collective operation is launched first such that it is overlapped
         # with computation.
         assert extracted_overlapped_schedule[fake_actor] == [
             graph[task_idx_2].op,

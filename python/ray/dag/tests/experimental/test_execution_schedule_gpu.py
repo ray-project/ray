@@ -12,7 +12,6 @@ import torch
 from typing import Optional
 from ray.dag.compiled_dag_node import CompiledDAG
 
-
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
