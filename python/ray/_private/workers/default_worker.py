@@ -281,8 +281,8 @@ if __name__ == "__main__":
             get_worker_log_file_name(args.worker_type)
         )
         configure_log_file(out_file, err_file)
-        worker.set_out_file(out_file.name())
-        worker.set_err_file(err_file.name())
+        worker.set_out_file(out_file.name)
+        worker.set_err_file(err_file.name)
 
     else:
         stdout_fileno = sys.stdout.fileno()
