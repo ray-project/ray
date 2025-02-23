@@ -182,10 +182,9 @@ def test_system_concurrency_group(ray_start_regular_shared):
 @ray.remote(concurrency_groups={"io": 1, "compute": 1})
 class Actor:
     def __init__(self):
-        pass
+        self.threading_data = threading.local()
 
     def set(self, value):
-        self.threading_data = threading.local()
         self.threading_data.value = value
         return threading.current_thread().ident
 
@@ -208,17 +207,17 @@ class TestThreadingLocalData:
         assert tid_1 == tid_2
         assert value == "f1"
 
-    # def test_tasks_on_different_executors(self, ray_start_regular_shared):
-    #     a = Actor.remote()
-    #     tid_1 = ray.get(a.set.options(concurrency_group="io").remote("f1"))
-    #     tid_2 = ray.get(a.set.options(concurrency_group="compute").remote("f2"))
-    #     assert tid_1 != tid_2
-    #     value, tid_3 = ray.get(a.get.options(concurrency_group="io").remote())
-    #     assert tid_1 == tid_3
-    #     assert value == "f1"
-    #     value, tid_4 = ray.get(a.get.options(concurrency_group="compute").remote())
-    #     assert tid_2 == tid_4
-    #     assert value == "f2"
+    def test_tasks_on_different_executors(self, ray_start_regular_shared):
+        a = Actor.remote()
+        tid_1 = ray.get(a.set.options(concurrency_group="io").remote("f1"))
+        tid_3 = ray.get(a.set.options(concurrency_group="compute").remote("f2"))
+        value, tid_2 = ray.get(a.get.options(concurrency_group="io").remote())
+        assert tid_1 == tid_2
+        assert value == "f1"
+
+        value, tid_4 = ray.get(a.get.options(concurrency_group="compute").remote())
+        assert tid_3 == tid_4
+        assert value == "f2"
 
 
 if __name__ == "__main__":

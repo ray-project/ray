@@ -44,8 +44,9 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
   // this actor, the tasks of default group will be performed in main thread instead of
   // any executor pool, otherwise tasks in any concurrency group should be performed in
   // the thread pools instead of main thread.
-  if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) ||
-      !concurrency_groups.empty()) {
+  if (max_concurrency_for_default_concurrency_group > 0 &&
+      (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) ||
+       !concurrency_groups.empty())) {
     default_executor_ =
         std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
     executor_releasers_.push_back(InitializeExecutor(default_executor_));
@@ -95,18 +96,27 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
     if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
       PyGILState_STATE gstate;
       PyThreadState *tstate;
-      executor->Post([this, &gstate, &tstate]() {
+      // Create a promise/future pair to synchronize the initialization
+      std::promise<void> init_promise;
+      auto init_future = init_promise.get_future();
+
+      executor->Post([this, &gstate, &tstate, &init_promise]() {
         // `PyGILState_Ensure()` makes this C++ thread appear as a Python thread
         // from the perspective of the Python interpreter, regardless of whether
         // the thread is executing Python code (i.e., Ray tasks or actors) or not.
         gstate = PyGILState_Ensure();
         // Release the GIL so the main thread can acquire it to execute the
         // control plane logic.
-        PyEval_SaveThread();
+        tstate = PyEval_SaveThread();
+        init_promise.set_value();
       });
+
+      // Wait for Python initialization to complete
+      init_future.wait();
+
       return [this, &gstate, &tstate, executor]() {
         executor->Post([this, &gstate, &tstate]() {
-          // PyEval_RestoreThread(tstate);
+          PyEval_RestoreThread(tstate);
           PyGILState_Release(gstate);
         });
       };
