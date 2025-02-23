@@ -38,6 +38,7 @@ py_test_module_list(
     "serve/deployments/test_streaming_error_handler.py",
     "serve/observability/usage_telemetry/test_usage.py",
     "serve/deployments/llm/vllm/test_vllm_engine.py",
+    "serve/utils/test_cloud_utils.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "small",

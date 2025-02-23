@@ -121,18 +121,17 @@ class TaskCounter {
  private:
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
-  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_
-      ABSL_GUARDED_BY(&mu_);
+  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_ ABSL_GUARDED_BY(mu_);
 
   // Additionally tracks the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
   // overlap with those of counter_.
-  CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(&mu_);
-  CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(&mu_);
+  CounterMap<std::pair<std::string, bool>> running_in_get_counter_ ABSL_GUARDED_BY(mu_);
+  CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ ABSL_GUARDED_BY(mu_);
 
-  std::string job_id_ ABSL_GUARDED_BY(&mu_);
+  std::string job_id_ ABSL_GUARDED_BY(mu_);
   // Used for actor state tracking.
-  std::string actor_name_ ABSL_GUARDED_BY(&mu_);
-  int64_t num_tasks_running_ ABSL_GUARDED_BY(&mu_) = 0;
+  std::string actor_name_ ABSL_GUARDED_BY(mu_);
+  int64_t num_tasks_running_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 struct TaskToRetry {
@@ -294,7 +293,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// generator task.
   void AsyncDelObjectRefStream(const ObjectID &generator_id);
 
-  void TryDeleteObjectRefStreams();
+  // Attempt to delete ObjectRefStreams that were unable to be deleted when
+  // AsyncDelObjectRefStream was called (stored in generator_ids_pending_deletion_).
+  // This function is called periodically on the io_service_.
+  void TryDelPendingObjectRefStreams();
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -1903,7 +1905,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Worker's PID
   uint32_t pid_;
 
-  absl::flat_hash_set<ObjectID> deleted_generator_ids_;
+  // Guards generator_ids_pending_deletion_.
+  absl::Mutex generator_ids_pending_deletion_mutex_;
+
+  // A set of generator IDs that have gone out of scope but couldn't be deleted from
+  // the task manager yet (e.g., due to lineage references). We will periodically
+  // attempt to delete them in the background until it succeeds.
+  // This field is accessed on the destruction path of an ObjectRefGenerator as well as
+  // by a background thread attempting later deletion, so it must be guarded by a lock.
+  absl::flat_hash_set<ObjectID> generator_ids_pending_deletion_
+      ABSL_GUARDED_BY(generator_ids_pending_deletion_mutex_);
 
   /// TODO(hjiang):
   /// 1. Cached job runtime env info, it's not implemented at first place since

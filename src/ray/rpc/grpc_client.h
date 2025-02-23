@@ -17,6 +17,9 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
