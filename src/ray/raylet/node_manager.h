@@ -423,7 +423,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
+  void ProcessDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
                                     const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
@@ -657,6 +657,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
+
+  void CheckWorkerSockets();
+
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);
