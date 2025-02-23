@@ -3483,7 +3483,7 @@ void CoreWorker::TryDelPendingObjectRefStreams() {
   absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
 
   std::vector<ObjectID> deleted;
-  for (const auto& generator_id : generator_ids_pending_deletion_) {
+  for (const auto &generator_id : generator_ids_pending_deletion_) {
     RAY_LOG(DEBUG).WithField(generator_id)
         << "TryDelObjectRefStream from generator_ids_pending_deletion_";
     if (task_manager_->TryDelObjectRefStream(generator_id)) {

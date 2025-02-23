@@ -121,8 +121,7 @@ class TaskCounter {
  private:
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
-  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_
-      ABSL_GUARDED_BY(mu_);
+  CounterMap<std::tuple<std::string, TaskStatusType, bool>> counter_ ABSL_GUARDED_BY(mu_);
 
   // Additionally tracks the sub-states of RUNNING_IN_RAY_GET/WAIT. The counters here
   // overlap with those of counter_.
