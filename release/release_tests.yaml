@@ -1973,7 +1973,6 @@
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -1996,7 +1995,6 @@
     byod: {}
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2027,7 +2025,6 @@
       type: gpu
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2050,7 +2047,6 @@
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
@@ -2060,26 +2056,12 @@
   alert: default
 
   variations:
-    - __suffix__: aws0
-    - __suffix__: aws1
-    - __suffix__: aws2
-    - __suffix__: aws3
-    - __suffix__: aws4
-    - __suffix__: aws5
-    - __suffix__: aws6
-    - __suffix__: aws7
-    - __suffix__: aws8
-    - __suffix__: aws9
-    - __suffix__: aws10
-    - __suffix__: aws11
-    - __suffix__: aws12
-    - __suffix__: aws13
-    - __suffix__: aws14
-    - __suffix__: aws15
-    - __suffix__: aws16
-    - __suffix__: aws17
-    - __suffix__: aws18
-    - __suffix__: aws19
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: serve_resnet_benchmark
   group: Serve tests
@@ -2093,7 +2075,6 @@
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
-    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 7200
