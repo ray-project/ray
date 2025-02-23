@@ -635,7 +635,7 @@ class IMPALA(Algorithm):
                     data_packages_for_aggregators[num_agg:],
                 )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
-                    func=["get_batch" for p in packs],#TODO: <- kind of ugly
+                    func="get_batch",
                     kwargs=[{"episode_refs": p} for p in packs],
                     tag="batches",
                 )

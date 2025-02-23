@@ -521,23 +521,23 @@ class FaultTolerantActorManager:
         if not remote_actor_ids:
             remote_actor_ids = self.actor_ids()
 
-        # Perform round robin assignment of all provided calls for any number of our
+        num_calls = (
+            len(func) if isinstance(func, list)
+            else len(kwargs) if isinstance(kwargs, list)
+            else len(remote_actor_ids)
+        )
+
+        # Perform round-robin assignment of all provided calls for any number of our
         # actors. Note that this way, some actors might receive more than 1 request in
         # this call.
-        if isinstance(func, list) and len(remote_actor_ids) != len(func):
+        if num_calls != len(remote_actor_ids):
             remote_actor_ids = [
                 (self._current_actor_id + i) % self.num_actors()
-                for i in range(len(func))
+                for i in range(num_calls)
             ]
             # Update our round-robin pointer.
-            self._current_actor_id += len(func)
+            self._current_actor_id += num_calls
             self._current_actor_id %= self.num_actors()
-
-        if kwargs is None:
-            if isinstance(func, list):
-                kwargs = [{} for _ in range(len(func))]
-            else:
-                kwargs = {}
 
         if healthy_only:
             func, kwargs, remote_actor_ids = self._filter_by_state(
@@ -547,36 +547,37 @@ class FaultTolerantActorManager:
         num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
         # Drop calls to actors that are too busy.
         if isinstance(func, list):
-            assert len(func) == len(kwargs) == len(remote_actor_ids)
+            assert len(func) == len(remote_actor_ids)
             limited_func = []
             limited_kwargs = []
             limited_remote_actor_ids = []
-            for i, k, f in zip(remote_actor_ids, kwargs, func):
+            for i, f, raid in enumerate(zip(func, remote_actor_ids)):
                 num_outstanding_reqs = self._remote_actor_states[
-                    i
+                    raid
                 ].num_in_flight_async_requests
                 if (
-                    num_outstanding_reqs + num_calls_to_make[i]
+                    num_outstanding_reqs + num_calls_to_make[raid]
                     < self._max_remote_requests_in_flight_per_actor
                 ):
-                    num_calls_to_make[i] += 1
+                    num_calls_to_make[raid] += 1
+                    k = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
                     limited_func.append(f)
                     limited_kwargs.append(k)
-                    limited_remote_actor_ids.append(i)
+                    limited_remote_actor_ids.append(raid)
         else:
             limited_func = func
             limited_kwargs = kwargs
             limited_remote_actor_ids = []
-            for i in remote_actor_ids:
+            for raid in remote_actor_ids:
                 num_outstanding_reqs = self._remote_actor_states[
-                    i
+                    raid
                 ].num_in_flight_async_requests
                 if (
-                    num_outstanding_reqs + num_calls_to_make[i]
+                    num_outstanding_reqs + num_calls_to_make[raid]
                     < self._max_remote_requests_in_flight_per_actor
                 ):
-                    num_calls_to_make[i] += 1
-                    limited_remote_actor_ids.append(i)
+                    num_calls_to_make[raid] += 1
+                    limited_remote_actor_ids.append(raid)
 
         remote_calls = self._call_actors(
             func=limited_func,
@@ -758,40 +759,33 @@ class FaultTolerantActorManager:
         Returns:
             A list of ObjectRefs returned from the remote calls.
         """
+        if remote_actor_ids is None:
+            remote_actor_ids = self.actor_ids()
+
         if isinstance(func, list):
             assert len(remote_actor_ids) == len(
                 func
             ), "Funcs must have the same number of callables as actor indices."
-            if kwargs is not None:
-                assert len(kwargs) == len(remote_actor_ids), (
-                    f"`kwargs` ({kwargs}) must have the same length as actor indices "
-                    f"({remote_actor_ids})!"
-                )
-            else:
-                kwargs = [{} for _ in range(len(remote_actor_ids))]
-        elif kwargs is None:
-            kwargs = {}
-
-        if remote_actor_ids is None:
-            remote_actor_ids = self.actor_ids()
 
         calls = []
         if isinstance(func, list):
-            for i, (actor_id, f) in enumerate(zip(remote_actor_ids, func)):
+            for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
-                    calls.append(getattr(self._actors[actor_id], f).remote(**kwargs[i]))
+                    calls.append(getattr(self._actors[raid], f).remote(
+                        **(kwargs[i] if isinstance(kwargs, list) else (kwargs or {}))
+                    ))
                 else:
                     calls.append(self._actors[i].apply.remote(f))
         elif isinstance(func, str):
-            for i, actor_id in enumerate(remote_actor_ids):
+            for i, raid in enumerate(remote_actor_ids):
                 calls.append(
-                    getattr(self._actors[actor_id], func).remote(
-                        **(kwargs[i] if isinstance(kwargs, list) else kwargs)
+                    getattr(self._actors[raid], func).remote(
+                        **(kwargs[i] if isinstance(kwargs, list) else (kwargs or {}))
                     )
                 )
         else:
-            for actor_id in remote_actor_ids:
-                calls.append(self._actors[actor_id].apply.remote(func))
+            for raid in remote_actor_ids:
+                calls.append(self._actors[raid].apply.remote(func))
 
         return calls
 
@@ -898,26 +892,26 @@ class FaultTolerantActorManager:
         self,
         *,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
-        kwargs: Optional[Union[List[Any], List[List[Any]]]] = None,
+        kwargs: Optional[Union[Dict, List[Dict]]] = None,
         remote_actor_ids: List[int],
     ):
         """Filter out func and remote worker ids by actor state.
 
         Args:
             func: A single, or a list of Callables.
-            kwargs: An optional single kwargs dict or a list of kwargs dict matching the
-                list of provided `func` or `remote_actor_ids`. In the first case (single
-                dict), use `kwargs` on all remote calls. The latter case (list of
-                dicts) allows you to define individualized kwarg dicts per actor.
+            kwargs: An optional single kwargs dict or a list of kwargs dicts matching
+                the list of provided `func` or `remote_actor_ids`. In case of a single
+                dict, uses `kwargs` on all remote calls. In case of a list of dicts,
+                the given kwarg dicts are per actor `func` or per `remote_actor_ids`.
             remote_actor_ids: IDs of potential remote workers to apply func on.
 
         Returns:
             A tuple of (filtered func, filtered remote worker ids).
         """
         if isinstance(func, list):
-            if not kwargs:
-                kwargs = [{} for _ in range(len(func))]
-            assert len(remote_actor_ids) == len(func) == len(kwargs), (
+            #if not kwargs:
+            #    kwargs = [{} for _ in range(len(func))]
+            assert len(remote_actor_ids) == len(func), (
                 "Func must have the same number of callables as remote actor ids."
             )
             # We are given a list of functions to apply.
@@ -925,8 +919,9 @@ class FaultTolerantActorManager:
             temp_func = []
             temp_remote_actor_ids = []
             temp_kwargs = []
-            for f, k, i in zip(func, kwargs, remote_actor_ids):
+            for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
                 if self.is_actor_healthy(i):
+                    k = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
                     temp_func.append(f)
                     temp_kwargs.append(k)
                     temp_remote_actor_ids.append(i)
