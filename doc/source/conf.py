@@ -583,7 +583,6 @@ autosummary_filename_map = {
 autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
-    "asyncache",
     "async_timeout",
     "backoff",
     "cachetools",

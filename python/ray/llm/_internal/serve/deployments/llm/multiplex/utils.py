@@ -1,11 +1,7 @@
 import json
 import subprocess
-import time
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-# TODO (genesu): remove dependency on asyncache.
-from asyncache import cached
-from cachetools import TLRUCache
 from fastapi import HTTPException
 from filelock import FileLock
 
@@ -17,6 +13,7 @@ from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     get_file_from_s3,
     list_subfolders_gcs,
     list_subfolders_s3,
+    remote_object_cache,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -149,21 +146,6 @@ def sync_model(
             raise
 
 
-def _validate_model_ttu(key, value, now):
-    # Return the expiration time depending on value
-    # (now + some offset)
-    # For get_lora_finetuned_context_length, we want to periodically re-check if
-    # the files are available if they weren't before (because they
-    # might have been uploaded in the meantime).
-    # If they were uploaded and we cached the sequence length response,
-    # then we just need to guard against users deleting the files
-    # from the bucket, which shouldn't happen often.
-    if value is CLOUD_OBJECT_MISSING:
-        return now + CLOUD_OBJECT_MISSING_EXPIRE_S
-    else:
-        return now + CLOUD_OBJECT_EXISTS_EXPIRE_S
-
-
 @make_async
 def _get_object_from_cloud(object_uri: str) -> Union[str, object]:
     """Gets an object from the cloud.
@@ -193,21 +175,22 @@ def _get_object_from_cloud(object_uri: str) -> Union[str, object]:
         return body_str
 
 
-@cached(
-    cache=TLRUCache(
-        maxsize=4096,
-        getsizeof=lambda x: 1,
-        ttu=_validate_model_ttu,
-        timer=time.monotonic,
-    )
+@remote_object_cache(
+    max_size=4096,
+    missing_expire_seconds=CLOUD_OBJECT_MISSING_EXPIRE_S,
+    exists_expire_seconds=CLOUD_OBJECT_EXISTS_EXPIRE_S,
+    missing_object_value=CLOUD_OBJECT_MISSING,
 )
 async def get_object_from_cloud(object_uri: str) -> Union[str, object]:
-    """Calls _get_object_from_cloud with caching.
+    """Gets an object from the cloud with caching.
 
-    We separate the caching logic from the implementation, so the
-    implementation can be faked while testing the caching logic in unit tests.
+    The cache will store missing objects for a short time and existing objects for
+    a longer time. This prevents unnecessary cloud API calls when objects don't exist
+    while ensuring we don't cache missing objects for too long in case they get created.
+
+    Returns:
+        The body of the object if it exists, or CLOUD_OBJECT_MISSING if it doesn't.
     """
-
     return await _get_object_from_cloud(object_uri)
 
 
