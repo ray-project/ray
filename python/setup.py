@@ -368,7 +368,6 @@ if setup_spec.type == SetupType.RAY:
                 "asyncache>=0.3.1",
                 "jsonref>=1.1.0",
                 "boto3",
-                "async_timeout",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
