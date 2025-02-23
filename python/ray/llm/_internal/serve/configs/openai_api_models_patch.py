@@ -88,10 +88,14 @@ class ResponseFormatJsonObject(JSONSchemaBase):
 
     @model_validator(mode="after")
     def read_and_validate_json_schema(self):
-        from ray.llm._internal.serve.configs.json_mode_utils import try_load_json_schema
+        from ray.llm._internal.serve.configs.json_mode_utils import JSONSchemaValidator
+
+        # JSONSchemaValidator is a singleton so the initialization cost is
+        # amortized over all the processes's lifetime.
+        validator = JSONSchemaValidator()
 
         # Make sure the json schema is valid and dereferenced.
-        self.json_schema = try_load_json_schema(self.json_schema)
+        self.json_schema = validator.try_load_json_schema(self.json_schema)
         return self
 
     @property
