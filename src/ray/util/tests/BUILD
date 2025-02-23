@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "COPTS", "ray_cc_test", "ray_cc_library")
+load("//bazel:ray.bzl", "COPTS", "ray_cc_test", "ray_cc_library", "ray_cc_binary")
 
 ray_cc_test(
     name = "array_test",
@@ -343,5 +343,18 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
     size = "small",
+    tags = ["team:core"],
+)
+
+ray_cc_test(
+    name = "process_cleanup_test",
+    srcs = ["process_cleanup_test.cc"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:process_cleaner",
+        "@com_google_googletest//:gtest_main",
+    ],
     tags = ["team:core"],
 )
