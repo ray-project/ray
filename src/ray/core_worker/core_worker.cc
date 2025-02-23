@@ -964,9 +964,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       "CoreWorker.RecordMetrics");
 
   periodical_runner_->RunFnPeriodically(
-      [this] { TryDeleteObjectRefStreams(); },
+      [this] { TryDelPendingObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
-      "CoreWorker.GCStreamingGeneratorMetadata");
+      "CoreWorker.TryDelPendingObjectRefStreams");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -3471,21 +3471,28 @@ void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
   if (task_manager_->TryDelObjectRefStream(generator_id)) {
     return;
   }
-  deleted_generator_ids_.insert(generator_id);
+
+  {
+    // TryDelObjectRefStream is thread safe so no need to hold the lock above.
+    absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
+    generator_ids_pending_deletion_.insert(generator_id);
+  }
 }
 
-void CoreWorker::TryDeleteObjectRefStreams() {
-  std::vector<ObjectID> out_of_scope_generator_ids;
-  for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
-       it++) {
-    const auto &generator_id = *it;
+void CoreWorker::TryDelPendingObjectRefStreams() {
+  absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
+
+  std::vector<ObjectID> deleted;
+  for (const auto &generator_id : generator_ids_pending_deletion_) {
+    RAY_LOG(DEBUG).WithField(generator_id)
+        << "TryDelObjectRefStream from generator_ids_pending_deletion_";
     if (task_manager_->TryDelObjectRefStream(generator_id)) {
-      out_of_scope_generator_ids.push_back(generator_id);
+      deleted.push_back(generator_id);
     }
   }
 
-  for (const auto &generator_id : out_of_scope_generator_ids) {
-    deleted_generator_ids_.erase(generator_id);
+  for (const auto &generator_id : deleted) {
+    generator_ids_pending_deletion_.erase(generator_id);
   }
 }
 
