@@ -1063,7 +1063,7 @@ class Learner(Checkpointable):
                 {next(iter(self.module.keys())): training_data.batch},
                 env_steps=len(training_data.batch),
             )
-        # If we have already an `MultiAgentBatch` but with `numpy` array, convert to
+        # If we already have an `MultiAgentBatch` but with `numpy` array, convert to
         # tensors.
         elif (
             isinstance(training_data.batch, MultiAgentBatch)
