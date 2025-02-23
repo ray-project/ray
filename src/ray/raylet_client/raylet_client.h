@@ -249,6 +249,10 @@ class RayletClientInterface : public PinObjectsInterface,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) = 0;
+
   virtual void IsLocalWorkerDead(
       const WorkerID &worker_id,
       const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
@@ -498,6 +502,11 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      override;
 
   void IsLocalWorkerDead(
       const WorkerID &worker_id,
