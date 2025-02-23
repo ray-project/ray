@@ -1,4 +1,7 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
 COPTS = ["-DSPDLOG_COMPILED_LIB"]
+
 cc_library(
     name = "spdlog",
     srcs = glob([
@@ -12,12 +15,12 @@ cc_library(
         "include/spdlog/fmt/bundled/*.h",
         "include/spdlog/sinks/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "include/",
     ],
-    strip_include_prefix = 'include',
-    copts = COPTS,
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
     deps = [
     ],
-    visibility = ["//visibility:public"],
 )

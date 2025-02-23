@@ -1,9 +1,11 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
 COPTS = ["-DUSE_SSL=1"] + select({
     "@platforms//os:windows": [
         "-D_CRT_DECLARE_NONSTDC_NAMES=0",  # don't define off_t, to avoid conflicts
         "-D_WIN32",
         "-DOPENSSL_IS_BORINGSSL",
-        "-DWIN32_LEAN_AND_MEAN"
+        "-DWIN32_LEAN_AND_MEAN",
     ],
     "//conditions:default": [
     ],
@@ -42,24 +44,24 @@ cc_library(
             "*.h",
         ],
         exclude =
-        [
-            "test.c",
-        ],
+            [
+                "test.c",
+            ],
     ),
     hdrs = glob([
         "*.h",
         "adapters/*.h",
     ]),
+    copts = COPTS,
+    include_prefix = "hiredis",
     includes = [
         ".",
     ],
-    copts = COPTS,
     linkopts = LOPTS,
-    include_prefix = "hiredis",
+    visibility = ["//visibility:public"],
     deps = [
         ":_hiredis",
+        "@boringssl//:crypto",
         "@boringssl//:ssl",
-        "@boringssl//:crypto"
     ],
-    visibility = ["//visibility:public"],
 )

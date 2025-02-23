@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
 # This library is for internal use, because the library assumes a
 # different include prefix for itself than external libraries do.
 cc_library(
@@ -22,14 +24,14 @@ cc_library(
         "include/msgpack.h",
         "include/msgpack.hpp",
     ],
+    copts = [
+    ],
     includes = [
         "include/",
     ],
     strip_include_prefix = "include",
-    copts = [
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":_msgpack",
     ],
-    visibility = ["//visibility:public"],
 )

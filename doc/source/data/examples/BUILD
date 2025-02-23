@@ -19,3 +19,4 @@ py_test_run_all_notebooks(
     data = ["//doc/source/data/examples:data_examples"],
     tags = ["exclusive", "team:data", "gpu"],
 )
+

@@ -16,7 +16,6 @@ filegroup(
     ),
 )
 
-
 make(
     name = "redis",
     args = [
@@ -29,15 +28,15 @@ make(
         "-Wno-empty-body",
         "-fPIC",
     ],
-    visibility = ["//visibility:public"],
     lib_source = ":all_srcs",
-    deps = [
-        "@openssl//:openssl",
-    ],
     out_binaries = [
         "redis-server",
-        "redis-cli"
-    ]
+        "redis-cli",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@openssl",
+    ],
 )
 
 genrule_cmd = select({
@@ -58,14 +57,13 @@ genrule_cmd = select({
     "//conditions:default": """
         cp $(RULEDIR)/redis/bin/redis-server $(location redis-server)
         cp $(RULEDIR)/redis/bin/redis-cli $(location redis-cli)
-    """
+    """,
 })
 
 genrule_srcs = select({
     "@platforms//os:osx": glob(["**"]),
     "//conditions:default": [":redis"],
 })
-
 
 genrule(
     name = "bin",
@@ -75,6 +73,6 @@ genrule(
         "redis-cli",
     ],
     cmd = genrule_cmd,
-    visibility = ["//visibility:public"],
     tags = ["local"],
+    visibility = ["//visibility:public"],
 )

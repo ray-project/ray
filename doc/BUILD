@@ -1,8 +1,6 @@
-load("//bazel:python.bzl", "py_test_run_all_subdirectory")
-load("//bazel:python.bzl", "py_test_run_all_notebooks")
-load("//bazel:python.bzl", "doctest")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:python.bzl", "doctest", "py_test_run_all_subdirectory")
 
 exports_files(["test_myst_doc.py"])
 
@@ -402,6 +400,7 @@ doctest(
     tags = ["team:none"],
 )
 
+# buildifier: disable=duplicated-name
 doctest(
     name = "doctest[train]",
     files = glob(
@@ -414,11 +413,12 @@ doctest(
             "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-gpus.rst",
             "source/train/horovod.rst",  # CI do not have Horovod
-        ]
+        ],
     ),
     tags = ["team:ml"],
 )
 
+# buildifier: disable=duplicated-name
 doctest(
     name = "doctest[train]",
     files = [
@@ -443,6 +443,7 @@ doctest(
 doctest(
     name = "doctest[rllib]",
     size = "large",
+    data = ["//rllib:cartpole-v1_large"],
     files = glob(
         include = [
             "source/rllib/**/*.rst",
@@ -450,20 +451,15 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
-        ]
+        ],
     ),
-    data = ["//rllib:cartpole-v1_large"],
     tags = ["team:rllib"],
 )
 
 doctest(
     name = "doctest[rllib2]",
     size = "large",
-    files = glob(
-        include = [
-            "source/rllib/getting-started.rst",
-        ],
-    ),
+    files = ["source/rllib/getting-started.rst"],
     tags = ["team:rllib"],
 )
 

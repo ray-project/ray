@@ -2,27 +2,29 @@
 
 # Adapted with modifications from tensorflow/third_party/cython.BUILD
 
+load("@rules_python//python:defs.bzl", "py_library")
+
 py_library(
-    name="cython_lib",
-    srcs=glob(
+    name = "cython_lib",
+    srcs = glob(
         ["Cython/**/*.py"],
-        exclude=[
+        exclude = [
             "**/Tests/*.py",
         ],
     ) + ["cython.py"],
-    data=glob([
+    data = glob([
         "Cython/**/*.pyx",
         "Cython/Utility/*.*",
         "Cython/Includes/**/*.pxd",
     ]),
-    srcs_version="PY2AND3",
-    visibility=["//visibility:public"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
 )
 
 # May not be named "cython", since that conflicts with Cython/ on OSX
 filegroup(
-    name="cython_binary",
-    srcs=["cython.py"],
-    visibility=["//visibility:public"],
-    data=["cython_lib"],
+    name = "cython_binary",
+    srcs = ["cython.py"],
+    data = ["cython_lib"],
+    visibility = ["//visibility:public"],
 )
