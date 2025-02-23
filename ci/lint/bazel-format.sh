@@ -4,6 +4,7 @@
 # and buildifier is also installed. The example is showed in .travis.yml.
 set -eo pipefail
 
+BAZEL_WORKSPACE_DIR=$(bazel info workspace)
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 BUILDIFIER="${BUILDIFIER:-buildifier}"
 
@@ -45,13 +46,8 @@ while [ $# -gt 0 ]; do
 done
 
 BAZEL_FILES=(
-  bazel/BUILD
-  bazel/ray.bzl
-  BUILD.bazel
-  java/BUILD.bazel
-  cpp/BUILD.bazel
-  cpp/example/BUILD.bazel
   WORKSPACE
+  find "${BAZEL_WORKSPACE_DIR}" -name BUILD -o -name '*.bzl' -o -name '*.bazel'
 )
 
 (
