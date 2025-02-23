@@ -141,9 +141,12 @@ def get_step(
     env_dict = load_environment(env_to_use)
     env_dict.update(env)
 
-    # Set the project id for the test
-    project_id = get_test_project_id(test)
-    env_dict["ANYSCALE_PROJECT"] = project_id
+    # Set the project id for the test, based on the follow priority:
+    #  1. Specified in the test, as "project_id" field.
+    #  2. Specified in the specific test environment, as RELEASE_DEFAULT_PROJECT env var
+    #  3. Specified in the global environment, as RELEASE_DEFAULT_PROJECT env var
+    default_project_id = env_dict.get("RELEASE_DEFAULT_PROJECT")
+    env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
 
     step["env"].update(env_dict)
     step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
