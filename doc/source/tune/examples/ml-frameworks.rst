@@ -1,6 +1,13 @@
 Examples using Ray Tune with ML Frameworks
 ------------------------------------------
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-ray-tune-ml-frameworks" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-tune-ml-frameworks">
+      <img src="../../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart" />
+      <br/><br/>
+    </a>
+
 .. toctree::
     :hidden:
 
