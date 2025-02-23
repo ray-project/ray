@@ -46,7 +46,7 @@ class CgroupV2Setup {
   CgroupV2Setup &operator=(CgroupV2Setup &&) = delete;
 
  private:
-  CgroupV2Setup(PhysicalModeExecutionContext ctx) : ctx_(std::move(ctx)) {}
+  explicit CgroupV2Setup(PhysicalModeExecutionContext ctx) : ctx_(std::move(ctx)) {}
 
   // Setup cgroup based on the given [ctx]. Return whether the setup succeeds or not.
   static bool SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx);
