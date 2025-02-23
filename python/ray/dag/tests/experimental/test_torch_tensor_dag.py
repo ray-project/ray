@@ -942,11 +942,26 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
             torch.distributed.recv(tensor, peer_rank)
             return tensor
 
+        def allgather(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+        ) -> None:
+            raise NotImplementedError
+
         def allreduce(
             self,
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
-            op: ReduceOp,
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            raise NotImplementedError
+
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -1711,30 +1726,26 @@ def test_torch_tensor_nccl_collective_ops_with_class_method_output_node(
         result = ray.get(ref)
 
         if operation == collective.allgather:
-            expected_result = [
-                torch.tensor([1, 10, 4, 40], device="cuda"),
-                torch.tensor([1, 10, 4, 40], device="cuda"),
-                t2,
-                t3,
-            ]
+            # [TODO:pyyao] Determine the ranks of the actors.
+            assert torch.equal(result[0], result[1])
+            expected_values = set([1, 10, 4, 40])
+            actual_values = set(result[0].tolist())
+            assert expected_values == actual_values
         elif operation == collective.allreduce:
-            expected_result = [
-                torch.tensor([5, 50], device="cuda"),
-                torch.tensor([5, 50], device="cuda"),
-                t2,
-                t3,
-            ]
+            assert torch.equal(result[0], torch.tensor([5, 50], device="cuda"))
+            assert torch.equal(result[1], torch.tensor([5, 50], device="cuda"))
         elif operation == collective.reducescatter:
-            expected_result = [
-                torch.tensor([5], device="cuda"),
-                torch.tensor([50], device="cuda"),
-                t2,
-                t3,
-            ]
+            # [TODO:pyyao] Determine the ranks of the actors.
+            values = set([result[0].item(), result[1].item()])
+            expected_values = set([5, 50])
+            assert values == expected_values
+            assert result[0].shape == torch.Size([1])
+            assert result[1].shape == torch.Size([1])
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
-        assert all(torch.equal(r, e) for r, e in zip(result, expected_result))
+        assert torch.equal(result[2], t2)
+        assert torch.equal(result[3], t3)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
