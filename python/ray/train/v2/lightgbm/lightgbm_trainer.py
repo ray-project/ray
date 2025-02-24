@@ -121,7 +121,7 @@ class LightGBMTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        lightgbm_config: Optional[LightGBMConfig] = None,
+        lightgbm_config: Optional["LightGBMConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
