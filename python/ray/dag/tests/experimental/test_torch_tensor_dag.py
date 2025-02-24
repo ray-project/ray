@@ -1728,7 +1728,7 @@ def test_torch_tensor_nccl_collective_ops_with_class_method_output_node(
         if operation == collective.allgather:
             # [TODO:pyyao] Determine the ranks of the actors.
             assert torch.equal(result[0], result[1])
-            expected_values = set([1, 10, 4, 40])
+            expected_values = set([1, 10, 4, 40])  # noqa: C405
             actual_values = set(result[0].tolist())
             assert expected_values == actual_values
         elif operation == collective.allreduce:
@@ -1736,8 +1736,8 @@ def test_torch_tensor_nccl_collective_ops_with_class_method_output_node(
             assert torch.equal(result[1], torch.tensor([5, 50], device="cuda"))
         elif operation == collective.reducescatter:
             # [TODO:pyyao] Determine the ranks of the actors.
-            values = set([result[0].item(), result[1].item()])
-            expected_values = set([5, 50])
+            values = set([result[0].item(), result[1].item()])  # noqa: C405
+            expected_values = set([5, 50])  # noqa: C405
             assert values == expected_values
             assert result[0].shape == torch.Size([1])
             assert result[1].shape == torch.Size([1])
