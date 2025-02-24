@@ -15,8 +15,10 @@ logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
 
 
-def check_service_state(service_name: str, expected_state: ServiceState):
-    state = service.status(name=service_name).state
+def check_service_state(
+    service_name: str, expected_state: ServiceState, cloud: Optional[str] = None
+):
+    state = service.status(name=service_name, cloud=cloud).state
     logger.info(
         f"Waiting for service {service_name} to be {expected_state}, currently {state}"
     )
@@ -34,6 +36,7 @@ def start_service(
     image_uri: Optional[str] = None,
     working_dir: Optional[str] = None,
     add_unique_suffix: bool = True,
+    cloud: Optional[str] = None,
 ):
     """Starts an Anyscale Service with the specified configs.
 
@@ -76,6 +79,7 @@ def start_service(
             expected_state="RUNNING",
             retry_interval_ms=10000,  # 10s
             timeout=600,
+            cloud=cloud,
         )
 
         yield service_name
@@ -89,5 +93,6 @@ def start_service(
             expected_state="TERMINATED",
             retry_interval_ms=10000,  # 10s
             timeout=600,
+            cloud=cloud,
         )
         logger.info(f"Service '{service_name}' terminated successfully.")
