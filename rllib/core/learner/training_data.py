@@ -22,7 +22,7 @@ class TrainingData:
     episodes: Optional[List[EpisodeType]] = None
     episodes_refs: Optional[List[ray.ObjectRef]] = None
 
-    data_iterator: Optional[ray.data.iterator.DataIterator] = None
+    data_iterators: Optional[List[ray.data.iterator.DataIterator]] = None
 
     def validate(self):
         # Exactly one training data type must be provided.
@@ -35,43 +35,61 @@ class TrainingData:
                     self.batch_refs,
                     self.episodes,
                     self.episodes_refs,
-                    self.data_iterator,
+                    self.data_iterators,
                 ]
             )
             != 1
         ):
             raise ValueError("Exactly one training data type must be provided!")
 
-    def shard(self, num_shards: int):
+    def shard(self, num_shards: int, **kwargs):
         # Single batch -> Split into n smaller batches.
         if self.batch is not None:
-            return [TrainingData(batch=b) for b in ShardBatchIterator()]
+            return [(TrainingData(batch=b), {}) for b in ShardBatchIterator()]
+
         # TODO (sven): Do we need a more sohpisticated shard mechanism for this case?
-        # List of batches -> Return as iterator.
         elif self.batches is not None:
             assert num_shards == len(self.batches)
-            return iter(self.batches)
+            return [(TrainingData(batch=b), {}) for b in self.batches]
+
         # List of batch refs.
         elif self.batch_refs is not None:
             return [
-                TrainingData(batch_refs=b)
+                (TrainingData(batch_refs=b), {})
                 for b in ShardObjectRefIterator(self.batch_refs, num_shards)
             ]
+
         # List of episodes -> Split into n equally sized shards (based on the lengths
         # of the episodes).
         elif self.episodes is not None:
+            num_total_minibatches = 0
+            if "minibatch_size" in kwargs and num_shards > 1:
+                num_total_minibatches = self._compute_num_total_minibatches(
+                    self.episodes,
+                    num_shards,
+                    kwargs["minibatch_size"],
+                    kwargs.get("num_epochs", 1),
+                )
             return [
-                TrainingData(episodes=e)
+                (
+                    TrainingData(episodes=e),
+                    {"num_total_minibatches": num_total_minibatches},
+                )
                 for e in ShardEpisodesIterator(self.episodes, num_shards)
             ]
         # List of episodes refs.
         elif self.episodes_refs is not None:
             return [
-                TrainingData(episodes_refs=e)
+                (TrainingData(episodes_refs=e), {})
                 for e in ShardObjectRefIterator(self.episodes_refs, num_shards)
             ]
+        # List of data iterators.
         else:
-            raise NotImplementedError()
+            assert self.data_iterators and len(self.data_iterators) == num_shards
+            return [
+                (TrainingData(data_iterators=[di]), {})
+                for di in self.data_iterators
+            ]
 
     def solve_refs(self):
         # Batch references.

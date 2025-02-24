@@ -200,7 +200,7 @@ class LearnerGroup(Checkpointable):
         batch_refs: Optional[List[ray.ObjectRef]] = None,
         episodes: Optional[List[EpisodeType]] = None,
         episodes_refs: Optional[List[ray.ObjectRef]] = None,
-        data_iterator: Optional[ray.data.DataIterator] = None,
+        data_iterators: Optional[List[ray.data.DataIterator]] = None,
         training_data: Optional[TrainingData] = None,
         timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
@@ -262,52 +262,9 @@ class LearnerGroup(Checkpointable):
                 batch_refs=batch_refs,
                 episodes=episodes,
                 episodes_refs=episodes_refs,
-                data_iterator=data_iterator,
+                data_iterators=data_iterators,
             )
         training_data.validate()
-
-        # Define function to be called on all Learner actors (or the local learner).
-        # def _learner_update(
-        #    _learner: Learner,
-        #    *,
-        #    _batch_shard=None,
-        #    _episodes_shard=None,
-        #    _timesteps=None,
-        #    _return_state,
-        #    _num_total_minibatches=0,
-        #    **_kwargs,
-        # ):
-        #    # If the batch shard is an `DataIterator` we have an offline
-        #    # multi-learner setup and `update_from_iterator` needs to
-        #    # handle updating.
-        #    if isinstance(_batch_shard, ray.data.DataIterator):
-        #        result = _learner.update_from_iterator(
-        #            iterator=_batch_shard,
-        #            timesteps=_timesteps,
-        #            minibatch_size=minibatch_size,
-        #            num_iters=num_iters,
-        #            **_kwargs,
-        #        )
-        #    elif _batch_shard is not None:
-        #        result = _learner.update_from_batch(
-        #            batch=_batch_shard,
-        #            timesteps=_timesteps,
-        #            num_epochs=num_epochs,
-        #            minibatch_size=minibatch_size,
-        #            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-        #            **_kwargs,
-        #        )
-        #    else:
-        #        result = _learner.update_from_episodes(
-        #            episodes=_episodes_shard,
-        #            timesteps=_timesteps,
-        #            num_epochs=num_epochs,
-        #            minibatch_size=minibatch_size,
-        #            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
-        #            num_total_minibatches=_num_total_minibatches,
-        #            **_kwargs,
-        #        )
-        #    return result
 
         # Local Learner instance.
         if self.is_local:
@@ -325,112 +282,27 @@ class LearnerGroup(Checkpointable):
                     training_data=training_data,
                     timesteps=timesteps,
                     return_state=return_state,
-                    #num_epochs=num_epochs,
-                    #minibatch_size=minibatch_size,
-                    #shuffle_batch_per_epoch=shuffle_batch_per_epoch,
                     **kwargs,
                 )
             ]
 
-        # Remote Learner actors.
+        # Remote Learner actors' kwargs.
+        remote_call_kwargs = [
+            dict(
+                training_data=td_shard,
+                timesteps=timesteps,
+                # If `return_state=True`, only return it from the first Learner
+                # actor.
+                return_state=(return_state and i == 0),
+                **kw,
+                **kwargs,
+            )
+            for i, (td_shard, kw) in enumerate(
+                training_data.shard(num_shards=len(self), **kwargs)
+            )
+        ]
 
-        # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
-        # equal if multi-agent AND episodes) and send each Learner worker one of these
-        # shards.
-        # MultiAgentBatch: Shard into equal pieces.
-        # TODO (sven): The sharder used here destroys - for multi-agent only -
-        #  the relationship of the different agents' timesteps to each other.
-        #  Thus, in case the algorithm requires agent-synchronized data (aka.
-        #  "lockstep"), the `ShardBatchIterator` should not be used.
-        #  Then again, we might move into a world where Learner always
-        #  receives Episodes, never batches.
-        # if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
-        #    partials = [
-        #        partial(
-        #            _learner_update,
-        #            _batch_shard=iterator,
-        #            _return_state=(return_state and i == 0),
-        #            _timesteps=timesteps,
-        #            **kwargs,
-        #        )
-        #        # Note, `OfflineData` defines exactly as many iterators as there
-        #        # are learners.
-        #        for i, iterator in enumerate(batch)
-        #    ]
-        # elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
-        #    pass
-        #
-        # elif batch is not None:
-        #    partials = [
-        #        partial(
-        #            _learner_update,
-        #            _batch_shard=batch_shard,
-        #            _return_state=(return_state and i == 0),
-        #            _timesteps=timesteps,
-        #            **kwargs,
-        #        )
-        #        for i, batch_shard in enumerate(
-        #            ShardBatchIterator(batch, len(self))
-        #        )
-        #    ]
-        # elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
-        #    partials = [
-        #        partial(
-        #            _learner_update,
-        #            _episodes_shard=episodes_shard,
-        #            _timesteps=timesteps,
-        #            _return_state=(return_state and i == 0),
-        #            **kwargs,
-        #        )
-        #        for i, episodes_shard in enumerate(
-        #            ShardObjectRefIterator(episodes, len(self))
-        #        )
-        #    ]
-        ## Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
-        ## in case of multi-agent).
-        # else:
-        #    from ray.data.iterator import DataIterator
-        #
-        #    if isinstance(episodes[0], DataIterator):
-        #        num_total_minibatches = 0
-        #        partials = [
-        #            partial(
-        #                _learner_update,
-        #                _episodes_shard=episodes_shard,
-        #                _timesteps=timesteps,
-        #                _num_total_minibatches=num_total_minibatches,
-        #            )
-        #            for episodes_shard in episodes
-        #        ]
-        #    else:
-        #        eps_shards = list(
-        #            ShardEpisodesIterator(
-        #                episodes,
-        #                len(self),
-        #                len_lookback_buffer=self.config.episode_lookback_horizon,
-        #            )
-        #        )
-        #        # In the multi-agent case AND `minibatch_size` AND num_workers
-        #        # > 1, we compute a max iteration counter such that the different
-        #        # Learners will not go through a different number of iterations.
-        #        num_total_minibatches = 0
-        #        if minibatch_size and len(self) > 1:
-        #            num_total_minibatches = self._compute_num_total_minibatches(
-        #                episodes,
-        #                len(self),
-        #                minibatch_size,
-        #                num_epochs,
-        #            )
-        #        partials = [
-        #            partial(
-        #                _learner_update,
-        #                _episodes_shard=eps_shard,
-        #                _timesteps=timesteps,
-        #                _num_total_minibatches=num_total_minibatches,
-        #            )
-        #            for eps_shard in eps_shards
-        #        ]
-
+        # Async updates.
         if async_update:
             # Retrieve all ready results (kicked off by prior calls to this method).
             results = self._worker_manager.fetch_ready_async_reqs(timeout_seconds=0.0)
@@ -439,17 +311,7 @@ class LearnerGroup(Checkpointable):
             # at the same time).
             num_sent_requests = self._worker_manager.foreach_actor_async(
                 "update",
-                kwargs=[
-                    dict(
-                        training_data=td_shard,
-                        timesteps=timesteps,
-                        return_state=(return_state and i == 0),
-                        **kwargs,
-                    )
-                    for i, td_shard in enumerate(
-                        training_data.shard(num_shards=len(self))
-                    )
-                ],
+                kwargs=remote_call_kwargs,
             )
 
             # Some requests were dropped, record lost ts/data.
@@ -477,42 +339,15 @@ class LearnerGroup(Checkpointable):
                     dropped = sum(len(e) for e in training_data.episodes)
 
                 self._ts_dropped += factor * dropped
-
-            results = self._get_async_results(results)
-
+        # Sync updates.
         else:
-            results = self._get_results(self._worker_manager.foreach_actor(partials))
+            results = self._worker_manager.foreach_actor(
+                "update",
+                kwargs=remote_call_kwargs,
+            )
 
+        results = self._get_results(results)
         return results
-
-    # TODO (sven): Move this into FaultTolerantActorManager?
-    def _get_results(self, results):
-        processed_results = []
-        for result in results:
-            result_or_error = result.get()
-            if result.ok:
-                processed_results.append(result_or_error)
-            else:
-                raise result_or_error
-        return processed_results
-
-    def _get_async_results(self, results):
-        """Get results from the worker manager and group them by tag.
-
-        Returns:
-            A list of lists of results, where each inner list contains all results
-            for same tags.
-
-        """
-        ret = []
-        for result in results:
-            result_or_error = result.get()
-            if result.ok:
-                ret.append(result_or_error)
-            else:
-                raise result_or_error
-
-        return ret
 
     def add_module(
         self,
@@ -801,6 +636,16 @@ class LearnerGroup(Checkpointable):
             max_ts = sum(map(len, episodes))
 
         return int((num_epochs * max_ts) / (num_shards * minibatch_size))
+
+    def _get_results(self, results):
+        processed_results = []
+        for result in results:
+            result_or_error = result.get()
+            if result.ok:
+                processed_results.append(result_or_error)
+            else:
+                raise result_or_error
+        return processed_results
 
     @Deprecated(new="LearnerGroup.update(batch=.., **kwargs)", error=False)
     def update_from_batch(self, batch, **kwargs):
