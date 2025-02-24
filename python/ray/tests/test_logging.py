@@ -108,7 +108,6 @@ def test_deleted_file_does_not_throw_error(tmp_path):
     file_info.reopen_if_necessary()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     max_bytes = 100
@@ -187,7 +186,6 @@ def test_log_file_exists(shutdown_only):
             return suffix in appplication_log_suffixes
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_log_rotation(shutdown_only, monkeypatch):
     max_bytes = 1
     backup_count = 3

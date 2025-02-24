@@ -72,7 +72,6 @@ def _get_expected_replica_log_content(replica_id: ReplicaID):
     return f"{app_name}_{deployment_name} {replica_id.unique_id}"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_log_rotation_config(monkeypatch, ray_shutdown):
     # This test should be executed before any test that uses
     # the shared serve_instance, as environment variables
