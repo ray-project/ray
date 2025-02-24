@@ -49,8 +49,12 @@ if [ -n "${RAY_COMMIT_OF_WHEEL-}" ]; then
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
-  pip install -r ./requirements_buildkite.txt
-  pip install --no-deps -e .
+  # Strip the hashes from the constraint file
+  # TODO(aslonnie): use bazel run..
+  grep '==' ./requirements_buildkite.txt > /tmp/requirements_buildkite_nohash.txt
+  sed -i 's/ \\//' /tmp/requirements_buildkite_nohash.txt  # Remove ending slashes.
+  sed -i 's/\[.*\]//g' /tmp/requirements_buildkite_nohash.txt  # Remove extras.
+  pip install -c /tmp/requirements_buildkite_nohash.txt -e .
 fi
 
 RETRY_NUM=0

@@ -106,7 +106,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 if log_path is not None:
                     message += f" Full logs are in {log_path}"
                 logger.info(message)
-                logger.info(f"Execution plan of Dataset: {dag}")
+                logger.info(f"Execution plan of Dataset: {dag.dag_str}")
 
             logger.debug("Execution config: %s", self._options)
 
@@ -243,6 +243,8 @@ class StreamingExecutor(Executor, threading.Thread):
                     self._initial_stats.streaming_exec_schedule_s.add(
                         time.process_time() - t_start
                     )
+                for callback in get_execution_callbacks(self._data_context):
+                    callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
                     break
         except Exception as e:

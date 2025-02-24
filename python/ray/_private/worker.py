@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
+    IO,
     Any,
     AnyStr,
     Callable,
@@ -77,8 +78,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
-from ray._private.storage import _load_class
-from ray._private.utils import get_ray_doc_version
+from ray._private.utils import get_ray_doc_version, load_class
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -469,8 +469,8 @@ class Worker:
         self._enable_record_actor_task_log = (
             ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
         )
-        self._out_filepath = None
-        self._err_filepath = None
+        self._out_file = None
+        self._err_file = None
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
@@ -624,13 +624,13 @@ class Worker:
         finally:
             ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
-    def set_err_file(self, err_filepath=Optional[AnyStr]) -> None:
+    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's err file where stderr is redirected to"""
-        self._err_filepath = err_filepath
+        self._err_file = err_file
 
-    def set_out_file(self, out_filepath=Optional[AnyStr]) -> None:
+    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's out file where stdout is redirected to"""
-        self._out_filepath = out_filepath
+        self._out_file = out_file
 
     def record_task_log_start(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task starts executing for
@@ -674,24 +674,24 @@ class Worker:
             self.get_current_err_offset(),
         )
 
-    def get_out_file_path(self) -> str:
-        """Get the out log file path"""
-        return self._out_filepath if self._out_filepath is not None else ""
-
     def get_err_file_path(self) -> str:
         """Get the err log file path"""
-        return self._err_filepath if self._err_filepath is not None else ""
+        return self._err_file.name if self._err_file is not None else ""
+
+    def get_out_file_path(self) -> str:
+        """Get the out log file path"""
+        return self._out_file.name if self._out_file is not None else ""
 
     def get_current_out_offset(self) -> int:
         """Get the current offset of the out file if seekable, else 0"""
-        if self._out_filepath is not None:
-            return os.path.getsize(self._out_filepath)
+        if self._out_file is not None and self._out_file.seekable():
+            return self._out_file.tell()
         return 0
 
     def get_current_err_offset(self) -> int:
         """Get the current offset of the err file if seekable, else 0"""
-        if self._err_filepath is not None:
-            return os.path.getsize(self._err_filepath)
+        if self._err_file is not None and self._err_file.seekable():
+            return self._err_file.tell()
         return 0
 
     def get_serialization_context(self):
@@ -870,7 +870,7 @@ class Worker:
                 returned list. If False, then the first found exception will be
                 raised.
             skip_deserialization: If true, only the buffer will be released and
-                the object associated with the buffer will not be deserailized.
+                the object associated with the buffer will not be deserialized.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -1621,7 +1621,7 @@ def init(
             )
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
         job_config.set_runtime_env(runtime_env)
@@ -1633,7 +1633,7 @@ def init(
     # higher priority in case user also provided runtime_env for ray.init()
     else:
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
 
