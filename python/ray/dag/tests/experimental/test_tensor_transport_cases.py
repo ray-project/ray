@@ -283,6 +283,39 @@ class TestTensorTransport:
         execute_dict_dag(workers["gpu-1"], workers["gpu-2"], "cuda:0")
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+    def test_transport_multi_gpu_workers(self, ray_start_regular):
+        """Transport tensors between workers with multiple GPUs."""
+        if not USE_GPU:
+            pytest.skip("Test requires GPU")
+
+        workers = {
+            "gpu-1": MyWorker.options(num_gpus=1).remote(),
+            "gpu-2": MyWorker.options(num_gpus=2).remote(),
+        }
+
+        # ray core transport fails due to unavailable device at destination
+        with InputNode() as inp:
+            dag = workers["gpu-1"].send.bind(inp[0], inp[1])
+            dag = workers["gpu-2"].echo_tensor_device.bind(dag)
+        compiled_dag = dag.experimental_compile()
+        with pytest.raises(RayTaskError, match=("CUDA error: invalid device ordinal")):
+            ray.get(compiled_dag.execute(1, "cuda:1"))
+
+        # compiled graphs fails because it doesn't allow multiple devices on an actor
+        with pytest.raises(
+            AssertionError,
+            match=(
+                "Compiled Graphs currently don't support allocating multiple GPUs "
+                "to a single actor"
+            ),
+        ):
+            with InputNode() as inp:
+                dag = workers["gpu-1"].send.bind(inp[0], inp[1])
+                dag = dag.with_tensor_transport()
+                dag = workers["gpu-2"].echo_tensor_device.bind(dag)
+            compiled_dag = dag.experimental_compile()
+
+    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
     def test_ray_core_transport_worker_to_driver(self, ray_start_regular):
         """Transport tensors from the worker to the driver via Ray core default serializer.
         Tests both individual tensors and dictionaries of tensors with mixed CPU/GPU devices.
