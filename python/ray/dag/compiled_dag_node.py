@@ -2046,7 +2046,7 @@ class CompiledDAG:
         return False
 
     def _monitor_failures(self):
-        outer = weakref.proxy(self)
+        get_outer = weakref.ref(self)
 
         class Monitor(threading.Thread):
             def __init__(self):
@@ -2058,6 +2058,12 @@ class CompiledDAG:
                 self._teardown_done = False
 
             def wait_teardown(self, kill_actors: bool = False):
+                outer = get_outer()
+                if outer is None:
+                    # This should never happen.
+                    logger.error("CompiledDag has been destructed before teardown")
+                    return
+
                 from ray.dag import DAGContext
 
                 ctx = DAGContext.get_current()
@@ -2106,45 +2112,48 @@ class CompiledDAG:
                     if self._teardown_done:
                         return
 
+                    outer = get_outer()
+                    if outer is None:
+                        # This should never happen.
+                        logger.error("CompiledDag has been destructed before teardown")
+                        return
+
                     logger.info("Tearing down compiled DAG")
-                    try:
-                        outer._dag_submitter.close()
-                        outer._dag_output_fetcher.close()
+                    outer._dag_submitter.close()
+                    outer._dag_output_fetcher.close()
 
-                        for actor in outer.actor_refs:
-                            logger.info(f"Cancelling compiled worker on actor: {actor}")
-                        # Cancel all actor loops in parallel.
-                        cancel_refs = [
-                            actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                            for actor, tasks in outer.actor_to_executable_tasks.items()
-                        ]
-                        for cancel_ref in cancel_refs:
-                            try:
-                                ray.get(cancel_ref, timeout=30)
-                            except RayChannelError:
-                                # Channel error happens when a channel is closed
-                                # or timed out. In this case, do not log.
-                                pass
-                            except Exception:
-                                logger.exception("Error cancelling worker task")
-                                pass
+                    for actor in outer.actor_refs:
+                        logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # Cancel all actor loops in parallel.
+                    cancel_refs = [
+                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        for actor, tasks in outer.actor_to_executable_tasks.items()
+                    ]
+                    for cancel_ref in cancel_refs:
+                        try:
+                            ray.get(cancel_ref, timeout=30)
+                        except RayChannelError:
+                            # Channel error happens when a channel is closed
+                            # or timed out. In this case, do not log.
+                            pass
+                        except Exception:
+                            logger.exception("Error cancelling worker task")
+                            pass
 
-                        for (
-                            communicator_id
-                        ) in outer._actors_to_created_communicator_id.values():
-                            _destroy_communicator(communicator_id)
+                    for (
+                        communicator_id
+                    ) in outer._actors_to_created_communicator_id.values():
+                        _destroy_communicator(communicator_id)
 
-                        logger.info("Waiting for worker tasks to exit")
-                        self.wait_teardown(kill_actors=kill_actors)
-                    except ReferenceError:
-                        # Python destruction order is not guaranteed, so we may
-                        # access attributes of `outer` which are already destroyed.
-                        logger.info("Compiled DAG is already destroyed")
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown(kill_actors=kill_actors)
+
                     logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
+                    outer = get_outer()
                     ray.get(list(outer.worker_task_refs.values()))
                 except KeyboardInterrupt:
                     logger.info(
@@ -2153,6 +2162,7 @@ class CompiledDAG:
                     self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
+                    print("tearing down from monitor thread")
                     self.teardown()
 
         monitor = Monitor()
