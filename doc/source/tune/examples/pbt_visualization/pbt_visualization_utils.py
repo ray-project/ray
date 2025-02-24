@@ -50,7 +50,7 @@ def plot_parameter_history(
     contour = ax.contourf(xx, yy, Q_batch(xys).reshape(xx.shape), 20)
     ax.set_xlabel("theta0")
     ax.set_ylabel("theta1")
-    ax.set_title("Q(theta)")
+    ax.set_title("Parameter History and True Reward Q(theta) Contour")
 
     scatters = []
     for i in range(len(results)):
@@ -93,22 +93,23 @@ def plot_parameter_history(
                     length_includes_head=True,
                     alpha=0.25,
                 )
-    ax.legend(loc="upper left")
+    ax.legend(loc="upper left", title="Trial Initial Parameters")
     if include_colorbar:
-        fig.colorbar(contour, ax=ax, orientation="vertical")
+        cbar = fig.colorbar(contour, ax=ax, orientation="vertical")
+        cbar.set_label("Reward Q(theta)")
     return scatters
 
 
 def plot_Q_history(results, colors, labels, ax=None):
     if ax is None:
         fig, ax = plt.subplots()
-    ax.set_title("True function (Q) value over training iterations")
-    ax.set_xlabel("training_iteration")
-    ax.set_ylabel("Q(theta)")
+    ax.set_title("True Reward (Q) Value Over Training Iterations")
+    ax.set_xlabel("Training Iteration")
+    ax.set_ylabel("Reward Q(theta)")
     for i in range(len(results)):
         df = results[i].metrics_dataframe
         ax.plot(df["Q"], label=labels[i], color=colors[i])
-    ax.legend()
+    ax.legend(title="Trial Initial Parameters")
 
 
 def make_animation(
@@ -118,6 +119,7 @@ def make_animation(
 
     def animate(i):
         ax.clear()
+        ax.set_title("Parameter Evolution Over Iterations")
         return plot_parameter_history(
             results,
             colors,
