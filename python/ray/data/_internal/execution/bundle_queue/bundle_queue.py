@@ -54,11 +54,6 @@ class BundleQueue(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def estimate_size_bytes_per_node(self) -> Dict[str, int]:
-        """Return an estimate of the size of objects in the queue per node."""
-        ...
-
-    @abc.abstractmethod
     def is_empty(self):
         """Return whether this queue and all of its internal data structures are empty.
 
