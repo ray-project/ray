@@ -339,6 +339,7 @@ class LLMConfig(BaseModelExtended):
     @field_validator("deployment_config")
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the deployment config dictionary."""
+        validated_autoscaling_config = None
 
         autoscaling_config = value.pop("autoscaling_config", None)
         try:
@@ -353,10 +354,13 @@ class LLMConfig(BaseModelExtended):
                 raise ValueError(
                     f"Invalid autoscaling config: {autoscaling_config}"
                 ) from e
-        value = validated_deployment_config.model_dump()
+        value = validated_deployment_config.model_dump(exclude_unset=True)
 
         # Here, we use pydantic.v1 .dict() instead of model_dump() because validated_autoscaling_config is a pydantic.v1 model.
-        value["autoscaling_config"] = validated_autoscaling_config.dict()
+        if validated_autoscaling_config is not None:
+            value["autoscaling_config"] = validated_autoscaling_config.dict(
+                exclude_unset=True
+            )
         return value
 
     def ray_accelerator_type(self) -> str:

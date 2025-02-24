@@ -93,6 +93,35 @@ class TestModelConfig:
         assert llm_config.deployment_config["autoscaling_config"]["max_replicas"] == 7
         assert "extra_key" not in llm_config.deployment_config["autoscaling_config"]
 
+    def test_deployment_unset_fields_are_not_included(self):
+        """Test that unset fields are not included in the deployment config."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+        )
+        assert "max_ongoing_requests" not in llm_config.deployment_config
+        assert "graceful_shutdown_timeout_s" not in llm_config.deployment_config
+
+    def test_autoscaling_unset_fields_are_not_included(self):
+        """Test that unset fields are not included in the autoscaling config."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 3,
+                    "max_replicas": 7,
+                },
+            },
+            accelerator_type="L4",
+        )
+        assert (
+            "metrics_interval_s"
+            not in llm_config.deployment_config["autoscaling_config"]
+        )
+        assert (
+            "upscaling_factor" not in llm_config.deployment_config["autoscaling_config"]
+        )
+
     def test_get_serve_options(self):
         """Test that get_serve_options returns the correct options."""
         serve_options = LLMConfig(
@@ -112,8 +141,6 @@ class TestModelConfig:
                 "min_replicas": 0,
                 "initial_replicas": 1,
                 "max_replicas": 10,
-                "target_num_ongoing_requests_per_replica": 16,
-                "target_ongoing_requests": 16,
             },
             "ray_actor_options": {
                 "runtime_env": {
