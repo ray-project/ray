@@ -5,8 +5,10 @@ import ray
 
 from collections import defaultdict
 from typing import Dict, Optional
-from ray._private import ray_constants
-from ray._private.event.export_event_logger import get_export_event_logger
+from ray._private.event.export_event_logger import (
+    get_export_event_logger,
+    check_export_api_enabled,
+)
 from ray.actor import ActorHandle
 from ray.train.v2._internal.state.export import (
     train_run_to_proto,
@@ -32,22 +34,28 @@ class TrainStateActor:
         # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent
 
-        if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
-            try:
-                log_path = os.path.join(
-                    ray._private.worker._global_node.get_session_dir_path(), "logs"
-                )
-                logger = get_export_event_logger(
-                    ExportEvent.SourceType.EXPORT_TRAIN_RUN,
-                    log_path,
-                )
-                return logger
-            except Exception:
-                logger.exception(
-                    "Unable to initialize export event logger so no Train export "
-                    "events will be written."
-                )
-        return None
+        export_api_enabled = check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_TRAIN_RUN
+        )
+
+        if not export_api_enabled:
+            return None
+
+        log_path = os.path.join(
+            ray._private.worker._global_node.get_session_dir_path(), "logs"
+        )
+        logger = None
+        try:
+            logger = get_export_event_logger(
+                ExportEvent.SourceType.EXPORT_TRAIN_RUN,
+                log_path,
+            )
+        except Exception:
+            logger.exception(
+                "Unable to initialize the export event logger, so no Train export "
+                "events will be written."
+            )
+        return logger
 
     def create_or_update_train_run(self, run: TrainRun) -> None:
         self._runs[run.id] = run
