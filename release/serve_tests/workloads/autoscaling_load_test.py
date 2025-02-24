@@ -46,8 +46,9 @@ def main(output_path: Optional[str], image_uri: Optional[str]):
             }
         ],
     }
+    cloud_name = "serve_release_tests_cloud"
     compute_config = ComputeConfig(
-        cloud="serve_release_tests_cloud",
+        cloud=cloud_name,
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
@@ -67,9 +68,10 @@ def main(output_path: Optional[str], image_uri: Optional[str]):
         compute_config=compute_config,
         applications=[resnet_application],
         working_dir="workloads",
+        cloud_name=cloud_name,
     ) as service_name:
         ray.init(address="auto")
-        status = service.status(name=service_name)
+        status = service.status(name=service_name, cloud=cloud_name)
 
         # Start the locust workload
         num_locust_workers = int(ray.available_resources()["CPU"]) - 1
