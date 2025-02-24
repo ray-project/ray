@@ -263,6 +263,7 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
     }
   } else {
     RAY_CHECK(false) << "SOMETHING ISN'T A DIRECT CALL ????";
+    return Status::OK();
   }
 }
 
