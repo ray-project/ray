@@ -1236,11 +1236,10 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
+    HandleDirectCallTaskBlocked(registered_worker);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskUnblocked(worker);
+    HandleDirectCallTaskUnblocked(registered_worker);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     // TODO(ekl) this is still used from core worker even in direct call mode to
@@ -1723,15 +1722,6 @@ void NodeManager::ProcessFetchOrReconstructMessage(
                         task_id,
                         /*ray_get=*/true);
   }
-}
-
-void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
-  RAY_CHECK(message->release_resources());
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker, true);
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -2301,9 +2291,8 @@ void NodeManager::MarkObjectsAsFailed(
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(
-    const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
-  if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil() ||
-      !release_resources) {
+    const std::shared_ptr<WorkerInterface> &worker) {
+  if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
   local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);

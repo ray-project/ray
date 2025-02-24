@@ -349,8 +349,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
-                                   bool release_resources);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -418,13 +417,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param job_data Data associated with the finished job.
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
-
-  /// Process client message of NotifyDirectCallTaskBlocked
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
-                                    const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
