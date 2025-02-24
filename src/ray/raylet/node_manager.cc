@@ -1234,7 +1234,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
+    HandleDirectCallTaskBlocked(client);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
@@ -1721,14 +1721,6 @@ void NodeManager::ProcessFetchOrReconstructMessage(
                         task_id,
                         /*ray_get=*/true);
   }
-}
-
-void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker);
 }
 
 void NodeManager::ProcessWaitRequestMessage(

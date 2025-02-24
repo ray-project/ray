@@ -418,13 +418,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
-  /// Process client message of NotifyDirectCallTaskBlocked
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
-                                    const uint8_t *message_data);
-
   /// Process client message of RegisterClientRequest
   ///
   /// \param client The client that sent the message.
