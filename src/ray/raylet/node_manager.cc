@@ -595,6 +595,8 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force
     RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
     // Force kill worker
     worker->GetProcess().Kill();
+    // XXX.
+    DisconnectClient(worker->Connection(), rpc::WorkerExitType::SYSTEM_ERROR, "IMPORTANT REASON");
   });
 }
 
@@ -602,10 +604,6 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
                                 bool force) {
-  // We should disconnect the client first. Otherwise, we'll remove bundle resources
-  // before actual resources are returned. Subsequent disconnect request that comes
-  // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -1082,7 +1080,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                  << " died.";
           const auto &err_msg = stream.str();
           RAY_LOG(INFO) << err_msg;
-          KillWorker(worker);
+          DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, err_msg);
         }
       } else if (owner_node_id == node_id) {
         // If the leased worker's owner was on the failed node, then kill the leased
@@ -1092,7 +1090,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                << " is killed because the owner node " << owner_node_id << " died.";
         const auto &err_msg = stream.str();
         RAY_LOG(INFO) << err_msg;
-        KillWorker(worker);
+        DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, err_msg);
       }
     }
   }
@@ -1236,11 +1234,14 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
+    if (registered_worker) {
+      ProcessDirectCallTaskBlocked(registered_worker, message_data);
+    }
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskUnblocked(worker);
+    if (registered_worker) {
+      HandleDirectCallTaskUnblocked(registered_worker);
+    }
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     // TODO(ekl) this is still used from core worker even in direct call mode to
@@ -1726,11 +1727,10 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 }
 
 void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+    const std::shared_ptr<WorkerInterface> &worker, const uint8_t *message_data) {
   auto message =
       flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
   RAY_CHECK(message->release_resources());
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleDirectCallTaskBlocked(worker, true);
 }
 
@@ -2306,6 +2306,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
       !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
+
   local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
