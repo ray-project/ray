@@ -287,31 +287,39 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
-        --cache-test-results --parallelism-per-worker 2
+      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+        --build-type clang
+        --cache-test-results
+        --skip-ray-installation
 
   - label: ":ray: core: cpp asan tests"
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
-        --cache-test-results --parallelism-per-worker 2
+      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+        --build-type asan-clang
+        --cache-test-results
+        --skip-ray-installation
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
+      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+        --build-type ubsan
         --except-tags no_ubsan
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results
+        --skip-ray-installation
 
   - label: ":ray: core: cpp tsan tests"
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type tsan-clang
+      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+        --build-type tsan-clang
         --except-tags no_tsan
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results
+        --skip-ray-installation
 
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
