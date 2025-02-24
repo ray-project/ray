@@ -17,7 +17,7 @@
 // It defines a few interfaces to manage cgroup:
 // 1. Setup node-wise cgroup folder, and internal system cgroup and application to hold
 // ray internal components and user application processes.
-// 2. Configure cgroup to enable new processed added into cgroup and configure on resource
+// 2. Configure cgroup to enable new processes added into cgroup and control on resource
 // (i.e. memory).
 // 2. Remove ray internal component and user application processes out of cgroup managed
 // processes.
@@ -35,7 +35,6 @@ namespace ray {
 
 class BaseCgroupSetup {
  public:
-  BaseCgroupSetup() = default;
   virtual ~BaseCgroupSetup() = default;
 
   BaseCgroupSetup(const BaseCgroupSetup &) = delete;
@@ -45,15 +44,14 @@ class BaseCgroupSetup {
   virtual ScopedCgroupHandler AddSystemProcess(pid_t pid) = 0;
 
   // Apply cgroup context, which adds the process id into the corresponding cgroup.
-  virtual ScopedCgroupHandler ApplyCgroupContext(
-      const PhysicalModeExecutionContext &ctx) = 0;
+  virtual ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) = 0;
 
  protected:
   // Remove the given system process [pid] from system cgroup.
   virtual void CleanupSystemProcess(pid_t pid) = 0;
 
   // Remove the process indicated by cgroup context from application cgroup.
-  virtual void CleanupCgroupContext(const PhysicalModeExecutionContext &ctx) = 0;
+  virtual void CleanupCgroupContext(const AppProcCgroupMetadata &ctx) = 0;
 };
 
 // A noop cgroup setup class, which does nothing. Used when physical mode is not enabled,
@@ -65,15 +63,14 @@ class NoopCgroupSetup : public BaseCgroupSetup {
 
   ScopedCgroupHandler AddSystemProcess(pid_t pid) override { return {}; }
 
-  ScopedCgroupHandler ApplyCgroupContext(
-      const PhysicalModeExecutionContext &ctx) override {
+  ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override {
     return {};
   }
 
  protected:
   void CleanupSystemProcess(pid_t pid) override {}
 
-  void CleanupCgroupContext(const PhysicalModeExecutionContext &ctx) override {}
+  void CleanupCgroupContext(const AppProcCgroupMetadata &ctx) override {}
 };
 
 }  // namespace ray

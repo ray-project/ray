@@ -39,13 +39,12 @@ class FakeCgroupSetup : public BaseCgroupSetup {
 
   ScopedCgroupHandler AddSystemProcess(pid_t pid) override;
 
-  ScopedCgroupHandler ApplyCgroupContext(
-      const PhysicalModeExecutionContext &ctx) override;
+  ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
  protected:
   void CleanupSystemProcess(pid_t pid) override;
 
-  void CleanupCgroupContext(const PhysicalModeExecutionContext &ctx) override;
+  void CleanupCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
  private:
   // TODO(hjiang): For physical mode, as of now we only support max memory, more resource

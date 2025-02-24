@@ -26,7 +26,7 @@ ScopedCgroupHandler FakeCgroupSetup::AddSystemProcess(pid_t pid) {
 }
 
 ScopedCgroupHandler FakeCgroupSetup::ApplyCgroupContext(
-    const PhysicalModeExecutionContext &ctx) {
+    const AppProcCgroupMetadata &ctx) {
   absl::MutexLock lock(&mtx_);
   CgroupFolder cgroup_folder;
   cgroup_folder.max_memory_bytes = ctx.max_memory;
@@ -43,7 +43,7 @@ void FakeCgroupSetup::CleanupSystemProcess(pid_t pid) {
   system_cgroup_.erase(iter);
 }
 
-void FakeCgroupSetup::CleanupCgroupContext(const PhysicalModeExecutionContext &ctx) {
+void FakeCgroupSetup::CleanupCgroupContext(const AppProcCgroupMetadata &ctx) {
   absl::MutexLock lock(&mtx_);
   CgroupFolder cgroup_folder;
   cgroup_folder.max_memory_bytes = ctx.max_memory;

@@ -26,6 +26,11 @@ class ScopedCgroupHandler {
   ScopedCgroupHandler() = default;
   explicit ScopedCgroupHandler(std::function<void()> cgroup_cleanup)
       : cgroup_cleanup_(std::move(cgroup_cleanup)) {}
+  ScopedCgroupHandler(const ScopedCgroupHandler &) = delete;
+  ScopedCgroupHandler &operator=(const ScopedCgroupHandler &) = delete;
+  ScopedCgroupHandler(ScopedCgroupHandler &&) = default;
+  ScopedCgroupHandler &operator=(ScopedCgroupHandler &&) = default;
+
   ~ScopedCgroupHandler() {
     if (cgroup_cleanup_) {
       cgroup_cleanup_();

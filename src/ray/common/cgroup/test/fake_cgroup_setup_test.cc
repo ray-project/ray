@@ -29,17 +29,17 @@ TEST(FakeCgroupSetupTest, AddAndRemoveTest) {
     FakeCgroupSetup fake_cgroup_setup{"node-id"};
     auto system_handler = fake_cgroup_setup.AddSystemProcess(0);
     auto application_handler1 =
-        fake_cgroup_setup.ApplyCgroupContext(PhysicalModeExecutionContext{
+        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
             .pid = 1,
             .max_memory = 10,
         });
     auto application_handler2 =
-        fake_cgroup_setup.ApplyCgroupContext(PhysicalModeExecutionContext{
+        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
             .pid = 2,
             .max_memory = 10,  // Same max memory with the first application.
         });
     auto application_handler3 =
-        fake_cgroup_setup.ApplyCgroupContext(PhysicalModeExecutionContext{
+        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
             .pid = 3,
             .max_memory = 5,  // Different max memory with previous applications.
         });
@@ -55,7 +55,7 @@ TEST(FakeCgroupSetupTest, AddAndRemoveTest) {
     auto system_handler = fake_cgroup_setup.AddSystemProcess(0);
     for (int idx = 0; idx < kThdNum; ++idx) {
       thds.emplace_back([pid = idx, &fake_cgroup_setup]() {
-        fake_cgroup_setup.ApplyCgroupContext(PhysicalModeExecutionContext{
+        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
             .pid = pid,
             .max_memory = 10,
         });
