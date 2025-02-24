@@ -191,9 +191,18 @@ class _EngineBackgroundProcess:
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
         vllm.plugins.load_general_plugins()
 
-        executor_class = vllm.engine.llm_engine.LLMEngine._get_executor_cls(
-            engine_config
-        )
+        # Note (genesu): This is a temporary fix to avoid vllm 0.7.2 forced the use of
+        # uni processing executor when world_size is 1. This is a bug in vllm 0.7.2 and
+        # is fixed by https://github.com/vllm-project/vllm/pull/12934 which is shipped
+        # with vllm 0.7.3.
+        if engine_config.parallel_config.world_size == 1:
+            from vllm.executor.ray_distributed_executor import RayDistributedExecutor
+
+            executor_class = RayDistributedExecutor
+        else:
+            executor_class = vllm.engine.llm_engine.LLMEngine._get_executor_cls(
+                engine_config
+            )
 
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
