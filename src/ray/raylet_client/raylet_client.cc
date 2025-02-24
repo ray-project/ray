@@ -27,7 +27,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 using MessageType = ray::protocol::MessageType;
 
@@ -526,6 +525,21 @@ void RayletClient::GetResourceLoad(
     const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
   rpc::GetResourceLoadRequest request;
   grpc_client_->GetResourceLoad(request, callback);
+}
+
+void RayletClient::CancelTasksWithResourceShapes(
+    const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+    const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) {
+  rpc::CancelTasksWithResourceShapesRequest request;
+
+  for (const auto &resource_shape : resource_shapes) {
+    rpc::CancelTasksWithResourceShapesRequest::ResourceShape *resource_shape_proto =
+        request.add_resource_shapes();
+    resource_shape_proto->mutable_resource_shape()->insert(resource_shape.begin(),
+                                                           resource_shape.end());
+  }
+
+  grpc_client_->CancelTasksWithResourceShapes(request, callback);
 }
 
 void RayletClient::NotifyGCSRestart(
