@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
 from zlib import crc32
 
-from ray._private.pydantic_compat import (
+from ray._common.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
