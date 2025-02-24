@@ -78,6 +78,46 @@ def test_uniform_kbins_discretizer(
     # Check that the remaining column was not modified
     assert out_df["C"].equals(in_df["C"])
 
+    # append mode
+    expected_message = "The length of columns and output_columns must match."
+    with pytest.raises(ValueError, match=expected_message):
+        UniformKBinsDiscretizer(["A", "B"], bins=bins, output_columns=["A_discretized"])
+
+    discretizer = UniformKBinsDiscretizer(
+        ["A", "B"],
+        bins=bins,
+        dtypes=dtypes,
+        right=right,
+        include_lowest=include_lowest,
+        output_columns=["A_discretized", "B_discretized"],
+    )
+
+    transformed = discretizer.fit_transform(ds)
+    out_df = transformed.to_pandas()
+
+    assert out_df["A_discretized"].equals(
+        pd.cut(
+            in_df["A"],
+            bins_A,
+            labels=labels_A,
+            ordered=ordered_A,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    assert out_df["B_discretized"].equals(
+        pd.cut(
+            in_df["B"],
+            bins_B,
+            labels=labels_B,
+            ordered=ordered_B,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    # Check that the remaining column was not modified
+    assert out_df["C"].equals(in_df["C"])
+
 
 @pytest.mark.parametrize(
     "bins", ([3, 4, 6, 9], {"A": [3, 4, 6, 8, 9], "B": [3, 4, 6, 9]})
@@ -142,6 +182,46 @@ def test_custom_kbins_discretizer(
         )
     )
     assert out_df["B"].equals(
+        pd.cut(
+            in_df["B"],
+            bins_B,
+            labels=labels_B,
+            ordered=ordered_B,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    # Check that the remaining column was not modified
+    assert out_df["C"].equals(in_df["C"])
+
+    # append mode
+    expected_message = "The length of columns and output_columns must match."
+    with pytest.raises(ValueError, match=expected_message):
+        CustomKBinsDiscretizer(["A", "B"], bins=bins, output_columns=["A_discretized"])
+
+    discretizer = CustomKBinsDiscretizer(
+        ["A", "B"],
+        bins=bins,
+        dtypes=dtypes,
+        right=right,
+        include_lowest=include_lowest,
+        output_columns=["A_discretized", "B_discretized"],
+    )
+
+    transformed = discretizer.fit_transform(ds)
+    out_df = transformed.to_pandas()
+
+    assert out_df["A_discretized"].equals(
+        pd.cut(
+            in_df["A"],
+            bins_A,
+            labels=labels_A,
+            ordered=ordered_A,
+            right=right,
+            include_lowest=include_lowest,
+        )
+    )
+    assert out_df["B_discretized"].equals(
         pd.cut(
             in_df["B"],
             bins_B,
