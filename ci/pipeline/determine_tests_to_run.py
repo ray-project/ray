@@ -5,11 +5,10 @@ import os
 import re
 import subprocess
 import sys
-from typing import Set
+from typing import List, Set
 from pprint import pformat
 
 
-# NOTE(simon): do not add type hint here because it's ran using python2 in CI.
 def _list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
 
@@ -25,12 +24,18 @@ def _list_changed_files(commit_range):
     """
     base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
     if base_branch:
-        pull_command = ["git", "fetch", "origin", base_branch]
+        pull_command = ["git", "fetch", "-q", "origin", base_branch]
         subprocess.check_call(pull_command)
 
     command = ["git", "diff", "--name-only", commit_range, "--"]
-    out = subprocess.check_output(command)
-    return [s.strip() for s in out.decode().splitlines() if s is not None]
+    diff_names = subprocess.check_output(command).decode()
+
+    files: List[str] = []
+    for line in diff_names.splitlines():
+        line = line.strip()
+        if line:
+            files.append(line)
+    return files
 
 
 def _is_pull_request():

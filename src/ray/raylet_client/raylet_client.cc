@@ -165,9 +165,9 @@ Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
+Status RayletClient::NotifyDirectCallTaskBlocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
+  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
@@ -519,6 +519,21 @@ void RayletClient::GetResourceLoad(
     const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
   rpc::GetResourceLoadRequest request;
   grpc_client_->GetResourceLoad(request, callback);
+}
+
+void RayletClient::CancelTasksWithResourceShapes(
+    const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+    const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) {
+  rpc::CancelTasksWithResourceShapesRequest request;
+
+  for (const auto &resource_shape : resource_shapes) {
+    rpc::CancelTasksWithResourceShapesRequest::ResourceShape *resource_shape_proto =
+        request.add_resource_shapes();
+    resource_shape_proto->mutable_resource_shape()->insert(resource_shape.begin(),
+                                                           resource_shape.end());
+  }
+
+  grpc_client_->CancelTasksWithResourceShapes(request, callback);
 }
 
 void RayletClient::NotifyGCSRestart(

@@ -250,6 +250,10 @@ class RayletClientInterface : public PinObjectsInterface,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) = 0;
+
   virtual void IsLocalWorkerDead(
       const WorkerID &worker_id,
       const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
@@ -347,9 +351,8 @@ class RayletClient : public RayletClientInterface {
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
-  /// \param release_resources: true if the dirct call blocking needs to release
-  /// resources. \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked(bool release_resources);
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked();
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
@@ -500,6 +503,11 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void CancelTasksWithResourceShapes(
+      const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+      const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+      override;
 
   void IsLocalWorkerDead(
       const WorkerID &worker_id,
