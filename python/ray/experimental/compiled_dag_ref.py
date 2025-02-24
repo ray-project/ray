@@ -97,20 +97,11 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If we've already cached the result in the buffer, get it to remove it
-        # from the buffer. Else add this CompiledDAGRef's execution and channel indices
-        # to the dag's _destructed_ref_idxs, and try to release any buffers we
-        # can based on the dag's current max_finished_execution_index.
-        if not self._ray_get_called:
-            if self._execution_index in self._dag._result_buffer:
-                self._dag._get_execution_results(
-                    self._execution_index, self._channel_index
-                )
-            else:
-                self._dag._destructed_ref_idxs[self._execution_index].add(
-                    self._channel_index
-                )
-                self._dag._try_release_buffers()
+        if self._ray_get_called:
+            # get() was already called, no further cleanup is needed.
+            return
+
+        self._dag._delete_execution_results(self._execution_index, self._channel_index)
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
@@ -225,3 +216,13 @@ class CompiledDAGFuture:
             self._execution_index, self._channel_index
         )
         return _process_return_vals(return_vals, True)
+
+    def __del__(self):
+        if self._dag.is_teardown:
+            return
+
+        if self._fut is None:
+            # await() was already called, no further cleanup is needed.
+            return
+
+        self._dag._delete_execution_results(self._execution_index, self._channel_index)
