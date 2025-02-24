@@ -44,6 +44,7 @@ class CircularBuffer:
         self._rng = np.random.default_rng()
 
     def add(self, batch):
+        assert batch is not None
         # Add buffer and k=0 information to the deque.
         with self._lock:
             dropped_entry = self._buffer[0]
@@ -53,6 +54,11 @@ class CircularBuffer:
                 self._indices.discard(self._offset - self._NxK)
                 self._offset += 1
 
+            print("ADDED", (
+                self._offset,
+                self._indices,
+                [b is None for b in self._buffer],
+            ))
             self._num_added += 1
 
         # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
@@ -73,6 +79,7 @@ class CircularBuffer:
             actual_buffer_idx = idx - self._offset + self._NxK
             batch = self._buffer[actual_buffer_idx]
             assert batch is not None, (
+                idx,
                 actual_buffer_idx,
                 self._offset,
                 self._indices,
@@ -80,6 +87,14 @@ class CircularBuffer:
             )
             self._buffer[actual_buffer_idx] = None
             self._indices.discard(idx)
+
+            print("SAMPLED", (
+                idx,
+                actual_buffer_idx,
+                self._offset,
+                self._indices,
+                [b is None for b in self._buffer],
+            ))
 
         # Return the sampled batch.
         return batch
