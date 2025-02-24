@@ -191,24 +191,18 @@ class _EngineBackgroundProcess:
         # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
         vllm.plugins.load_general_plugins()
 
-        # Note (genesu): This is a temporary fix to avoid vllm 0.7.2 forced the use of
-        # uni processing executor when world_size is 1. This is a bug in vllm 0.7.2 and
+        # Note (genesu): There is a bug in vllm 0.7.2 forced the use of uni processing
+        # executor when world_size is 1. This is a bug in vllm 0.7.2 and
         # is fixed by https://github.com/vllm-project/vllm/pull/12934 which is shipped
-        # with vllm 0.7.3.
-        if engine_config.parallel_config.world_size == 1:
-            from vllm.executor.ray_distributed_executor import RayDistributedExecutor
-
-            executor_class = RayDistributedExecutor
-        else:
-            executor_class = vllm.engine.llm_engine.LLMEngine._get_executor_cls(
-                engine_config
-            )
+        # with vllm 0.7.3. However, in Ray's llm package, we will enforce the use of
+        # ray distributed executor for all cases so it's always compatible with Ray.
+        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
             use_async_sockets=engine_config.model_config.use_async_output_proc,
             vllm_config=engine_config,
-            executor_class=executor_class,
+            executor_class=RayDistributedExecutor,
             log_requests=not engine_args.disable_log_requests,
             log_stats=not engine_args.disable_log_stats,
             usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
