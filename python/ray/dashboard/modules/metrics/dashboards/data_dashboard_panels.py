@@ -295,7 +295,7 @@ DATA_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node)",
+                expr="sum(rate(ray_data_bytes_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
                 legend="Bytes Taken / Second: {{dataset}}, {{node}}",
             )
         ],
@@ -311,7 +311,7 @@ DATA_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node)",
+                expr="sum(rate(ray_data_blocks_outputs_of_finished_tasks_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
                 legend="Bytes Taken / Second: {{dataset}}, {{node}}",
             )
         ],
@@ -382,7 +382,7 @@ DATA_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node)",
+                expr="sum(rate(ray_data_num_tasks_finished_per_node{{{global_filters}}}[1m])) by (dataset, node_ip)",
                 legend="Finished Tasks: {{dataset}}, {{node}}",
             )
         ],
