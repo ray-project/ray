@@ -522,8 +522,10 @@ class FaultTolerantActorManager:
             remote_actor_ids = self.actor_ids()
 
         num_calls = (
-            len(func) if isinstance(func, list)
-            else len(kwargs) if isinstance(kwargs, list)
+            len(func)
+            if isinstance(func, list)
+            else len(kwargs)
+            if isinstance(kwargs, list)
             else len(remote_actor_ids)
         )
 
@@ -771,9 +773,15 @@ class FaultTolerantActorManager:
         if isinstance(func, list):
             for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
-                    calls.append(getattr(self._actors[raid], f).remote(
-                        **(kwargs[i] if isinstance(kwargs, list) else (kwargs or {}))
-                    ))
+                    calls.append(
+                        getattr(self._actors[raid], f).remote(
+                            **(
+                                kwargs[i]
+                                if isinstance(kwargs, list)
+                                else (kwargs or {})
+                            )
+                        )
+                    )
                 else:
                     calls.append(self._actors[i].apply.remote(f))
         elif isinstance(func, str):
@@ -909,11 +917,9 @@ class FaultTolerantActorManager:
             A tuple of (filtered func, filtered remote worker ids).
         """
         if isinstance(func, list):
-            #if not kwargs:
-            #    kwargs = [{} for _ in range(len(func))]
-            assert len(remote_actor_ids) == len(func), (
-                "Func must have the same number of callables as remote actor ids."
-            )
+            assert len(remote_actor_ids) == len(
+                func
+            ), "Func must have the same number of callables as remote actor ids."
             # We are given a list of functions to apply.
             # Need to filter the functions together with worker IDs.
             temp_func = []

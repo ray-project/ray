@@ -56,8 +56,6 @@ class IMPALALearner(Learner):
         #  We will have to fix this offline RL logic first, then can remove this hack
         #  here and return to always using the RLock.
         self.metrics._threading_lock = threading.RLock()
-        self._num_updates = 0
-        self._num_updates_lock = threading.Lock()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -81,6 +79,8 @@ class IMPALALearner(Learner):
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
+        # Results queue for reduced Learner metrics.
+        self._learner_thread_out_queue = deque(maxlen=1)
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
@@ -100,6 +100,7 @@ class IMPALALearner(Learner):
         self._learner_thread = _LearnerThread(
             update_method=Learner.update,
             in_queue=self._learner_thread_in_queue,
+            out_queue=self._learner_thread_out_queue,
             learner=self,
         )
         self._learner_thread.start()
@@ -154,24 +155,18 @@ class IMPALALearner(Learner):
                     self._learner_thread_in_queue, training_data.batch, self.metrics
                 )
 
-        result = {}
-        with self._num_updates_lock:
-            count = self._num_updates
-        # TODO (sven): Find a better way to limit the number of (mostly unnecessary)
-        #  metrics reduces.
-        if count >= 20:
-            with self._num_updates_lock:
-                self._num_updates = 0
-            result = self.metrics.reduce()
+        try:
+            result = self._learner_thread_out_queue.popleft()
+        except IndexError:
+            result = {}
 
-        if return_state and result:
+        if return_state:
             learner_state = self.get_state(
-                # Only return the state of those RLModules that actually
-                # returned results and thus got probably updated.
+                # Only return the state of those RLModules that are trainable.
                 components=[
                     COMPONENT_RL_MODULE + "/" + mid
-                    for mid in result
-                    if mid != ALL_MODULES
+                    for mid in self.module.keys()
+                    if self.should_module_be_updated(mid)
                 ],
                 inference_only=True,
             )
@@ -308,7 +303,8 @@ class _LearnerThread(threading.Thread):
         self,
         *,
         update_method,
-        in_queue: deque,
+        in_queue: Union[deque, CircularBuffer],
+        out_queue: deque,
         learner,
     ):
         super().__init__(name="_LearnerThread")
@@ -318,6 +314,7 @@ class _LearnerThread(threading.Thread):
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
+        self._out_queue: deque = out_queue
 
     def run(self) -> None:
         while not self.stopped:
@@ -349,13 +346,12 @@ class _LearnerThread(threading.Thread):
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
-            self._update_method(
+            results = self._update_method(
                 self=self.learner,
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
-            with self.learner._num_updates_lock:
-                self.learner._num_updates += 1
+            self._out_queue.append(results)
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):

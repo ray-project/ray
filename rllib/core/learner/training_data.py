@@ -26,17 +26,20 @@ class TrainingData:
 
     def validate(self):
         # Exactly one training data type must be provided.
-        if sum(
-            td is not None
-            for td in [
-                self.batch,
-                self.batches,
-                self.batch_refs,
-                self.episodes,
-                self.episodes_refs,
-                self.data_iterator,
-            ]
-        ) != 1:
+        if (
+            sum(
+                td is not None
+                for td in [
+                    self.batch,
+                    self.batches,
+                    self.batch_refs,
+                    self.episodes,
+                    self.episodes_refs,
+                    self.data_iterator,
+                ]
+            )
+            != 1
+        ):
             raise ValueError("Exactly one training data type must be provided!")
 
     def shard(self, num_shards: int):
@@ -71,13 +74,20 @@ class TrainingData:
             raise NotImplementedError()
 
     def solve_refs(self):
+        # Batch references.
         if self.batch_refs is not None:
+            # Solve the ray.ObjRefs.
             batches = tree.flatten(ray.get(self.batch_refs))
+            # If only a single batch, set `self.batch`.
             if len(batches) == 1:
                 self.batch = batches[0]
+            # Otherwise, set `self.batches`.
             else:
                 self.batches = batches
+            # Empty `self.batch_refs`.
             self.batch_refs = None
+
+        # Episode references.
         elif self.episodes_refs is not None:
             # It's possible that individual refs are invalid due to the EnvRunner
             # that produced the ref has crashed or had its entire node go down.

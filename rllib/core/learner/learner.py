@@ -1031,9 +1031,18 @@ class Learner(Checkpointable):
             )
         training_data.validate()
         training_data.solve_refs()
+        assert training_data.batches is None
 
         # Call the learner connector on the given `episodes` (if we have one).
-        if training_data.episodes is not None and self._learner_connector is not None:
+        if training_data.episodes is not None:
+            # If we want to learn from Episodes, we must have a LearnerConnector
+            # pipeline to translate into a train batch first.
+            if self._learner_connector is None:
+                raise ValueError(
+                    f"If episodes provided for training, Learner ({self}) must have a "
+                    "LearnerConnector pipeline (but pipeline is None)!"
+                )
+
             # Call the learner connector pipeline.
             shared_data = {}
             batch = self._learner_connector(
@@ -1058,7 +1067,12 @@ class Learner(Checkpointable):
             )
         # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(training_data.batch, SampleBatch):
-            assert len(self.module) == 1
+            if len(self.module) != 1:
+                raise ValueError(
+                    f"SampleBatch provided, but RLModule ({self.module}) has more than "
+                    f"one sub-RLModule! Need to provide MultiAgentBatch instead."
+                )
+
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): training_data.batch},
                 env_steps=len(training_data.batch),
@@ -1248,13 +1262,13 @@ class Learner(Checkpointable):
             )
         # Record the number of batches pulled from the dataset in this RLlib iteration.
         self.metrics.log_value(
-            DATASET_NUM_ITERS_TRAINED,
+            (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
             i,
             reduce="sum",
             clear_on_reduce=True,
         )
         self.metrics.log_value(
-            DATASET_NUM_ITERS_TRAINED_LIFETIME,
+            (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
             i,
             reduce="sum",
         )

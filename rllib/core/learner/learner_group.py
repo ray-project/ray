@@ -1,4 +1,3 @@
-import pathlib
 from collections import defaultdict
 import copy
 from functools import partial
@@ -17,7 +16,6 @@ from typing import (
 )
 
 import ray
-from ray import ObjectRef
 from ray.rllib.core import (
     COMPONENT_LEARNER,
     COMPONENT_RL_MODULE,
@@ -38,11 +36,6 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.minibatch_utils import (
-    ShardBatchIterator,
-    ShardEpisodesIterator,
-    ShardObjectRefIterator,
-)
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -212,10 +205,6 @@ class LearnerGroup(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
-        # TODO (sven): Deprecate the following args (but not the kwargs).
-        num_epochs: int = 1,
-        minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = False,
         # User kwargs passed onto the Learners.
         **kwargs,
     ) -> List[Dict[str, Any]]:
@@ -278,7 +267,7 @@ class LearnerGroup(Checkpointable):
         training_data.validate()
 
         # Define function to be called on all Learner actors (or the local learner).
-        #def _learner_update(
+        # def _learner_update(
         #    _learner: Learner,
         #    *,
         #    _batch_shard=None,
@@ -287,7 +276,7 @@ class LearnerGroup(Checkpointable):
         #    _return_state,
         #    _num_total_minibatches=0,
         #    **_kwargs,
-        #):
+        # ):
         #    # If the batch shard is an `DataIterator` we have an offline
         #    # multi-learner setup and `update_from_iterator` needs to
         #    # handle updating.
@@ -336,9 +325,9 @@ class LearnerGroup(Checkpointable):
                     training_data=training_data,
                     timesteps=timesteps,
                     return_state=return_state,
-                    num_epochs=num_epochs,
-                    minibatch_size=minibatch_size,
-                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+                    #num_epochs=num_epochs,
+                    #minibatch_size=minibatch_size,
+                    #shuffle_batch_per_epoch=shuffle_batch_per_epoch,
                     **kwargs,
                 )
             ]
@@ -355,7 +344,7 @@ class LearnerGroup(Checkpointable):
         #  "lockstep"), the `ShardBatchIterator` should not be used.
         #  Then again, we might move into a world where Learner always
         #  receives Episodes, never batches.
-        #if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
+        # if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
         #    partials = [
         #        partial(
         #            _learner_update,
@@ -368,10 +357,10 @@ class LearnerGroup(Checkpointable):
         #        # are learners.
         #        for i, iterator in enumerate(batch)
         #    ]
-        #elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
+        # elif isinstance(batch, list) and isinstance(batch[0], ObjectRef):
         #    pass
         #
-        #elif batch is not None:
+        # elif batch is not None:
         #    partials = [
         #        partial(
         #            _learner_update,
@@ -384,7 +373,7 @@ class LearnerGroup(Checkpointable):
         #            ShardBatchIterator(batch, len(self))
         #        )
         #    ]
-        #elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
+        # elif isinstance(episodes, list) and isinstance(episodes[0], ObjectRef):
         #    partials = [
         #        partial(
         #            _learner_update,
@@ -399,7 +388,7 @@ class LearnerGroup(Checkpointable):
         #    ]
         ## Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
         ## in case of multi-agent).
-        #else:
+        # else:
         #    from ray.data.iterator import DataIterator
         #
         #    if isinstance(episodes[0], DataIterator):
@@ -444,9 +433,7 @@ class LearnerGroup(Checkpointable):
 
         if async_update:
             # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs(
-                timeout_seconds=0.0
-            )
+            results = self._worker_manager.fetch_ready_async_reqs(timeout_seconds=0.0)
             # Send out new request(s), if there is still capacity on the actors
             # (each actor is allowed only some number of max in-flight requests
             # at the same time).
@@ -459,7 +446,9 @@ class LearnerGroup(Checkpointable):
                         return_state=(return_state and i == 0),
                         **kwargs,
                     )
-                    for i, td_shard in enumerate(training_data.shard(num_shards=len(self)))
+                    for i, td_shard in enumerate(
+                        training_data.shard(num_shards=len(self))
+                    )
                 ],
             )
 
@@ -489,18 +478,10 @@ class LearnerGroup(Checkpointable):
 
                 self._ts_dropped += factor * dropped
 
-            # NOTE: There is a strong assumption here that the requests launched to
-            # learner workers will return at the same time, since they have a
-            # barrier inside for gradient aggregation. Therefore, results should be
-            # a list of lists where each inner list should be the length of the
-            # number of learner workers, if results from an non-blocking update are
-            # ready.
             results = self._get_async_results(results)
 
         else:
-            results = self._get_results(
-                self._worker_manager.foreach_actor(partials)
-            )
+            results = self._get_results(self._worker_manager.foreach_actor(partials))
 
         return results
 

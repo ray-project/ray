@@ -53,12 +53,6 @@ class CircularBuffer:
                 self._indices.add(self._offset)
                 self._indices.discard(self._offset - self._NxK)
                 self._offset += 1
-
-            print("ADDED", (
-                self._offset,
-                self._indices,
-                [b is None for b in self._buffer],
-            ))
             self._num_added += 1
 
         # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
@@ -87,14 +81,6 @@ class CircularBuffer:
             )
             self._buffer[actual_buffer_idx] = None
             self._indices.discard(idx)
-
-            print("SAMPLED", (
-                idx,
-                actual_buffer_idx,
-                self._offset,
-                self._indices,
-                [b is None for b in self._buffer],
-            ))
 
         # Return the sampled batch.
         return batch
