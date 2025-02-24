@@ -204,6 +204,9 @@ class TestDAGRefDestruction:
         result = ray.get(ref)
         assert (result == val).all()
         del ref
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_get_ref_before_destructed_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -216,6 +219,9 @@ class TestDAGRefDestruction:
         # Test that ray.get() on ref still works properly even if
         # ref2 (corresponding to a later execution) is destructed first
         assert ray.get(ref) == 1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_get_ref_after_destructed_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -229,6 +235,9 @@ class TestDAGRefDestruction:
         del ref2
         # Test that ray.get() works correctly if preceding ref was destructed
         assert ray.get(ref3) == 6
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_release_buffer_on_execute(self, ray_start_regular):
         a = Actor.remote(0)
@@ -247,6 +256,9 @@ class TestDAGRefDestruction:
         # should be destructed and not counted in the inflight executions
         ref5 = compiled_dag.execute(3)
         assert ray.get(ref5) == 15
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_destruct_and_get_multioutput_ref(self, ray_start_regular):
         a = Actor.remote(0)
@@ -258,6 +270,9 @@ class TestDAGRefDestruction:
         # Test that ray.get() on ref1 still works properly even if
         # ref2 was destructed
         assert ray.get(ref1) == 1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
     def test_destruct_and_get_multioutput_no_leak(self, ray_start_regular):
         a = Actor.remote(0)
@@ -265,12 +280,44 @@ class TestDAGRefDestruction:
             dag = MultiOutputNode([a.inc.bind(inp), a.inc.bind(inp)])
         compiled_dag = dag.experimental_compile()
         ref_list = compiled_dag.execute(1)
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
         ref1, ref2 = compiled_dag.execute(2)
         del ref1
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {1: {0}}
+        assert compiled_dag._got_ref_idxs == {}
         ray.get(ref2)
+        assert compiled_dag._result_buffer == {0: {0: 1, 1: 2}}
         ray.get(ref_list)
         # Test that that ref1 doesn't stay in result_buffer
-        assert len(compiled_dag._result_buffer) == 0
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
+
+    def test_asyncio_destruction(self, ray_start_regular):
+        a = Actor.remote(0)
+        b = Actor.remote(0)
+        with InputNode() as i:
+            dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
+
+        loop = get_or_create_event_loop()
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main(i):
+            # use asyncio.sleep to give back control so GC has
+            # a chance to run
+            await asyncio.sleep(i * 0.1)
+            futs = await compiled_dag.execute_async(i)
+            assert len(futs) == 2
+            result = await futs[0]
+            assert result == i
+
+        loop.run_until_complete(asyncio.gather(*[main(i) for i in range(5)]))
+        assert compiled_dag._result_buffer == {}
+        assert compiled_dag._destructed_ref_idxs == {}
+        assert compiled_dag._got_ref_idxs == {}
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
