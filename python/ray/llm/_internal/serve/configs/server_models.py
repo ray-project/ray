@@ -34,6 +34,7 @@ from ray.llm._internal.utils import try_import
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
 from ray.serve.config import AutoscalingConfig
+from ray.serve._private.config import DeploymentConfig
 
 from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
@@ -117,27 +118,27 @@ class ServeMultiplexConfig(BaseModelExtended):
     )
 
 
-# See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
-class DeploymentConfig(BaseModelExtended):
-    class Config:
-        extra = "forbid"
+# # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
+# class DeploymentConfig(BaseModelExtended):
+#     class Config:
+#         extra = "forbid"
 
-    autoscaling_config: Optional[AutoscalingConfig] = Field(
-        default=None,
-        description="Configuration for autoscaling the number of workers",
-    )
-    max_ongoing_requests: Optional[int] = Field(
-        None,
-        description="Sets the maximum number of queries in flight that are sent to a single replica.",
-    )
+#     autoscaling_config: Optional[AutoscalingConfig] = Field(
+#         default=None,
+#         description="Configuration for autoscaling the number of workers",
+#     )
+#     max_ongoing_requests: Optional[int] = Field(
+#         None,
+#         description="Sets the maximum number of queries in flight that are sent to a single replica.",
+#     )
 
-    ray_actor_options: Optional[Dict[str, Any]] = Field(
-        None, description="the Ray actor options to pass into the replica's actor."
-    )
-    graceful_shutdown_timeout_s: int = Field(
-        300,
-        description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
-    )
+#     ray_actor_options: Optional[Dict[str, Any]] = Field(
+#         None, description="the Ray actor options to pass into the replica's actor."
+#     )
+#     graceful_shutdown_timeout_s: int = Field(
+#         300,
+#         description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
+#     )
 
 
 class InputModality(str, Enum):
@@ -262,7 +263,16 @@ class LLMConfig(BaseModelExtended):
 
     deployment_config: Dict[str, Any] = Field(
         default_factory=dict,
-        description="The Ray @server.deployment options. See @server.deployment for more details.",
+        description="""
+            The Ray @server.deployment options.
+            Supported fields are:
+            `name`, `num_replicas`, `ray_actor_options`, `max_ongoing_requests`,
+            `autoscaling_config`, `max_queued_requests`, `user_config`,
+            `health_check_period_s`, `health_check_timeout_s`,
+            `graceful_shutdown_wait_loop_s`, `graceful_shutdown_timeout_s`,
+            `logging_config`.
+            For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
+        """,
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -339,28 +349,20 @@ class LLMConfig(BaseModelExtended):
     @field_validator("deployment_config")
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the deployment config dictionary."""
-        validated_autoscaling_config = None
-
         autoscaling_config = value.pop("autoscaling_config", None)
         try:
-            validated_deployment_config = DeploymentConfig(**value)
+            DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
 
         if autoscaling_config is not None:
             try:
-                validated_autoscaling_config = AutoscalingConfig(**autoscaling_config)
+                AutoscalingConfig(**autoscaling_config)
             except Exception as e:
                 raise ValueError(
                     f"Invalid autoscaling config: {autoscaling_config}"
                 ) from e
-        value = validated_deployment_config.model_dump(exclude_unset=True)
-
-        # Here, we use pydantic.v1 .dict() instead of model_dump() because validated_autoscaling_config is a pydantic.v1 model.
-        if validated_autoscaling_config is not None:
-            value["autoscaling_config"] = validated_autoscaling_config.dict(
-                exclude_unset=True
-            )
+            value["autoscaling_config"] = autoscaling_config
         return value
 
     def ray_accelerator_type(self) -> str:

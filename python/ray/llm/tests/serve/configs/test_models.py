@@ -66,32 +66,33 @@ class TestModelConfig:
                 generation_config="invalid_config",  # Should be a dictionary, not a string
             )
 
-    def test_deployment_config_extra_forbid(self):
-        """Test that deployment config extra params are forbidden."""
+    def test_deployment_type_checking(self):
+        """Test that deployment config type checking works."""
         with pytest.raises(
             pydantic.ValidationError,
         ):
             LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
-                deployment_config={"extra": "invalid"},
+                deployment_config={
+                    "max_ongoing_requests": -1,
+                },
+                accelerator_type="L4",
             )
 
-    def test_autoscaling_config_extra_ignore(self):
-        """Test that autoscaling config extra params are ignored."""
-        llm_config = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            deployment_config={
-                "autoscaling_config": {
-                    "min_replicas": 3,
-                    "max_replicas": 7,
-                    "extra_key": "extra_value",
-                }
-            },
-            accelerator_type="L4",
-        )
-        assert llm_config.deployment_config["autoscaling_config"]["min_replicas"] == 3
-        assert llm_config.deployment_config["autoscaling_config"]["max_replicas"] == 7
-        assert "extra_key" not in llm_config.deployment_config["autoscaling_config"]
+    def test_autoscaling_type_checking(self):
+        """Test that autoscaling config type checking works."""
+        with pytest.raises(
+            pydantic.ValidationError,
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                deployment_config={
+                    "autoscaling_config": {
+                        "min_replicas": -1,
+                    },
+                },
+                accelerator_type="L4",
+            )
 
     def test_deployment_unset_fields_are_not_included(self):
         """Test that unset fields are not included in the deployment config."""
