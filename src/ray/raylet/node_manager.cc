@@ -668,12 +668,12 @@ void NodeManager::CheckWorkerSockets() {
   for (const auto &worker : all_workers) {
     if (!worker->Connection()->CheckOpen()) {
       any = true;
-      RAY_LOG(ERROR) << "WORKER CONN CLOSED! " << worker->WorkerId();
+      RAY_LOG(DEBUG) << "WORKER CONN CLOSED! " << worker->WorkerId();
       DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, "HELLO WORLD");
     }
   }
   if (!any) {
-      RAY_LOG(ERROR) << "ALL WORKER CONNS OPEN";
+      RAY_LOG(DEBUG) << "ALL WORKER CONNS OPEN";
   }
 }
 
