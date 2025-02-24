@@ -2060,8 +2060,10 @@ class CompiledDAG:
             def wait_teardown(self, kill_actors: bool = False):
                 outer = get_outer()
                 if outer is None:
-                    # This should never happen.
-                    logger.error("CompiledDag has been destructed before teardown")
+                    logger.error(
+                        "CompiledDag has been destructed before teardown. "
+                        "This should not occur please report an issue."
+                    )
                     return
 
                 from ray.dag import DAGContext
@@ -2114,8 +2116,10 @@ class CompiledDAG:
 
                     outer = get_outer()
                     if outer is None:
-                        # This should never happen.
-                        logger.error("CompiledDag has been destructed before teardown")
+                        logger.error(
+                            "CompiledDag has been destructed before teardown. "
+                            "This should not occur please report an issue."
+                        )
                         return
 
                     logger.info("Tearing down compiled DAG")
@@ -2162,7 +2166,6 @@ class CompiledDAG:
                     self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
-                    print("tearing down from monitor thread")
                     self.teardown()
 
         monitor = Monitor()
