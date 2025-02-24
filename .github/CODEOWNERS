@@ -73,8 +73,8 @@
 /doc/source/data/ @ray-project/ray-data
 
 # Ray workflows.
-/python/ray/workflow/ @stephanie-wang
-/doc/source/workflows/ @stephanie-wang @maxpumperla @ray-project/ray-docs
+/python/ray/workflow/ @ray-project/ray-core
+/doc/source/workflows/ @ray-project/ray-core @ray-project/ray-docs
 
 # RLlib.
 /rllib/ @sven1977 @simonsays1980
