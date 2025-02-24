@@ -1879,8 +1879,6 @@ void NodeManager::HandleCancelTasksWithResourceShapes(
     rpc::CancelTasksWithResourceShapesRequest request,
     rpc::CancelTasksWithResourceShapesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const auto &failure_type = request.failure_type();
-  const auto &failure_message = request.failure_message();
   const auto &resource_shapes = request.resource_shapes();
   std::vector<ResourceSet> target_resource_shapes;
   for (const auto &resource_shape : resource_shapes) {
@@ -1888,8 +1886,7 @@ void NodeManager::HandleCancelTasksWithResourceShapes(
         ResourceSet(MapFromProtobuf(resource_shape.resource_shape())));
   }
 
-  cluster_task_manager_->CancelTasksWithResourceShapes(
-      target_resource_shapes, failure_type, failure_message);
+  cluster_task_manager_->CancelTasksWithResourceShapes(target_resource_shapes);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

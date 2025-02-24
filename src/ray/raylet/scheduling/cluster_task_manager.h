@@ -97,16 +97,17 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       const std::string &scheduling_failure_message = "") override;
 
   /// Cancel all tasks that requires certain resource shape.
+  /// This function is intended to be used to cancel the infeasible tasks. To make it a
+  /// more general function, please modify the signature by adding parameters including
+  /// the failure type and the failure message.
   ///
   /// \param target_resource_shapes: The resource shapes to cancel.
-  /// \param failure_type: The failure type of the cancellation.
-  /// \param scheduling_failure_message: A failure message for the cancellation.
   ///
-  /// \return True if any task was successfully cancelled.
+  /// \return True if any task was successfully cancelled. This function will return
+  /// false if the task is already running. This shouldn't happen in noremal cases
+  /// because the infeasible tasks shouldn't be able to run due to resource constraints.
   bool CancelTasksWithResourceShapes(
-      const std::vector<ResourceSet> target_resource_shapes,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-      const std::string &scheduling_failure_message = "") override;
+      const std::vector<ResourceSet> target_resource_shapes) override;
 
   /// Attempt to cancel all queued tasks that match the predicate.
   ///
