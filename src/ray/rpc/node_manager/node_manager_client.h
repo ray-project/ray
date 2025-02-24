@@ -16,6 +16,8 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <memory>
+#include <string>
 #include <thread>
 
 #include "ray/common/status.h"
