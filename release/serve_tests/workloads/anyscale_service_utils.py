@@ -86,7 +86,7 @@ def start_service(
 
     finally:
         logger.info(f"Terminating service {service_name}.")
-        service.terminate(name=service_name)
+        service.terminate(name=service_name, cloud=cloud)
         wait_for_condition(
             check_service_state,
             service_name=service_name,
