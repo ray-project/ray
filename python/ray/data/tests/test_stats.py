@@ -1705,18 +1705,17 @@ def test_stats_manager(shutdown_only):
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
 
 
-def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
-    sum_metrics = defaultdict(float)
-    for metrics in per_node_metrics.values():
-        for metric, value in metrics.items():
-            sum_metrics[metric] += value
-    return sum_metrics
-
-
 def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
     """Basic test to ensure per-node metrics are populated."""
     ctx = DataContext.get_current()
     ctx.enable_per_node_metrics = True
+
+    def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
+        sum_metrics = defaultdict(float)
+        for metrics in per_node_metrics.values():
+            for metric, value in metrics.items():
+                sum_metrics[metric] += value
+        return sum_metrics
 
     with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
         mock_actor_handle = MagicMock()
@@ -1740,7 +1739,6 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
 
         # basic checks to make sure metrics are populated
         assert any(nm["num_tasks_finished"] > 0 for nm in per_node_metrics.values())
-        assert any(nm["obj_store_mem_freed"] > 0 for nm in per_node_metrics.values())
         assert any(
             nm["bytes_outputs_of_finished_tasks"] > 0
             for nm in per_node_metrics.values()
@@ -1752,43 +1750,10 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
 
         net_metrics = _sum_net_metrics(per_node_metrics)
         assert net_metrics["num_tasks_finished"] == metrics["num_tasks_finished"]
-        assert net_metrics["obj_store_mem_used"] == metrics["obj_store_mem_used"]
-        assert net_metrics["obj_store_mem_freed"] == metrics["obj_store_mem_freed"]
-        assert net_metrics["obj_store_mem_spilled"] == metrics["obj_store_mem_spilled"]
         assert (
             net_metrics["bytes_outputs_of_finished_tasks"]
             == metrics["bytes_outputs_of_finished_tasks"]
         )
-
-
-def test_per_node_metrics_spilled(ray_start_regular_shared, restore_data_context):
-    """Test that per-node spillage metrics show up when we exceed object store memory."""
-    # Force a smaller object store so that a bigger pipeline triggers spillage.
-    ray.shutdown()
-
-    # The object store is about 100MB.
-    ray.init(object_store_memory=100e6)
-
-    ctx = DataContext.get_current()
-    ctx.enable_per_node_metrics = True
-    ctx.enable_get_object_locations_for_metrics = True
-
-    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
-        mock_actor_handle = MagicMock()
-        mock_get_actor.return_value = mock_actor_handle
-        # The size of dataset is 1000*80*80*4*8B, about 200MB.
-        _ = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
-
-        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
-        assert len(calls) > 0
-
-        last_args, _ = calls[-1]
-        per_node_metrics = last_args[-1]
-
-        assert any(nm["obj_store_mem_spilled"] > 0 for nm in per_node_metrics.values())
-
-        # Clean up Ray at the end so we don't pollute other tests.
-        ray.shutdown()
 
 
 @pytest.mark.parametrize("enable_metrics", [True, False])

@@ -109,9 +109,6 @@ class RunningTaskInfo:
 @dataclass
 class NodeMetrics:
     num_tasks_finished: int = 0
-    obj_store_mem_used: int = 0
-    obj_store_mem_freed: int = 0
-    obj_store_mem_spilled: int = 0
     bytes_outputs_of_finished_tasks: int = 0
     blocks_outputs_of_finished_tasks: int = 0
 
@@ -602,11 +599,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
 
-                    if self._per_node_metrics_enabled:
-                        node_id = node_id_from_block_metadata(meta)
-                        node_metrics = self._per_node_metrics[node_id]
-                        node_metrics.obj_store_mem_spilled += meta.size_bytes
-
         self.obj_store_mem_freed += total_input_size
 
         # Update per node metrics
@@ -619,9 +611,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 # Stats to update once per node id or if node id is unknown
                 if node_id not in node_ids or node_id == NODE_UNKNOWN:
                     node_metrics.num_tasks_finished += 1
-
-                # Stats to update once per block
-                node_metrics.obj_store_mem_freed += meta.size_bytes
 
                 # Keep track of node ids to ensure we don't double count
                 node_ids.add(node_id)
