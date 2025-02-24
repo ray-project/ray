@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/redis_client.h"
 
 namespace ray {
 namespace gcs {
@@ -50,7 +51,7 @@ void GcsRedisFailureDetector::DetectRedis() {
       this->io_service_.dispatch(this->callback_, "GcsRedisFailureDetector.DetectRedis");
     }
   };
-  auto cxt = redis_client_->GetPrimaryContext();
+  auto *cxt = redis_client_->GetPrimaryContext();
   cxt->RunArgvAsync({"PING"}, redis_callback);
 }
 

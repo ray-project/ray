@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# flake8: noqa E402
+# ruff: noqa: E402
 """This script allows you to develop Ray Python code without needing to compile
 Ray.
 See https://docs.ray.io/en/master/development.html#building-ray-python-only"""
@@ -121,6 +121,7 @@ if __name__ == "__main__":
     if not args.yes:
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
+    do_link("llm", force=args.yes, skip_list=args.skip)
     do_link("rllib", force=args.yes, skip_list=args.skip, local_path="../../../rllib")
     do_link("air", force=args.yes, skip_list=args.skip)
     do_link("tune", force=args.yes, skip_list=args.skip)

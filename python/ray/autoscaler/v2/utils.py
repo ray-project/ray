@@ -6,7 +6,6 @@ from itertools import chain
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
-from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
 from ray._private.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
@@ -559,7 +558,7 @@ class ClusterStatusParser:
                     ResourceRequestByCount(
                         bundle=dict(r.request.resources_bundle.items()), count=r.count
                     )
-                    for r in constraint_request.min_bundles
+                    for r in constraint_request.resource_requests
                 ]
             )
             constraint_demand.append(demand)
@@ -829,7 +828,8 @@ def is_autoscaler_v2(
     # See src/ray/common/constants.h for the definition of this key.
     cached_is_autoscaler_v2 = (
         gcs_client.internal_kv_get(
-            AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()
+            ray._raylet.GCS_AUTOSCALER_V2_ENABLED_KEY.encode(),
+            namespace=ray._raylet.GCS_AUTOSCALER_STATE_NAMESPACE.encode(),
         )
         == b"1"
     )

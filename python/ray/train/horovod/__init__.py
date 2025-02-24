@@ -11,6 +11,10 @@ except ModuleNotFoundError:
 
 from ray.train.horovod.config import HorovodConfig
 from ray.train.horovod.horovod_trainer import HorovodTrainer
+from ray.train.v2._internal.constants import is_v2_enabled
+
+if is_v2_enabled():
+    from ray.train.v2.horovod.horovod_trainer import HorovodTrainer  # noqa: F811
 
 __all__ = ["HorovodConfig", "HorovodTrainer"]
 

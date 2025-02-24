@@ -179,12 +179,8 @@ if __name__ == "__main__":
 
         return results
 
-    benchmark = Benchmark("sort-shuffle")
+    benchmark = Benchmark()
     benchmark.run_fn("main", run_benchmark, args)
-
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "")
-    if test_output_json:
-        out_file = open(test_output_json, "w")
-        benchmark.write_result(out_file)
+    benchmark.write_result()
 
     ray.timeline("dump.json")

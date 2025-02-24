@@ -26,9 +26,9 @@
 
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"
-#include "ray/object_manager/plasma/compat.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/util/compat.h"
 #include "ray/util/macros.h"
 
 namespace plasma {
@@ -45,6 +45,14 @@ enum class ObjectState : int {
   /// Object is sealed and stored in the local Plasma Store.
   PLASMA_SEALED = 2,
 };
+
+inline constexpr std::string_view kCorruptedRequestErrorMessage =
+    "This could be due to "
+    "process forking in core worker or driver code which results in multiple processes "
+    "sharing the same Plasma store socket. Please ensure that there are no "
+    "process forking in any of the application core worker or driver code. Follow the "
+    "link here to learn more about the issue and how to fix it: "
+    "https://docs.ray.io/en/latest/ray-core/patterns/fork-new-processes.html";
 
 // Represents a chunk of allocated memory.
 struct Allocation {

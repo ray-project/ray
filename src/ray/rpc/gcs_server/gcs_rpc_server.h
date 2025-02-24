@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
@@ -54,6 +57,10 @@ class AutoscalerStateServiceHandler {
   virtual void HandleDrainNode(DrainNodeRequest request,
                                DrainNodeReply *reply,
                                SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportClusterConfig(ReportClusterConfigRequest request,
+                                         ReportClusterConfigReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `AutoscalerStateService`.
@@ -74,6 +81,7 @@ class AutoscalerStateGrpcService : public GrpcService {
       const ClusterID &cluster_id) override {
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterResourceState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(ReportAutoscalingState);
+    AUTOSCALER_STATE_SERVICE_RPC_HANDLER(ReportClusterConfig);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(RequestClusterResourceConstraint);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterStatus);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(DrainNode);
@@ -148,9 +156,9 @@ namespace rpc {
 #define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalPubSubGcsService, HANDLER, -1)
 
-#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
-  reply->mutable_status()->set_code((int)status.code());       \
-  reply->mutable_status()->set_message(status.message());      \
+#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
+  reply->mutable_status()->set_code(static_cast<int>(status.code())); \
+  reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
 
 class JobInfoGcsServiceHandler {

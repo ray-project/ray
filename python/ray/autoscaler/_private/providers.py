@@ -102,12 +102,6 @@ def _import_fake_multinode_docker(provider_config):
     return FakeMultiNodeDockerProvider
 
 
-def _import_kubernetes(provider_config):
-    from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
-
-    return KubernetesNodeProvider
-
-
 def _import_kuberay(provider_config):
     from ray.autoscaler._private.kuberay.node_provider import KubeRayNodeProvider
 
@@ -150,12 +144,6 @@ def _load_local_defaults_config():
     import ray.autoscaler.local as ray_local
 
     return os.path.join(os.path.dirname(ray_local.__file__), "defaults.yaml")
-
-
-def _load_kubernetes_defaults_config():
-    import ray.autoscaler.kubernetes as ray_kubernetes
-
-    return os.path.join(os.path.dirname(ray_kubernetes.__file__), "defaults.yaml")
 
 
 def _load_aws_defaults_config():
@@ -202,7 +190,6 @@ _NODE_PROVIDERS = {
     "gcp": _import_gcp,
     "vsphere": _import_vsphere,
     "azure": _import_azure,
-    "kubernetes": _import_kubernetes,
     "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
     "external": _import_external,  # Import an external module
@@ -232,7 +219,6 @@ _DEFAULT_CONFIGS = {
     "gcp": _load_gcp_defaults_config,
     "azure": _load_azure_defaults_config,
     "aliyun": _load_aliyun_defaults_config,
-    "kubernetes": _load_kubernetes_defaults_config,
     "vsphere": _load_vsphere_defaults_config,
     "readonly": _load_read_only_defaults_config,
 }

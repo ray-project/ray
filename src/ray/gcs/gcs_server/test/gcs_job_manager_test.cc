@@ -32,12 +32,6 @@
 
 namespace ray {
 
-class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
- public:
-  explicit MockInMemoryStoreClient(instrumented_io_context &main_io_service)
-      : gcs::InMemoryStoreClient(main_io_service) {}
-};
-
 class GcsJobManagerTest : public ::testing::Test {
  public:
   GcsJobManagerTest() : runtime_env_manager_(nullptr) {
@@ -52,11 +46,11 @@ class GcsJobManagerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
 
     // Mock client factory which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
@@ -87,18 +81,26 @@ class GcsJobManagerTest : public ::testing::Test {
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
-  fake_kv_->Put("ns", "key", "value", /*overwrite=*/true, /*callback=*/[](auto) {});
+  fake_kv_->Put(
+      "ns", "key", "value", /*overwrite=*/true, /*callback=*/{[](auto) {}, io_service_});
   fake_kv_->Get(
-      "ns", "key", [](std::optional<std::string> v) { ASSERT_EQ(v.value(), "value"); });
-  fake_kv_->Put("ns", "key2", "value2", /*overwrite=*/true, /*callback=*/[](auto) {});
+      "ns",
+      "key",
+      {[](std::optional<std::string> v) { ASSERT_EQ(v.value(), "value"); }, io_service_});
+  fake_kv_->Put("ns",
+                "key2",
+                "value2",
+                /*overwrite=*/true,
+                /*callback=*/{[](auto) {}, io_service_});
 
   fake_kv_->MultiGet("ns",
                      {"key", "key2"},
-                     [](const std::unordered_map<std::string, std::string> &result) {
-                       ASSERT_EQ(result.size(), 2);
-                       ASSERT_EQ(result.at("key"), "value");
-                       ASSERT_EQ(result.at("key2"), "value2");
-                     });
+                     {[](const absl::flat_hash_map<std::string, std::string> &result) {
+                        ASSERT_EQ(result.size(), 2);
+                        ASSERT_EQ(result.at("key"), "value");
+                        ASSERT_EQ(result.at("key2"), "value2");
+                      },
+                      io_service_});
 }
 
 TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
@@ -107,6 +109,7 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
@@ -171,6 +174,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
@@ -243,7 +247,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                 gcs::JobDataKey(submission_id),
                 job_info_json,
                 /*overwrite=*/true,
-                [&kv_promise](auto) { kv_promise.set_value(true); });
+                {[&kv_promise](auto) { kv_promise.set_value(true); }, io_service_});
   kv_promise.get_future().get();
 
   // Get all job info again.
@@ -294,7 +298,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                 gcs::JobDataKey(submission_id),
                 job_info_json,
                 /*overwrite=*/true,
-                [&kv_promise2](auto) { kv_promise2.set_value(true); });
+                {[&kv_promise2](auto) { kv_promise2.set_value(true); }, io_service_});
   kv_promise2.get_future().get();
 
   // Get all job info again.
@@ -348,6 +352,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id1 = JobID::FromInt(1);
@@ -433,6 +438,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id1 = JobID::FromInt(1);
@@ -536,6 +542,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id1 = JobID::FromInt(1);
@@ -578,6 +585,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id = JobID::FromInt(1);
@@ -645,6 +653,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
+                                     io_service_,
                                      client_factory_);
 
   auto job_id1 = JobID::FromInt(1);

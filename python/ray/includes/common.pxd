@@ -119,6 +119,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
         c_bool IsObjectStoreFull()
+        c_bool IsAlreadyExists()
         c_bool IsOutOfDisk()
         c_bool IsRedisError()
         c_bool IsTimedOut()
@@ -375,13 +376,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
-            object (*)(CRayStatus, c_vector[T] &&) nogil,
+            object (*)(CRayStatus, c_vector[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
     cdef cppclass OptionalItemPyCallback[T]:
         OptionalItemPyCallback(
-            object (*)(CRayStatus, const optional[T]&) nogil,
+            object (*)(CRayStatus, optional[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
@@ -443,7 +444,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
         CRayStatus AsyncGetAll(
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
-            int64_t timeout_ms)
+            int64_t timeout_ms,
+            optional[CNodeID] node_id)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -514,7 +516,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &value,
             c_bool overwrite,
             int64_t timeout_ms,
-            const OptionalItemPyCallback[int] &callback)
+            const OptionalItemPyCallback[c_bool] &callback)
 
         CRayStatus AsyncInternalKVExists(
             const c_string &ns,
@@ -553,9 +555,18 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &serialized_reply
         )
 
+        CRayStatus AsyncGetClusterStatus(
+            int64_t timeout_ms,
+            const OptionalItemPyCallback[CGetClusterStatusReply] &callback)
+
         CRayStatus ReportAutoscalingState(
             int64_t timeout_ms,
             const c_string &serialized_state
+        )
+
+        CRayStatus ReportClusterConfig(
+            int64_t timeout_ms,
+            const c_string &serialized_cluster_config
         )
 
         CRayStatus DrainNode(
@@ -721,6 +732,12 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 
+cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
+    cdef cppclass CGetClusterStatusReply "ray::rpc::autoscaler::GetClusterStatusReply":
+        c_string serialized_cluster_status() const
+        void ParseFromString(const c_string &serialized)
+        const c_string &SerializeAsString() const
+
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
         CConcurrencyGroup(
@@ -737,3 +754,6 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
+    cdef const char[] kGcsAutoscalerStateNamespace
+    cdef const char[] kGcsAutoscalerV2EnabledKey
+    cdef const char[] kGcsAutoscalerClusterConfigKey
