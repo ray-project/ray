@@ -16,12 +16,13 @@
 
 #pragma once
 
-#include <mutex>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/cgroup/base_cgroup_setup.h"
 #include "ray/common/cgroup/cgroup_context.h"
 #include "ray/util/process.h"
@@ -62,12 +63,13 @@ class FakeCgroupSetup : public BaseCgroupSetup {
     }
   };
 
-  std::mutex mtx_;
+  absl::Mutex mtx_;
   // Stores process id of ray system (i.e. raylet, GCS, etc).
-  absl::flat_hash_set<pid_t> system_cgroup_;
+  absl::flat_hash_set<pid_t> system_cgroup_ ABSL_GUARDED_BY(mtx_);
   // Stores process id of application process (aka. user applications).
   // Maps from cgroup folder to its pids.
-  absl::flat_hash_map<CgroupFolder, absl::flat_hash_set<pid_t>> cgroup_to_pids_;
+  absl::flat_hash_map<CgroupFolder, absl::flat_hash_set<pid_t>> cgroup_to_pids_
+      ABSL_GUARDED_BY(mtx_);
 };
 
 }  // namespace ray

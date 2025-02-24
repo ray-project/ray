@@ -38,6 +38,9 @@ class BaseCgroupSetup {
   BaseCgroupSetup() = default;
   virtual ~BaseCgroupSetup() = default;
 
+  BaseCgroupSetup(const BaseCgroupSetup &) = delete;
+  BaseCgroupSetup &operator=(const BaseCgroupSetup &) = delete;
+
   // Add system process into system cgroup.
   virtual ScopedCgroupHandler AddSystemProcess(pid_t pid) = 0;
 

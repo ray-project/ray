@@ -49,6 +49,7 @@ ray_cc_library(
         ":base_cgroup_setup",
         "//src/ray/util:logging",
         "//src/ray/util:process",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],

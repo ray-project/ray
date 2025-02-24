@@ -16,8 +16,6 @@
 
 #include <string>
 
-#include "ray/common/cgroup/base_cgroup_setup.h"
-
 namespace ray {
 
 namespace internal {

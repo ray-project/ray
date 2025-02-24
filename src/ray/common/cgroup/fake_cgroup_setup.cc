@@ -19,7 +19,7 @@
 namespace ray {
 
 ScopedCgroupHandler FakeCgroupSetup::AddSystemProcess(pid_t pid) {
-  std::lock_guard<std::mutex> lck(mtx_);
+  absl::MutexLock lock(&mtx_);
   const bool is_new = system_cgroup_.emplace(pid).second;
   RAY_CHECK(is_new);
   return ScopedCgroupHandler{[this, pid]() { CleanupSystemProcess(pid); }};
@@ -27,7 +27,7 @@ ScopedCgroupHandler FakeCgroupSetup::AddSystemProcess(pid_t pid) {
 
 ScopedCgroupHandler FakeCgroupSetup::ApplyCgroupContext(
     const PhysicalModeExecutionContext &ctx) {
-  std::lock_guard<std::mutex> lck(mtx_);
+  absl::MutexLock lock(&mtx_);
   CgroupFolder cgroup_folder;
   cgroup_folder.max_memory_bytes = ctx.max_memory;
   const auto [_, is_new] = cgroup_to_pids_[std::move(cgroup_folder)].emplace(ctx.pid);
@@ -36,7 +36,7 @@ ScopedCgroupHandler FakeCgroupSetup::ApplyCgroupContext(
 }
 
 void FakeCgroupSetup::CleanupSystemProcess(pid_t pid) {
-  std::lock_guard<std::mutex> lck(mtx_);
+  absl::MutexLock lock(&mtx_);
   auto iter = system_cgroup_.find(pid);
   RAY_CHECK(iter != system_cgroup_.end())
       << "PID " << pid << " hasn't be added into system cgroup.";
@@ -44,7 +44,7 @@ void FakeCgroupSetup::CleanupSystemProcess(pid_t pid) {
 }
 
 void FakeCgroupSetup::CleanupCgroupContext(const PhysicalModeExecutionContext &ctx) {
-  std::lock_guard<std::mutex> lck(mtx_);
+  absl::MutexLock lock(&mtx_);
   CgroupFolder cgroup_folder;
   cgroup_folder.max_memory_bytes = ctx.max_memory;
   auto ctx_iter = cgroup_to_pids_.find(cgroup_folder);
