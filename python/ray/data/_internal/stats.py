@@ -398,9 +398,7 @@ class _StatsActor:
 
                 node_ip = self._ray_nodes_cache.get(node_id, NODE_UNKNOWN)
 
-                tags = self._create_tags(
-                    dataset_tag=dataset_tag, node_ip_tag=node_ip
-                )
+                tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
                     prom_metric.set(metric_value, tags)
