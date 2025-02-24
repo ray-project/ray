@@ -35,6 +35,7 @@ namespace ray {
 
 class BaseCgroupSetup {
  public:
+  BaseCgroupSetup() = default;
   virtual ~BaseCgroupSetup() = default;
 
   BaseCgroupSetup(const BaseCgroupSetup &) = delete;
