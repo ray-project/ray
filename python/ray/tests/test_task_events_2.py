@@ -335,8 +335,11 @@ ray.get(parent.remote())
 
     def all_tasks_running():
         tasks = list_tasks()
-        # Expected: 1 parent task, 2 successful child tasks, 2 failed child tasks, 2 failed grandchild tasks.
-        assert len(tasks) == 7, tasks
+        assert len(tasks) == 7, (
+            "Incorrect number of tasks are reported. "
+            "Expected length: 1 parent + 2 finished child +  2 failed child + "
+            "2 failed grandchild tasks"
+        )
         return True
 
     wait_for_condition(

@@ -664,10 +664,16 @@ void NodeManager::CheckWorkerSockets() {
     all_workers.push_back(driver);
   }
 
+  bool any = false;
   for (const auto &worker : all_workers) {
     if (!worker->Connection()->CheckOpen()) {
-      RAY_LOG(ERROR) << "WORKER CONNECTION CLOSED! " << worker->WorkerId();
+      any = true;
+      RAY_LOG(ERROR) << "WORKER CONN CLOSED! " << worker->WorkerId();
+      DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, "HELLO WORLD");
     }
+  }
+  if (!any) {
+      RAY_LOG(ERROR) << "ALL WORKER CONNS OPEN";
   }
 }
 
@@ -1094,7 +1100,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                  << " died.";
           const auto &err_msg = stream.str();
           RAY_LOG(INFO) << err_msg;
-          DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, err_msg);
+          KillWorker(worker);
         }
       } else if (owner_node_id == node_id) {
         // If the leased worker's owner was on the failed node, then kill the leased
@@ -1104,7 +1110,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
                << " is killed because the owner node " << owner_node_id << " died.";
         const auto &err_msg = stream.str();
         RAY_LOG(INFO) << err_msg;
-        DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, err_msg);
+        KillWorker(worker);
       }
     }
   }
@@ -1358,14 +1364,13 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
     };
   }
 
+  Status status;
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
     return RegisterForNewWorker(
         worker, pid, worker_startup_token, std::move(send_reply_callback));
   }
-
-  // Register the new driver.
   return RegisterForNewDriver(
       worker, pid, job_id, message, std::move(send_reply_callback));
 }

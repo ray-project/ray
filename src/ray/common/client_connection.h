@@ -20,6 +20,8 @@
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <deque>
 #include <memory>
+#include <poll.h>
+#include <unistd.h>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/common_protocol.h"
@@ -127,9 +129,18 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
   }
 
   bool CheckOpen() {
-    boost::system::error_code ec;
-		boost::asio::write(socket_, boost::asio::buffer("", 0), ec);
-    return !ec;
+    int fd = socket_.native_handle(); // Get the file descriptor
+    pollfd pfd = {fd, POLLHUP, 0};
+    int ret = poll(&pfd, 1, 0); // Non-blocking check
+
+    if (ret > 0) {
+        if (pfd.revents & POLLHUP) {
+          return false;
+        }
+    } else if (ret == 0) {
+      return true;
+    }
+      return true;
   }
 
   /// Get the native handle of the socket.
