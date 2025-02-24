@@ -118,29 +118,6 @@ class ServeMultiplexConfig(BaseModelExtended):
     )
 
 
-# # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
-# class DeploymentConfig(BaseModelExtended):
-#     class Config:
-#         extra = "forbid"
-
-#     autoscaling_config: Optional[AutoscalingConfig] = Field(
-#         default=None,
-#         description="Configuration for autoscaling the number of workers",
-#     )
-#     max_ongoing_requests: Optional[int] = Field(
-#         None,
-#         description="Sets the maximum number of queries in flight that are sent to a single replica.",
-#     )
-
-#     ray_actor_options: Optional[Dict[str, Any]] = Field(
-#         None, description="the Ray actor options to pass into the replica's actor."
-#     )
-#     graceful_shutdown_timeout_s: int = Field(
-#         300,
-#         description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
-#     )
-
-
 class InputModality(str, Enum):
     text = "text"
     image = "image"
