@@ -232,10 +232,10 @@ class TestTensorTransport:
         }
 
         # Test transfer of individual tensors
-        def execute_dag(src, dst, src_device, dst_default_device):
+        def execute_dag(src, dst, src_device, dst_default_device, transport="auto"):
             with InputNode() as inp:
                 dag = src.send.bind(inp[0], inp[1])
-                dag = dag.with_tensor_transport()
+                dag = dag.with_tensor_transport(transport)
                 dag = dst.echo_tensor_device.bind(dag)
             compiled_dag = dag.experimental_compile()
 
@@ -255,6 +255,12 @@ class TestTensorTransport:
         # gpu to gpu
         execute_dag(workers["gpu-1"], workers["gpu-2"], "cuda:0", "cuda:0")
         execute_dag(workers["gpu-2"], workers["gpu-1"], "cuda:0", "cuda:0")
+        execute_dag(
+            workers["gpu-1"], workers["gpu-2"], "cuda:0", "cuda:0", transport="nccl"
+        )
+        execute_dag(
+            workers["gpu-2"], workers["gpu-1"], "cuda:0", "cuda:0", transport="nccl"
+        )
 
         # gpu to cpu
         execute_dag(workers["gpu-1"], workers["cpu-only"], "cuda:0", "cpu")
