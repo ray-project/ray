@@ -527,6 +527,21 @@ void RayletClient::GetResourceLoad(
   grpc_client_->GetResourceLoad(request, callback);
 }
 
+void RayletClient::CancelTasksWithResourceShapes(
+    const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+    const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) {
+  rpc::CancelTasksWithResourceShapesRequest request;
+
+  for (const auto &resource_shape : resource_shapes) {
+    rpc::CancelTasksWithResourceShapesRequest::ResourceShape *resource_shape_proto =
+        request.add_resource_shapes();
+    resource_shape_proto->mutable_resource_shape()->insert(resource_shape.begin(),
+                                                           resource_shape.end());
+  }
+
+  grpc_client_->CancelTasksWithResourceShapes(request, callback);
+}
+
 void RayletClient::NotifyGCSRestart(
     const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) {
   rpc::NotifyGCSRestartRequest request;

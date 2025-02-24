@@ -535,6 +535,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetResourceLoadReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `CancelTasksWithResourceShapes` request.
+  void HandleCancelTasksWithResourceShapes(
+      rpc::CancelTasksWithResourceShapesRequest request,
+      rpc::CancelTasksWithResourceShapesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(rpc::PrepareBundleResourcesRequest request,
                                     rpc::PrepareBundleResourcesReply *reply,
