@@ -5,16 +5,11 @@ from ray.core.generated.export_train_run_attempt_pb2 import (
 from ray.train.v2._internal.state.schema import (
     TrainRunAttempt,
     TrainRun,
+    TrainWorker,
     RunAttemptStatus,
     RunStatus,
     ActorStatus,
 )
-
-
-# Timestamp conversion
-def _ms_to_ns(time_ms: int) -> int:
-    """Convert millisecond timestamp to ns."""
-    return time_ms * int(1e6)
 
 
 # Status mapping dictionaries
@@ -44,12 +39,17 @@ _RUN_STATUS_MAP = {
 
 
 # Helper conversion functions
+def _ms_to_ns(time_ms: int) -> int:
+    """Convert millisecond timestamp to ns."""
+    return time_ms * int(1e6)
+
+
 def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
     """Convert resources dictionary to protobuf TrainResources."""
     return ProtoTrainRunAttempt.TrainResources(resources=resources)
 
 
-def _to_proto_worker(worker) -> ProtoTrainRunAttempt.TrainWorker:
+def _to_proto_worker(worker: TrainWorker) -> ProtoTrainRunAttempt.TrainWorker:
     """Convert TrainWorker to protobuf format."""
     status = None
     if worker.status is not None:
