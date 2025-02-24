@@ -15,13 +15,16 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 #include <boost/algorithm/string.hpp>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 
 namespace ray {
 
-using namespace ::ray::raylet_scheduling_policy;
+using namespace ::ray::raylet_scheduling_policy;  // NOLINT
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     instrumented_io_context &io_service,
@@ -195,7 +198,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     best_node_id = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
   } else {
-    // TODO (Alex): Setting require_available == force_spillback is a hack in order to
+    // TODO(Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
     best_node_id =
         scheduling_policy_->Schedule(resource_request,
@@ -207,7 +210,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
   *is_infeasible = best_node_id.IsNil();
   if (!*is_infeasible) {
-    // TODO (Alex): Support soft constraints if needed later.
+    // TODO(Alex): Support soft constraints if needed later.
     *total_violations = 0;
   }
 

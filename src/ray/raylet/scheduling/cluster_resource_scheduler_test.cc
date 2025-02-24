@@ -16,6 +16,10 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 #include <string>
+#include <utility>
+#include <vector>
+#include <memory>
+#include <unordered_map>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -31,7 +35,7 @@
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 // clang-format on
-using namespace std;
+using namespace std;  // NOLINT
 
 #define ASSERT_RESOURCES_EQ(data, expected_available, expected_total) \
   {                                                                   \
@@ -159,7 +163,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
     FixedPoint fp1(1.);
     FixedPoint fp2(2.);
 
-    ASSERT_TRUE(fp1 < 2);
+    ASSERT_LT(fp1, 2);
     ASSERT_TRUE(fp2 > 1.);
     ASSERT_TRUE(fp1 <= 2.);
     ASSERT_TRUE(fp2 >= 1.);
@@ -185,10 +189,10 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
   {
     FixedPoint fp1(1.);
     auto fp2 = fp1 - 1.0;
-    ASSERT_TRUE(fp2 == 0);
+    ASSERT_EQ(fp2, 0);
 
     auto fp3 = fp1 + 1.0;
-    ASSERT_TRUE(fp3 == 2);
+    ASSERT_EQ(fp3, 2);
 
     auto fp4 = -fp1;
     ASSERT_TRUE(fp4 == -1.0);
@@ -197,10 +201,10 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
     ASSERT_TRUE(fp1 == 2.0);
 
     FixedPoint fp5(-1.0);
-    ASSERT_TRUE(fp5 == -1);
+    ASSERT_EQ(fp5, -1);
 
     FixedPoint f6(-1);
-    FixedPoint f7(int64_t(-1));
+    FixedPoint f7(static_cast<int64_t>(-1));
     ASSERT_TRUE(f6 == f7);
 
     ASSERT_TRUE(f6 == -1.0);
@@ -219,7 +223,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
 
   ASSERT_EQ(ids.Get(to_string(3)), static_cast<int64_t>(hasher(to_string(3))));
 
-  ASSERT_TRUE(ids.Get(to_string(100)) == -1);
+  ASSERT_EQ(ids.Get(to_string(100)), -1);
 
   // Test for handling collision.
   StringIdMap short_ids;
@@ -237,7 +241,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
   ids.InsertOrDie("1234", 3);
 
   ASSERT_EQ(ids.Count(), 2);
-  ASSERT_TRUE(ids.Get(to_string(100)) == -1);
+  ASSERT_EQ(ids.Get(to_string(100)), -1);
   ASSERT_EQ(ids.Get("123"), 2);
   ASSERT_EQ(ids.Get(2), std::string("123"));
   ASSERT_EQ(ids.Get("1234"), 3);
@@ -580,7 +584,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
                                                              &violations,
                                                              &is_infeasible);
     ASSERT_EQ(node_id.ToInt(), 1);
-    ASSERT_TRUE(violations == 0);
+    ASSERT_EQ(violations, 0);
 
     NodeResources nr1, nr2;
     ASSERT_TRUE(
@@ -723,7 +727,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
                                                              &violations,
                                                              &is_infeasible);
     ASSERT_TRUE(!node_id.IsNil());
-    ASSERT_TRUE(violations == 0);
+    ASSERT_EQ(violations, 0);
   }
   // Custom resources, hard constraint violation.
   {
@@ -754,7 +758,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
                                                              &violations,
                                                              &is_infeasible);
     ASSERT_TRUE(!node_id.IsNil());
-    ASSERT_TRUE(violations == 0);
+    ASSERT_EQ(violations, 0);
   }
   // Custom resource missing, hard constraint violation.
   {
@@ -787,7 +791,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
                                                              &violations,
                                                              &is_infeasible);
     ASSERT_TRUE(!node_id.IsNil());
-    ASSERT_TRUE(violations == 0);
+    ASSERT_EQ(violations, 0);
   }
 }
 

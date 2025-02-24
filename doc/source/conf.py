@@ -579,9 +579,13 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
     "cupy",
     "dask",
@@ -595,6 +599,7 @@ autodoc_mock_imports = [
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -617,6 +622,7 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",

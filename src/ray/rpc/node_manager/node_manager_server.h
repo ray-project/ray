@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
@@ -28,30 +31,31 @@ namespace rpc {
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(NodeManagerService, METHOD, -1, AuthType::NO_AUTH)
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                             \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)        \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrestartWorkers)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)       \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)              \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedActorWorkers) \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)              \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)              \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)                  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)    \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)    \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)     \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)     \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)      \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)           \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)            \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)               \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)            \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)       \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)     \
+#define RAY_NODE_MANAGER_RPC_HANDLERS                                 \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)               \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelTasksWithResourceShapes) \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)              \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)            \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrestartWorkers)               \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedActorWorkers)     \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelWorkerLease)             \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PinObjectIDs)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetNodeStats)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GlobalGC)                      \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(FormatGlobalMemoryInfo)        \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources)        \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)         \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)          \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)               \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)             \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)                   \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)                \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
@@ -71,6 +75,11 @@ class NodeManagerServiceHandler {
   virtual void HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                                      rpc::GetResourceLoadReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelTasksWithResourceShapes(
+      rpc::CancelTasksWithResourceShapesRequest request,
+      rpc::CancelTasksWithResourceShapesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                                       rpc::NotifyGCSRestartReply *reply,
