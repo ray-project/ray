@@ -182,7 +182,11 @@ def test_system_concurrency_group(ray_start_regular_shared):
 
 def test_invalid_concurrency_group():
     """Verify that when a concurrency group has max concurrency set to 0,
-    an error is raised when the actor is created.
+    an error is raised when the actor is created. This test uses
+    `run_string_as_driver` and checks whether the error message appears in the
+    driver's stdout. Since the error in the core worker process does not raise
+    an exception in the driver process, we need to check the driver process's
+    stdout.
     """
 
     script = """
