@@ -8,7 +8,8 @@ from ray.util import PublicAPI
 
 if TYPE_CHECKING:
     # NOTE: `ray.train.torch` module imports in this file will break
-    # with a circular import error if the TorchTrainer class is pickled.
+    # with a circular import error if the TorchTrainer class is captured
+    # in the scope of a Ray task.
     from ray.train.torch.config import TorchConfig
 
 
