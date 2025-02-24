@@ -492,6 +492,7 @@ class Framework(ExampleEnum):
     XGBOOST = "XGBoost"
     HUGGINGFACE = "Hugging Face"
     DATAJUICER = "Data-Juicer"
+    VLLM = "vLLM"
     ANY = "Any"
 
     @classmethod
