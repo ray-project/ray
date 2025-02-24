@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle

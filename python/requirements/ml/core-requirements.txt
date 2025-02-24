@@ -11,8 +11,5 @@ lightgbm==3.3.5
 transformers==4.36.2
 accelerate==0.28.0
 
-# DL libraries
--r dl-cpu-requirements.txt
-
 # Cloud storage tools
 s3fs==2023.5.0
