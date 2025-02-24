@@ -7,6 +7,7 @@ import ray
 import time
 
 from ray._private.utils import get_or_create_event_loop
+from ray._private.test_utils import run_string_as_driver
 
 
 # This tests the methods are executed in the correct eventloop.
@@ -177,6 +178,32 @@ def test_system_concurrency_group(ray_start_regular_shared):
     n = NormalActor.remote()
     n.block_forever.options(concurrency_group="_ray_system").remote()
     print(ray.get(n.ping.remote()))
+
+
+def test_invalid_concurrency_group():
+    """Verify that when a concurrency group has max concurrency set to 0,
+    an error is raised when the actor is created. This test uses
+    `run_string_as_driver` and checks whether the error message appears in the
+    driver's stdout. Since the error in the core worker process does not raise
+    an exception in the driver process, we need to check the driver process's
+    stdout.
+    """
+
+    script = """
+import ray
+
+ray.init()
+
+@ray.remote(concurrency_groups={"io": 0, "compute": 0})
+class A:
+    def __init__(self):
+        pass
+
+actor = A.remote()
+    """
+
+    output = run_string_as_driver(script)
+    assert "max_concurrency must be greater than 0" in output
 
 
 if __name__ == "__main__":
