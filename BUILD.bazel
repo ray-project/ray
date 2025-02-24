@@ -824,9 +824,7 @@ ray_cc_library(
     ],
     linkopts = select({
         "@platforms//os:windows": [],
-        "@platforms//os:macos": [
-         "-pthread",
-        ],
+        "@platforms//os:macos": [],
         "@platforms//os:linux": [
             "-lpthread",
         ],
