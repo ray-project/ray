@@ -298,7 +298,6 @@ config = (
             conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
             conv_activation="relu",
             head_fcnet_hiddens=[256],
-            vf_share_layers=True,
         ),
     )
     .debugging(
