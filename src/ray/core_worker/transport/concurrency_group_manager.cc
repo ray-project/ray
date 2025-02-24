@@ -44,9 +44,8 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
   // this actor, the tasks of default group will be performed in main thread instead of
   // any executor pool, otherwise tasks in any concurrency group should be performed in
   // the thread pools instead of main thread.
-  if (max_concurrency_for_default_concurrency_group > 0 &&
-      (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) ||
-       !concurrency_groups.empty())) {
+  if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group,
+                                        !concurrency_groups.empty())) {
     default_executor_ =
         std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
     executor_releasers_.push_back(InitializeExecutor(default_executor_));
