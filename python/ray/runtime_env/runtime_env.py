@@ -279,6 +279,7 @@ class RuntimeEnv(dict):
 
     known_fields: Set[str] = {
         "py_modules",
+        "py_executable",
         "java_jars",
         "working_dir",
         "conda",
@@ -312,6 +313,7 @@ class RuntimeEnv(dict):
         self,
         *,
         py_modules: Optional[List[str]] = None,
+        py_executable: Optional[str] = None,
         working_dir: Optional[str] = None,
         pip: Optional[List[str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
@@ -331,6 +333,8 @@ class RuntimeEnv(dict):
         runtime_env = kwargs
         if py_modules is not None:
             runtime_env["py_modules"] = py_modules
+        if py_executable is not None:
+            runtime_env["py_executable"] = py_executable
         if working_dir is not None:
             runtime_env["working_dir"] = working_dir
         if pip is not None:
@@ -514,6 +518,9 @@ class RuntimeEnv(dict):
         if "py_modules" in self:
             return list(self["py_modules"])
         return []
+
+    def py_executable(self) -> Optional[str]:
+        return self.get("py_executable", None)
 
     def java_jars(self) -> List[str]:
         if "java_jars" in self:

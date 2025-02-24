@@ -83,7 +83,7 @@ py_test(
 
 py_test(
     name = "test_actor_pool_map_operator",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_actor_pool_map_operator.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -101,7 +101,7 @@ py_test(
     name = "test_arrow_block",
     size = "medium",
     srcs = ["tests/test_arrow_block.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -146,6 +146,22 @@ py_test(
 )
 
 py_test(
+    name = "test_audio",
+    size = "small",
+    srcs = ["tests/test_audio.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_aggregate",
+    size = "small",
+    srcs = ["tests/test_aggregate.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -155,7 +171,7 @@ py_test(
 
 py_test(
     name = "test_all_to_all",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_all_to_all.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -235,7 +251,7 @@ py_test(
 
 py_test(
     name = "test_image",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_image.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -345,8 +361,6 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
-# Added "data_non_parallel" tag to prevent parallel execution of this test.
-# It needs about 5GB memory.
 py_test(
     name = "test_dynamic_block_split",
     size = "medium",
@@ -495,9 +509,9 @@ py_test(
 
 py_test(
     name = "test_sort",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_sort.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "data_non_parallel"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -561,6 +575,23 @@ py_test(
     name = "test_util",
     size = "small",
     srcs = ["tests/test_util.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+
+py_test(
+    name = "test_union",
+    size = "small",
+    srcs = ["tests/test_union.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_video",
+    size = "small",
+    srcs = ["tests/test_video.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -665,6 +696,22 @@ py_test(
     name = "test_block_boundaries",
     size = "small",
     srcs = ["tests/test_block_boundaries.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_telemetry",
+    size = "small",
+    srcs = ["tests/test_telemetry.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_import",
+    size = "small",
+    srcs = ["tests/test_import.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

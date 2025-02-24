@@ -158,15 +158,6 @@ py_test(
 )
 
 py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "small",
-    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "manual"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "horovod_pytorch_example",
     size = "small",
     srcs = ["examples/horovod/horovod_pytorch_example.py"],
@@ -269,6 +260,14 @@ py_test(
     srcs = ["tests/test_torch_accelerate.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib",  ":conftest"]
+)
+
+py_test(
+    name = "test_api_migrations",
+    size = "small",
+    srcs = ["tests/test_api_migrations.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
