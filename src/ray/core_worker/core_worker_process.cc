@@ -133,9 +133,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                           ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     }
 
-// We use different log rotation methods for different platforms, because they provide
-// different semantics and require different pre-requisites for file rename and deletion.
-#if defined(__APPLE__) || defined(__linux__)
     // Setup logging for worker application logging.
     if (options_.worker_type != WorkerType::DRIVER && !IsEnvTrue("RAY_LOG_TO_STDERR")) {
       // Setup redirection for stdout.
@@ -168,7 +165,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         ray::RedirectStderr(stderr_redirection_options);
       }
     }
-#endif
 
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
