@@ -64,10 +64,7 @@ def test_serialized_imports(ray_start_4_cpus):
 
     @ray.remote
     def dummy_task():
-        _ = TorchTrainer
-        _ = TensorflowTrainer
-        _ = XGBoostTrainer
-        _ = LightGBMTrainer
+        _ = (TorchTrainer, TensorflowTrainer, XGBoostTrainer, LightGBMTrainer)
 
     ray.get(dummy_task.remote())
 
