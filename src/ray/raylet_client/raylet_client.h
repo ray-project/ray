@@ -337,12 +337,6 @@ class RayletClient : public RayletClientInterface {
                                  bool fetch_only,
                                  const TaskID &current_task_id);
 
-  /// Notify the raylet that this client (worker) is no longer blocked.
-  ///
-  /// \param current_task_id The task that is no longer blocked.
-  /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id);
-
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
