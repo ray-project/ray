@@ -100,7 +100,7 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
       std::promise<void> init_promise;
       auto init_future = init_promise.get_future();
 
-      executor->Post([this, &gstate, &tstate, &init_promise]() {
+      executor->Post([&gstate, &tstate, &init_promise]() {
         // `PyGILState_Ensure()` makes this C++ thread appear as a Python thread
         // from the perspective of the Python interpreter, regardless of whether
         // the thread is executing Python code (i.e., Ray tasks or actors) or not.
@@ -114,8 +114,8 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
       // Wait for Python initialization to complete
       init_future.wait();
 
-      return [this, &gstate, &tstate, executor]() {
-        executor->Post([this, &gstate, &tstate]() {
+      return [&gstate, &tstate, executor]() {
+        executor->Post([&gstate, &tstate]() {
           PyEval_RestoreThread(tstate);
           PyGILState_Release(gstate);
         });
