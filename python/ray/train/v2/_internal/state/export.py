@@ -10,10 +10,11 @@ from ray.train.v2._internal.state.schema import (
     ActorStatus,
 )
 
+
 # Timestamp conversion
-def _to_proto_timestamp(time_ms: int) -> int:
+def _ms_to_ns(time_ms: int) -> int:
     """Convert millisecond timestamp to ns."""
-    return time_ms * 1000
+    return time_ms * int(1e6)
 
 
 # Status mapping dictionaries
@@ -40,6 +41,7 @@ _RUN_STATUS_MAP = {
     RunStatus.ERRORED: ProtoTrainRun.RunStatus.ERRORED,
     RunStatus.ABORTED: ProtoTrainRun.RunStatus.ABORTED,
 }
+
 
 # Helper conversion functions
 def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
@@ -75,13 +77,13 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
         attempt_id=attempt.attempt_id,
         status=_RUN_ATTEMPT_STATUS_MAP[attempt.status],
         status_detail=attempt.status_detail,
-        start_time=_to_proto_timestamp(attempt.start_time_ms),
+        start_time=_ms_to_ns(attempt.start_time_ms),
         resources=[_to_proto_resources(r.resources) for r in attempt.resources],
         workers=[_to_proto_worker(w) for w in attempt.workers],
     )
 
     if attempt.end_time_ms is not None:
-        proto_attempt.end_time.CopyFrom(_to_proto_timestamp(attempt.end_time_ms))
+        proto_attempt.end_time.CopyFrom(_ms_to_ns(attempt.end_time_ms))
 
     return proto_attempt
 
@@ -95,10 +97,10 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         controller_actor_id=run.controller_actor_id,
         status=_RUN_STATUS_MAP[run.status],
         status_detail=run.status_detail,
-        start_time=_to_proto_timestamp(run.start_time_ms),
+        start_time=_ms_to_ns(run.start_time_ms),
     )
 
     if run.end_time_ms is not None:
-        proto_run.end_time.CopyFrom(_to_proto_timestamp(run.end_time_ms))
+        proto_run.end_time.CopyFrom(_ms_to_ns(run.end_time_ms))
 
     return proto_run
