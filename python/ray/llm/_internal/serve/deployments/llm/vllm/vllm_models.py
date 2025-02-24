@@ -56,7 +56,7 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="Configuration for GCS mirror. This is for where the weights are downloaded from.",
     )
-    accelerator_type: GPUType = Field(
+    accelerator_type: Optional[GPUType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
@@ -147,10 +147,13 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        bundles = [
-            {"GPU": 1, self.ray_accelerator_type(): 0.001}
-            for _ in range(self.num_gpu_workers)
-        ]
+        if self.accelerator_type is None:
+            bundles = [{"GPU": 1} for _ in range(self.num_gpu_workers)]
+        else:
+            bundles = [
+                {"GPU": 1, self.ray_accelerator_type(): 0.001}
+                for _ in range(self.num_gpu_workers)
+            ]
 
         return bundles
 

@@ -317,7 +317,8 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    accelerator_type: str = Field(
+    accelerator_type: Optional[str] = Field(
+        default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
