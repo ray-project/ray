@@ -27,11 +27,11 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
+    load_class,
     parse_resources_json,
     parse_node_labels_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
@@ -794,7 +794,7 @@ def start(
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
-        _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
+        load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
 
     if head:
         # Start head node.
