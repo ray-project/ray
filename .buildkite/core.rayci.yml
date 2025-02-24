@@ -287,7 +287,7 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type clang
         --cache-test-results
         --skip-ray-installation
@@ -296,7 +296,7 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type asan-clang
         --cache-test-results
         --skip-ray-installation
@@ -305,7 +305,7 @@ steps:
     tags: core_cpp
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type ubsan
         --except-tags no_ubsan
         --cache-test-results
@@ -315,7 +315,7 @@ steps:
     tags: core_cpp
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all core
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-type tsan-clang
         --except-tags no_tsan
         --cache-test-results
