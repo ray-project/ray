@@ -130,14 +130,20 @@ class Rendezvous:
                 except ValueError:
                     if self._context.rank == 0:
                         if not q:
-                            ray.remote(gloo_util.glooQueue).options(
-                                name="gloo_queue", lifetime="detached"
-                            ).remote(1000)
+                            try:
+                                ray.remote(gloo_util.glooQueue).options(
+                                    name="gloo_queue", lifetime="detached"
+                                ).remote(1000)
+                            except ValueError:
+                                pass
                         if not s:
-                            gloo_util.SignalActor.options(
-                                name=f"gloo_{self._group_name}_signal",
-                                lifetime="detached",
-                            ).remote(self._context.size)
+                            try:
+                                gloo_util.SignalActor.options(
+                                    name=f"gloo_{self._group_name}_signal",
+                                    lifetime="detached",
+                                ).remote(self._context.size)
+                            except ValueError:
+                                pass
                     else:
                         time.sleep(0.1)
                 elapsed = datetime.datetime.now() - start_time
