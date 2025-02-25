@@ -1,6 +1,6 @@
 .. _core-walkthrough:
 
-What is Ray Core?
+What's Ray Core?
 =================
 
 .. toctree::
@@ -14,11 +14,11 @@ What is Ray Core?
 
 
 Ray Core is a powerful distributed computing framework that provides a small set of essential primitives (tasks, actors, and objects) for building and scaling distributed applications.
-This walkthrough introduces you to these core concepts with simple examples that demonstrate how to transform your Python functions and classes into distributed Ray tasks and actors, and how to work effectively with Ray objects.
+This walk-through introduces you to these core concepts with simple examples that demonstrate how to transform your Python functions and classes into distributed Ray tasks and actors, and how to work effectively with Ray objects.
 
 .. note::
 
-    Ray has introduced an experimental API for high-performance workloads that is
+    Ray has introduced an experimental API for high-performance workloads that's
     especially well suited for applications using multiple GPUs.
     See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
     
@@ -26,7 +26,7 @@ This walkthrough introduces you to these core concepts with simple examples that
 Getting Started
 ---------------
 
-To get started, install Ray via ``pip install -U ray``. For additional installation options, refer to :ref:`Installing Ray <installation>`.
+To get started, install Ray using ``pip install -U ray``. For additional installation options, refer to :ref:`Installing Ray <installation>`.
 
 The first step is to import and initialize Ray:
 
@@ -63,7 +63,7 @@ When you instantiate a Ray actor:
 
 1. Ray starts a dedicated worker process somewhere in your cluster
 2. The actor's methods run on that specific worker and can access and modify its state
-3. Method calls are executed serially in the order they're received, preserving consistency
+3. The actor executes method calls serially in the order it receives them, preserving consistency
 
 Here's a simple Counter example:
 
@@ -72,7 +72,7 @@ Here's a simple Counter example:
     :start-after: __calling_actor_start__
     :end-before: __calling_actor_end__
 
-The above example demonstrates basic actor usage. For a more comprehensive example that combines both tasks and actors, check out the :ref:`Monte Carlo Pi estimation example <monte-carlo-pi>`.
+The preceding example demonstrates basic actor usage. For a more comprehensive example that combines both tasks and actors, check out the :ref:`Monte Carlo Pi estimation example <monte-carlo-pi>`.
 
 Passing Objects
 --------------
@@ -81,7 +81,7 @@ Ray's distributed object store efficiently manages data across your cluster. The
 
 1. **Implicit creation**: When tasks and actors return values, they are automatically stored in Ray's :ref:`distributed object store <objects-in-ray>`, returning *object references* that can be later retrieved.
 2. **Explicit creation**: Use ``ray.put()`` to directly place objects in the store.
-3. **Passing references**: Object references can be passed to other tasks and actors, avoiding unnecessary data copying and enabling lazy execution.
+3. **Passing references**: You can pass object references to other tasks and actors, avoiding unnecessary data copying and enabling lazy execution.
 
 
 Here's an example showing these techniques:
@@ -96,7 +96,7 @@ Next Steps
 
 .. tip:: To monitor your application's performance and resource usage, check out the :ref:`Ray dashboard <observability-getting-started>`.
 
-Ray's simple primitives can be combined in powerful ways to express virtually any distributed computation pattern. To dive deeper into Ray's :ref:`key concepts <core-key-concepts>`,
+You can combine Ray's simple primitives in powerful ways to express virtually any distributed computation pattern. To dive deeper into Ray's :ref:`key concepts <core-key-concepts>`,
 explore these user guides:
 
 .. grid:: 1 2 3 3
