@@ -437,7 +437,7 @@ class LLMRouter:
                     # When autoscaling config is not provided, we use the default.
                     autoscaling_config = AutoscalingConfig()
                 model_min_replicas += autoscaling_config.min_replicas
-                model_initial_replicas += autoscaling_config.initial_replicas
+                model_initial_replicas += autoscaling_config.initial_replicas or 1
                 model_max_replicas += autoscaling_config.max_replicas
             min_replicas = int(model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
             initial_replicas = int(
