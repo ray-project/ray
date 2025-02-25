@@ -4,14 +4,12 @@ import asyncio
 from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     CloudObjectCache,
     remote_object_cache,
-    
     check_s3_path_exists_and_can_be_accessed,
     get_aws_credentials,
     get_file_from_gcs,
     get_file_from_s3,
     get_gcs_bucket_name_and_prefix,
 )
-
 
 
 from pathlib import Path
@@ -23,7 +21,6 @@ from google.cloud import storage
 from pytest import fixture, mark, raises
 
 from ray.llm._internal.serve.configs.server_models import S3AWSCredentials
-
 
 
 def patched_get_gcs_client():
@@ -39,7 +36,6 @@ def initialize_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
-
 
 
 class MockSyncFetcher:
@@ -303,10 +299,7 @@ class Testremote_object_cacheDecorator:
         assert call_count == 1
 
 
-
-
 class TestAWSCredentials:
-
     @patch("os.getenv")
     @patch("requests.post")
     def test_get_aws_credentials_with_auth_token(self, mock_post, mock_getenv):
@@ -334,7 +327,6 @@ class TestAWSCredentials:
             "http://dummy-url.com", headers={"Authorization": "Bearer dummy_token"}
         )
 
-
     @patch("requests.post")
     def test_get_aws_credentials_without_auth_token(self, mock_post):
         mock_response = MagicMock()
@@ -346,7 +338,8 @@ class TestAWSCredentials:
         mock_post.return_value = mock_response
 
         credentials_config = S3AWSCredentials(
-            auth_token_env_variable=None, create_aws_credentials_url="http://dummy-url.com"
+            auth_token_env_variable=None,
+            create_aws_credentials_url="http://dummy-url.com",
         )
         result = get_aws_credentials(credentials_config)
 
@@ -355,8 +348,6 @@ class TestAWSCredentials:
             "AWS_SECRET_ACCESS_KEY": "dummy_secret_key",
         }
         mock_post.assert_called_once_with("http://dummy-url.com", headers=None)
-
-
 
     @patch("requests.post")
     def test_get_aws_credentials_request_failure(self, mock_post):
@@ -376,8 +367,6 @@ class TestAWSCredentials:
             "http://dummy-url.com",
             headers=None,
         )
-
-
 
 
 class TestCheckS3PathExists:
@@ -476,7 +465,6 @@ class TestGetGcsBucketNameAndPrefix:
             self.run_and_validate(gcs_uri, expected_bucket_name, expected_prefix)
 
 
-
 class TestGetFileFromRemoteStorage:
     """Tests behavior of helper methods to get a file from S3 or GCS."""
 
@@ -495,7 +483,10 @@ class TestGetFileFromRemoteStorage:
         else:
             raise ValueError(f"storage {storage} is not supported.")
 
-    @patch("ray.llm._internal.serve.deployments.utils.cloud_utils.get_gcs_client", patched_get_gcs_client)
+    @patch(
+        "ray.llm._internal.serve.deployments.utils.cloud_utils.get_gcs_client",
+        patched_get_gcs_client,
+    )
     def _download_file(
         self, storage: str, file_uri: str, decode_as_utf_8: bool = False
     ) -> Optional[Union[str, bytes]]:
@@ -540,6 +531,7 @@ class TestGetFileFromRemoteStorage:
         new_uri = "/".join(parts)
         body = self._download_file(storage, new_uri, decode_as_utf_8=True)
         assert body is None
-        
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
