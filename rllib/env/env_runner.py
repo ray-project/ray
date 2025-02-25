@@ -5,11 +5,13 @@ from typing import Any, Dict, Tuple, TYPE_CHECKING
 import gymnasium as gym
 import tree  # pip install dm_tree
 
+import ray
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorType
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.typing import StateDict, TensorType
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -120,6 +122,24 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         pass
 
+    @DeveloperAPI
+    def sample_get_state_and_metrics(
+        self,
+    ) -> Tuple[ray.ObjectRef, StateDict, StateDict]:
+        """Convenience method for fast, async algorithms.
+
+        Use this in Algorithms that need to sample Episode lists as ray.ObjectRef, but
+        also require (in the same remote call) the metrics and the EnvRunner states,
+        except for the module weights.
+        """
+        _episodes = self.sample()
+        # Get the EnvRunner's connector states.
+        _connector_states = self.get_state(not_components=COMPONENT_RL_MODULE)
+        _metrics = self.get_metrics()
+        # Return episode lists by reference so we don't have to send them to the
+        # main algo process, but to the Aggregator- or Learner actors directly.
+        return ray.put(_episodes), _connector_states, _metrics
+
     @abc.abstractmethod
     def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
         """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space."""
@@ -140,7 +160,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """Tries resetting the env and - if an error orrurs - handles it gracefully."""
         # Try to reset.
         try:
-            obs, infos = self.env.reset()
+            obs, infos = self.env.reset(
+                seed=self.config.seed and self.config.seed + (self.worker_index or 0),
+            )
             # Everything ok -> return.
             return obs, infos
         # Error.

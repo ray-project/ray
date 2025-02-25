@@ -1,4 +1,5 @@
 from collections import defaultdict
+import contextlib
 import logging
 from typing import (
     Any,
@@ -8,6 +9,7 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.algorithms.algorithm_config import (
@@ -54,6 +56,9 @@ from ray.rllib.utils.typing import (
     StateDict,
     TensorType,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
@@ -150,10 +155,16 @@ class TorchLearner(Learner):
 
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
-
         gradients = self.compute_gradients(loss_per_module)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
+
+        with contextlib.ExitStack() as stack:
+            if self.config.num_learners > 1:
+                for mod in self.module.values():
+                    # Skip non-torch modules, b/c they may not have the `no_sync` API.
+                    if isinstance(mod, torch.nn.Module):
+                        stack.enter_context(mod.no_sync())
+            postprocessed_gradients = self.postprocess_gradients(gradients)
+            self.apply_gradients(postprocessed_gradients)
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
@@ -174,6 +185,11 @@ class TorchLearner(Learner):
             )
         else:
             total_loss = sum(loss_per_module.values())
+
+        # If we don't have any loss computations, `sum` returns 0.
+        if isinstance(total_loss, int):
+            assert total_loss == 0
+            return {}
 
         total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}

@@ -24,6 +24,17 @@ class Operator:
         return self._name
 
     @property
+    def dag_str(self) -> str:
+        """String representation of the whole DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self._name}]"
+        return out_str
+
+    @property
     def input_dependencies(self) -> List["Operator"]:
         """List of operators that provide inputs for this operator."""
         assert hasattr(
@@ -46,13 +57,7 @@ class Operator:
         yield self
 
     def __repr__(self) -> str:
-        if self.input_dependencies:
-            out_str = ", ".join([str(x) for x in self.input_dependencies])
-            out_str += " -> "
-        else:
-            out_str = ""
-        out_str += f"{self.__class__.__name__}[{self._name}]"
-        return out_str
+        return f"{self.__class__.__name__}[{self._name}]"
 
     def __str__(self) -> str:
         return repr(self)

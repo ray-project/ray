@@ -227,7 +227,9 @@ class DAGNode(DAGNodeBase):
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         _max_inflight_executions: Optional[int] = None,
+        _max_buffered_results: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
+        _default_communicator: Optional[Union[Communicator, str]] = "create",
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -245,11 +247,34 @@ class DAGNode(DAGNodeBase):
                 can be submitted via `execute` or `execute_async` before consuming
                 the output using `ray.get()`. If the caller submits more executions,
                 `RayCgraphCapacityExceeded` is raised.
+            _max_buffered_results: The maximum number of results that can be
+                buffered at the driver. If more than this number of results
+                are buffered, `RayCgraphCapacityExceeded` is raised. Note that
+                when result corresponding to an execution is retrieved
+                (by calling `ray.get()` on a `CompiledDAGRef` or
+                `CompiledDAGRef` or await on a `CompiledDAGFuture), results
+                corresponding to earlier executions that have not been retrieved
+                yet are buffered.
             _overlap_gpu_communication: (experimental) Whether to overlap GPU
                 communication with computation during DAG execution. If True, the
                 communication and computation can be overlapped, which can improve
                 the performance of the DAG execution. If None, the default value
                 will be used.
+            _default_communicator: The default communicator to use to transfer
+                tensors. Three types of values are valid. (1) Communicator:
+                For p2p operations, this is the default communicator
+                to use for nodes annotated with `with_tensor_transport()` and when
+                shared memory is not the desired option (e.g., when transport="nccl",
+                or when transport="auto" for communication between two different GPUs).
+                For collective operations, this is the default communicator to use
+                when a custom communicator is not specified.
+                (2) "create": for each collective operation without a custom communicator
+                specified, a communicator is created and initialized on its involved actors,
+                or an already created communicator is reused if the set of actors is the same.
+                For all p2p operations without a custom communicator specified, it reuses
+                an already created collective communicator if the p2p actors are a subset.
+                Otherwise, a new communicator is created.
+                (3) None: a ValueError will be thrown if a custom communicator is not specified.
 
         Returns:
             A compiled DAG.
@@ -277,7 +302,9 @@ class DAGNode(DAGNodeBase):
             _buffer_size_bytes,
             enable_asyncio,
             _max_inflight_executions,
+            _max_buffered_results,
             _overlap_gpu_communication,
+            _default_communicator,
         )
 
     def execute(

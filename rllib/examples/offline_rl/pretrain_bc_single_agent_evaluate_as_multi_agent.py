@@ -56,7 +56,6 @@ from pathlib import Path
 import gymnasium as gym
 
 from ray import tune
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
@@ -70,7 +69,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray.train.constants import TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S, TRAINING_ITERATION
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(

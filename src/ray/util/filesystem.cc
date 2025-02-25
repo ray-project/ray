@@ -16,8 +16,7 @@
 
 #include <cstdlib>
 #include <fstream>
-
-#include "ray/util/logging.h"
+#include <string>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -57,17 +56,22 @@ std::string GetUserTempDir() {
   while (!result.empty() && IsDirSep(result.back())) {
     result.pop_back();
   }
-  RAY_CHECK(!result.empty());
   return result;
 }
 
-std::string CompleteReadFile(const std::string &fname) {
+StatusOr<std::string> ReadEntireFile(const std::string &fname) {
   std::ifstream file(fname);
-  RAY_CHECK(file.good()) << "Fails to open file " << fname;
+  if (!file.good()) {
+    return Status::IOError("") << "Failed to open file " << fname << " because "
+                               << strerror(errno);
+  }
 
   std::ostringstream buffer;
   buffer << file.rdbuf();
-  RAY_CHECK(file.good()) << "Fails to read from file " << fname;
+  if (!file.good()) {
+    return Status::IOError("") << "Failed to read from file " << fname << " because "
+                               << strerror(errno);
+  }
 
   std::string content = buffer.str();
   file.close();
