@@ -17,7 +17,7 @@ As large language models (LLMs) become common, programming distributed systems w
 Ray Compiled Graph gives you a Ray Core-like API but with:
 
 - **Less than 50us system overhead** for workloads that repeatedly execute the same task graph.
-- **Native support for GPU-GPU communication**, with NCCL.
+- **Native support for GPU-GPU communication** with NCCL.
 
 For example, consider the following Ray Core code, which sends data to an actor
 and gets the result:
