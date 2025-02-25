@@ -5,7 +5,6 @@ from ray.llm._internal.serve.configs.constants import RAYLLM_VLLM_ENGINE_CLS_ENV
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
-    DeploymentConfig,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
@@ -47,7 +46,7 @@ def llm_config(model_pixtral_12b):
             model_id=model_pixtral_12b,
         ),
         accelerator_type="L4",
-        deployment_config=DeploymentConfig(
+        deployment_config=dict(
             ray_actor_options={"resources": {"mock_resource": 0}},
         ),
     )

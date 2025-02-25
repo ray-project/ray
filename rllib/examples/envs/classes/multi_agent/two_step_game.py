@@ -103,11 +103,13 @@ class TwoStepGame(MultiAgentEnv):
 
 class TwoStepGameWithGroupedAgents(MultiAgentEnv):
     def __init__(self, env_config):
+        self._agent_ids = {"agents"}
+
         super().__init__()
         env = TwoStepGame(env_config)
         tuple_obs_space = Tuple([env.observation_space, env.observation_space])
         tuple_act_space = Tuple([env.action_space, env.action_space])
-        self._agent_ids = {"agents"}
+
         self.env = env.with_agent_groups(
             groups={"agents": [0, 1]},
             obs_space=tuple_obs_space,
