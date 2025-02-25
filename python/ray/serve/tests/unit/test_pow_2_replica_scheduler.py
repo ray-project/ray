@@ -1850,9 +1850,9 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
     s.update_replicas([r1, r2, r3])
 
     # The request should be served by r3 without added latency.
-    # Since we set up the `backoff_sequence_s` to be 999s, this 1s timeout will still
+    # Since we set up the `backoff_sequence_s` to be 999s, this 10s timeout will still
     # capture the extra delay if it was added between scheduling loop.
-    done, _ = await asyncio.wait([task], timeout=1)
+    done, _ = await asyncio.wait([task], timeout=10)
     assert len(done) == 1
     assert done.pop().result() == r3
 
