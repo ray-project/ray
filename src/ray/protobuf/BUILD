@@ -254,7 +254,8 @@ proto_library(
         ":export_node_event_proto",
         ":export_actor_event_proto",
         ":export_driver_job_event_proto",
-        ":export_submission_job_event_proto"
+        ":export_submission_job_event_proto",
+        ":export_train_state_proto",
     ],
 )
 
@@ -359,6 +360,21 @@ cc_proto_library(
 python_grpc_compile(
     name = "export_submission_job_event_py_proto",
     deps = [":export_submission_job_event_proto"],
+)
+
+proto_library(
+    name = "export_train_state_proto",
+    srcs = ["export_api/export_train_state.proto"],
+)
+
+cc_proto_library(
+    name = "export_train_state_cc_proto",
+    deps = [":export_train_state_proto"],
+)
+
+python_grpc_compile(
+    name = "export_train_state_py_proto",
+    deps = [":export_train_state_proto"],
 )
 
 # Agent manager gRPC lib.
