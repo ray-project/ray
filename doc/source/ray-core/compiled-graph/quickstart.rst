@@ -7,7 +7,11 @@ This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
 .. testcode::
 
-    pip install "ray[adag]"
+    pip install "ray[cgraph]"
+    
+    # For a ray version before 2.41, use the following instead:
+    # pip install "ray[adag]"
+
 
 We will define a simple actor.
 
@@ -31,7 +35,7 @@ Create a very simple actor that directly returns a given input using classic Ray
     for _ in range(5):
         msg_ref = a.echo.remote("hello")
         ray.get(msg_ref)
-    
+
     start = time.perf_counter()
     msg_ref = a.echo.remote("hello")
     ray.get(msg_ref)
@@ -68,7 +72,7 @@ Next, execute the DAG and measure the performance.
     for _ in range(5):
         msg_ref = dag.execute("hello")
         ray.get(msg_ref)
-    
+
     start = time.perf_counter()
     # `dag.execute` runs the DAG and returns a future. You can use `ray.get` API.
     msg_ref = dag.execute("hello")
@@ -81,7 +85,7 @@ Next, execute the DAG and measure the performance.
     Execution takes 86.72196418046951 us
 
 The performance of the same DAG improved by 10X. The explanation for this improvement is because the function ``echo`` is cheap and thus highly affected by
-the system overhead. Due to various bookeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead. 
+the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead.
 Because the DAG is known ahead of time, Compiled Graph can pre-allocate all necessary
 resources ahead of time and greatly reduce the system overhead.
 
@@ -122,7 +126,7 @@ Next, create sender and receiver actors.
     sender = GPUSender.remote()
     receiver = GPUReceiver.remote()
 
-To support GPU to GPU RDMA with NCCL, you can use ``with_type_hint`` API with Compiled Graph.
+To support GPU to GPU RDMA with NCCL, you can use ``with_tensor_transport`` API with Compiled Graph.
 
 .. testcode::
 
@@ -130,7 +134,9 @@ To support GPU to GPU RDMA with NCCL, you can use ``with_type_hint`` API with Co
         dag = sender.send.bind(inp)
         # It gives a type hint that the return value of `send` should use
         # NCCL.
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_tensor_transport("nccl")
+        # Note that before ray version 2.42, use `with_type_hint()` instead.
+        # dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
     # Compile API prepares the NCCL communicator across all workers and schedule operations

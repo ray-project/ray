@@ -10,6 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
@@ -182,11 +183,11 @@ EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 
 def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     # Dataset UUID expression.
-    canonicalized_stats = re.sub("([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
     # Time expressions.
-    canonicalized_stats = re.sub("[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
+    canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
-    canonicalized_stats = re.sub("[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
+    canonicalized_stats = re.sub(r"[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
     # For obj_store_mem_used, the value can be zero or positive, depending on the run.
     # Replace with A to avoid test flakiness.
     canonicalized_stats = re.sub(
@@ -196,13 +197,13 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
         canonicalized_stats,
     )
     # Handle floats in (0, 1)
-    canonicalized_stats = re.sub(" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
+    canonicalized_stats = re.sub(r" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
     # Handle zero values specially so we can check for missing values.
-    canonicalized_stats = re.sub(" [0]+(\.[0])?", " Z", canonicalized_stats)
+    canonicalized_stats = re.sub(r" [0]+(\.[0])?", " Z", canonicalized_stats)
     # Scientific notation for small or large numbers
-    canonicalized_stats = re.sub("\d+(\.\d+)?[eE][-+]?\d+", "N", canonicalized_stats)
+    canonicalized_stats = re.sub(r"\d+(\.\d+)?[eE][-+]?\d+", "N", canonicalized_stats)
     # Other numerics.
-    canonicalized_stats = re.sub("[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
+    canonicalized_stats = re.sub(r"[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
     if filter_global_stats:
@@ -1602,8 +1603,7 @@ def test_op_metrics_logging():
             + gen_expected_metrics(is_map=False)
         )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         map_str = (
-            "Operator InputDataBuffer[Input] -> "
-            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
         ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
 
@@ -1701,6 +1701,28 @@ def test_stats_manager(shutdown_only):
     # Check that a new different thread is spawned.
     assert StatsManager._update_thread != prev_thread
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+
+
+def test_task_duration_stats():
+    """Test that OpTaskDurationStats correctly tracks running statistics using Welford's algorithm."""
+    stats = TaskDurationStats()
+
+    # Test initial state
+    assert stats.count() == 0
+    assert stats.mean() == 0.0
+    assert stats.stddev() == 0.0
+
+    # Add some task durations and verify stats
+    durations = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    for d in durations:
+        stats.add_duration(d)
+
+    # Compare with numpy's implementations
+    assert stats.count() == len(durations)
+    assert pytest.approx(stats.mean()) == np.mean(durations)
+    assert pytest.approx(stats.stddev()) == np.std(
+        durations, ddof=1
+    )  # ddof=1 for sample standard deviation
 
 
 if __name__ == "__main__":

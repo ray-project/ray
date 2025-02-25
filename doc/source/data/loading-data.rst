@@ -45,11 +45,10 @@ To view the full list of supported file formats, see the
 
         .. tip::
 
-            When reading parquet files, you can take advantage of column and row pruning
-            to efficiently filter columns and rows at the file scan level. See
-            :ref:`Parquet column pruning <parquet_column_pruning>` and
-            :ref:`Parquet row pruning <parquet_row_pruning>` for more details
-            on the projection and filter pushdown features.
+            When reading parquet files, you can take advantage of column pruning to
+            efficiently filter columns at the file scan level. See
+            :ref:`Parquet column pruning <parquet_column_pruning>` for more details
+            on the projection pushdown feature.
 
     .. tab-item:: Images
 

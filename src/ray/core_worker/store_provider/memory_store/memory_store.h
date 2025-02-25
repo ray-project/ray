@@ -91,12 +91,16 @@ class CoreWorkerMemoryStore {
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
-  /// Convenience wrapper around Get() that stores ready objects in a given result set.
+  /// Waits for a number of objects to be ready from the list of object_ids given.
+  /// \return A pair of sets of object IDs. The first set contains the object IDs that
+  /// are ready in the core worker memory store (capped to num_objects), and the second
+  /// set contains the object IDs are ready in the plasma object store (not capped).
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids,
               int num_objects,
               int64_t timeout_ms,
               const WorkerContext &ctx,
-              absl::flat_hash_set<ObjectID> *ready);
+              absl::flat_hash_set<ObjectID> *ready,
+              absl::flat_hash_set<ObjectID> *plasma_object_ids);
 
   /// Get an object if it exists.
   ///
@@ -174,13 +178,17 @@ class CoreWorkerMemoryStore {
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// resources. is an exception.
+  /// \param[in] at_most_num_objects Whether this function will return *at most*
+  /// num_objects even if more are ready. We will still stop waiting when we have
+  /// num_objects.
   Status GetImpl(const std::vector<ObjectID> &object_ids,
                  int num_objects,
                  int64_t timeout_ms,
                  const WorkerContext &ctx,
                  bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
-                 bool abort_if_any_object_is_exception);
+                 bool abort_if_any_object_is_exception,
+                 bool at_most_num_objects);
 
   /// Called when an object is deleted from the store.
   void OnDelete(std::shared_ptr<RayObject> obj);

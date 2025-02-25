@@ -155,10 +155,9 @@ def _get_checkpoint_shard_rank(checkpoint_shard_filename: str) -> int:
 def train_fn(config):
     in_trainer = config.get("in_trainer", False)
     if in_trainer:
-        from ray.air._internal.session import _get_session
-        from ray.train._internal.session import _TrainSession
+        from ray.train._internal.session import _TrainSession, get_session
 
-        train_session = _get_session()
+        train_session = get_session()
 
         assert isinstance(train_session, _TrainSession)
         assert train_session.storage

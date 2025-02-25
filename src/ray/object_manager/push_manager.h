@@ -33,9 +33,9 @@ class PushManager {
   ///
   /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
   ///                             from this PushManager (this raylet).
-  PushManager(int64_t max_chunks_in_flight)
+  explicit PushManager(int64_t max_chunks_in_flight)
       : max_chunks_in_flight_(max_chunks_in_flight) {
-    RAY_CHECK(max_chunks_in_flight_ > 0) << max_chunks_in_flight_;
+    RAY_CHECK_GT(max_chunks_in_flight_, 0);
   };
 
   /// Start pushing an object subject to max chunks in flight limit.

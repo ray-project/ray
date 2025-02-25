@@ -14,39 +14,38 @@
 
 #pragma once
 
-// clang-format off
-#include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/common/id.h"
-#include "ray/common/memory_monitor.h"
-#include "ray/common/task/task.h"
-#include "ray/common/ray_object.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
-#include "ray/common/client_connection.h"
-#include "ray/common/task/task_util.h"
-#include "ray/common/scheduling/resource_set.h"
-#include "ray/pubsub/subscriber.h"
-#include "ray/object_manager/object_manager.h"
-#include "ray/raylet/agent_manager.h"
-#include "ray/raylet/runtime_env_agent_client.h"
-#include "ray/raylet_client/raylet_client.h"
-#include "ray/raylet/local_object_manager.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager_interface.h"
-#include "ray/raylet/dependency_manager.h"
-#include "ray/raylet/local_task_manager.h"
-#include "ray/raylet/wait_manager.h"
-#include "ray/raylet/worker_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/throttler.h"
+#include <gtest/gtest_prod.h>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/raylet/placement_group_resource_manager.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/common/client_connection.h"
+#include "ray/common/id.h"
+#include "ray/common/memory_monitor.h"
+#include "ray/common/ray_object.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_util.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
-// clang-format on
+#include "ray/object_manager/object_manager.h"
+#include "ray/pubsub/subscriber.h"
+#include "ray/raylet/agent_manager.h"
+#include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/local_object_manager.h"
+#include "ray/raylet/local_task_manager.h"
+#include "ray/raylet/placement_group_resource_manager.h"
+#include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager_interface.h"
+#include "ray/raylet/wait_manager.h"
+#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_pool.h"
+#include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/node_manager_server.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/util/throttler.h"
 
-namespace ray {
-namespace raylet {
+namespace ray::raylet {
 
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
@@ -229,6 +228,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
  private:
+  FRIEND_TEST(NodeManagerTest, TestHandleReportWorkerBacklog);
+
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
   // back to the worker pool, or destroy the worker. The caller must handle the worker's
@@ -348,8 +349,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
-                                   bool release_resources);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -418,13 +418,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
-  /// Process client message of NotifyDirectCallTaskBlocked
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
-                                    const uint8_t *message_data);
-
   /// Process client message of RegisterClientRequest
   ///
   /// \param client The client that sent the message.
@@ -432,6 +425,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
+  Status ProcessRegisterClientRequestMessageImpl(
+      const std::shared_ptr<ClientConnection> &client,
+      const ray::protocol::RegisterClientRequest *message,
+      std::optional<int> port);
+
+  // Register a new worker into worker pool.
+  Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
+                              pid_t pid,
+                              const StartupToken &worker_startup_token,
+                              std::function<void(Status, int)> send_reply_callback = {});
+  // Register a new driver into worker pool.
+  Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
+                              pid_t pid,
+                              const JobID &job_id,
+                              const ray::protocol::RegisterClientRequest *message,
+                              std::function<void(Status, int)> send_reply_callback = {});
 
   /// Process client message of AnnounceWorkerPort
   ///
@@ -440,6 +449,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
                                         const uint8_t *message_data);
+  void ProcessAnnounceWorkerPortMessageImpl(
+      const std::shared_ptr<ClientConnection> &client,
+      const ray::protocol::AnnounceWorkerPort *message);
+
+  // Send status of client registration and port announcement to client side.
+  void SendRegisterClientAndAnnouncePortResponse(
+      const std::shared_ptr<ClientConnection> &client, Status status);
+
+  // Send status of port announcement to client side.
+  void SendPortAnnouncementResponse(const std::shared_ptr<ClientConnection> &client,
+                                    Status status);
+
+  /// Process client registration and port announcement.
+  void ProcessRegisterClientAndAnnouncePortMessage(
+      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///
@@ -503,6 +527,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetResourceLoadReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `CancelTasksWithResourceShapes` request.
+  void HandleCancelTasksWithResourceShapes(
+      rpc::CancelTasksWithResourceShapesRequest request,
+      rpc::CancelTasksWithResourceShapesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(rpc::PrepareBundleResourcesRequest request,
                                     rpc::PrepareBundleResourcesReply *reply,
@@ -531,6 +561,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                  rpc::ReportWorkerBacklogReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
+
+  /// This is created for unit test purpose so that we don't need to create
+  /// a node manager in order to test HandleReportWorkerBacklog.
+  static void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
+                                        rpc::ReportWorkerBacklogReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback,
+                                        WorkerPoolInterface &worker_pool,
+                                        ILocalTaskManager &local_task_manager);
 
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(rpc::ReturnWorkerRequest request,
@@ -594,11 +632,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle a `GetTasksInfo` request.
-  void HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
-                          rpc::GetTasksInfoReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetTaskFailureCause` request.
   void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
@@ -830,7 +863,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  std::unique_ptr<LocalTaskManager> local_task_manager_;
   std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
@@ -896,5 +929,4 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
 };
 
-}  // namespace raylet
-}  // namespace ray
+}  // namespace ray::raylet

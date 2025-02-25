@@ -22,6 +22,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
+#include "ray/util/exponential_backoff.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -34,16 +35,12 @@ struct redisContext;
 struct redisAsyncContext;
 struct redisSSLContext;
 
-namespace ray {
-
-namespace gcs {
-
-using rpc::TablePrefix;
+namespace ray::gcs {
 
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
-  explicit CallbackReply(const redisReply &);
+  explicit CallbackReply(const redisReply &redis_reply);
 
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
@@ -120,7 +117,7 @@ struct RedisRequestContext {
   void Run();
 
  private:
-  ExponentialBackOff exp_back_off_;
+  ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisContext &redis_context_;
   size_t pending_retries_;
@@ -148,12 +145,6 @@ class RedisContext {
 
   /// Disconnect from the server.
   void Disconnect();
-
-  /// Run an arbitrary Redis command synchronously.
-  ///
-  /// \param args The vector of command args to pass to Redis.
-  /// \return CallbackReply(The reply from redis).
-  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
 
   /// Run an arbitrary Redis command without a callback.
   ///
@@ -183,6 +174,14 @@ class RedisContext {
   instrumented_io_context &io_service() { return io_service_; }
 
  private:
+  /// Run an arbitrary Redis command synchronously.
+  ///
+  /// \param args The vector of command args to pass to Redis.
+  /// \return CallbackReply(The reply from redis).
+  std::unique_ptr<CallbackReply> RunArgvSync(const std::vector<std::string> &args);
+
+  void ValidateRedisDB();
+
   bool IsRedisSentinel();
 
   // Connect using saved arguments.
@@ -212,6 +211,4 @@ class RedisContext {
                                                    void *privdata);
 };
 
-}  // namespace gcs
-
-}  // namespace ray
+}  // namespace ray::gcs

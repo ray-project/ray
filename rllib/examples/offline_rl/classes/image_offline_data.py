@@ -38,7 +38,7 @@ class ImageOfflineData(OfflineData):
 
         # Set class attributes.
         self.config = config
-        self.is_multi_agent = self.config.is_multi_agent()
+        self.is_multi_agent = self.config.is_multi_agent
         self.materialize_mapped_data = False
         self.path = self.config.input_
 

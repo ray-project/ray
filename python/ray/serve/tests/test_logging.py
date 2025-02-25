@@ -341,7 +341,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     )
     def fn(*args):
         logger.info("user func")
-        request_context = ray.serve.context._serve_request_context.get()
+        request_context = ray.serve.context._get_serve_request_context()
         return {
             "request_id": request_context.request_id,
             "route": request_context.route,
@@ -362,7 +362,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
     class Model:
         def __call__(self, req: starlette.requests.Request):
             logger.info("user log message from class method")
-            request_context = ray.serve.context._serve_request_context.get()
+            request_context = ray.serve.context._get_serve_request_context()
             return {
                 "request_id": request_context.request_id,
                 "route": request_context.route,
@@ -429,7 +429,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"actor_name": "{resp["actor_name"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                rf'"timestamp_ns": \d+}}.*'
             )
             user_class_method_log_regex = (
                 '.*"message": "user log message from class method".*'
@@ -444,7 +445,8 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"actor_name": "{resp2["actor_name"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
-                f'"component_name": "replica".*'
+                f'"component_name": "replica", '
+                rf'"timestamp_ns": \d+}}.*'
             )
         else:
             user_method_log_regex = f".*{resp['request_id']} -- user func.*"
@@ -762,7 +764,6 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     env_encoding, log_config_encoding, expected_encoding = log_encoding
 
     with patch("ray.serve.schema.RAY_SERVE_LOG_ENCODING", env_encoding):
-
         # Clean up logger handlers
         logger = logging.getLogger(SERVE_LOGGER_NAME)
         logger.handlers.clear()
@@ -936,7 +937,7 @@ def test_stream_to_logger():
 
     # Calling non-existing attribute on the StreamToLogger should still raise error.
     with pytest.raises(AttributeError):
-        stream_to_logger.i_dont_exist
+        _ = stream_to_logger.i_dont_exist
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

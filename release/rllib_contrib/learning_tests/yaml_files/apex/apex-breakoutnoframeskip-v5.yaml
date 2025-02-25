@@ -30,7 +30,7 @@ apex-breakoutnoframeskip-v5:
             final_epsilon: 0.01
         num_gpus: 1
         num_workers: 16
-        num_envs_per_worker: 8
+        num_envs_per_env_runner: 8
         rollout_fragment_length: 20
         train_batch_size: 512
         target_network_update_freq: 50000

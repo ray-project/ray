@@ -96,7 +96,7 @@ install_miniconda() {
   fi
 
   if [[ "${PYTHON-}" != "3.12" ]]; then
-    # Install mpi4py as a test dependency for Python <3.12; currently mpi4py is not 
+    # Install mpi4py as a test dependency for Python <3.12; currently mpi4py is not
     # available for Python 3.12
     "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
   fi
@@ -105,11 +105,10 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then 
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   set -exuo pipefail
 
   SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
   WORKSPACE_DIR="${SCRIPT_DIR}/../.."
   install_miniconda
 fi
-

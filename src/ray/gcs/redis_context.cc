@@ -32,6 +32,7 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
+
 CallbackReply::CallbackReply(const redisReply &redis_reply)
     : reply_type_(redis_reply.type) {
   switch (reply_type_) {
@@ -168,22 +169,6 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
     argc_.push_back(redis_cmds_[i].size());
   }
 }
-
-namespace {
-std::optional<std::pair<std::string, int>> ParseIffMovedError(
-    const std::string &error_msg) {
-  // MOVED error message format:
-  // MOVED 14946 10.xx.xx.xx:7001
-  std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
-  if (parts[0] != "MOVED") {
-    return std::nullopt;
-  }
-  RAY_CHECK_EQ(parts.size(), 3u);
-  std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
-  RAY_CHECK_EQ(ip_port.size(), 2u);
-  return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
-}
-}  // namespace
 
 void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
                                           void *raw_reply,
@@ -436,8 +421,22 @@ ConnectWithRetries(const std::string &address,
   return resp;
 }
 
-void ValidateRedisDB(RedisContext &context) {
-  auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
+namespace {
+std::optional<std::pair<std::string, int>> ParseIffMovedError(
+    const std::string &error_msg) {
+  std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
+  if (parts[0] != "MOVED") {
+    return std::nullopt;
+  }
+  RAY_CHECK_EQ(parts.size(), 3u);
+  std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
+  RAY_CHECK_EQ(ip_port.size(), 2u);
+  return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
+}
+}  // namespace
+
+void RedisContext::ValidateRedisDB() {
+  auto reply = RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
   // cluster_state:ok
   // cluster_slots_assigned:16384
   // cluster_slots_ok:16384
@@ -481,14 +480,17 @@ void ValidateRedisDB(RedisContext &context) {
 
 bool RedisContext::IsRedisSentinel() {
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
-  RAY_CHECK(reply) << "Failed to get Redis sentinel info";
-  return !reply->IsNil() && !reply->IsError() && !reply->ReadAsString().empty();
+  if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
+    return false;
+  } else {
+    return true;
+  }
 }
 
 Status RedisContext::ConnectRedisCluster() {
   RAY_LOG(INFO) << "Connect to Redis Cluster";
   // Ray has some restrictions for RedisDB. Validate it here.
-  ValidateRedisDB(*this);
+  ValidateRedisDB();
 
   // Find the true redis master node
   std::vector<const char *> argv;
