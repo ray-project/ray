@@ -42,6 +42,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_GRAD_UPDATES_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
+    REPLAY_BUFFER_RESULTS,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
@@ -382,11 +383,11 @@ class DreamerV3Config(AlgorithmConfig):
 
         # Make sure, users are not using DreamerV3 yet for multi-agent:
         if self.is_multi_agent:
-            raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
+            self._value_error("DreamerV3 does NOT support multi-agent setups yet!")
 
         # Make sure, we are configure for the new API stack.
         if not self.enable_rl_module_and_learner:
-            raise ValueError(
+            self._value_error(
                 "DreamerV3 must be run with `config.api_stack("
                 "enable_rl_module_and_learner=True)`!"
             )
@@ -394,7 +395,7 @@ class DreamerV3Config(AlgorithmConfig):
         # If run on several Learners, the provided batch_size_B must be a multiple
         # of `num_learners`.
         if self.num_learners > 1 and (self.batch_size_B % self.num_learners != 0):
-            raise ValueError(
+            self._value_error(
                 f"Your `batch_size_B` ({self.batch_size_B}) must be a multiple of "
                 f"`num_learners` ({self.num_learners}) in order for "
                 "DreamerV3 to be able to split batches evenly across your Learner "
@@ -403,19 +404,19 @@ class DreamerV3Config(AlgorithmConfig):
 
         # Cannot train actor w/o critic.
         if self.train_actor and not self.train_critic:
-            raise ValueError(
+            self._value_error(
                 "Cannot train actor network (`train_actor=True`) w/o training critic! "
                 "Make sure you either set `train_critic=True` or `train_actor=False`."
             )
         # Use DreamerV3 specific batch size settings.
         if self.train_batch_size is not None:
-            raise ValueError(
+            self._value_error(
                 "`train_batch_size` should NOT be set! Use `batch_size_B` and "
                 "`batch_length_T` instead."
             )
         # Must be run with `EpisodeReplayBuffer` type.
         if self.replay_buffer_config.get("type") != "EpisodeReplayBuffer":
-            raise ValueError(
+            self._value_error(
                 "DreamerV3 must be run with the `EpisodeReplayBuffer` type! None "
                 "other supported."
             )
@@ -585,6 +586,11 @@ class DreamerV3(Algorithm):
         # Summarize environment interaction and buffer data.
         report_sampling_and_replay_buffer(
             metrics=self.metrics, replay_buffer=self.replay_buffer
+        )
+        # Get the replay buffer metrics.
+        replay_buffer_results = self.local_replay_buffer.get_metrics()
+        self.metrics.merge_and_log_n_dicts(
+            [replay_buffer_results], key=REPLAY_BUFFER_RESULTS
         )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer

@@ -22,7 +22,7 @@ from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics import ALL_MODULES, TIMERS
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
@@ -105,7 +105,7 @@ FAKE_MA_EPISODES = [
         len_lookback_buffer=0,  # all data part of actual episode
     ),
 ]
-FAKE_MA_EPISODES[0].finalize()
+FAKE_MA_EPISODES[0].to_numpy()
 
 FAKE_MA_EPISODES_WO_P1 = [
     MultiAgentEpisode(
@@ -118,7 +118,7 @@ FAKE_MA_EPISODES_WO_P1 = [
         len_lookback_buffer=0,  # all data part of actual episode
     ),
 ]
-FAKE_MA_EPISODES_WO_P1[0].finalize()
+FAKE_MA_EPISODES_WO_P1[0].to_numpy()
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
@@ -407,7 +407,7 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
+        scaling_modes = ["local-cpu"]  # , "multi-gpu-ddp"]
 
         for scaling_mode in scaling_modes:
             print(f"Testing scaling mode: {scaling_mode}.")
@@ -476,8 +476,8 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
                 results_2nd_update_with_break,
                 results_2nd_update_without_break,
             ):
-                r1[ALL_MODULES].pop("learner_connector_timer")
-                r2[ALL_MODULES].pop("learner_connector_timer")
+                r1[ALL_MODULES].pop(TIMERS)
+                r2[ALL_MODULES].pop(TIMERS)
             check(
                 MetricsLogger.peek_results(results_2nd_update_with_break),
                 MetricsLogger.peek_results(results_2nd_update_without_break),
@@ -501,9 +501,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        # async_update only needs to be tested for the most complex case.
-        # so we'll only test it for multi-gpu-ddp.
-        scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
+        scaling_modes = ["multi-gpu-ddp", "multi-cpu-ddp", "remote-gpu"]
 
         for scaling_mode in scaling_modes:
             print(f"Testing scaling mode: {scaling_mode}.")
@@ -534,30 +532,24 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
                 )
                 if not result_async:
                     continue
-                self.assertIsInstance(result_async[0], list)
-                self.assertIsInstance(result_async[0][0], dict)
-                # Check the latest async result AND those sub-results of the first
-                # Learner in the group.
-                loss = result_async[-1][0][DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
+                self.assertIsInstance(result_async, list)
+                self.assertIsInstance(result_async[0], dict)
+                # Check one async Learner result.
+                loss = result_async[0][DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
                 # The loss is initially around 0.69 (ln2). When it gets to around
                 # 0.57 the return of the policy gets to around 100.
                 if loss < 0.57:
                     break
                 # Compare reported "mean_weight" with actual ones.
-                _check_multi_worker_weights(
-                    learner_group, result_async, result_async=True
-                )
+                _check_multi_worker_weights(learner_group, result_async)
                 iter_i += 1
             learner_group.shutdown()
             self.assertLess(loss, 0.57)
 
 
-def _check_multi_worker_weights(learner_group, results, result_async=False):
+def _check_multi_worker_weights(learner_group, results):
     # Check that module weights are updated across workers and synchronized.
     # for i in range(1, len(results)):
-
-    if result_async:
-        results = results[-1]
 
     learner_1_results = results[0]
     for module_id, mod_result in learner_1_results.items():

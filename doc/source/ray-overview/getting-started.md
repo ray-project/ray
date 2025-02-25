@@ -19,9 +19,6 @@ Use individual libraries for ML workloads. Click on the dropdowns for your workl
 Scale offline inference and training ingest with [Ray Data](data_quickstart) --
 a data processing library designed for ML.
 
-To learn more, see [Offline batch inference](batch_inference_overview) and
-[Data preprocessing and ingest for ML training](ml_ingest_overview).
-
 ````{note}
 To run this example, install Ray Data:
 
@@ -138,7 +135,17 @@ with 4 workers, and use it to run the new training function.
 :end-before: __torch_trainer_end__
 :dedent: 4
 ```
+
+To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
+
+<div class="anyscale-cta">
+    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-torch">
+        <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
+    </a>
+</div>
+
 ````
+
 
 ````{tab-item} TensorFlow
 
@@ -200,6 +207,14 @@ with 4 workers, and use it to run the new training function.
 :end-before: __tf_trainer_end__
 :dedent: 0
 ```
+
+To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
+
+<div class="anyscale-cta">
+    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-tf">
+        <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
+    </a>
+</div>
 
 ```{button-ref}  ../train/train
 :color: primary
@@ -321,7 +336,10 @@ Learn more about Ray RLlib
 
 ## Ray Core Quickstart
 
-[![try-anyscale-quickstart-ray-quickstart](../_static/img/run-quickstart-anyscale.svg)](https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro)
+<a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro">
+    <img src="../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
+</a>
+<br></br>
 
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications.
@@ -547,7 +565,7 @@ To run this example install the following:
 pip install -U "ray[default]" boto3
 ```
 
-If you haven't already, configure your credentials as described in the https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials[documentation for boto3].
+If you haven't already, configure your credentials as described in the [documentation for boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials).
 :::
 
 Take this simple example that waits for individual nodes to join the cluster.
@@ -600,6 +618,21 @@ Ray programs can run on a single node Kubernetes cluster, or seamlessly scale to
 :expand:
 
 Learn more about launching Ray Clusters on Kubernetes
+```
+
+`````
+
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Anyscale 
+:animate: fade-in-slide-down
+
+Anyscale is the company behind Ray. The Anyscale platform provides an enterprise-grade Ray deployment on top of your AWS, GCP, Azure, or on-prem Kubernetes clusters.
+
+```{button-link} https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-launch-ray-cluster
+:color: primary
+:outline:
+:expand:
+
+Try Ray on Anyscale
 ```
 
 `````

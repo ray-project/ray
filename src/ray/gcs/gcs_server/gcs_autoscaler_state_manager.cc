@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
+#include <type_traits>
+
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -27,12 +29,16 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
-    rpc::NodeManagerClientPool &raylet_client_pool)
+    rpc::NodeManagerClientPool &raylet_client_pool,
+    InternalKVInterface &kv,
+    instrumented_io_context &io_context)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
-      raylet_client_pool_(raylet_client_pool) {}
+      raylet_client_pool_(raylet_client_pool),
+      kv_(kv),
+      io_context_(io_context) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -94,6 +100,22 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+}
+
+void GcsAutoscalerStateManager::HandleReportClusterConfig(
+    rpc::autoscaler::ReportClusterConfigRequest request,
+    rpc::autoscaler::ReportClusterConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+  // Save to kv for persistency in case of GCS FT.
+  kv_.Put(kGcsAutoscalerStateNamespace,
+          kGcsAutoscalerClusterConfigKey,
+          request.cluster_config().SerializeAsString(),
+          /*overwrite=*/true,
+          {[send_reply_callback = std::move(send_reply_callback)](bool added) {
+             send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+           },
+           io_context_});
 }
 
 void GcsAutoscalerStateManager::HandleGetClusterStatus(
@@ -198,8 +220,7 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   (*node_info->second.second.mutable_resources_available()) = node.resources_total();
 }
 
-void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
-    const rpc::ResourcesData &data) {
+void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
@@ -210,21 +231,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   }
 
   auto &new_data = iter->second.second;
-
-  (*new_data.mutable_resource_load()) = data.resource_load();
-  (*new_data.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-
-  if (data.resources_total_size() > 0) {
-    (*new_data.mutable_resources_total()) = data.resources_total();
-  }
-
-  (*new_data.mutable_resources_available()) = data.resources_available();
-
-  new_data.set_object_pulls_queued(data.object_pulls_queued());
-  new_data.set_idle_duration_ms(data.idle_duration_ms());
-  new_data.set_is_draining(data.is_draining());
-  new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
-
+  new_data = std::move(data);
   // Last update time
   iter->second.first = absl::Now();
 }
@@ -446,6 +453,68 @@ std::string GcsAutoscalerStateManager::DebugString() const {
     stream << "} * " << num_pending << "\n";
   }
   return stream.str();
+}
+
+absl::flat_hash_map<ray::NodeID, std::vector<google::protobuf::Map<std::string, double>>>
+GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  absl::flat_hash_map<ray::NodeID,
+                      std::vector<google::protobuf::Map<std::string, double>>>
+      per_node_infeasible_requests;
+  if (!autoscaling_state_.has_value()) {
+    return per_node_infeasible_requests;
+  }
+
+  // obtain the infeasible requests from the autoscaler state
+  std::vector<google::protobuf::Map<std::string, double>>
+      autoscaler_infeasible_resource_shapes;
+  autoscaler_infeasible_resource_shapes.reserve(
+      autoscaling_state_.value().infeasible_resource_requests_size());
+  for (int i = 0; i < autoscaling_state_.value().infeasible_resource_requests_size();
+       i++) {
+    autoscaler_infeasible_resource_shapes.emplace_back(
+        autoscaling_state_.value().infeasible_resource_requests(i).resources_bundle());
+  }
+
+  // collect the infeasible requests per node
+  for (const auto &[node_id, time_resource_data_pair] : node_resource_info_) {
+    const auto &resource_load_by_shape =
+        time_resource_data_pair.second.resource_load_by_shape();
+
+    for (int i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
+      bool is_infeasible_shape = false;
+      auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
+      for (const auto &shape : autoscaler_infeasible_resource_shapes) {
+        const auto &resource_demand = resource_load_by_shape.resource_demands(i);
+        if (resource_demand.num_infeasible_requests_queued() > 0 &&
+            MapEqual(shape, resource_demand.shape())) {
+          is_infeasible_shape = true;
+          infeasible_resource_shape = shape;
+          break;
+        }
+      }
+
+      if (is_infeasible_shape) {
+        per_node_infeasible_requests[node_id].emplace_back(infeasible_resource_shape);
+      }
+    }
+  }
+  return per_node_infeasible_requests;
+}
+
+void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  // Obtain the node & infeasible request mapping
+  auto per_node_infeasible_requests = GetPerNodeInfeasibleResourceRequests();
+  if (per_node_infeasible_requests.empty()) {
+    return;
+  }
+
+  // Cancel the infeasible requests
+  // NOTE(mengjin): This is just a stub for now, but will soon be implemented to support
+  // cancel infeasible resource requests
 }
 
 }  // namespace gcs

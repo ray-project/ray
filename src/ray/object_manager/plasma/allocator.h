@@ -18,7 +18,7 @@
 
 #include "absl/types/optional.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/object_manager/plasma/compat.h"
+#include "ray/util/compat.h"
 
 namespace plasma {
 

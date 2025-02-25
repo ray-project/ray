@@ -1,10 +1,12 @@
 from collections import defaultdict
 from functools import partial
 import logging
+import math
 import time
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
+import ray
 from gymnasium.wrappers.vector import DictInfoToList
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -131,6 +133,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
 
+        # Measures the time passed between returning from `sample()`
+        # and receiving the next `sample()` request from the user.
         self._time_after_sampling = None
 
     @override(EnvRunner)
@@ -169,6 +173,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
+        # Log time between `sample()` requests.
         if self._time_after_sampling is not None:
             self.metrics.log_value(
                 key=TIME_BETWEEN_SAMPLING,
@@ -304,6 +309,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -363,6 +369,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     explore=explore,
                     rl_module=self.module,
                     shared_data=shared_data,
+                    metrics=self.metrics,
                 )
 
             for env_index in range(self.num_envs):
@@ -387,8 +394,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         "on_episode_end", env_index, episodes
                     )
 
-                    # Then finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(episodes[env_index].to_numpy())
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(episodes[env_index])
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.
@@ -397,15 +409,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                     # Create a new episode object with no data in it and execute
                     # `on_episode_created` callback (before the `env.reset()` call).
-                    episodes[env_index] = SingleAgentEpisode(
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
-                    )
-                    self._make_on_episode_callback(
-                        "on_episode_created",
-                        env_index,
-                        episodes,
-                    )
+                    self._new_episode(env_index, episodes)
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -429,8 +433,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     continue
                 eps.validate()
                 self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-                # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(eps.finalize())
+
+                # Numpy'ize the episode.
+                if self.config.episodes_to_numpy:
+                    # Any possibly compress observations.
+                    ongoing_episodes_to_return.append(eps.to_numpy())
+                # Leave episode as lists of individual (obs, action, etc..) items.
+                else:
+                    ongoing_episodes_to_return.append(eps)
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations
@@ -527,6 +537,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
                 if (
                     isinstance(rl_module_state, dict)
                     and DEFAULT_MODULE_ID in rl_module_state
@@ -725,6 +737,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 episodes=episodes,
                 explore=explore,
                 shared_data=shared_data,
+                metrics=self.metrics,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -739,7 +752,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         )
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, idx: int, episodes):
+    def _make_on_episode_callback(
+        self, which: str, idx: int, episodes: List[SingleAgentEpisode] = None
+    ):
         make_callback(
             which,
             callbacks_objects=self._callbacks,
@@ -803,9 +818,18 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        # To mimic the old API stack behavior, we'll use `window` here for
-        # these particular stats (instead of the default EMA).
-        win = self.config.metrics_num_episodes_for_smoothing
+        # Use the configured window, but factor in the parallelism of the EnvRunners.
+        # As a result, we only log the last `window / num_env_runners` steps here,
+        # b/c everything gets parallel-merged in the Algorithm process.
+        win = max(
+            1,
+            int(
+                math.ceil(
+                    self.config.metrics_num_episodes_for_smoothing
+                    / (self.config.num_env_runners or 1)
+                )
+            ),
+        )
         self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
         self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
         self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)

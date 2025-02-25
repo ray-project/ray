@@ -28,19 +28,8 @@ def get_deploy_args(
     Takes a deployment's configuration, and returns the arguments needed
     for the controller to deploy it.
     """
-
     if deployment_config is None:
         deployment_config = {}
-
-    curr_job_env = ray.get_runtime_context().runtime_env
-    if "runtime_env" in replica_config.ray_actor_options:
-        # It is illegal to set field working_dir to None.
-        if curr_job_env.get("working_dir") is not None:
-            replica_config.ray_actor_options["runtime_env"].setdefault(
-                "working_dir", curr_job_env.get("working_dir")
-            )
-    else:
-        replica_config.ray_actor_options["runtime_env"] = curr_job_env
 
     if isinstance(deployment_config, dict):
         deployment_config = DeploymentConfig.parse_obj(deployment_config)

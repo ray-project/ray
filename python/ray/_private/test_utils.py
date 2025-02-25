@@ -14,13 +14,14 @@ import socket
 import subprocess
 import sys
 import tempfile
+import uuid
 import time
 import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import uuid
 from dataclasses import dataclass
 
 import requests
@@ -283,6 +284,7 @@ def start_redis_instance(
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
         command += ["--dir", str(db_dir)]
+
     process_info = ray._private.services.start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -302,8 +304,8 @@ def start_redis_instance(
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
-                    print(redis_cli.cluster("replicate", leader_id))
+                    logger.info(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    logger.info(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -312,8 +314,22 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e} ")
+                logger.info(
+                    f"Waiting for redis to be up. Check failed with error: {e}. "
+                    "Will retry in 0.1s"
+                )
+
+                if process_info.process.poll() is not None:
+                    raise Exception(
+                        f"Redis process exited unexpectedly: {process_info}. "
+                        f"Exit code: {process_info.process.returncode}"
+                    )
+
                 sleep(0.1)
+
+    logger.info(
+        f"Redis started with node_id {node_id} and pid {process_info.process.pid}"
+    )
 
     return node_id, process_info
 
@@ -853,7 +869,7 @@ def wait_until_succeeded_without_exception(
     Return:
         Whether exception occurs within a timeout.
     """
-    if type(exceptions) != tuple:
+    if isinstance(type(exceptions), tuple):
         raise Exception("exceptions arguments should be given as a tuple")
 
     time_elapsed = 0
@@ -1505,11 +1521,13 @@ class ResourceKillerActor:
         self,
         head_node_id,
         kill_interval_s: float = 60,
+        kill_delay_s: float = 0,
         max_to_kill: int = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
+        self.kill_delay_s = kill_delay_s
         self.is_running = False
         self.head_node_id = head_node_id
         self.killed = set()
@@ -1526,6 +1544,9 @@ class ResourceKillerActor:
 
     async def run(self):
         self.is_running = True
+
+        time.sleep(self.kill_delay_s)
+
         while self.is_running:
             to_kills = await self._find_resources_to_kill()
 
@@ -1661,21 +1682,8 @@ class EC2InstanceTerminator(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
-    def __init__(
-        self,
-        head_node_id,
-        kill_interval_s: float = 60,
-        max_to_kill: int = 2,
-        batch_size_to_kill: int = 1,
-        kill_filter_fn: Optional[Callable] = None,
-    ):
-        super().__init__(
-            head_node_id,
-            kill_interval_s,
-            max_to_kill,
-            batch_size_to_kill,
-            kill_filter_fn,
-        )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1772,6 +1780,7 @@ def get_and_run_resource_killer(
     ).remote(
         head_node_id,
         kill_interval_s=kill_interval_s,
+        kill_delay_s=kill_delay_s,
         max_to_kill=max_to_kill,
         batch_size_to_kill=batch_size_to_kill,
         kill_filter_fn=kill_filter_fn,
@@ -1780,7 +1789,6 @@ def get_and_run_resource_killer(
     ray.get(resource_killer.ready.remote())
     print("ResourceKiller is ready now.")
     if not no_start:
-        time.sleep(kill_delay_s)
         resource_killer.run.remote()
     return resource_killer
 
@@ -2158,9 +2166,10 @@ def safe_write_to_results_json(
     if the job gets interrupted in the middle of writing.
     """
     test_output_json = os.environ.get(env_var, default_file_name)
-    test_output_json_tmp = test_output_json + ".tmp"
+    test_output_json_tmp = f"{test_output_json}.tmp.{str(uuid.uuid4())}"
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
+        f.flush()
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))

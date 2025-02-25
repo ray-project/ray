@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_test", "ray_cc_library")
+load("//bazel:ray.bzl", "ray_cc_test", "ray_cc_library", "ray_cc_binary")
 
 ray_cc_test(
     name = "resource_request_test",
@@ -91,6 +91,17 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "postable_test",
+    size = "small",
+    srcs = ["postable_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "id_test",
     size = "small",
     srcs = ["id_test.cc"],
@@ -103,7 +114,7 @@ ray_cc_test(
     ],
 )
 
-cc_binary(
+ray_cc_binary(
     name = "syncer_service_e2e_test",
     srcs = ["syncer_service_e2e_test.cc"],
     deps = [
@@ -149,6 +160,7 @@ ray_cc_test(
 ray_cc_library(
     name = "testing",
     hdrs = ["testing.h"],
+    deps = ["//src/ray/util:macros"],
     testonly = True,
 )
 
@@ -209,4 +221,18 @@ ray_cc_test(
         "//src/ray/common:task_common",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+ray_cc_test(
+    name = "grpc_util_test",
+    size = "small",
+    srcs = [
+        "grpc_util_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:grpc_util",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_googletest//:gtest_main",
+    ]
 )
