@@ -253,7 +253,7 @@ This example runs a small grid search with an iterative training function.
 :start-after: __quick_start_begin__
 ```
 
-If TensorBoard is installed, automatically visualize all trial results:
+If TensorBoard is installed (`pip install tensorboard`), you can automatically visualize all trial results:
 
 ```bash
 tensorboard --logdir ~/ray_results
