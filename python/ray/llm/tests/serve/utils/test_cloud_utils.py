@@ -359,16 +359,22 @@ class TestGetFileFromRemoteStorage:
         else:
             raise ValueError(f"storage {storage} is not supported.")
 
-    def _download_file(self, storage: str, file_uri: str, decode_as_utf_8: bool = False) -> Optional[Union[str, bytes]]:
+    def _download_file(
+        self, storage: str, file_uri: str, decode_as_utf_8: bool = False
+    ) -> Optional[Union[str, bytes]]:
         """Download file from remote storage with appropriate mocks."""
         # This new version avoids using decorators and applies patches manually
-        with patch("pyarrow.fs.S3FileSystem") as mock_s3fs, patch("pyarrow.fs.GcsFileSystem") as mock_gcsfs:
+        with patch("pyarrow.fs.S3FileSystem") as mock_s3fs, patch(
+            "pyarrow.fs.GcsFileSystem"
+        ) as mock_gcsfs:
             # Create mock file system and mock file content
             mock_fs = MagicMock()
             mock_file = MagicMock()
-            mock_file.read.return_value = b"This is a test file to unittest downloading files from s3.\n"
+            mock_file.read.return_value = (
+                b"This is a test file to unittest downloading files from s3.\n"
+            )
             mock_fs.open_input_file.return_value.__enter__.return_value = mock_file
-            
+
             # Configure the mock to simulate file existence based on the path
             if "fake_bucket" in file_uri or file_uri.endswith("foo.txt"):
                 # For non-existent files/buckets, return a non-file type
@@ -376,7 +382,7 @@ class TestGetFileFromRemoteStorage:
             else:
                 # For existing files, return a file type
                 mock_fs.get_file_info.return_value.type = pa_fs.FileType.File
-            
+
             # Set appropriate mock based on storage type
             if storage == "s3":
                 mock_s3fs.return_value = mock_fs
@@ -425,31 +431,31 @@ class TestGetFileFromRemoteStorage:
 
 class TestCloudFileSystem:
     """Tests for the CloudFileSystem class."""
-    
+
     @patch("pyarrow.fs.S3FileSystem")
     def test_get_fs_and_path_s3(self, mock_s3fs):
         """Test getting S3 filesystem and path."""
         mock_fs = MagicMock()
         mock_s3fs.return_value = mock_fs
-        
+
         fs, path = CloudFileSystem.get_fs_and_path("s3://bucket/key")
-        
+
         assert fs == mock_fs
         assert path == "bucket/key"
         mock_s3fs.assert_called_once()
-    
+
     @patch("pyarrow.fs.GcsFileSystem")
     def test_get_fs_and_path_gcs(self, mock_gcsfs):
         """Test getting GCS filesystem and path."""
         mock_fs = MagicMock()
         mock_gcsfs.return_value = mock_fs
-        
+
         fs, path = CloudFileSystem.get_fs_and_path("gs://bucket/key")
-        
+
         assert fs == mock_fs
         assert path == "bucket/key"
         mock_gcsfs.assert_called_once()
-    
+
     def test_get_fs_and_path_unsupported(self):
         """Test unsupported URI scheme."""
         with raises(ValueError, match="Unsupported URI scheme"):

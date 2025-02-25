@@ -30,18 +30,18 @@ logger = get_logger(__name__)
 
 class CloudFileSystem:
     """A unified interface for cloud file system operations using PyArrow.
-    
+
     This class provides a simple interface for common operations on cloud storage
     systems (S3, GCS) using PyArrow's filesystem interface.
     """
-    
+
     @staticmethod
     def get_fs_and_path(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
         """Get the appropriate filesystem and path from a URI.
-        
+
         Args:
             object_uri: URI of the file (s3:// or gs://)
-            
+
         Returns:
             Tuple of (filesystem, path)
         """
@@ -53,71 +53,73 @@ class CloudFileSystem:
             path = object_uri[5:]  # Remove "gs://"
         else:
             raise ValueError(f"Unsupported URI scheme: {object_uri}")
-        
+
         return fs, path
-    
+
     @staticmethod
-    def get_file(object_uri: str, decode_as_utf_8: bool = True) -> Optional[Union[str, bytes]]:
+    def get_file(
+        object_uri: str, decode_as_utf_8: bool = True
+    ) -> Optional[Union[str, bytes]]:
         """Download a file from cloud storage into memory.
-        
+
         Args:
             object_uri: URI of the file (s3:// or gs://)
             decode_as_utf_8: If True, decode the file as UTF-8
-            
+
         Returns:
             File contents as string or bytes, or None if file doesn't exist
         """
         try:
             fs, path = CloudFileSystem.get_fs_and_path(object_uri)
-            
+
             # Check if file exists
             if not fs.get_file_info(path).type == pa_fs.FileType.File:
                 logger.info(f"URI {object_uri} does not exist.")
                 return None
-                
+
             # Read file
             with fs.open_input_file(path) as f:
                 body = f.read()
-                
+
             if decode_as_utf_8:
                 body = body.decode("utf-8")
             return body
         except Exception as e:
             logger.info(f"Error reading {object_uri}: {e}")
             return None
-    
+
     @staticmethod
     def list_subfolders(folder_uri: str) -> List[str]:
         """List the immediate subfolders in a cloud directory.
-        
+
         Args:
             folder_uri: URI of the directory (s3:// or gs://)
-            
+
         Returns:
             List of subfolder names (without trailing slashes)
         """
         # Ensure that the folder_uri has a trailing slash.
         folder_uri = f"{folder_uri.rstrip('/')}/"
-        
+
         try:
             fs, path = CloudFileSystem.get_fs_and_path(folder_uri)
-            
+
             # List directory contents
             file_infos = fs.get_file_info(pa_fs.FileSelector(path, recursive=False))
-            
+
             # Filter for directories and extract subfolder names
             subfolders = []
             for file_info in file_infos:
                 if file_info.type == pa_fs.FileType.Directory:
                     # Extract just the subfolder name without the full path
-                    subfolder = os.path.basename(file_info.path.rstrip('/'))
+                    subfolder = os.path.basename(file_info.path.rstrip("/"))
                     subfolders.append(subfolder)
-                    
+
             return subfolders
         except Exception as e:
             logger.info(f"Error listing subfolders in {folder_uri}: {e}")
             return []
-    
+
     @staticmethod
     def download_files(
         path: str,
@@ -125,7 +127,7 @@ class CloudFileSystem:
         substrings_to_include: Optional[List[str]] = None,
     ) -> None:
         """Download files from cloud storage to a local directory.
-        
+
         Args:
             path: Local directory where files will be downloaded
             bucket_uri: URI of cloud directory
@@ -133,53 +135,53 @@ class CloudFileSystem:
         """
         try:
             fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-            
+
             # Ensure the destination directory exists
             os.makedirs(path, exist_ok=True)
-            
+
             # List all files in the bucket
             file_selector = pa_fs.FileSelector(source_path, recursive=True)
             file_infos = fs.get_file_info(file_selector)
-            
+
             # Download each file
             for file_info in file_infos:
                 if file_info.type != pa_fs.FileType.File:
                     continue
-                    
+
                 # Get relative path from source prefix
-                rel_path = file_info.path[len(source_path):].lstrip('/')
-                
+                rel_path = file_info.path[len(source_path) :].lstrip("/")
+
                 # Check if file matches substring filters
                 if substrings_to_include:
-                    if not any(substring in rel_path for substring in substrings_to_include):
+                    if not any(
+                        substring in rel_path for substring in substrings_to_include
+                    ):
                         continue
-                
+
                 # Create destination directory if needed
                 if "/" in rel_path:
                     dest_dir = os.path.join(path, os.path.dirname(rel_path))
                     os.makedirs(dest_dir, exist_ok=True)
-                    
+
                 # Download the file
                 dest_path = os.path.join(path, rel_path)
                 with fs.open_input_file(file_info.path) as source_file:
-                    with open(dest_path, 'wb') as dest_file:
+                    with open(dest_path, "wb") as dest_file:
                         dest_file.write(source_file.read())
-                        
+
         except Exception as e:
             logger.exception(f"Error downloading files from {bucket_uri}: {e}")
             raise
 
     @staticmethod
     def download_model(
-        destination_path: str, 
-        bucket_uri: str, 
-        tokenizer_only: bool
+        destination_path: str, bucket_uri: str, tokenizer_only: bool
     ) -> None:
         """Download a model from cloud storage.
-        
+
         This downloads a model in the format expected by the HuggingFace transformers
         library.
-        
+
         Args:
             destination_path: Path where the model will be stored
             bucket_uri: URI of the cloud directory containing the model
@@ -187,15 +189,15 @@ class CloudFileSystem:
         """
         try:
             fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-            
+
             # Check for hash file
             hash_path = os.path.join(source_path, "hash")
             hash_info = fs.get_file_info(hash_path)
-            
+
             if hash_info.type == pa_fs.FileType.File:
                 # Download and read hash file
                 with fs.open_input_file(hash_path) as f:
-                    f_hash = f.read().decode('utf-8').strip()
+                    f_hash = f.read().decode("utf-8").strip()
                 logger.info(
                     f"Detected hash file in bucket {bucket_uri}. "
                     f"Using {f_hash} as the hash."
@@ -206,27 +208,29 @@ class CloudFileSystem:
                     f"Hash file does not exist in bucket {bucket_uri}. "
                     f"Using {f_hash} as the hash."
                 )
-            
+
             # Write hash to refs/main
             main_dir = os.path.join(destination_path, "refs")
             os.makedirs(main_dir, exist_ok=True)
             with open(os.path.join(main_dir, "main"), "w") as f:
                 f.write(f_hash)
-                
+
             # Create destination directory
             destination_dir = os.path.join(destination_path, "snapshots", f_hash)
             os.makedirs(destination_dir, exist_ok=True)
-            
+
             logger.info(f'Downloading model files to directory "{destination_dir}".')
-            
+
             # Download files
-            tokenizer_file_substrings = ["tokenizer", "config.json"] if tokenizer_only else []
+            tokenizer_file_substrings = (
+                ["tokenizer", "config.json"] if tokenizer_only else []
+            )
             CloudFileSystem.download_files(
                 path=destination_dir,
                 bucket_uri=bucket_uri,
                 substrings_to_include=tokenizer_file_substrings,
             )
-            
+
         except Exception as e:
             logger.exception(f"Error downloading model from {bucket_uri}: {e}")
             raise
@@ -295,10 +299,10 @@ def get_file_from_gcs(
 
 def list_subfolders_s3(folder_uri: str) -> List[str]:
     """List the subfolders in an S3 folder.
-    
+
     Args:
         folder_uri: URI to list the subfolders for.
-    
+
     Returns:
         List of subfolder names (without trailing slashes).
     """
@@ -307,10 +311,10 @@ def list_subfolders_s3(folder_uri: str) -> List[str]:
 
 def list_subfolders_gcs(folder_uri: str) -> List[str]:
     """List the subfolders in a GCS folder.
-    
+
     Args:
         folder_uri: URI to list the subfolders for.
-    
+
     Returns:
         List of subfolder names (without trailing slashes).
     """
@@ -335,17 +339,17 @@ def download_model_from_gcs(
 
 def check_s3_path_exists_and_can_be_accessed(object_uri: str) -> bool:
     """Checks if an S3 path exists and can be accessed.
-    
+
     Args:
         object_uri: The URI to check.
-    
+
     Returns:
         True if the path exists and can be accessed, False otherwise.
     """
     try:
         fs, path = CloudFileSystem.get_fs_and_path(object_uri)
         # Check if the path exists
-        if object_uri.endswith('/'):
+        if object_uri.endswith("/"):
             # Check if directory exists
             file_info = fs.get_file_info(path)
             return file_info.type == pa_fs.FileType.Directory
@@ -360,19 +364,19 @@ def check_s3_path_exists_and_can_be_accessed(object_uri: str) -> bool:
 
 def download_files_from_s3(path: str, bucket_uri: str) -> None:
     """Download files from S3 to a local directory.
-    
+
     Args:
         path: Local directory where files will be downloaded
         bucket_uri: S3 URI for the bucket
     """
-    
+
     # Check that URI exists
     if not check_s3_path_exists_and_can_be_accessed(bucket_uri):
         if not bucket_uri.endswith("/"):
             bucket_uri += "/"
             if not check_s3_path_exists_and_can_be_accessed(bucket_uri):
                 raise FileNotFoundError(f"URI {bucket_uri} does not exist.")
-    
+
     CloudFileSystem.download_files(
         path=path,
         bucket_uri=bucket_uri,
@@ -387,18 +391,18 @@ def download_model_from_s3(
     """
     Download a model from an S3 bucket and save it in TRANSFORMERS_CACHE for
     seamless interoperability with Hugging Face's Transformers library.
-    
+
     The downloaded model may have a 'hash' file containing the commit hash
     corresponding to the commit on Hugging Face Hub.
     """
     path = str(path)
-    
+
     # Make sure the hash file is not present in the local directory
     if os.path.exists(os.path.join("..", "hash")):
         os.remove(os.path.join("..", "hash"))
-    
+
     fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-    
+
     # Get hash file first
     hash_path = os.path.join(source_path, "hash")
     try:
@@ -411,24 +415,24 @@ def download_model_from_s3(
         logger.warning(
             f"hash file does not exist in {bucket_uri}. Using {f_hash} as the hash."
         )
-    
+
     # Create necessary directories
     target_path = os.path.join(path, "snapshots", f_hash)
     os.makedirs(target_path, exist_ok=True)
     os.makedirs(os.path.join(path, "refs"), exist_ok=True)
-    
+
     # Download model files
     if tokenizer_only:
         substrings_to_include = ["token", "config.json"]
     else:
         substrings_to_include = None
-    
+
     CloudFileSystem.download_files(
         path=target_path,
         bucket_uri=bucket_uri,
         substrings_to_include=substrings_to_include,
     )
-    
+
     # Write hash to refs/main
     with open(os.path.join(path, "refs", "main"), "w") as f:
         f.write(f_hash)
