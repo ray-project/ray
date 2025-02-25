@@ -152,7 +152,7 @@ For example, the following uses the above example to create a DAG that passes th
 
 Here is another example that passes the same message to both actors, which can then execute in parallel.
 We use ``ray.dag.MultiOutputNode`` to indicate that this DAG returns multiple outputs.
-Then, ``dag.execute()`` will return multiple ``CompiledDAGRef``s, one per node:
+Then, ``dag.execute()`` will return multiple ``CompiledDAGRef``'s, one per node:
 
 
 .. testcode::
