@@ -820,7 +820,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             except TypeError:
                 logger.exception(
                     "When using the `MultiAgentEnvRunner`, the env must "
-                    "have a subscriptable `self.envs` attribute!")
+                    "have a subscriptable `self.envs` attribute!"
+                )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
