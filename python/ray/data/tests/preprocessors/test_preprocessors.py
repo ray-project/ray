@@ -87,7 +87,7 @@ def create_dummy_preprocessors():
         Categorizer(columns=["X"]),
         CountVectorizer(columns=["X"]),
         Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
-        FeatureHasher(columns=["X"], num_features=1),
+        FeatureHasher(columns=["X"], num_features=1, output_column="X_transformed"),
         HashingVectorizer(columns=["X"], num_features=1),
         LabelEncoder(label_column="X"),
         MaxAbsScaler(columns=["X"]),
