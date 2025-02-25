@@ -340,7 +340,6 @@ PLASMA_LINKOPTS = [] + select({
 ray_cc_library(
     name = "plasma_client",
     srcs = [
-        "src/ray/object_manager/common.cc",
         "src/ray/object_manager/plasma/client.cc",
         "src/ray/object_manager/plasma/connection.cc",
         "src/ray/object_manager/plasma/malloc.cc",
@@ -355,7 +354,6 @@ ray_cc_library(
         ],
     }),
     hdrs = [
-        "src/ray/object_manager/common.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/connection.h",
@@ -380,6 +378,7 @@ ray_cc_library(
     deps = [
         ":plasma_fbs",
         ":ray_common",
+        ":object_manager_common",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
         "//src/ray/util:compat",
@@ -2394,37 +2393,148 @@ ray_cc_test(
 ray_cc_library(
     name = "object_manager",
     srcs = [
-        "src/ray/object_manager/chunk_object_reader.cc",
-        "src/ray/object_manager/common.cc",
-        "src/ray/object_manager/memory_object_reader.cc",
-        "src/ray/object_manager/object_buffer_pool.cc",
         "src/ray/object_manager/object_manager.cc",
-        "src/ray/object_manager/ownership_based_object_directory.cc",
-        "src/ray/object_manager/pull_manager.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/object_manager.h",
+    ],
+    deps = [
+        ":chunk_object_reader",
+        ":object_buffer_pool",
+        ":plasma_store_server_lib",
+        ":pull_manager",
+        ":push_manager",
+    ],
+)
+
+ray_cc_library(
+    name = "push_manager",
+    srcs = [
         "src/ray/object_manager/push_manager.cc",
-        "src/ray/object_manager/spilled_object_reader.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/push_manager.h",
+    ],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        ":stats_metric",
+    ],
+)
+
+ray_cc_library(
+    name = "pull_manager",
+    srcs = [
+        "src/ray/object_manager/pull_manager.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/pull_manager.h",
+    ],
+    deps = [
+        ":ownership_based_object_directory",
+        ":object_manager_rpc",
+        "//src/ray/util:counter_map",
+    ],
+)
+
+ray_cc_library(
+    name = "ownership_based_object_directory",
+    srcs = [
+        "src/ray/object_manager/ownership_based_object_directory.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/ownership_based_object_directory.h",
+    ],
+    deps = [
+        ":gcs_client_lib",
+        ":object_directory",
+        ":worker_rpc",
+    ],
+)
+
+ray_cc_library(
+    name = "object_directory",
+    hdrs = [
+        "src/ray/object_manager/object_directory.h", 
+    ],
+    deps = [
+        ":object_manager_common",
+    ],
+)
+
+ray_cc_library(
+    name = "object_buffer_pool",
+    srcs = [
+        "src/ray/object_manager/object_buffer_pool.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/object_buffer_pool.h", 
+    ],
+    deps = [
+        ":memory_object_reader",
+    ],
+)
+
+ray_cc_library(
+    name = "object_manager_common",
+    srcs = [
+        "src/ray/object_manager/common.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/common.h",
+    ],
+    deps = [
+        ":ray_common",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_object_reader",
+    srcs = [
+        "src/ray/object_manager/memory_object_reader.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/memory_object_reader.h",
+    ],
+    deps = [
+        ":object_reader",
+        ":plasma_client",
+    ],
+)
+
+ray_cc_library(
+    name = "chunk_object_reader",
+    srcs = [
+        "src/ray/object_manager/chunk_object_reader.cc",
     ],
     hdrs = [
         "src/ray/object_manager/chunk_object_reader.h",
-        "src/ray/object_manager/common.h",
-        "src/ray/object_manager/memory_object_reader.h",
-        "src/ray/object_manager/object_buffer_pool.h",
-        "src/ray/object_manager/object_directory.h",
-        "src/ray/object_manager/object_manager.h",
-        "src/ray/object_manager/object_reader.h",
-        "src/ray/object_manager/ownership_based_object_directory.h",
-        "src/ray/object_manager/pull_manager.h",
-        "src/ray/object_manager/push_manager.h",
+    ],
+    deps = [
+        ":spilled_object_reader",
+    ],
+)
+
+ray_cc_library(
+    name = "spilled_object_reader",
+    srcs = [
+        "src/ray/object_manager/spilled_object_reader.cc",
+    ],
+    hdrs = [
         "src/ray/object_manager/spilled_object_reader.h",
     ],
     deps = [
-        ":core_worker_lib",
-        ":gcs",
-        ":object_manager_rpc",
-        ":plasma_store_server_lib",
-        ":ray_common",
-        "//src/ray/util",
-        "@boost//:asio",
+        ":object_reader",
+    ],
+)
+
+ray_cc_library(
+    name = "object_reader",
+    hdrs = [
+        "src/ray/object_manager/object_reader.h",
+    ],
+    deps = [
+        ":grpc_common_lib",
     ],
 )
 
