@@ -27,16 +27,13 @@ class InputDataBuffer(PhysicalOperator):
         input_data: Optional[List[RefBundle]] = None,
         input_data_iter: Optional[Iterator[RefBundle]] = None,
         input_data_factory: Optional[Callable[[int], List[RefBundle]]] = None,
-        num_output_blocks: Optional[int] = None,
     ):
         """Create an InputDataBuffer Operator.
 
         Args:
-            # TODO update
             input_data: The list of bundles to output from this operator.
+            input_data_iter: Iterator yielding ref bundles for this operator
             input_data_factory: The factory to get input data, if input_data is None.
-            num_output_blocks: The number of output blocks. If not specified, progress
-                bars total will be set based on num output bundles instead.
         """
         super().__init__("Input", [], data_context, target_max_block_size=None)
         if input_data is not None:
