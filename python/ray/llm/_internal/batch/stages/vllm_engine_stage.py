@@ -10,6 +10,8 @@ from functools import partial
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
+import numpy as np
+
 import ray
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -169,6 +171,27 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
+    def _maybe_convert_ndarray_to_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert all ndarray to list in the params. This is because Ray Data
+        by default converts all lists to ndarrays when passing data around, but
+        vLLM expects lists.
+
+        Args:
+            params: The parameters to convert.
+
+        Returns:
+            The converted parameters.
+        """
+        if isinstance(params, dict):
+            return {
+                k: self._maybe_convert_ndarray_to_list(v) for k, v in params.items()
+            }
+        elif isinstance(params, list):
+            return [self._maybe_convert_ndarray_to_list(v) for v in params]
+        elif isinstance(params, np.ndarray):
+            return params.tolist()
+        return params
+
     async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         """Prepare the inputs for LLM inference.
 
@@ -211,8 +234,21 @@ class vLLMEngineWrapper:
                         self.lora_name_to_request[lora_name] = lora_request
             lora_request = self.lora_name_to_request[lora_name]
 
+        # Prepare sampling parameters.
         if self.task_type == vLLMTaskType.GENERATE:
-            params = vllm.SamplingParams(**row.pop("sampling_params"))
+            sampling_params = row.pop("sampling_params")
+            if "guided_decoding" in sampling_params:
+                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
+                    **self._maybe_convert_ndarray_to_list(
+                        sampling_params.pop("guided_decoding")
+                    )
+                )
+            else:
+                guided_decoding = None
+            params = vllm.SamplingParams(
+                **sampling_params,
+                guided_decoding=guided_decoding,
+            )
         elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams()
         else:

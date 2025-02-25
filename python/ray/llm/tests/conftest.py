@@ -112,6 +112,21 @@ def model_pixtral_12b():
 
 
 @pytest.fixture(scope="session")
+def model_llama_3_2_1B_instruct():
+    """The llama 3.2 1B Instruct model for testing."""
+    REMOTE_URL = f"{S3_ARTIFACT_URL}unsloth-Llama-3.2-1B-Instruct/"
+    FILE_LIST = [
+        "config.json",
+        "generation_config.json",
+        "model.safetensors",
+        "special_tokens_map.json",
+        "tokenizer_config.json",
+        "tokenizer.json",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
+
+
+@pytest.fixture(scope="session")
 def gpu_type():
     """Get the GPU type used for testing."""
 
