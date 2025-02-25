@@ -68,6 +68,8 @@ across your cluster for optimal performance.
     transformed_ds = ds.map_batches(transform_batch)
     
     # View the updated schema with the new column
+    # .materialize() will execute all the lazy transformations and
+    # materialize the dataset into object store memory
     print(transformed_ds.materialize())
 
 .. testoutput::
