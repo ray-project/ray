@@ -40,7 +40,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
           std::make_unique<ray::gcs::RedisStoreClient>(client));
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
-          std::make_unique<ray::gcs::InMemoryStoreClient>(io_service));
+          std::make_unique<ray::gcs::InMemoryStoreClient>());
     }
   }
 
@@ -55,65 +55,100 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
   std::unique_ptr<std::thread> thread_io_service;
   instrumented_io_context io_service;
   std::unique_ptr<ray::gcs::InternalKVInterface> kv_instance;
+
+  /// Synchronous version of Get
+  std::optional<std::string> SyncGet(const std::string &ns, const std::string &key) {
+    std::promise<std::optional<std::string>> p;
+    kv_instance->Get(ns, key, {[&p](auto result) { p.set_value(result); }, io_service});
+    return p.get_future().get();
+  }
+
+  /// Synchronous version of MultiGet
+  absl::flat_hash_map<std::string, std::string> SyncMultiGet(
+      const std::string &ns, const std::vector<std::string> &keys) {
+    std::promise<absl::flat_hash_map<std::string, std::string>> p;
+    kv_instance->MultiGet(
+        ns, keys, {[&p](auto result) { p.set_value(result); }, io_service});
+    return p.get_future().get();
+  }
+
+  /// Synchronous version of Put
+  bool SyncPut(const std::string &ns,
+               const std::string &key,
+               std::string value,
+               bool overwrite) {
+    std::promise<bool> p;
+    kv_instance->Put(ns,
+                     key,
+                     std::move(value),
+                     overwrite,
+                     {[&p](auto result) { p.set_value(result); }, io_service});
+    return p.get_future().get();
+  }
+
+  /// Synchronous version of Del
+  int64_t SyncDel(const std::string &ns, const std::string &key, bool del_by_prefix) {
+    std::promise<int64_t> p;
+    kv_instance->Del(
+        ns, key, del_by_prefix, {[&p](auto result) { p.set_value(result); }, io_service});
+    return p.get_future().get();
+  }
+
+  /// Synchronous version of Exists
+  bool SyncExists(const std::string &ns, const std::string &key) {
+    std::promise<bool> p;
+    kv_instance->Exists(
+        ns, key, {[&p](auto result) { p.set_value(result); }, io_service});
+    return p.get_future().get();
+  }
+
+  /// Synchronous version of Keys
+  std::vector<std::string> SyncKeys(const std::string &ns, const std::string &prefix) {
+    std::promise<std::vector<std::string>> p;
+    kv_instance->Keys(
+        ns, prefix, {[&p](auto result) { p.set_value(result); }, io_service});
+    return p.get_future().get();
+  }
 };
 
+// This test is intended to be serialized. To avoid callback hell we define helper
+// SyncGet and SyncPut.
 TEST_P(GcsKVManagerTest, TestInternalKV) {
-  kv_instance->Get("N1", "A", [](auto b) { ASSERT_FALSE(b.has_value()); });
-  kv_instance->Put("N1", "A", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("N1", "A", "C", false, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("B", *b); });
-  kv_instance->Put("N1", "A", "C", true, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("C", *b); });
-  kv_instance->Put("N1", "A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("N1", "A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("N1", "A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Keys("N1", "A_", [](std::vector<std::string> keys) {
-    auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
-    ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
-  });
-  kv_instance->Get("N2", "A_1", [](auto b) { ASSERT_FALSE(b.has_value()); });
-  kv_instance->Get("N1", "A_1", [](auto b) { ASSERT_TRUE(b.has_value()); });
-  kv_instance->MultiGet("N1", {"A_1", "A_2", "A_3"}, [](auto b) {
-    ASSERT_EQ(3, b.size());
-    ASSERT_EQ("B", b["A_1"]);
-    ASSERT_EQ("C", b["A_2"]);
-    ASSERT_EQ("C", b["A_3"]);
-  });
-  // MultiGet with empty keys.
-  kv_instance->MultiGet("N1", {}, [](auto b) { ASSERT_EQ(0, b.size()); });
-  // MultiGet with non-existent keys.
-  kv_instance->MultiGet("N1", {"A_4", "A_5"}, [](auto b) { ASSERT_EQ(0, b.size()); });
-  {
-    // Delete by prefix are two steps in redis mode, so we need sync here.
-    std::promise<void> p;
-    kv_instance->Del("N1", "A_", true, [&p](auto b) {
-      ASSERT_EQ(3, b);
-      p.set_value();
-    });
-    p.get_future().get();
-  }
-  {
-    // Delete by prefix are two steps in redis mode, so we need sync here.
-    std::promise<void> p;
-    kv_instance->Del("NX", "A_", true, [&p](auto b) {
-      ASSERT_EQ(0, b);
-      p.set_value();
-    });
-    p.get_future().get();
-  }
+  ASSERT_FALSE(SyncGet("N1", "A").has_value());
+  ASSERT_TRUE(SyncPut("N1", "A", "B", false));
+  ASSERT_FALSE(SyncPut("N1", "A", "C", false));
+  ASSERT_EQ("B", *SyncGet("N1", "A"));
+  ASSERT_FALSE(SyncPut("N1", "A", "C", true));
+  ASSERT_EQ("C", *SyncGet("N1", "A"));
+  ASSERT_TRUE(SyncPut("N1", "A_1", "B", false));
+  ASSERT_TRUE(SyncPut("N1", "A_2", "C", false));
+  ASSERT_TRUE(SyncPut("N1", "A_3", "C", false));
 
-  {
-    // Make sure the last cb is called.
-    std::promise<void> p;
-    kv_instance->Get("N1", "A_1", [&p](auto b) {
-      ASSERT_FALSE(b.has_value());
-      p.set_value();
-    });
-    p.get_future().get();
-  }
-  // Check the keys are deleted.
-  kv_instance->MultiGet(
-      "N1", {"A_1", "A_2", "A_3"}, [](auto b) { ASSERT_EQ(0, b.size()); });
+  auto keys = SyncKeys("N1", "A_");
+  auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
+  ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
+
+  ASSERT_FALSE(SyncGet("N2", "A_1").has_value());
+  ASSERT_TRUE(SyncGet("N1", "A_1").has_value());
+
+  auto multi_get_result = SyncMultiGet("N1", {"A_1", "A_2", "A_3"});
+  ASSERT_EQ(3, multi_get_result.size());
+  ASSERT_EQ("B", multi_get_result["A_1"]);
+  ASSERT_EQ("C", multi_get_result["A_2"]);
+  ASSERT_EQ("C", multi_get_result["A_3"]);
+
+  // MultiGet with empty keys.
+  ASSERT_EQ(0, SyncMultiGet("N1", {}).size());
+  // MultiGet with non-existent keys.
+  ASSERT_EQ(0, SyncMultiGet("N1", {"A_4", "A_5"}).size());
+
+  // Delete by prefix
+  ASSERT_EQ(3, SyncDel("N1", "A_", true));
+  ASSERT_EQ(0, SyncDel("NX", "A_", true));
+
+  // Make sure keys are deleted
+  ASSERT_FALSE(SyncGet("N1", "A_1").has_value());
+  ASSERT_EQ(0, SyncMultiGet("N1", {"A_1", "A_2", "A_3"}).size());
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,

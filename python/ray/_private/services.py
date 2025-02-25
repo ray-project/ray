@@ -1446,7 +1446,7 @@ def start_gcs_server(
     redis_address: str,
     log_dir: str,
     ray_log_filepath: Optional[str],
-    stderr_file: Optional[IO[AnyStr]],
+    ray_err_log_filepath: Optional[str],
     session_name: str,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1463,8 +1463,8 @@ def start_gcs_server(
         log_dir: The path of the dir where gcs log files are created.
         ray_log_filepath: The file path to dump gcs server log, which is
             written via `RAY_LOG`. If None, logs will be sent to stdout.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        ray_err_log_filepath: The file path to dump gcs server error log, which is
+            written via `RAY_LOG`. If None, logs will be sent to stderr.
         session_name: The session name (cluster id) of this cluster.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
@@ -1492,6 +1492,8 @@ def start_gcs_server(
 
     if ray_log_filepath:
         command += [f"--ray_log_filepath={ray_log_filepath}"]
+    if ray_err_log_filepath:
+        command += [f"--ray_err_log_filepath={ray_err_log_filepath}"]
 
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
@@ -1509,6 +1511,10 @@ def start_gcs_server(
     stdout_file = None
     if ray_log_filepath:
         stdout_file = open(os.devnull, "w")
+
+    stderr_file = None
+    if ray_err_log_filepath:
+        stderr_file = open(os.devnull, "w")
 
     process_info = start_ray_process(
         command,
@@ -1554,7 +1560,7 @@ def start_raylet(
     use_valgrind: bool = False,
     use_profiler: bool = False,
     ray_log_filepath: Optional[str] = None,
-    stderr_file: Optional[IO[AnyStr]] = None,
+    ray_err_log_filepath: Optional[str] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
@@ -1565,6 +1571,7 @@ def start_raylet(
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
     labels: Optional[dict] = None,
+    enable_physical_mode: bool = False,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1609,8 +1616,8 @@ def start_raylet(
             a profiler. If this is True, use_valgrind must be False.
         ray_log_filepath: The file path to dump raylet log, which is
             written via `RAY_LOG`. If None, logs will be sent to stdout.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
+        ray_err_log_filepath: The error file path to dump raylet log, which is
+            written via `RAY_LOG`. If None, logs will be sent to stderr.
         tracing_startup_hook: Tracing startup hook.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
@@ -1620,10 +1627,13 @@ def start_raylet(
             available externally to this node.
         env_updates: Environment variable overrides.
         labels: The key-value labels of the node.
+        enable_physical_mode: Whether physical mode is enabled, which applies
+            constraint to tasks' resource consumption. As of now only memory
+            resource is supported.
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert node_manager_port is not None and type(node_manager_port) == int
+    assert node_manager_port is not None and type(node_manager_port) is int
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
@@ -1703,7 +1713,6 @@ def start_raylet(
             f"--raylet-name={raylet_name}",
             f"--redis-address={redis_address}",
             f"--metrics-agent-port={metrics_agent_port}",
-            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--runtime-env-agent-port={runtime_env_agent_port}",
@@ -1762,7 +1771,7 @@ def start_raylet(
         f"--gcs-address={gcs_address}",
         f"--cluster-id-hex={cluster_id}",
     ]
-    if ray_log_filepath is None and stderr_file is None:
+    if ray_log_filepath is None and ray_err_log_filepath is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         dashboard_agent_command.append("--logging-filename=")
@@ -1828,6 +1837,8 @@ def start_raylet(
 
     if ray_log_filepath:
         command.append(f"--ray_log_filepath={ray_log_filepath}")
+    if ray_err_log_filepath:
+        command.append(f"--ray_err_log_filepath={ray_err_log_filepath}")
 
     if is_head_node:
         command.append("--head")
@@ -1859,8 +1870,10 @@ def start_raylet(
     stdout_file = None
     if ray_log_filepath:
         stdout_file = open(os.devnull, "w")
-    else:
-        stdout_file = None
+
+    stderr_file = None
+    if ray_err_log_filepath:
+        stderr_file = open(os.devnull, "w")
 
     process_info = start_ray_process(
         command,

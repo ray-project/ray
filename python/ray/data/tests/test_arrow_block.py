@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from typing import Union
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from pyarrow import parquet as pq
@@ -274,6 +275,31 @@ def test_append_column(ray_start_regular_shared):
     assert actual_block.equals(expected_block)
 
 
+def test_random_shuffle(ray_start_regular_shared):
+    TOTAL_ROWS = 10000
+    table = pa.table({"id": pa.array(range(TOTAL_ROWS))})
+    block_accessor = ArrowBlockAccessor(table)
+
+    # Perform the random shuffle
+    shuffled_table = block_accessor.random_shuffle(random_seed=None)
+    assert shuffled_table.num_rows == TOTAL_ROWS
+
+    # Access the shuffled data
+    block_accessor = ArrowBlockAccessor(shuffled_table)
+    shuffled_data = block_accessor.to_pandas()["id"].tolist()
+    original_data = list(range(TOTAL_ROWS))
+
+    # Ensure the shuffled data is not identical to the original
+    assert (
+        shuffled_data != original_data
+    ), "Shuffling should result in a different order"
+
+    # Ensure the entire set of original values is still in the shuffled dataset
+    assert (
+        sorted(shuffled_data) == original_data
+    ), "The shuffled data should contain all the original values"
+
+
 def test_register_arrow_types(tmp_path):
     # Test that our custom arrow extension types are registered on initialization.
     ds = ray.data.from_items(np.zeros((8, 8, 8), dtype=np.int64))
@@ -353,6 +379,32 @@ def test_build_block_with_null_column(ray_start_regular_shared):
     assert rows[1]["string"] == "spam"
     assert np.array_equal(rows[0]["array"], np.zeros((2, 2)))
     assert np.array_equal(rows[1]["array"], np.zeros((2, 2)))
+
+
+def test_arrow_block_timestamp_ns(ray_start_regular_shared):
+    # Input data with nanosecond precision timestamps
+    data_rows = [
+        {"col1": 1, "col2": pd.Timestamp("2023-01-01T00:00:00.123456789")},
+        {"col1": 2, "col2": pd.Timestamp("2023-01-01T01:15:30.987654321")},
+        {"col1": 3, "col2": pd.Timestamp("2023-01-01T02:30:15.111111111")},
+        {"col1": 4, "col2": pd.Timestamp("2023-01-01T03:45:45.222222222")},
+        {"col1": 5, "col2": pd.Timestamp("2023-01-01T05:00:00.333333333")},
+    ]
+
+    # Initialize ArrowBlockBuilder
+    arrow_builder = ArrowBlockBuilder()
+    for row in data_rows:
+        arrow_builder.add(row)
+    arrow_block = arrow_builder.build()
+
+    assert arrow_block.schema.field("col2").type == pa.timestamp("ns")
+    for i, row in enumerate(data_rows):
+        result_timestamp = arrow_block["col2"][i].as_py()
+        # Convert both values to pandas Timestamp to preserve nanosecond precision for
+        # comparison.
+        assert pd.Timestamp(row["col2"]) == pd.Timestamp(
+            result_timestamp
+        ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
 
 
 def test_arrow_nan_element():

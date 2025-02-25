@@ -20,6 +20,7 @@
 #include <stdexcept>
 
 #include "absl/strings/match.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -27,9 +28,23 @@
 namespace ray {
 namespace gcs {
 
+GcsTaskManager::GcsTaskManager(instrumented_io_context &io_service)
+    : io_service_(io_service),
+      stats_counter_(),
+      task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
+          RayConfig::instance().task_events_max_num_task_in_gcs(),
+          stats_counter_,
+          std::make_unique<FinishedTaskActorTaskGcPolicy>())),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+  periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
+                                        5 * 1000,
+                                        "GcsTaskManager.GcJobSummary");
+}
+
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
   std::vector<rpc::TaskEvents> ret;
+  ret.reserve(gc_policy_->MaxPriority());
   // From the higher priority to the lower priority list.
   for (int i = gc_policy_->MaxPriority() - 1; i >= 0; --i) {
     // Reverse iterate the list to get the latest task events.
@@ -69,6 +84,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents(
     const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_locators) const {
   std::vector<rpc::TaskEvents> result;
+  result.reserve(task_locators.size());
   for (const auto &task_attempt_loc : task_locators) {
     // Copy the task event to the output.
     result.push_back(task_attempt_loc->GetTaskEventsMutable());
@@ -686,11 +702,10 @@ void GcsTaskManager::OnWorkerDead(
     const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
   RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
 
-  std::shared_ptr<boost::asio::deadline_timer> timer =
-      std::make_shared<boost::asio::deadline_timer>(
-          io_service_,
-          boost::posix_time::milliseconds(
-              RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      io_service_,
+      boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
 
   timer->async_wait(
       [this, timer, worker_id, worker_data](const boost::system::error_code &error) {
@@ -705,11 +720,10 @@ void GcsTaskManager::OnWorkerDead(
 }
 
 void GcsTaskManager::OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms) {
-  std::shared_ptr<boost::asio::deadline_timer> timer =
-      std::make_shared<boost::asio::deadline_timer>(
-          io_service_,
-          boost::posix_time::milliseconds(
-              RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+  auto timer = std::make_shared<boost::asio::deadline_timer>(
+      io_service_,
+      boost::posix_time::milliseconds(
+          RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
 
   timer->async_wait([this, timer, job_id, job_finish_time_ms](
                         const boost::system::error_code &error) {

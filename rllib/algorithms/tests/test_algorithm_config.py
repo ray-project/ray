@@ -287,7 +287,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
     def test_get_multi_rl_module_spec(self):
         """Tests whether the get_multi_rl_module_spec() method works properly."""
-        from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
+        from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 
         class CustomRLModule1(VPGTorchRLModule):
             pass

@@ -27,7 +27,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
 from ray.rllib.utils.typing import StateDict
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
@@ -685,7 +685,7 @@ def _is_dir(file_info: pyarrow.fs.FileInfo) -> bool:
     return file_info.type == pyarrow.fs.FileType.Directory
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 def get_checkpoint_info(
     checkpoint: Union[str, Checkpoint],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,

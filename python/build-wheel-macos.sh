@@ -10,7 +10,7 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-PY_MMS=("3.9" "3.10" "3.11" "3.12")
+PY_MMS=("3.9" "3.10" "3.11" "3.12" "3.13")
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
@@ -44,7 +44,7 @@ mkdir -p .whl
 for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   PY_MM=${PY_MMS[i]}
   CONDA_ENV_NAME="p$PY_MM"
- 
+
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.

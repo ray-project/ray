@@ -217,7 +217,7 @@ def run_one_wrk_trial(
     if err.decode() != "":
         logger.error(err.decode())
 
-    return out.decode()
+    return out.decode(), err.decode()
 
 
 def aggregate_all_metrics(metrics_from_all_nodes: Dict[str, List[Union[float, int]]]):
@@ -302,9 +302,11 @@ def run_wrk_on_all_nodes(
     if ignore_output:
         return
 
-    for i, decoded_output in enumerate(ray.get(rst_ray_refs)):
+    for i, (decoded_output, decoded_error) in enumerate(ray.get(rst_ray_refs)):
         if debug:
             print(f"decoded_output {i}: {decoded_output}")
+            if decoded_error != "":
+                print(f"decoded_error {i}: {decoded_error}")
         all_wrk_stdout.append(decoded_output)
         parsed_metrics = parse_wrk_decoded_stdout(decoded_output)
 

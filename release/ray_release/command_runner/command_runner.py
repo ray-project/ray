@@ -57,10 +57,6 @@ class CommandRunner(abc.ABC):
 
         return full_env
 
-    def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
-        """Prepare local environment, e.g. install dependencies."""
-        raise NotImplementedError
-
     def prepare_remote_env(self):
         """Prepare remote environment, e.g. upload files."""
         raise NotImplementedError

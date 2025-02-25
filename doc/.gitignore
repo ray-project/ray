@@ -25,5 +25,5 @@ source/serve/examples.rst
 # Ignore generated versions
 source/_static/versions.json
 
-# Ignore doc/serve
-serve/
+# Ignore rllib generated files
+source/rllib/package_ref/

@@ -151,6 +151,6 @@ def main(args):
 if __name__ == "__main__":
     args = parse_args()
 
-    benchmark = Benchmark("gpu-batch-inference")
+    benchmark = Benchmark()
     benchmark.run_fn("batch-inference", main, args)
     benchmark.write_result()

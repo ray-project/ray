@@ -1,8 +1,10 @@
+import copy
+from ray.experimental.channel.auto_transport_type import AutoTransportType
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
-import copy
 
 from itertools import chain
 
@@ -21,6 +23,7 @@ import asyncio
 
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
+from ray.experimental.channel.communicator import Communicator
 
 T = TypeVar("T")
 
@@ -79,6 +82,12 @@ class DAGNode(DAGNodeBase):
         self.cache_from_last_execute = {}
 
         self._type_hint: ChannelOutputType = ChannelOutputType()
+
+        # If the original type hint is an AutoTransportType, we make a copy
+        # here when it is resolved to the actual type, as additional debugging
+        # information. Otherwise, it is None.
+        self._original_type_hint: Optional[ChannelOutputType] = None
+
         # Whether this node calls `experimental_compile`.
         self.is_cgraph_output_node = False
 
@@ -129,13 +138,44 @@ class DAGNode(DAGNodeBase):
             upstream_node._downstream_nodes.append(self)
         return upstream_nodes
 
-    def with_type_hint(self, typ: ChannelOutputType):
-        self._type_hint = copy.deepcopy(typ)
+    def with_tensor_transport(
+        self,
+        transport: Optional[Union[str, Communicator]] = "auto",
+        _static_shape: bool = False,
+        _direct_return: bool = False,
+    ):
+        if transport == "auto":
+            self._type_hint = AutoTransportType(
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        elif transport == "nccl":
+            self._type_hint = TorchTensorType(
+                transport=transport,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
+        else:
+            if not isinstance(transport, Communicator):
+                raise ValueError(
+                    "transport must be 'auto', 'nccl' or a Communicator type"
+                )
+            self._type_hint = TorchTensorType(
+                transport=transport,
+                _static_shape=_static_shape,
+                _direct_return=_direct_return,
+            )
         return self
 
     @property
     def type_hint(self) -> ChannelOutputType:
         return self._type_hint
+
+    @type_hint.setter
+    def type_hint(self, type_hint: ChannelOutputType) -> None:
+        if isinstance(self._type_hint, AutoTransportType):
+            self._original_type_hint = self._type_hint
+        self._type_hint = type_hint
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -186,10 +226,10 @@ class DAGNode(DAGNodeBase):
         _submit_timeout: Optional[float] = None,
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
-        _asyncio_max_queue_size: Optional[int] = None,
-        _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
+        _max_buffered_results: Optional[int] = None,
         _overlap_gpu_communication: Optional[bool] = None,
+        _default_communicator: Optional[Union[Communicator, str]] = "create",
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -203,24 +243,38 @@ class DAGNode(DAGNodeBase):
                 be automatically resized if larger messages are written to the
                 channel.
             enable_asyncio: Whether to enable asyncio for this DAG.
-            _asyncio_max_queue_size: The max queue size for the async execution.
-                It is only used when enable_asyncio=True.
-            _max_buffered_results: The maximum number of execution results that
-                are allowed to be buffered. Setting a higher value allows more
-                DAGs to be executed before `ray.get()` must be called but also
-                increases the memory usage. Note that if the number of ongoing
-                executions is beyond the DAG capacity, the new execution would
-                be blocked in the first place; therefore, this limit is only
-                enforced when it is smaller than the DAG capacity.
-            _max_inflight_executions: The maximum number of in-flight requests that
-                are allowed to be sent to this DAG. Before submitting more requests,
-                the caller is responsible for calling ray.get to clear finished
-                in-flight requests.
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution. If True, the communication
-                and computation can be overlapped, which can improve the
-                performance of the DAG execution. If None, the default value
+            _max_inflight_executions: The maximum number of in-flight executions that
+                can be submitted via `execute` or `execute_async` before consuming
+                the output using `ray.get()`. If the caller submits more executions,
+                `RayCgraphCapacityExceeded` is raised.
+            _max_buffered_results: The maximum number of results that can be
+                buffered at the driver. If more than this number of results
+                are buffered, `RayCgraphCapacityExceeded` is raised. Note that
+                when result corresponding to an execution is retrieved
+                (by calling `ray.get()` on a `CompiledDAGRef` or
+                `CompiledDAGRef` or await on a `CompiledDAGFuture), results
+                corresponding to earlier executions that have not been retrieved
+                yet are buffered.
+            _overlap_gpu_communication: (experimental) Whether to overlap GPU
+                communication with computation during DAG execution. If True, the
+                communication and computation can be overlapped, which can improve
+                the performance of the DAG execution. If None, the default value
                 will be used.
+            _default_communicator: The default communicator to use to transfer
+                tensors. Three types of values are valid. (1) Communicator:
+                For p2p operations, this is the default communicator
+                to use for nodes annotated with `with_tensor_transport()` and when
+                shared memory is not the desired option (e.g., when transport="nccl",
+                or when transport="auto" for communication between two different GPUs).
+                For collective operations, this is the default communicator to use
+                when a custom communicator is not specified.
+                (2) "create": for each collective operation without a custom communicator
+                specified, a communicator is created and initialized on its involved actors,
+                or an already created communicator is reused if the set of actors is the same.
+                For all p2p operations without a custom communicator specified, it reuses
+                an already created collective communicator if the p2p actors are a subset.
+                Otherwise, a new communicator is created.
+                (3) None: a ValueError will be thrown if a custom communicator is not specified.
 
         Returns:
             A compiled DAG.
@@ -230,10 +284,6 @@ class DAGNode(DAGNodeBase):
         ctx = DAGContext.get_current()
         if _buffer_size_bytes is None:
             _buffer_size_bytes = ctx.buffer_size_bytes
-        if _asyncio_max_queue_size is None:
-            _asyncio_max_queue_size = ctx.asyncio_max_queue_size
-        if _max_buffered_results is None:
-            _max_buffered_results = ctx.max_buffered_results
 
         # Validate whether this DAG node has already been compiled.
         if self.is_cgraph_output_node:
@@ -251,10 +301,10 @@ class DAGNode(DAGNodeBase):
             _submit_timeout,
             _buffer_size_bytes,
             enable_asyncio,
-            _asyncio_max_queue_size,
-            _max_buffered_results,
             _max_inflight_executions,
+            _max_buffered_results,
             _overlap_gpu_communication,
+            _default_communicator,
         )
 
     def execute(
@@ -575,7 +625,8 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, new_options, new_other_args_to_resolve
         )
         instance._stable_uuid = self._stable_uuid
-        instance = instance.with_type_hint(self.type_hint)
+        instance._type_hint = copy.deepcopy(self._type_hint)
+        instance._original_type_hint = copy.deepcopy(self._original_type_hint)
         return instance
 
     def __getstate__(self):

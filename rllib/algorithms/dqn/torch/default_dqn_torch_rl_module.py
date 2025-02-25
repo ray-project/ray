@@ -1,3 +1,4 @@
+import tree
 from typing import Dict, Union
 
 from ray.rllib.algorithms.dqn.default_dqn_rl_module import (
@@ -46,13 +47,20 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
         # outputs directly the `argmax` of the logits.
         exploit_actions = action_dist.to_deterministic().sample()
 
+        output = {Columns.ACTIONS: exploit_actions}
+        if Columns.STATE_OUT in qf_outs:
+            output[Columns.STATE_OUT] = qf_outs[Columns.STATE_OUT]
+
         # In inference, we only need the exploitation actions.
-        return {Columns.ACTIONS: exploit_actions}
+        return output
 
     @override(RLModule)
     def _forward_exploration(
         self, batch: Dict[str, TensorType], t: int
     ) -> Dict[str, TensorType]:
+        # Define the return dictionary.
+        output = {}
+
         # Q-network forward pass.
         qf_outs = self.compute_q_values(batch)
 
@@ -73,7 +81,13 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
         B = qf_outs[QF_PREDS].shape[0]
         random_actions = torch.squeeze(
             torch.multinomial(
-                (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0.0).float(),
+                (
+                    torch.nan_to_num(
+                        qf_outs[QF_PREDS].reshape(-1, qf_outs[QF_PREDS].size(-1)),
+                        neginf=0.0,
+                    )
+                    != 0.0
+                ).float(),
                 num_samples=1,
             ),
             dim=1,
@@ -85,7 +99,14 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
             exploit_actions,
         )
 
-        return {Columns.ACTIONS: actions}
+        # Add the actions to the return dictionary.
+        output[Columns.ACTIONS] = actions
+
+        # If this is a stateful module, add output states.
+        if Columns.STATE_OUT in qf_outs:
+            output[Columns.STATE_OUT] = qf_outs[Columns.STATE_OUT]
+
+        return output
 
     @override(RLModule)
     def _forward_train(
@@ -107,10 +128,32 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                     [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=0
                 ),
             }
+            # If this is a stateful module add the input states.
+            if Columns.STATE_IN in batch:
+                # Add both, the input state for the actual observation and
+                # the one for the next observation.
+                batch_base.update(
+                    {
+                        Columns.STATE_IN: tree.map_structure(
+                            lambda t1, t2: torch.cat([t1, t2], dim=0),
+                            batch[Columns.STATE_IN],
+                            batch[Columns.NEXT_STATE_IN],
+                        )
+                    }
+                )
         # Otherwise we can just use the current observations.
         else:
             batch_base = {Columns.OBS: batch[Columns.OBS]}
+            # If this is a stateful module add the input state.
+            if Columns.STATE_IN in batch:
+                batch_base.update({Columns.STATE_IN: batch[Columns.STATE_IN]})
+
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
+
+        # If we have a stateful encoder, add the states for the target forward
+        # pass.
+        if Columns.NEXT_STATE_IN in batch:
+            batch_target.update({Columns.STATE_IN: batch[Columns.NEXT_STATE_IN]})
 
         # Q-network forward passes.
         qf_outs = self.compute_q_values(batch_base)
@@ -135,6 +178,14 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
             # Probabilities of the target Q-value distribution of the next state.
             output[QF_TARGET_NEXT_PROBS] = qf_target_next_outs[QF_PROBS]
 
+        # Add the states to the output, if the module is stateful.
+        if Columns.STATE_OUT in qf_outs:
+            output[Columns.STATE_OUT] = qf_outs[Columns.STATE_OUT]
+        # For correctness, also add the output states from the target forward pass.
+        # Note, we do not backpropagate through this state.
+        if Columns.STATE_OUT in qf_target_next_outs:
+            output[Columns.NEXT_STATE_OUT] = qf_target_next_outs[Columns.STATE_OUT]
+
         return output
 
     @override(QNetAPI)
@@ -154,7 +205,7 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
         # Reshape the action values.
         # NOTE: Handcrafted action shape.
         logits_per_action_per_atom = torch.reshape(
-            batch, shape=(-1, self.action_space.n, self.num_atoms)
+            batch, shape=(*batch.shape[:-1], self.action_space.n, self.num_atoms)
         )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value
@@ -216,10 +267,12 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                 # Center the advantage stream distribution.
                 centered_af_logits = af_dist_output["logits"] - af_dist_output[
                     "logits"
-                ].mean(dim=1, keepdim=True)
+                ].mean(dim=-1, keepdim=True)
                 # Calculate the Q-value distribution by adding advantage and
                 # value stream.
-                qf_logits = centered_af_logits + vf_outs.unsqueeze(dim=-1)
+                qf_logits = centered_af_logits + vf_outs.view(
+                    -1, *((1,) * (centered_af_logits.dim() - 1))
+                )
                 # Calculate probabilites for the Q-value distribution along
                 # the support given by the atoms.
                 qf_probs = nn.functional.softmax(qf_logits, dim=-1)
@@ -236,8 +289,8 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
                 # Has to be a mean for each batch element.
-                af_outs_mean = torch.unsqueeze(
-                    torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
+                af_outs_mean = torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(
+                    dim=-1, keepdim=True
                 )
                 qf_outs = qf_outs - af_outs_mean
                 # Add advantage and value stream. Note, we broadcast here.
@@ -265,5 +318,10 @@ class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
             else:
                 # In this case we have a Q-head of dimension (1, action_space.n).
                 output[QF_PREDS] = qf_outs
+
+        # If we have a stateful encoder add the output states to the return
+        # dictionary.
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         return output

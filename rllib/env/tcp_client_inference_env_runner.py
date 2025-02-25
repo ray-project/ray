@@ -331,7 +331,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
                 truncated=episode_data["is_truncated"],
                 len_lookback_buffer=0,
             )
-            episodes.append(episode.finalize())
+            episodes.append(episode.to_numpy())
 
         # Push episodes into the to-be-returned list (for `sample()` requests).
         with self._sample_lock:

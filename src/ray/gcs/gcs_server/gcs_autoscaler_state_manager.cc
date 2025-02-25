@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
+#include <type_traits>
+
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -27,17 +29,22 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
-    rpc::NodeManagerClientPool &raylet_client_pool)
+    rpc::NodeManagerClientPool &raylet_client_pool,
+    InternalKVInterface &kv,
+    instrumented_io_context &io_context)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
-      raylet_client_pool_(raylet_client_pool) {}
+      raylet_client_pool_(raylet_client_pool),
+      kv_(kv),
+      io_context_(io_context) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
     rpc::autoscaler::GetClusterResourceStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
             last_cluster_resource_state_version_);
 
@@ -53,6 +60,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::autoscaler::ReportAutoscalingStateRequest request,
     rpc::autoscaler::ReportAutoscalingStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   // TODO(rickyx): We should handle the infeasible requests in the future.
   // Right now, this info will only be used for observability, i.e. ray status.
 
@@ -85,6 +93,7 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
     rpc::autoscaler::RequestClusterResourceConstraintRequest request,
     rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   cluster_resource_constraint_ =
       std::move(*request.mutable_cluster_resource_constraint());
 
@@ -93,10 +102,27 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
+void GcsAutoscalerStateManager::HandleReportClusterConfig(
+    rpc::autoscaler::ReportClusterConfigRequest request,
+    rpc::autoscaler::ReportClusterConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+  // Save to kv for persistency in case of GCS FT.
+  kv_.Put(kGcsAutoscalerStateNamespace,
+          kGcsAutoscalerClusterConfigKey,
+          request.cluster_config().SerializeAsString(),
+          /*overwrite=*/true,
+          {[send_reply_callback = std::move(send_reply_callback)](bool added) {
+             send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+           },
+           io_context_});
+}
+
 void GcsAutoscalerStateManager::HandleGetClusterStatus(
     rpc::autoscaler::GetClusterStatusRequest request,
     rpc::autoscaler::GetClusterStatusReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto ray_resource_state = reply->mutable_cluster_resource_state();
   MakeClusterResourceStateInternal(ray_resource_state);
 
@@ -108,6 +134,7 @@ void GcsAutoscalerStateManager::HandleGetClusterStatus(
 
 void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
   state->set_cluster_resource_state_version(
       IncrementAndGetNextClusterResourceStateVersion());
@@ -121,6 +148,7 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   // Get the gang resource requests from the placement group load.
   auto placement_group_load = gcs_placement_group_manager_.GetPlacementGroupLoad();
   if (!placement_group_load || placement_group_load->placement_group_data_size() == 0) {
@@ -172,6 +200,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
 
 void GcsAutoscalerStateManager::GetClusterResourceConstraints(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   if (cluster_resource_constraint_.has_value()) {
     state->add_cluster_resource_constraints()->CopyFrom(
         cluster_resource_constraint_.value());
@@ -179,6 +208,7 @@ void GcsAutoscalerStateManager::GetClusterResourceConstraints(
 }
 
 void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(node.node_id());
   auto node_info =
       node_resource_info_
@@ -190,8 +220,8 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   (*node_info->second.second.mutable_resources_available()) = node.resources_total();
 }
 
-void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
-    const rpc::ResourcesData &data) {
+void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData data) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
   if (iter == node_resource_info_.end()) {
@@ -201,27 +231,14 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   }
 
   auto &new_data = iter->second.second;
-
-  (*new_data.mutable_resource_load()) = data.resource_load();
-  (*new_data.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-
-  if (data.resources_total_size() > 0) {
-    (*new_data.mutable_resources_total()) = data.resources_total();
-  }
-
-  (*new_data.mutable_resources_available()) = data.resources_available();
-
-  new_data.set_object_pulls_queued(data.object_pulls_queued());
-  new_data.set_idle_duration_ms(data.idle_duration_ms());
-  new_data.set_is_draining(data.is_draining());
-  new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
-
+  new_data = std::move(data);
   // Last update time
   iter->second.first = absl::Now();
 }
 
 absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
 GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
       aggregate_load;
   for (const auto &info : node_resource_info_) {
@@ -231,6 +248,7 @@ GcsAutoscalerStateManager::GetAggregatedResourceLoad() const {
 };
 
 void GcsAutoscalerStateManager::Initialize(const GcsInitData &gcs_init_data) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   for (const auto &entry : gcs_init_data.Nodes()) {
     if (entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
       OnNodeAdd(entry.second);
@@ -240,6 +258,7 @@ void GcsAutoscalerStateManager::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsAutoscalerStateManager::GetPendingResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto aggregate_load = GetAggregatedResourceLoad();
   for (const auto &[shape, demand] : aggregate_load) {
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
@@ -255,6 +274,7 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
 
 void GcsAutoscalerStateManager::GetNodeStates(
     rpc::autoscaler::ClusterResourceState *state) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
@@ -348,6 +368,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id)
       << "HandleDrainNode, reason: " << request.reason_message()
@@ -410,6 +431,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
 }
 
 std::string GcsAutoscalerStateManager::DebugString() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   std::ostringstream stream;
   stream << "GcsAutoscalerStateManager: "
          << "\n- last_seen_autoscaler_state_version_: "
@@ -431,6 +453,68 @@ std::string GcsAutoscalerStateManager::DebugString() const {
     stream << "} * " << num_pending << "\n";
   }
   return stream.str();
+}
+
+absl::flat_hash_map<ray::NodeID, std::vector<google::protobuf::Map<std::string, double>>>
+GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  absl::flat_hash_map<ray::NodeID,
+                      std::vector<google::protobuf::Map<std::string, double>>>
+      per_node_infeasible_requests;
+  if (!autoscaling_state_.has_value()) {
+    return per_node_infeasible_requests;
+  }
+
+  // obtain the infeasible requests from the autoscaler state
+  std::vector<google::protobuf::Map<std::string, double>>
+      autoscaler_infeasible_resource_shapes;
+  autoscaler_infeasible_resource_shapes.reserve(
+      autoscaling_state_.value().infeasible_resource_requests_size());
+  for (int i = 0; i < autoscaling_state_.value().infeasible_resource_requests_size();
+       i++) {
+    autoscaler_infeasible_resource_shapes.emplace_back(
+        autoscaling_state_.value().infeasible_resource_requests(i).resources_bundle());
+  }
+
+  // collect the infeasible requests per node
+  for (const auto &[node_id, time_resource_data_pair] : node_resource_info_) {
+    const auto &resource_load_by_shape =
+        time_resource_data_pair.second.resource_load_by_shape();
+
+    for (int i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
+      bool is_infeasible_shape = false;
+      auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
+      for (const auto &shape : autoscaler_infeasible_resource_shapes) {
+        const auto &resource_demand = resource_load_by_shape.resource_demands(i);
+        if (resource_demand.num_infeasible_requests_queued() > 0 &&
+            MapEqual(shape, resource_demand.shape())) {
+          is_infeasible_shape = true;
+          infeasible_resource_shape = shape;
+          break;
+        }
+      }
+
+      if (is_infeasible_shape) {
+        per_node_infeasible_requests[node_id].emplace_back(infeasible_resource_shape);
+      }
+    }
+  }
+  return per_node_infeasible_requests;
+}
+
+void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  // Obtain the node & infeasible request mapping
+  auto per_node_infeasible_requests = GetPerNodeInfeasibleResourceRequests();
+  if (per_node_infeasible_requests.empty()) {
+    return;
+  }
+
+  // Cancel the infeasible requests
+  // NOTE(mengjin): This is just a stub for now, but will soon be implemented to support
+  // cancel infeasible resource requests
 }
 
 }  // namespace gcs
