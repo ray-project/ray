@@ -16,12 +16,13 @@ GCP_EXECUTABLE = "gcloud"
 
 
 def try_import_boto3():
-    return try_import("boto3", error=True)
-
-
-def try_import_google_api():
-    g_api = try_import("google", error=True)
-    return g_api
+    try:
+        return try_import("boto3", error=True)
+    except ImportError:
+        raise ImportError(
+            "You must `pip install boto3` "
+            "to check models in S3."
+        )
 
 
 def get_file_from_s3(
@@ -96,8 +97,14 @@ def get_gcs_bucket_name_and_prefix(
 
 def get_gcs_client():
     """Returns the default gcs client"""
-    google = try_import_google_api()
-    return google.cloud.storage.Client()
+    try:
+        gcs = try_import("google.cloud.storage", error=True)
+    except ImportError:
+        raise ImportError(
+            "You must `pip install google-cloud-storage` "
+            "to check models in Google Cloud Storage."
+        )
+    return gcs.Client()
 
 
 def get_file_from_gcs(
@@ -113,18 +120,18 @@ def get_file_from_gcs(
     Return: contents of file as string or bytes depending on value of
         decode_as_utf_8. If the file does not exist, returns None.
     """
-    google = try_import_google_api()
+    gcs_exceptions = try_import("google.api_core.exceptions", error=True)
     bucket_name, prefix = get_gcs_bucket_name_and_prefix(object_uri, is_file=True)
 
-    storage_client = google.cloud.storage.Client()
+    storage_client = get_gcs_client()
     try:
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(prefix)
         body = blob.download_as_string()
-    except google.api_core.exceptions.NotFound:
+    except gcs_exceptions.NotFound:
         logger.info(f"URI {object_uri} does not exist.")
         return None
-    except google.api_core.exceptions.Forbidden:
+    except gcs_exceptions.Forbidden:
         logger.info(f"URI {object_uri} is throwing forbidden access.")
         return None
 
@@ -184,6 +191,14 @@ def list_subfolders_gcs(folder_uri: str) -> List[str]:
     Return: list of subfolder names in a GCS folder. None of the subfolders
         have a trailing slash.
     """
+    try:
+        gcs_exceptions = try_import("google.api_core.exceptions", error=True)
+    except ImportError:
+        logger.exception(
+            "You must `pip install google-cloud-storage` "
+            "to check models in Google Cloud Storage."
+        )
+        return []
 
     # Ensure that the folder_uri has a trailing slash.
     folder_uri = f"{folder_uri.rstrip('/')}/"
@@ -194,26 +209,16 @@ def list_subfolders_gcs(folder_uri: str) -> List[str]:
     folder_prefix = path_parts[1]
 
     gcs_client = get_gcs_client()
-
-    try:
-        from google.api_core.exceptions import Forbidden, NotFound
-    except ImportError:
-        logger.exception(
-            "You must `pip install google-cloud-storage` "
-            "to check models in Google Cloud Storage."
-        )
-        return []
-
     try:
         # NOTE (shrekris): list_blobs() has a delimiter argument that should
         # allows us to list just the children of the folder. However, that
         # argument doesn't seem to work currently. So instead, we list all
         # the children recursively and keep only the common prefixes.
         blobs = gcs_client.list_blobs(bucket_name, prefix=folder_prefix)
-    except NotFound:
+    except gcs_exceptions.NotFound:
         logger.info(f"GCS folder URI {folder_uri} does not exist.")
         return []
-    except Forbidden:
+    except gcs_exceptions.Forbidden:
         logger.info(f"GCS folder URI {folder_uri} is throwing forbidden access.")
         return []
 
@@ -247,11 +252,10 @@ def download_files_from_gcs(
             that do not match the provided sub-strings will be skipped by
             default.
     """
-    google = try_import_google_api()
 
     bucket_name, prefix = get_gcs_bucket_name_and_prefix(bucket_uri)
 
-    client = google.cloud.storage.Client()
+    client = get_gcs_client()
     bucket = client.bucket(bucket_name)
 
     # Download all files in bucket to the path/snapshots/<f_hash>/ directory.
@@ -302,11 +306,10 @@ def download_model_from_gcs(
         tokenizer_only: If True, only the files needed for the model's
             tokenizer will be downloaded.
     """
-    google = try_import_google_api()
 
     bucket_name, prefix = get_gcs_bucket_name_and_prefix(bucket_uri)
 
-    client = google.cloud.storage.Client()
+    client = get_gcs_client()
     bucket = client.bucket(bucket_name)
 
     logger.info(
