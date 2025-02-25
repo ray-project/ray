@@ -5,10 +5,10 @@ Get Started with Distributed Training using Hugging Face Transformers
 
 This tutorial shows you how to convert an existing Hugging Face Transformers script to use Ray Train for distributed training.
 
-In this guide, you'll learn how to:
+In this guide, learn how to:
 
 1. Configure a :ref:`training function <train-overview-training-function>` that properly reports metrics and saves checkpoints.
-2. Configure :ref:`scaling <train-overview-scaling-config>` and resource requirements (CPU or GPU) for your distributed training job.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and resource requirements for CPUs or GPUs for your distributed training job.
 3. Launch a distributed training job with :class:`~ray.train.torch.TorchTrainer`.
 
 
