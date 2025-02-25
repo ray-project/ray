@@ -5131,27 +5131,14 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute()
+        ref_bundles_iter, stats, _ = copy._plan.execute_to_iterator()
 
-        bundle = copy._plan._snapshot_bundle
-        blocks_with_metadata = bundle.blocks
-        # TODO(hchen): Here we generate the same number of blocks as
-        # the original Dataset. Because the old code path does this, and
-        # some unit tests implicily depend on this behavior.
-        # After we remove the old code path, we should consider merging
-        # some blocks for better perf.
-        ref_bundles = [
-            RefBundle(
-                blocks=[block_with_metadata],
-                owns_blocks=False,
-            )
-            for block_with_metadata in blocks_with_metadata
-        ]
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
+        logical_plan = LogicalPlan(InputData(input_data_iter=ref_bundles_iter), self.context)
         output = MaterializedDataset(
-            ExecutionPlan(copy._plan.stats()),
+            ExecutionPlan(stats),
             logical_plan,
         )
+
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
         output._set_name(copy._name)
