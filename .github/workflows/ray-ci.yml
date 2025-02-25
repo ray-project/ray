@@ -1,0 +1,555 @@
+name: Ray CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+
+env:
+  PYTHON_VERSION: '3.11'
+  DOCKER_BUILDKIT: 1
+  RAY_CI_POST_WHEEL_TESTS: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  start-ecs-runner:
+    name: Start ECS Runner
+    runs-on: ubuntu-latest
+    environment: aliyun
+    concurrency:
+      group: ${{ github.workflow }}
+      cancel-in-progress: false
+    outputs:
+      leased_instance_id: ${{ steps.lease_instance.outputs.instance_id }}
+      leased_disk_id: ${{ steps.lease_instance.outputs.disk_id }}
+    steps:
+      - name: Configure Aliyun CLI
+        run: |
+          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xvf aliyun-cli-linux-latest-amd64.tgz
+          ./aliyun configure set --profile default \
+            --access-key-id ${{ secrets.ALIYUN_ACCESS_KEY }} \
+            --access-key-secret ${{ secrets.ALIYUN_ACCESS_SECRET }} \
+            --region us-west-1
+
+      - name: Lease and Start Instance
+        id: lease_instance
+        run: |
+          # Parse instance:disk pairs
+          IFS=',' read -ra INSTANCE_PAIRS <<< "${{ secrets.ALIYUN_ECS_INSTANCE_IDS }}"
+          
+          while true; do
+            for pair in "${INSTANCE_PAIRS[@]}"; do
+              IFS=':' read -r instance_id disk_id <<< "$pair"
+              
+              # Check instance status
+              status=$(./aliyun ecs DescribeInstances --InstanceIds '["'"$instance_id"'"]' --region us-west-1 | jq -r '.Instances.Instance[0].Status')
+              
+              if [ "$status" = "Stopped" ]; then
+                # Try to start this instance
+                max_attempts=30
+                for i in $(seq 1 $max_attempts); do
+                  if ./aliyun ecs StartInstance --InstanceId "$instance_id" --region us-west-1; then
+                    echo "StartInstance succeeded on attempt $i"
+                    # Wait for instance to be running
+                    while true; do
+                      current_status=$(./aliyun ecs DescribeInstances --InstanceIds '["'"$instance_id"'"]' --region us-west-1 | jq -r '.Instances.Instance[0].Status')
+                      if [ "$current_status" = "Running" ]; then
+                        break
+                      fi
+                      sleep 10
+                    done
+                    
+                    # Try to attach disk
+                    for j in $(seq 1 $max_attempts); do
+                      if ./aliyun ecs AttachDisk --InstanceId "$instance_id" --DiskId "$disk_id" --region us-west-1; then
+                        echo "AttachDisk succeeded on attempt $j"
+                        # Set outputs for use in subsequent jobs
+                        echo "instance_id=$instance_id" >> $GITHUB_OUTPUT
+                        echo "disk_id=$disk_id" >> $GITHUB_OUTPUT
+                        exit 0
+                      else
+                        echo "AttachDisk failed on attempt $j"
+                        if [ $j -eq $max_attempts ]; then
+                          echo "All AttachDisk attempts failed - trying next instance"
+                          break
+                        fi
+                        sleep 10
+                      fi
+                    done
+                    break
+                  else
+                    echo "StartInstance failed on attempt $i"
+                    if [ $i -eq $max_attempts ]; then
+                      echo "All StartInstance attempts failed - trying next instance"
+                    fi
+                    sleep 10
+                  fi
+                done
+              fi
+            done
+            
+            echo "No available instances found in this iteration, waiting before retrying..."
+            sleep 60  # Wait 1 minute before trying again
+          done
+
+
+  check-permissions:
+    needs: start-ecs-runner
+    name: Check User Permissions
+    runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
+    outputs:
+      allowed: ${{ steps.check_user.outputs.allowed }}
+    steps:
+      - name: Check if user is allowed
+        id: check_user
+        run: |
+          cat /home/runner/.workflow.cfg
+          if [ -f "/home/runner/.workflow.cfg" ]; then
+            if grep -qE "^allowed_users=(${GITHUB_ACTOR}|.*,${GITHUB_ACTOR}|${GITHUB_ACTOR},.*|.*,${GITHUB_ACTOR},.*)\$" /home/runner/.workflow.cfg; then
+              echo "allowed=true" >> $GITHUB_OUTPUT
+            else
+              echo "allowed=false" >> $GITHUB_OUTPUT
+              echo "User ${GITHUB_ACTOR} is not authorized to trigger this workflow"
+            fi
+          else
+            echo "allowed=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-base-images:
+    name: Build Base Images
+    needs: [check-permissions, start-ecs-runner]
+    if: needs.check-permissions.outputs.allowed == 'true'
+    runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
+    strategy:
+      matrix:
+        python: ['3.11']
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Check Test Image Existence
+      id: check_test_image
+      run: |
+        if docker manifest inspect ghcr.io/${{ github.repository }}/oss-ci-base_test-py${{ matrix.python }} > /dev/null 2>&1; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+
+    - name: Build Base Test Image
+      if: steps.check_test_image.outputs.exists != 'true'
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        file: ci/docker/base.test.Dockerfile
+        tags: |
+          ghcr.io/${{ github.repository }}/oss-ci-base_test-py${{ matrix.python }}
+        push: true
+
+    - name: Check Build Image Existence
+      id: check_build_image
+      run: |
+        if docker manifest inspect ghcr.io/${{ github.repository }}/oss-ci-base_build-py${{ matrix.python }} > /dev/null 2>&1; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Build OSS CI Base
+      if: steps.check_build_image.outputs.exists != 'true'
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        file: ci/docker/base.build.Dockerfile
+        tags: ghcr.io/${{ github.repository }}/oss-ci-base_build-py${{ matrix.python }}
+        build-args: |
+          DOCKER_IMAGE_BASE_TEST=ghcr.io/${{ github.repository }}/oss-ci-base_test-py${{ matrix.python }}
+        push: true
+
+  core-tests:
+    name: Core Tests
+    env:
+      BAZEL_DIR: ${{ github.workspace }}/../tmp/bazel/${{ github.sha }}
+      RAYCI_BUILD_ID: main
+      RAY_DIR: ${{ github.workspace }}
+      RAYCI_CHECKOUT_DIR: ${{ github.workspace }}
+      COMMIT_HASH: ${{ github.sha }}
+      REPORT_LABEL_1: core_python_tests_1
+      REPORT_LABEL_2: core_python_tests_2
+      REPORT_LABEL_3: core_python_tests_3
+      REPORT_LABEL_4: core_cpp_tests
+      REPORT_LABEL_5: dashboard_tests
+      REPORT_LABEL_6: workflow_tests
+      REPORT_LABEL_7: debug_tests
+      REPORT_LABEL_8: asan_tests
+    needs: [build-base-images, check-permissions, start-ecs-runner]
+    if: needs.check-permissions.outputs.allowed == 'true'
+    runs-on: ${{ needs.start-ecs-runner.outputs.leased_instance_id }}
+    strategy:
+      matrix:
+        python: ['3.11']
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Check Core Image Existence
+      id: check_core_image
+      run: |
+        if docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -q "localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild"; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+    - name: Build core CI Base
+      if: steps.check_core_image.outputs.exists != 'true'
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        file: ci/docker/core.build.Dockerfile
+        tags: |
+          localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild
+        build-args: |
+          RAYCI_IS_GPU_BUILD=false
+          BUILDKITE=true
+          DOCKER_IMAGE_BASE_BUILD=ghcr.io/${{ github.repository }}/oss-ci-base_build-py${{ matrix.python }}
+        push: true
+
+    - name: Start local registry
+      if: '!cancelled()'
+      run: |
+        # Check if registry container exists and handle accordingly
+        if ! docker ps -a --format '{{.Names}}' | grep -q '^local-registry$'; then
+          docker run -d -p 5000:5000 --name local-registry registry:2
+        elif ! docker ps --format '{{.Names}}' | grep -q '^local-registry$'; then
+          docker start local-registry
+        fi
+    - name: Push core build image to local registry
+      if: '!cancelled()'
+      run: |
+        max_attempts=3
+        for i in $(seq 1 $max_attempts); do
+          if docker push localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild; then
+            echo "Docker push succeeded on attempt $i"
+            break
+          else
+            echo "Docker push failed on attempt $i"
+            if [ $i -eq $max_attempts ]; then
+              echo "All docker push attempts failed - exiting"
+              exit 1
+            fi
+            sleep 10
+          fi
+        done
+    
+    - name: Install bazel
+      if: '!cancelled()'
+      run: |
+        bash ci/env/install-bazel.sh
+    - name: Check Manylinux Image Existence
+      id: check_manylinux_image
+      run: |
+        if docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -q "localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-manylinux"; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+    - name: Build Manylinux Image
+      if: steps.check_manylinux_image.outputs.exists != 'true'
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        file: ci/docker/manylinux.Dockerfile
+        tags: |
+          localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-manylinux
+        push: true
+        build-args: |
+          BUILDKITE_BAZEL_CACHE_URL
+          HOSTTYPE=x86_64
+    - name: Run Core Python Tests (1)
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+      run: |
+        echo "Running core: python tests..."
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core \
+          --workers 1 --worker-id 0 --parallelism-per-worker 12 \
+          --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,large_size_python_tests_shard_2 \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }}) \
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_1 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Run Core Python Tests (2)
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+
+      run: |
+        echo "Running core: python tests..."
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag/... python/ray/autoscaler/v2/... core \
+          --workers 1 --worker-id 0 --parallelism-per-worker 12 --skip-ray-installation \
+          --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,large_size_python_tests_shard_2 \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }}) \
+          --skip-ray-installation
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_2 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Run Core Python Tests (3)
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+
+      run: |
+        #echo "Running core: python tests..."
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core \
+          --workers 1 --worker-id 0 --parallelism-per-worker 12 --skip-ray-installation \
+          --only-tags use_all_core \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_3 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Update Test Image
+      if: '!cancelled()'
+      run: |
+        docker build -t localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -f ci/docker/core.build.ant.Dockerfile \
+          --build-arg DOCKER_IMAGE_BASE=localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild \
+          .
+    - name: Run Core Cpp Tests
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+
+      run: |
+        echo "Running core: cpp tests..."
+        bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang \
+          --workers 1 --worker-id 0 --parallelism-per-worker 12 --skip-ray-installation \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_4 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Run Dashboard Tests
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+
+      run: |
+        echo "Running dashboard tests..."
+        bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core \
+          --parallelism-per-worker 12 --skip-ray-installation \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_5 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Run Workflow Tests
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+
+      run: |
+        echo "Running workflow tests..."
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core \
+          --workers 1 --worker-id 0 \
+          --except-tags use_all_core \
+          --parallelism-per-worker 12 \
+          --skip-ray-installation \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/workflow/... core \
+          --workers 1 --worker-id 0 \
+          --skip-ray-installation \
+          --only-tags use_all_core \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+        
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_6 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Run Debug Tests
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+
+      run: |
+        echo "Running debug tests..."
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core \
+          --build-type debug \
+          --parallelism-per-worker 12 \
+          --only-tags debug_tests \
+          --except-tags kubernetes,manual \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }}) \
+          --skip-ray-installation
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_7 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Run ASAN Tests
+      if: '!cancelled()'
+      env:
+        RAYCI_WORK_REPO: localhost:5000/citemp
+
+      run: |
+        echo "Running ASAN tests..."
+        bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core \
+          --build-type asan \
+          --parallelism-per-worker 12 \
+          --only-tags asan_tests \
+          --except-tags kubernetes,manual \
+          --skip-ray-installation \
+          --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+    - name: Grant Permissions
+      if: '!cancelled()'
+      run: |
+        sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+    - name: Generate Report For Label
+      if: '!cancelled()'
+      env:
+        REPORT_LABEL: ${{ env.REPORT_LABEL_8 }}
+      run: |
+        python ci/ray_ci/report_gen.py
+    - name: Workaround
+      if: '!cancelled()'
+      run: |
+        echo "artifacts_path=$(realpath ${{ env.BAZEL_DIR }})" >> $GITHUB_ENV
+ 
+    - name: Generate Report
+      if: '!cancelled()'
+      run: |
+        python ci/ray_ci/report_gen.py summary ${{ env.REPORT_LABEL_1 }} ${{ env.REPORT_LABEL_2 }} ${{ env.REPORT_LABEL_3 }} ${{ env.REPORT_LABEL_4 }} ${{ env.REPORT_LABEL_5 }} ${{ env.REPORT_LABEL_6 }} ${{ env.REPORT_LABEL_7 }} ${{ env.REPORT_LABEL_8 }}
+    - name: Cleanup Containers
+      if: always()
+      continue-on-error: true
+      run: |
+        docker ps -a --filter ancestor=localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
+        # Clean up any dangling containers
+        docker ps -a --filter status=exited -q | xargs -r docker rm || true
+    - name: Upload Test Reports
+      id: artifact-upload-step
+      continue-on-error: true
+      if: '!cancelled()'
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-reports-${{ github.sha }}
+        path: ${{ env.artifacts_path }}/reports/
+
+    - name: Create Summary
+      if: '!cancelled()'
+      run: |
+        echo "### 📊 Test Reports Available" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "View detailed test results at:" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 [Ant Ray Dashboard](https://ant-ray.streamlit.app?run_id=${{ github.run_id }}&artifact_id=${{ steps.artifact-upload-step.outputs.artifact-id }})" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "This link contains test reports and analysis for commit \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+  stop-ecs-runner:
+    name: Stop ECS Instance
+    environment: aliyun
+    needs:
+      - start-ecs-runner
+      - check-permissions
+      - build-base-images
+      - core-tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure Aliyun CLI
+        run: |
+          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xvf aliyun-cli-linux-latest-amd64.tgz
+          ./aliyun configure set --profile default \
+            --access-key-id ${{ secrets.ALIYUN_ACCESS_KEY }} \
+            --access-key-secret ${{ secrets.ALIYUN_ACCESS_SECRET }} \
+            --region us-west-1
+          # Add retry logic for StopInstance
+          max_attempts=3
+          for i in $(seq 1 $max_attempts); do
+            if ./aliyun ecs StopInstance --InstanceId ${{ needs.start-ecs-runner.outputs.leased_instance_id }} --ForceStop true --region us-west-1; then
+              echo "StopInstance succeeded on attempt $i"
+              break
+            else
+              echo "StopInstance failed on attempt $i"
+              if [ $i -eq $max_attempts ]; then
+                echo "All attempts failed - exiting"
+                exit 1
+              fi
+              sleep 10
+            fi
+          done
+          while true; do
+            current_status=$(./aliyun ecs DescribeInstances --InstanceIds '["'"${{ needs.start-ecs-runner.outputs.leased_instance_id }}"'"]' --region us-west-1 | jq -r '.Instances.Instance[0].Status')
+            if [ "$current_status" = "Stopped" ]; then
+              break
+            fi
+            sleep 10
+          done

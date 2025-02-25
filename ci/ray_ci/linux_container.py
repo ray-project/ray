@@ -47,8 +47,8 @@ class LinuxContainer(Container):
                 "-t",
                 self._get_docker_image(),
                 "-f",
-                "/ray/ci/ray_ci/tests.env.Dockerfile",
-                "/ray",
+                f"{os.environ.get('RAY_DIR')}/ci/ray_ci/tests.env.Dockerfile",
+                os.environ.get("RAY_DIR"),
             ],
             env=env,
             stdout=sys.stdout,
@@ -84,4 +84,10 @@ class LinuxContainer(Container):
         return extra_args
 
     def get_artifact_mount(self) -> Tuple[str, str]:
-        return ("/tmp/artifacts", "/artifact-mount")
+        os.makedirs(
+            os.path.join(os.environ.get("BAZEL_DIR"), "artifacts"), exist_ok=True
+        )
+        return (
+            os.path.join(os.environ.get("BAZEL_DIR"), "artifacts"),
+            os.environ.get("BAZEL_DIR"),
+        )

@@ -94,7 +94,7 @@ docker run --rm \
     antgroup/base-deps:dev$GPU \
     pip download --no-cache-dir --quiet --no-deps --only-binary=:all: "$ANT_RAY_PACKAGE" -d /wheels
 
-WHEEL_FILE=$(ls "$RAY_BUILD_DIR"/.whl/*.whl 2>/dev/null | head -n1)
+WHEEL_FILE=$(find "$RAY_BUILD_DIR/.whl" -name '*.whl' -type f -print -quit 2>/dev/null)
 if [[ -z "$WHEEL_FILE" ]]; then
     echo "Error: No wheel downloaded for ant-ray" >&2
     exit 1

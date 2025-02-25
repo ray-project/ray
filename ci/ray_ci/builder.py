@@ -84,7 +84,6 @@ def main(
     """
     Build a wheel or jar artifact
     """
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
     ci_init()
     if artifact_type == "wheel":
         logger.info(f"Building wheel for {python_version}")

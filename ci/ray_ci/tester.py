@@ -203,7 +203,6 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
     ci_init()
-    docker_login(_DOCKER_ECR_REPO.split("/")[0])
 
     if build_type == "wheel" or build_type == "wheel-aarch64":
         # for wheel testing, we first build the wheel and then use it for running tests
@@ -428,32 +427,4 @@ def _get_flaky_test_targets(
     """
     Get all test targets that are flaky
     """
-    if not yaml_dir:
-        yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
-
-    yaml_flaky_tests = set()
-    yaml_flaky_file = os.path.join(yaml_dir, f"{team}.tests.yml")
-    if os.path.exists(yaml_flaky_file):
-        with open(yaml_flaky_file, "rb") as f:
-            # load flaky tests from yaml
-            yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
-
-    # load flaky tests from DB
-    s3_flaky_tests = {
-        # remove "linux:" prefix for linux tests to be consistent with the
-        # interface supported in the yaml file
-        test.get_name().lstrip("linux:")
-        for test in Test.gen_from_s3(prefix=f"{operating_system}:")
-        if test.get_oncall() == team and test.get_state() == TestState.FLAKY
-    }
-    all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
-
-    # linux tests are prefixed with "//"
-    if operating_system == "linux":
-        return [test for test in all_flaky_tests if test.startswith("//")]
-
-    # and other os tests are prefixed with "os:"
-    os_prefix = f"{operating_system}:"
-    return [
-        test.lstrip(os_prefix) for test in all_flaky_tests if test.startswith(os_prefix)
-    ]
+    return []

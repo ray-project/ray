@@ -107,8 +107,6 @@ class TesterContainer(Container):
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
-        self._persist_test_results(team, bazel_log_dir_container, is_bisect_run)
-        self._cleanup_bazel_log_mount(bazel_log_dir_container)
 
         return all(exit == 0 for exit in exits)
 

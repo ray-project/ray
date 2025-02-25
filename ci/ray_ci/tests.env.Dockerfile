@@ -9,7 +9,7 @@ ARG BUILDKITE_CACHE_READONLY
 ENV CC=clang
 ENV CXX=clang++-12
 
-RUN mkdir /rayci
+RUN mkdir -p /rayci
 WORKDIR /rayci
 COPY . .
 
