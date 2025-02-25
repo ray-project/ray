@@ -5,8 +5,8 @@ ray_cc_test(
     size = "small",
     srcs = ["cgroup_v2_utils_test.cc"],
     tags = [
+        "manual",  # Expect cgroupv2 mount, not intended for unit test and CI.
         "team:core",
-        "manual", # Expect cgroupv2 mount, not intended for unit test and CI.
     ],
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",

@@ -1,13 +1,15 @@
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import ray.train
 from ray.train import Checkpoint
-from ray.train.lightgbm.config import LightGBMConfig, get_network_params  # noqa
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import Deprecated
+
+if TYPE_CHECKING:
+    from ray.train.lightgbm import LightGBMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +121,7 @@ class LightGBMTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        lightgbm_config: Optional[LightGBMConfig] = None,
+        lightgbm_config: Optional["LightGBMConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -128,6 +130,8 @@ class LightGBMTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        from ray.train.lightgbm import LightGBMConfig
+
         super(LightGBMTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
