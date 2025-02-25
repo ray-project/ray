@@ -10,6 +10,8 @@ from functools import partial
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
+import numpy as np
+
 import ray
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -81,10 +83,14 @@ class vLLMOutputData(BaseModel):
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
         """Create a vLLMOutputData from a vLLM engine output."""
 
+        prompt_token_ids = output.prompt_token_ids
+        if isinstance(prompt_token_ids, np.ndarray):
+            prompt_token_ids = prompt_token_ids.tolist()
+
         data = cls(
             prompt=output.prompt,
-            prompt_token_ids=output.prompt_token_ids,
-            num_input_tokens=len(output.prompt_token_ids),
+            prompt_token_ids=prompt_token_ids,
+            num_input_tokens=len(prompt_token_ids),
         )
 
         if isinstance(output, vllm.outputs.RequestOutput):
@@ -181,7 +187,7 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt")
+            tokenized_prompt = row.pop("tokenized_prompt").tolist()
         else:
             tokenized_prompt = None
 
