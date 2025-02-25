@@ -11,7 +11,11 @@ from ray.data.context import DataContext
 
 
 class InputDataBuffer(PhysicalOperator):
-    """Defines the input data for the operator DAG.
+    """Defines the input data for the operator DAG that could be provided as an
+
+        - List of ref bundles (list of blocks refs)
+        - Factory producing list of ref bundles
+        - Iterator yielding ref bundles
 
     For example, this may hold cached blocks from a previous Dataset execution, or
     the arguments for read tasks.
