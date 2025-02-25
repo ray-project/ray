@@ -269,7 +269,7 @@ class DAGNode(DAGNodeBase):
                 are buffered, `RayCgraphCapacityExceeded` is raised. Note that
                 when result corresponding to an execution is retrieved
                 (by calling `ray.get()` on a `CompiledDAGRef` or
-                `CompiledDAGRef` or await on a `CompiledDAGFuture), results
+                `CompiledDAGRef` or await on a `CompiledDAGFuture`), results
                 corresponding to earlier executions that have not been retrieved
                 yet are buffered.
             _overlap_gpu_communication: (experimental) Whether to overlap GPU
