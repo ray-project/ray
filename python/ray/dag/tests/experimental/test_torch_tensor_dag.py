@@ -1715,37 +1715,43 @@ def test_torch_tensor_nccl_collective_ops_with_class_method_output_node(
 
     compiled_dag = dag.experimental_compile()
 
-    t1 = torch.tensor([1, 10], device="cuda")
-    t2 = torch.tensor([2, 20], device="cuda")
-    t3 = torch.tensor([3, 30], device="cuda")
-    t4 = torch.tensor([4, 40], device="cuda")
+    t1 = torch.tensor([1, 10])
+    t2 = torch.tensor([2, 20])
+    t3 = torch.tensor([3, 30])
+    t4 = torch.tensor([4, 40])
 
     for i in range(3):
         i += 1
         ref = compiled_dag.execute(t1, t2, t3, t4)
-        result = ray.get(ref)
+        results = ray.get(ref)
 
         if operation == collective.allgather:
-            # [TODO:pyyao] Determine the ranks of the actors.
-            assert torch.equal(result[0], result[1])
-            expected_values = set([1, 10, 4, 40])  # noqa: C405
-            actual_values = set(result[0].tolist())
-            assert expected_values == actual_values
+            expected_results = [
+                torch.tensor([1, 10, 4, 40]),
+                torch.tensor([1, 10, 4, 40]),
+                t2,
+                t3,
+            ]
         elif operation == collective.allreduce:
-            assert torch.equal(result[0], torch.tensor([5, 50], device="cuda"))
-            assert torch.equal(result[1], torch.tensor([5, 50], device="cuda"))
+            expected_results = [
+                torch.tensor([5, 50]),
+                torch.tensor([5, 50]),
+                t2,
+                t3,
+            ]
         elif operation == collective.reducescatter:
-            # [TODO:pyyao] Determine the ranks of the actors.
-            values = set([result[0].item(), result[1].item()])  # noqa: C405
-            expected_values = set([5, 50])  # noqa: C405
-            assert values == expected_values
-            assert result[0].shape == torch.Size([1])
-            assert result[1].shape == torch.Size([1])
+            expected_results = [
+                torch.tensor([5]),
+                torch.tensor([50]),
+                t2,
+                t3,
+            ]
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
-        assert torch.equal(result[2], t2)
-        assert torch.equal(result[3], t3)
+        # assert all(torch.equal(r, e) for r, e in zip(result, expected_result))
+        for result, expected_result in zip(results, expected_results):
+            assert torch.equal(result.to("cpu"), expected_result.to("cpu"))
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)

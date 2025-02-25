@@ -221,16 +221,16 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     ref = compiled_dag.execute(
         [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
     )
-    # Execution hangs because of shape mismatch and a timeout error is raised.
+    # Execution hangs because of shape mismatch and a task error is raised.
     with pytest.raises(RayTaskError):
         ray.get(ref)
 
-    # The DAG will be torn down after any task throws an application-level
-    # exception, such as when the task returns torch.Tensors of the wrong
-    # shape or dtype. Check that we can no longer submit to the DAG.
+    # Since we have buffered channels, the execution should not error, but the
+    # get should error, as the dag should no longer work after the application-
+    # level exception.
     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+        ray.get(ref)
 
 
 @pytest.mark.parametrize(
