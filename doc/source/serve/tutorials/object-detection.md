@@ -8,7 +8,7 @@ orphan: true
 
 ## Overview
 
-This tutorial demonstrates how to deploy a production-ready object detection service using Ray Serve. You'll learn how to serve a deep learning model (YOLOv5) efficiently with automatic GPU resource management and scaling capabilities.
+This tutorial demonstrates how to deploy a production-ready object detection service using Ray Serve. You will learn how to serve a YOLOv5 object detection model efficiently with automatic GPU resource management and scaling capabilities.
 
 
 ## Installation
@@ -42,7 +42,7 @@ The code consists of two main deployments:
 
 The configuration in this example sets `min_replicas` to 0, which means:
 - The deployment starts with no `ObjectDetection` replicas
-- Replicas are created only when requests arrive
+- Ray Serve creates replicas only when requests arrive
 - After a period of inactivity, Ray Serve scales down the replicas back to 0
 - This "scale-to-zero" capability helps conserve GPU resources when the service isn't being actively used
 :::
@@ -108,7 +108,7 @@ with open("output.jpeg", 'wb') as f:
 
 ## Example Output
 
-The service will process the image and return it with bounding boxes around detected objects:
+The service processes the image and returns it with bounding boxes around detected objects:
 
 ![Example of object detection output](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/object_detection_output.jpeg)
 
