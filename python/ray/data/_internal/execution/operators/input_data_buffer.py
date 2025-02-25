@@ -94,7 +94,10 @@ class InputDataBuffer(PhysicalOperator):
         return self._next_bundle
 
     def get_stats(self) -> StatsDict:
-        return {}
+        return {
+            "input": self._block_stats,
+            "output": self._block_stats,
+        }
 
     def _add_input_inner(self, refs, input_index) -> None:
         raise ValueError("Inputs are not allowed for this operator.")
