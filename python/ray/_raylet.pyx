@@ -2677,26 +2677,6 @@ cdef class StreamRedirector:
         opt.tee_to_stderr = tee_to_stderr
         RedirectStderr(opt)
 
-    @staticmethod
-    def redirect_stdout(const c_string &file_path, uint64_t rotation_max_size, uint64_t rotation_max_file_count, c_bool tee_to_stdout, c_bool tee_to_stderr):
-        cdef CStreamRedirectionOptions opt = CStreamRedirectionOptions()
-        opt.file_path = file_path
-        opt.rotation_max_size = rotation_max_size
-        opt.rotation_max_file_count = rotation_max_file_count
-        opt.tee_to_stdout = tee_to_stdout
-        opt.tee_to_stderr = tee_to_stderr
-        RedirectStdout(opt)
-
-    @staticmethod
-    def redirect_stderr(const c_string &file_path, uint64_t rotation_max_size, uint64_t rotation_max_file_count, c_bool tee_to_stdout, c_bool tee_to_stderr):
-        cdef CStreamRedirectionOptions opt = CStreamRedirectionOptions()
-        opt.file_path = file_path
-        opt.rotation_max_size = rotation_max_size
-        opt.rotation_max_file_count = rotation_max_file_count
-        opt.tee_to_stdout = tee_to_stdout
-        opt.tee_to_stderr = tee_to_stderr
-        RedirectStderr(opt)
-
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):
