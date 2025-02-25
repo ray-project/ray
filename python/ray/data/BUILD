@@ -7,7 +7,7 @@ doctest(
             "examples/**/*",
             "tests/**/*",
             # FIXME: Exclude LLM code from doctests
-            "llm/**"
+            "llm.py"
         ])),
     tags = ["team:data"],
     size = "large"
