@@ -426,9 +426,9 @@ class LLMRouter:
             model_max_replicas = 0
             for llm_config in llm_configs:
                 if "autoscaling_config" in llm_config.deployment_config:
-                    autoscaling_config = llm_config.deployment_config[
-                        "autoscaling_config"
-                    ]
+                    autoscaling_config = AutoscalingConfig(
+                        **llm_config.deployment_config["autoscaling_config"]
+                    )
                 else:
                     # When autoscaling config is not provided, we use the default.
                     autoscaling_config = AutoscalingConfig()
