@@ -7,10 +7,7 @@ from filelock import FileLock
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.utils.cloud_utils import (
-    download_files_from_gcs,
-    download_files_from_s3,
-    download_model_from_gcs,
-    download_model_from_s3,
+    CloudFileSystem,
     get_aws_credentials,
 )
 from ray.llm._internal.serve.configs.server_models import (
@@ -105,12 +102,9 @@ class S3Downloader(BaseDownloader):
 
     def __init__(self, model_id: str, mirror_config: "S3MirrorConfig"):
         super().__init__(model_id, mirror_config)
-
-    def _get_env_vars(self):
-        env_vars = None
-        if self.mirror_config.s3_aws_credentials is not None:
-            env_vars = get_aws_credentials(self.mirror_config.s3_aws_credentials)
-        return env_vars
+        self.aws_credentials = None
+        if mirror_config.aws_credentials:
+            self.aws_credentials = get_aws_credentials(mirror_config.aws_credentials)
 
     def get_model(
         self,
@@ -121,7 +115,6 @@ class S3Downloader(BaseDownloader):
         if bucket_uri is None:
             return self.model_id
 
-        env_vars = self._get_env_vars()
         lock_path = self._get_lock_path()
         path = self._get_model_path()
 
@@ -131,16 +124,11 @@ class S3Downloader(BaseDownloader):
             # will be thrown.
             # This ensures that subsequent processes don't duplicate work.
             with FileLock(lock_path, timeout=0):
-                s3_sync_args = (
-                    self.mirror_config.s3_sync_args if self.mirror_config else None
-                )
                 try:
-                    download_model_from_s3(
-                        path,
-                        bucket_uri,
-                        s3_sync_args=s3_sync_args,
+                    CloudFileSystem.download_model(
+                        destination_path=path,
+                        bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
-                        env=env_vars,
                     )
                     logger.info(
                         "Finished downloading %s for %s from S3 bucket",
@@ -164,7 +152,6 @@ class S3Downloader(BaseDownloader):
         if not extra_files:
             return paths
 
-        env_vars = self._get_env_vars()
         lock_path = self._get_lock_path(suffix="-extra_files")
 
         try:
@@ -173,23 +160,14 @@ class S3Downloader(BaseDownloader):
             # will be thrown.
             # This ensures that subsequent processes don't duplicate work.
             with FileLock(lock_path, timeout=0):
-                s3_sync_args = (
-                    self.mirror_config.s3_sync_args if self.mirror_config else None
-                )
                 for extra_file in extra_files:
                     path = Path(
                         os.path.expandvars(extra_file.destination_path)
                     ).expanduser()
                     paths.append(path)
-                    download_files_from_s3(
+                    CloudFileSystem.download_files(
                         path=path,
                         bucket_uri=extra_file.bucket_uri,
-                        s3_sync_args=s3_sync_args,
-                        env=env_vars,
-                    )
-                    logger.info(
-                        "Finished downloading extra files for %s from S3 bucket",
-                        self.model_id,
                     )
         except TimeoutError:
             # If the directory is already locked, then wait but do not do anything.
@@ -228,7 +206,7 @@ class GCSDownloader(BaseDownloader):
             # This ensures that subsequent processes don't duplicate work.
             with FileLock(lock_path, timeout=0):
                 try:
-                    download_model_from_gcs(
+                    CloudFileSystem.download_model(
                         destination_path=path,
                         bucket_uri=bucket_uri,
                         tokenizer_only=tokenizer_only,
@@ -268,7 +246,7 @@ class GCSDownloader(BaseDownloader):
                         os.path.expandvars(extra_file.destination_path)
                     ).expanduser()
                     paths.append(path)
-                    download_files_from_gcs(
+                    CloudFileSystem.download_files(
                         path=path,
                         bucket_uri=extra_file.bucket_uri,
                     )
