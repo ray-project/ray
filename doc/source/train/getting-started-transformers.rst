@@ -74,8 +74,8 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
             def tokenize_function(examples):
                 return tokenizer(examples["text"], padding="max_length", truncation=True)
 
-            small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
-            small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
+            small_train_dataset = dataset["train"].select(range(100)).map(tokenize_function, batched=True)
+            small_eval_dataset = dataset["test"].select(range(100)).map(tokenize_function, batched=True)
 
             # Model
             model = AutoModelForSequenceClassification.from_pretrained(
