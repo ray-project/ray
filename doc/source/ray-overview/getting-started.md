@@ -1,23 +1,40 @@
 (gentle-intro)=
 
 # Getting Started
-Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task.
-* Scale ML workloads: [Ray Libraries Quickstart](#libraries-quickstart)
-* Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
-* Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
-* Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
 
+Ray is an open-source unified framework for scaling AI and Python applications. It provides a simple, universal API for building distributed applications that can scale from a laptop to a cluster.
+
+## What is Ray?
+
+Ray simplifies distributed computing by providing:
+- **Scalable compute primitives**: Tasks and actors for painless parallel programming
+- **Specialized AI libraries**: Tools for common ML workloads like data processing, model training, hyperparameter tuning, and model serving
+- **Unified resource management**: Seamless scaling from laptop to cloud with automatic resource handling
+
+## Choose Your Path
+
+Select the guide that matches your needs:
+* **Scale ML workloads**: [Ray Libraries Quickstart](#libraries-quickstart)
+* **Scale general Python applications**: [Ray Core Quickstart](#ray-core-quickstart)
+* **Deploy to the cloud**: [Ray Clusters Quickstart](#ray-cluster-quickstart)
+* **Debug and monitor applications**: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
+
+```{image} ../images/map-of-ray.svg
+:align: center
+:alt: Ray Framework Architecture
+```
 
 (libraries-quickstart)=
 ## Ray AI Libraries Quickstart
 
-Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
+Use individual libraries for ML workloads. Each library specializes in a specific part of the ML workflow, from data processing to model serving. Click on the dropdowns for your workload below.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Scale offline inference and training ingest with [Ray Data](data_quickstart) --
-a data processing library designed for ML.
+[Ray Data](data_quickstart) provides distributed data processing optimized for machine learning and AI workloads. It efficiently streams data through data pipelines.
+
+Here's an example on how to scale offline inference and training ingest with Ray Data.
 
 ````{note}
 To run this example, install Ray Data:
@@ -70,8 +87,7 @@ Learn more about Ray Data
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
 :animate: fade-in-slide-down
 
-Ray Train abstracts away the complexity of setting up a distributed training
-system.
+**Ray Train** makes distributed model training simple. It abstracts away the complexity of setting up distributed training across popular frameworks like PyTorch and TensorFlow.
 
 `````{tab-set}
 
@@ -233,9 +249,9 @@ Learn more about Ray Train
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
 
-[Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
-With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
-Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+[Ray Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
+It automatically finds the best hyperparameters for your models with efficient distributed search algorithms.
+With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code, supporting any deep learning framework including PyTorch, TensorFlow, and Keras.
 
 ````{note}
 To run this example, install Ray Tune:
@@ -273,7 +289,7 @@ Learn more about Ray Tune
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Serve: Scalable Model Serving
 :animate: fade-in-slide-down
 
-[Ray Serve](../serve/index) is a scalable model-serving library built on Ray.
+[Ray Serve](../serve/index) provides scalable and programmable serving for ML models and business logic. Deploy models from any framework with production-ready performance.
 
 ````{note}
 To run this example, install Ray Serve and scikit-learn:
@@ -307,8 +323,7 @@ Learn more about Ray Serve
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> RLlib: Industry-Grade Reinforcement Learning
 :animate: fade-in-slide-down
 
-[RLlib](../rllib/index.rst) is an industry-grade library for reinforcement learning (RL) built on top of Ray.
-RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
+[RLlib](../rllib/index.rst) is a reinforcement learning (RL) library that offers high performance implementations of popular RL algorithms and supports various training environments. RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 ````{note}
 To run this example, install `rllib` and either `tensorflow` or `pytorch`:
@@ -343,8 +358,11 @@ Learn more about Ray RLlib
 </a>
 <br></br>
 
-Turn functions and classes easily into Ray tasks and actors,
-for Python and Java, with simple primitives for building and running distributed applications.
+Ray Core provides simple primitives for building and running distributed applications. It enables you to turn regular Python or Java functions and classes into distributed stateless tasks and stateful actors with just a few lines of code.
+
+The examples below show you how to:
+1. Convert Python functions to Ray tasks for parallel execution
+2. Convert Python classes to Ray actors for distributed stateful computation
 
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
@@ -641,7 +659,7 @@ Try Ray on Anyscale
 
 ## Debugging and Monitoring Quickstart
 
-Use built-in observability tools to monitor and debug Ray applications and clusters.
+Use built-in observability tools to monitor and debug Ray applications and clusters. These tools help you understand your application's performance and identify bottlenecks.
 
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
