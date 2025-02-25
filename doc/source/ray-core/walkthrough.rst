@@ -75,7 +75,7 @@ Here's a simple Counter example:
 The preceding example demonstrates basic actor usage. For a more comprehensive example that combines both tasks and actors, check out the :ref:`Monte Carlo Pi estimation example <monte-carlo-pi>`.
 
 Passing Objects
---------------
+---------------
 
 Ray's distributed object store efficiently manages data across your cluster. There are three main ways to work with objects in Ray:
 
