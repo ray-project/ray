@@ -121,10 +121,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
-
-        # Ray uses a hyphen instead of an underscore for
-        # accelerator_type.
-        return f"accelerator_type:{self.accelerator_type.replace('_', '-')}"
+        return f"accelerator_type:{self.accelerator_type}"
 
     @property
     def tensor_parallel_degree(self) -> int:

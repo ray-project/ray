@@ -386,7 +386,6 @@ class LLMConfig(BaseModelExtended):
         # Ensure A10 is converted to A10G.
         if value == "A10":
             value = "A10G"
-        value = value.replace("_", "-")
 
         if value not in [t.value for t in GPUType]:
             raise ValueError(f"Unsupported accelerator type: {value}")
@@ -412,13 +411,6 @@ class LLMConfig(BaseModelExtended):
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
         return value
-
-    def ray_accelerator_type(self) -> str:
-        """Converts the accelerator type to the Ray Core format."""
-
-        # Ray uses a hyphen instead of an underscore for
-        # accelerator_type.
-        return f"accelerator_type:{self.accelerator_type.replace('_', '-')}"
 
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None

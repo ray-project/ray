@@ -23,11 +23,11 @@ class TestModelConfig:
             model_loading_config=ModelLoadingConfig(
                 model_id="llm_model_id",
             ),
-            accelerator_type="L4",
+            accelerator_type="A100-40G",  # Dash instead of underscore when specifying accelerator type
         )
 
         assert llm_config.model_loading_config.model_id == "llm_model_id"
-        assert llm_config.accelerator_type == "L4"
+        assert llm_config.accelerator_type == "A100-40G"
 
     def test_construction_requires_model_loading_config(self):
         """Test that constructing an LLMConfig without model_loading_config errors out"""
@@ -61,6 +61,13 @@ class TestModelConfig:
                 accelerator_type=123,  # Must be a string
             )
 
+        # Test that underscore is not supported in accelerator type
+        with pytest.raises(pydantic.ValidationError):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="A100_40G",  # Should use A100-40G instead
+            )
+
     def test_invalid_generation_config(self):
         """Test that passing an invalid generation_config raises an error."""
         with pytest.raises(
@@ -86,7 +93,7 @@ class TestModelConfig:
         """Test that get_serve_options returns the correct options when accelerator_type is set."""
         serve_options = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            accelerator_type="A100_40G",
+            accelerator_type="A100-40G",
             deployment_config={
                 "autoscaling_config": {
                     "min_replicas": 0,
