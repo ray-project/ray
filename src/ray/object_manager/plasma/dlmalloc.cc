@@ -17,8 +17,6 @@
 
 #include <assert.h>
 
-#include <cerrno>
-
 #include "ray/object_manager/plasma/malloc.h"
 
 #ifdef __linux__

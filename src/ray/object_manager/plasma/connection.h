@@ -62,9 +62,8 @@ class Client : public ray::ClientConnection, public ClientInterface {
   //
   // Idempotency: only increments ref count if the object ID was not held. Note that a
   // second call for a same `object_id` must come with the same `fallback_allocated_fd`.
-  virtual void MarkObjectAsUsed(
-      const ray::ObjectID &object_id,
-      std::optional<MEMFD_TYPE> fallback_allocated_fd) override {
+  void MarkObjectAsUsed(const ray::ObjectID &object_id,
+                        std::optional<MEMFD_TYPE> fallback_allocated_fd) override {
     const auto [_, inserted] = object_ids.insert(object_id);
     if (inserted) {
       // new insertion
@@ -97,7 +96,7 @@ class Client : public ray::ClientConnection, public ClientInterface {
   //
   // Returns: bool, client should unmap.
   // Idempotency: only decrements ref count if the object ID was held.
-  virtual bool MarkObjectAsUnused(const ray::ObjectID &object_id) override {
+  bool MarkObjectAsUnused(const ray::ObjectID &object_id) override {
     size_t erased = object_ids.erase(object_id);
     if (erased == 0) {
       return false;
