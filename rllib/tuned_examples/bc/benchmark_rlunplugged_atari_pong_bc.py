@@ -280,7 +280,7 @@ config = (
         # Increase the parallelism in transforming batches, such that while
         # training, new batches are transformed while others are used in updating.
         map_batches_kwargs={
-            "concurrency": 40,
+            "concurrency": 80,
             "num_cpus": 1,
         },
         # When iterating over batches in the dataset, prefetch at least 4
@@ -295,7 +295,7 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008
+        lr=0.0001
         * max(
             1,
             (args.num_learners if args.num_learners and args.num_learners > 1 else 1)
