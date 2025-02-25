@@ -3008,11 +3008,10 @@ class CompiledDAG:
             channel_details: If True, adds channel details to edges.
 
         Returns:
-            str:
-                - For Graphviz-based formats (e.g., 'png', 'pdf', 'jpeg'), returns
-                the Graphviz DOT string representation of the compiled graph.
-                - For ASCII format, returns the ASCII string representation of the
-                compiled graph.
+            The string representation of the compiled graph. For Graphviz-based formats
+            (e.g., 'png', 'pdf', 'jpeg'), returns the Graphviz DOT string representation
+            of the compiled graph. For ASCII format, returns the ASCII string
+            representation of the compiled graph.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
