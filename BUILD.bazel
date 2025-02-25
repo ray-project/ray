@@ -947,6 +947,7 @@ ray_cc_library(
         ],
     }),
     deps = [
+        ":core_worker_lib",
         ":gcs",
         ":gcs_client_lib",
         ":node_manager_fbs",
