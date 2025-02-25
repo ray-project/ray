@@ -1,0 +1,77 @@
+name: Flaky Test Report
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+    inputs:
+      num_artifacts:
+        description: 'Number of artifacts to fetch (default: 20)'
+        required: false
+        default: '20'
+        type: string
+      max_runs_to_check:
+        description: 'Maximum number of workflow runs to check (default: 50)'
+        required: false
+        default: '50'
+        type: string
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+
+    - name: Fetch artifacts
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        NUM_ARTIFACTS: ${{ github.event.inputs.num_artifacts || '20' }}
+        MAX_RUNS: ${{ github.event.inputs.max_runs_to_check || '50' }}
+      run: |
+        python ci/ray_ci/fetch_artifacts.py --num-artifacts $NUM_ARTIFACTS --max-runs $MAX_RUNS
+        echo "Artifacts fetched successfully"
+        ls -la artifacts/
+
+    - name: Generate flaky test report
+      run: |
+        python ci/ray_ci/flaky_report.py
+        echo "Report generated successfully"
+        ls -la flaky_report.html
+
+    - name: Upload report artifact
+      id: artifact-upload-step
+      uses: actions/upload-artifact@v4
+      with:
+        name: flaky-test-report
+        path: |
+          flaky_report.html
+        retention-days: 90
+
+    - name: Create Summary
+      run: |
+        echo "### 📊 Test Reports Available" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "View detailed test results at:" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 [Ant Ray Dashboard](https://ant-ray.streamlit.app?run_id=${{ github.run_id }}&artifact_id=${{ steps.artifact-upload-step.outputs.artifact-id }})" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "This link contains test reports and analysis for commit \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📈 Report Preview" >> $GITHUB_STEP_SUMMARY
+        echo "Download the [Flaky Test Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY 

@@ -345,14 +345,26 @@ def generate_summary_report(labels):
     combined_results = {
         "commit_hash": COMMIT_HASH,
         "test_cases": [],
-        "error_counts": {},
+        "error_counts_by_label": {
+            label: {} for label in labels
+        },  # Track errors by label
     }
 
     for results in all_results:
+        # Get the label from the results object
+        label = None
+        if results["test_cases"]:
+            label = results["test_cases"][0]["label"]
+
+        if not label or label not in labels:
+            continue
+
         combined_results["test_cases"].extend(results["test_cases"])
+
+        # Track errors by label only
         for error, count in results["error_counts"].items():
-            combined_results["error_counts"][error] = (
-                combined_results["error_counts"].get(error, 0) + count
+            combined_results["error_counts_by_label"][label][error] = (
+                combined_results["error_counts_by_label"][label].get(error, 0) + count
             )
 
     # Generate test cases HTML
@@ -367,6 +379,7 @@ def generate_summary_report(labels):
                     <h5 class="card-title text-danger">{test_case['name']}</h5>
                     <div class="mb-3">
                         <span class="badge bg-danger">Failed</span>
+                        <span class="badge bg-secondary ms-2">{test_case['label']}</span>
                     </div>
                     <pre>{test_case['content']}</pre>
                 </div>
@@ -466,6 +479,51 @@ def generate_summary_report(labels):
             .list-group-item:hover {{
                 background-color: #f1f5f9;
             }}
+            
+            .error-section {{
+                margin-bottom: 1.5rem;
+            }}
+            
+            .error-section-title {{
+                font-size: 1.1rem;
+                font-weight: 600;
+                margin-bottom: 0.75rem;
+                padding-bottom: 0.5rem;
+                border-bottom: 1px solid #e2e8f0;
+            }}
+            
+            .error-label-badge {{
+                font-size: 0.8rem;
+                padding: 0.25rem 0.5rem;
+                border-radius: 0.25rem;
+                margin-left: 0.5rem;
+            }}
+            
+            /* Collapsible sections */
+            .error-section-title {{
+                cursor: pointer;
+                user-select: none;
+            }}
+            
+            .error-section-title::after {{
+                content: '▼';
+                float: right;
+                transition: transform 0.3s;
+                font-size: 0.8rem;
+            }}
+            
+            .error-section-title.collapsed::after {{
+                transform: rotate(-90deg);
+            }}
+            
+            .error-section .list-group {{
+                transition: max-height 0.3s ease-out;
+                overflow: hidden;
+            }}
+            
+            .error-section-title.collapsed + .list-group {{
+                max-height: 0 !important;
+            }}
         </style>
     </head>
     <body>
@@ -481,12 +539,12 @@ def generate_summary_report(labels):
             </div>
         </nav>
 
-        <!-- Sidebar with Common Errors -->
+        <!-- Sidebar with Errors by Label -->
         <nav class="nav-sidebar">
-            <h5 class="mb-3">Common Errors</h5>
-            <div class="list-group">
-                {generate_error_summaries_from_dict(combined_results['error_counts'])}
-            </div>
+            <h5 class="mb-3">Errors</h5>
+            
+            <!-- Errors by Label Sections -->
+            {generate_error_summaries_by_label(combined_results['error_counts_by_label'], labels)}
         </nav>
 
         <!-- Main Content -->
@@ -506,6 +564,8 @@ def generate_summary_report(labels):
         <script>
             let allTestCards = [];
             const errorVisitState = {{}};
+            let currentActiveLabel = '';
+            let labelChangeTriggeredByError = false;
             
             document.addEventListener('DOMContentLoaded', () => {{
                 allTestCards = Array.from(document.querySelectorAll('.test-card'));
@@ -523,13 +583,47 @@ def generate_summary_report(labels):
                         
                         // Filter test cases by label
                         const label = tab.getAttribute('data-label');
+                        currentActiveLabel = label;
                         filterTestsByLabel(label);
+                        
+                        // Only toggle error sections if this label change wasn't triggered by an error click
+                        if (!labelChangeTriggeredByError) {{
+                            toggleErrorSectionsByLabel(label);
+                        }}
+                        
+                        // Reset the flag
+                        labelChangeTriggeredByError = false;
                     }});
                 }});
                 
-                // Show initial label's test cases
-                filterTestsByLabel('{labels[0]}');
+                // Initialize collapsible sections
+                document.querySelectorAll('.error-section-title').forEach(title => {{
+                    title.addEventListener('click', () => {{
+                        title.classList.toggle('collapsed');
+                    }});
+                }});
+                
+                // Show initial label's test cases and error sections
+                currentActiveLabel = '{labels[0]}';
+                filterTestsByLabel(currentActiveLabel);
+                toggleErrorSectionsByLabel(currentActiveLabel);
             }});
+            
+            function toggleErrorSectionsByLabel(activeLabel) {{
+                // Expand sections for active label, collapse others
+                document.querySelectorAll('.error-section').forEach(section => {{
+                    const sectionLabel = section.getAttribute('data-label');
+                    const sectionTitle = section.querySelector('.error-section-title');
+                    
+                    if (sectionLabel === activeLabel) {{
+                        // Expand this section
+                        sectionTitle.classList.remove('collapsed');
+                    }} else {{
+                        // Collapse other sections
+                        sectionTitle.classList.add('collapsed');
+                    }}
+                }});
+            }}
             
             function filterTestsByLabel(label) {{
                 allTestCards.forEach(card => {{
@@ -553,22 +647,48 @@ def generate_summary_report(labels):
             
             function initializeErrorItem(errorItem) {{
                 const errorPattern = errorItem.getAttribute('data-error');
-                const matchingCards = allTestCards.filter(
-                    card => card.getAttribute('data-error') === errorPattern
-                );
+                const errorLabel = errorItem.getAttribute('data-label') || null;
+                
+                const matchingCards = allTestCards.filter(card => {{
+                    const cardError = card.getAttribute('data-error');
+                    const cardLabel = card.getAttribute('data-label');
+                    
+                    // If error item has a label, match only cards with that label
+                    if (errorLabel) {{
+                        return cardError === errorPattern && cardLabel === errorLabel;
+                    }}
+                    
+                    // Otherwise match all cards with the error pattern
+                    return cardError === errorPattern;
+                }});
                 
                 errorItem.addEventListener('click', (e) => {{
                     e.preventDefault();
-                    const state = errorVisitState[errorPattern] || {{ currentIndex: -1 }};
+                    const stateKey = errorLabel ? errorPattern + '-' + errorLabel : errorPattern;
+                    const state = errorVisitState[stateKey] || {{ currentIndex: -1 }};
                     state.currentIndex = (state.currentIndex + 1) % matchingCards.length;
-                    errorVisitState[errorPattern] = state;
+                    errorVisitState[stateKey] = state;
                     
+                    // If the error is from a different label than the current active one,
+                    // switch to that label first
+                    if (errorLabel && errorLabel !== currentActiveLabel) {{
+                        // Set flag to indicate label change was triggered by error click
+                        labelChangeTriggeredByError = true;
+                        
+                        // Find and click the tab for this label
+                        const targetTab = document.querySelector('#test-tabs .nav-link[data-label="' + errorLabel + '"]');
+                        if (targetTab) {{
+                            targetTab.click();
+                        }}
+                    }}
+                    
+                    // Now scroll to the target card
                     const targetCard = matchingCards[state.currentIndex];
                     targetCard.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
                     
                     const badge = errorItem.querySelector('.badge');
                     if (badge) {{
-                        badge.textContent = `${{state.currentIndex + 1}}/${{matchingCards.length}}`;
+                        badge.textContent = state.currentIndex + 1 + '/' + matchingCards.length;
                     }}
                 }});
             }}
@@ -595,6 +715,40 @@ def generate_error_summaries_from_dict(error_counts):
         f'<span class="text-truncate">{error}</span><span class="badge bg-danger ms-2">{count}</span></a>'
         for error, count in sorted_errors
     )
+
+
+def generate_error_summaries_by_label(error_counts_by_label, labels):
+    """Generate error summaries HTML organized by label."""
+    if not error_counts_by_label:
+        return ""
+
+    html_sections = []
+
+    # Ensure we process labels in the order they were provided
+    for label in labels:
+        error_counts = error_counts_by_label.get(label, {})
+        if not error_counts:
+            continue
+
+        sorted_errors = sorted(error_counts.items(), key=lambda x: x[1], reverse=True)
+        error_items = "\n".join(
+            f'<a href="#" class="list-group-item list-group-item-action error-item d-flex justify-content-between align-items-center py-2 text-truncate" data-error="{error}" data-label="{label}">'
+            f'<span class="text-truncate">{error}</span><span class="badge bg-danger ms-2">{count}</span></a>'
+            for error, count in sorted_errors
+        )
+
+        html_sections.append(
+            f"""
+        <div class="error-section" data-label="{label}">
+            <div class="error-section-title">{label}</div>
+            <div class="list-group">
+                {error_items}
+            </div>
+        </div>
+        """
+        )
+
+    return "\n".join(html_sections)
 
 
 def clean_base_dir():

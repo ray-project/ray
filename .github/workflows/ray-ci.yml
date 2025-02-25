@@ -227,6 +227,7 @@ jobs:
         else
           echo "exists=false" >> $GITHUB_OUTPUT
         fi
+
     - name: Build core CI Base
       if: steps.check_core_image.outputs.exists != 'true'
       uses: docker/build-push-action@v3
@@ -250,6 +251,7 @@ jobs:
         elif ! docker ps --format '{{.Names}}' | grep -q '^local-registry$'; then
           docker start local-registry
         fi
+
     - name: Push core build image to local registry
       if: '!cancelled()'
       run: |
@@ -272,6 +274,7 @@ jobs:
       if: '!cancelled()'
       run: |
         bash ci/env/install-bazel.sh
+
     - name: Check Manylinux Image Existence
       id: check_manylinux_image
       run: |
@@ -280,6 +283,7 @@ jobs:
         else
           echo "exists=false" >> $GITHUB_OUTPUT
         fi
+
     - name: Build Manylinux Image
       if: steps.check_manylinux_image.outputs.exists != 'true'
       uses: docker/build-push-action@v3
@@ -292,6 +296,7 @@ jobs:
         build-args: |
           BUILDKITE_BAZEL_CACHE_URL
           HOSTTYPE=x86_64
+
     - name: Run Core Python Tests (1)
       if: '!cancelled()'
       env:
@@ -302,16 +307,19 @@ jobs:
           --workers 1 --worker-id 0 --parallelism-per-worker 12 \
           --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,large_size_python_tests_shard_2 \
           --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }}) \
+
     - name: Grant Permissions
       if: '!cancelled()'
       run: |
         sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+
     - name: Generate Report For Label
       if: '!cancelled()'
       env:
         REPORT_LABEL: ${{ env.REPORT_LABEL_1 }}
       run: |
         python ci/ray_ci/report_gen.py
+
     - name: Run Core Python Tests (2)
       if: '!cancelled()'
       env:
@@ -324,16 +332,19 @@ jobs:
           --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu,large_size_python_tests_shard_2 \
           --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }}) \
           --skip-ray-installation
+
     - name: Grant Permissions
       if: '!cancelled()'
       run: |
         sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+
     - name: Generate Report For Label
       if: '!cancelled()'
       env:
         REPORT_LABEL: ${{ env.REPORT_LABEL_2 }}
       run: |
         python ci/ray_ci/report_gen.py
+
     - name: Run Core Python Tests (3)
       if: '!cancelled()'
       env:
@@ -345,16 +356,19 @@ jobs:
           --workers 1 --worker-id 0 --parallelism-per-worker 12 --skip-ray-installation \
           --only-tags use_all_core \
           --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+
     - name: Grant Permissions
       if: '!cancelled()'
       run: |
         sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+
     - name: Generate Report For Label
       if: '!cancelled()'
       env:
         REPORT_LABEL: ${{ env.REPORT_LABEL_3 }}
       run: |
         python ci/ray_ci/report_gen.py
+
     - name: Update Test Image
       if: '!cancelled()'
       run: |
@@ -371,10 +385,12 @@ jobs:
         bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang \
           --workers 1 --worker-id 0 --parallelism-per-worker 12 --skip-ray-installation \
           --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+
     - name: Grant Permissions
       if: '!cancelled()'
       run: |
         sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+
     - name: Generate Report For Label
       if: '!cancelled()'
       env:
@@ -391,16 +407,19 @@ jobs:
         bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core \
           --parallelism-per-worker 12 --skip-ray-installation \
           --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+
     - name: Grant Permissions
       if: '!cancelled()'
       run: |
         sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+
     - name: Generate Report For Label
       if: '!cancelled()'
       env:
         REPORT_LABEL: ${{ env.REPORT_LABEL_5 }}
       run: |
         python ci/ray_ci/report_gen.py
+
     - name: Run Workflow Tests
       if: '!cancelled()'
       env:
@@ -424,12 +443,14 @@ jobs:
       if: '!cancelled()'
       run: |
         sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+
     - name: Generate Report For Label
       if: '!cancelled()'
       env:
         REPORT_LABEL: ${{ env.REPORT_LABEL_6 }}
       run: |
         python ci/ray_ci/report_gen.py
+
     - name: Run Debug Tests
       if: '!cancelled()'
       env:
@@ -444,16 +465,19 @@ jobs:
           --except-tags kubernetes,manual \
           --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }}) \
           --skip-ray-installation
+
     - name: Grant Permissions
       if: '!cancelled()'
       run: |
         sudo chmod -R 777 ${{ env.BAZEL_DIR }}
+
     - name: Generate Report For Label
       if: '!cancelled()'
       env:
         REPORT_LABEL: ${{ env.REPORT_LABEL_7 }}
       run: |
         python ci/ray_ci/report_gen.py
+
     - name: Run ASAN Tests
       if: '!cancelled()'
       env:
@@ -468,6 +492,7 @@ jobs:
           --except-tags kubernetes,manual \
           --skip-ray-installation \
           --test-env=BAZEL_DIR=$(realpath ${{ env.BAZEL_DIR }})
+
     - name: Grant Permissions
       if: '!cancelled()'
       run: |
@@ -494,6 +519,7 @@ jobs:
         docker ps -a --filter ancestor=localhost:5000/citemp:${{ env.RAYCI_BUILD_ID }}-corebuild -q | xargs -r docker rm --force || true
         # Clean up any dangling containers
         docker ps -a --filter status=exited -q | xargs -r docker rm || true
+
     - name: Upload Test Reports
       id: artifact-upload-step
       continue-on-error: true
@@ -502,6 +528,7 @@ jobs:
       with:
         name: test-reports-${{ github.sha }}
         path: ${{ env.artifacts_path }}/reports/
+        retention-days: 90
 
     - name: Create Summary
       if: '!cancelled()'
