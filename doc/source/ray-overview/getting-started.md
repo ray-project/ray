@@ -316,6 +316,8 @@ To run this example, install `rllib` and either `tensorflow` or `pytorch`:
 ```bash
 pip install -U "ray[rllib]" tensorflow  # or torch
 ```
+You may also need CMake installed on your system.
+
 ````
 
 ```{literalinclude} ../rllib/doc_code/rllib_on_ray_readme.py
