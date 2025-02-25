@@ -19,7 +19,7 @@ Before you begin, make sure you have the necessary packages installed:
 
 .. code-block:: bash
 
-    pip install "ray[train]" torch transformers datasets evaluate numpy
+    pip install "ray[train]" torch "transformers[torch]" datasets evaluate numpy scikit-learn
 
 
 Quickstart
@@ -35,6 +35,7 @@ For reference, the final code follows:
 
     def train_func():
         # Your Transformers training code here.
+        ...
 
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
@@ -142,10 +143,10 @@ Compare a Hugging Face Transformers training script with and without Ray Train.
                     return tokenizer(examples["text"], padding="max_length", truncation=True)
 
                 small_train_dataset = (
-                    dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
+                    dataset["train"].select(range(100)).map(tokenize_function, batched=True)
                 )
                 small_eval_dataset = (
-                    dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
+                    dataset["test"].select(range(100)).map(tokenize_function, batched=True)
                 )
 
                 # Model
