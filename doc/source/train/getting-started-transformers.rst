@@ -13,7 +13,7 @@ In this guide, learn how to:
 
 
 Requirements
------------
+------------
 
 Install the necessary packages before you begin:
 
@@ -421,7 +421,7 @@ training code.
                 )
 
                 # [3] Add Ray Train Report Callback
-                # ================================
+                # =================================
                 trainer.add_callback(RayTrainReportCallback())
 
                 # [4] Prepare your trainer
