@@ -18,15 +18,15 @@ class SimpleCorridor(gym.Env):
     Actions:
         0: Move left
         1: Move right
-        
+
     Observations:
         A single float representing the agent's current position (index)
         starting at 0.0 and ending at corridor_length
-        
+
     Rewards:
         -0.1 for each step
         +1.0 when reaching the goal
-        
+
     Episode termination:
         When the agent reaches the goal (position >= corridor_length)
     """
@@ -37,7 +37,9 @@ class SimpleCorridor(gym.Env):
         self.action_space = gym.spaces.Discrete(2)  # 0=left, 1=right
         self.observation_space = gym.spaces.Box(0.0, self.end_pos, (1,), np.float32)
 
-    def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
+    def reset(
+        self, *, seed: Optional[int] = None, options: Optional[Dict] = None
+    ) -> Tuple[np.ndarray, Dict]:
         """Reset the environment for a new episode.
 
         Args:
@@ -83,8 +85,7 @@ class SimpleCorridor(gym.Env):
 # Create an RLlib Algorithm instance from a PPOConfig object.
 print("Setting up the PPO configuration...")
 config = (
-    PPOConfig()
-    .environment(
+    PPOConfig().environment(
         # Env class to use (our custom gymnasium environment).
         SimpleCorridor,
         # Config dict passed to our custom env's constructor.
@@ -110,7 +111,7 @@ rl_module = algo.get_module()
 print("\nStarting training loop...")
 for i in range(5):
     results = algo.train()
-    
+
     # Log the metrics from training results
     print(f"Iteration {i+1}")
     print(f"  Training metrics: {results['env_runners']}")
@@ -136,19 +137,21 @@ while not terminated and not truncated:
     # Compute an action given the current observation
     action_logits = rl_module.forward_inference(
         {"obs": torch.from_numpy(obs).unsqueeze(0)}
-    )["action_dist_inputs"].numpy()[0]  # [0]: Batch dimension=1
-    
+    )["action_dist_inputs"].numpy()[
+        0
+    ]  # [0]: Batch dimension=1
+
     # Get the action with highest probability
     action = np.argmax(action_logits)
-    
+
     # Log the agent's decision
     action_name = "LEFT" if action == 0 else "RIGHT"
     print(f"  Step {step_count}: Position {obs[0]:.1f}, Action: {action_name}")
-    
+
     # Apply the computed action in the environment
     obs, reward, terminated, truncated, info = env.step(action)
     positions.append(float(obs[0]))
-    
+
     # Sum up rewards
     total_reward += reward
     step_count += 1
