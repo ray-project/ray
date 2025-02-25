@@ -263,7 +263,7 @@ to change the default timeout:
 
 GPU to GPU communication
 ------------------------
-Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor``s, avoiding any copies through Ray's CPU-based shared-memory object store.
+Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor``'s, avoiding any copies through Ray's CPU-based shared-memory object store.
 With user-provided type hints, Ray will prepare the NCCL communicator(s) and
 operation scheduling ahead of time, avoiding deadlock and overlapping compute and communication (experimental).
 
