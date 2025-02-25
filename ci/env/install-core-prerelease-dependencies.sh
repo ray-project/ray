@@ -8,7 +8,7 @@ set -e
 DEPS=(aiosignal frozenlist requests protobuf)
 
 if [ "$PYTHON_VERSION" = "3.13" ]; then
-  $HOME/.local/bin/uv pip install -U --pre --upgrade-strategy=eager "${DEPS[@]}"
+  $HOME/.local/bin/uv pip install -U --pre "${DEPS[@]}"
 else
   python -m pip install -U --pre --upgrade-strategy=eager "${DEPS[@]}"
 fi
