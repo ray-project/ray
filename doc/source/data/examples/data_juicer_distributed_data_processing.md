@@ -5,7 +5,7 @@ orphan: true
 # Distributed Data Processing in Data-Juicer
 
 <a id="try-anyscale-quickstart-data_juicer_distributed_data_processing" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=data_juicer_distributed_data_processing">
-    <img src="../../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart">
+    <img src="../../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart">
 </a>
 <br></br>
 

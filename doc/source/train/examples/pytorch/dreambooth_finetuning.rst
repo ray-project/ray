@@ -6,7 +6,7 @@ Fine-tune of Stable Diffusion with DreamBooth and Ray Train
 .. raw:: html
 
     <a id="try-anyscale-quickstart-dreambooth_finetuning" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=dreambooth_finetuning">
-      <img src="../../../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart" />
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart" />
       <br/><br/>
     </a>
 

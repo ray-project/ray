@@ -6,7 +6,7 @@ Run Horovod Distributed Training with PyTorch and Ray Train
 .. raw:: html
 
     <a id="try-anyscale-quickstart-horovod_example" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=horovod_example">
-      <img src="../../../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart" />
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart" />
       <br/><br/>
     </a>
 
