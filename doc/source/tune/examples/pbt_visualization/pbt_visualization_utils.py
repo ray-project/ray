@@ -15,11 +15,11 @@ def Q_batch(theta):
 def get_arrows(theta_history, perturbation_interval):
     """
     Computes the start points and deltas for arrows showing parameter perturbations.
-    
+
     Args:
         theta_history: History of parameter values of shape (iterations, 2)
         perturbation_interval: Number of iterations between perturbations
-        
+
     Returns:
         Tuple[np.ndarray, np.ndarray]: Arrow start points and deltas
     """
@@ -50,7 +50,7 @@ def plot_parameter_history(
 ):
     """
     Plot parameter history overlaid on the true reward contour.
-    
+
     Args:
         results: List of result objects containing metrics dataframes
         colors: List of colors for each result
@@ -60,7 +60,7 @@ def plot_parameter_history(
         ax: Existing axes to plot on (creates new if None)
         plot_until_iter: Maximum iteration to plot (plots all if None)
         include_colorbar: Whether to include a colorbar for the contour plot
-        
+
     Returns:
         List of scatter plot objects
     """
@@ -129,7 +129,7 @@ def plot_parameter_history(
 def plot_Q_history(results, colors, labels, ax=None):
     """
     Plot the history of true reward values over training iterations.
-    
+
     Args:
         results: List of result objects containing metrics dataframes
         colors: List of colors for each result
@@ -167,7 +167,7 @@ def make_animation(
         )
 
     ani = FuncAnimation(
-        fig, animate, interval=1000//fps, blit=True, repeat=True, frames=range(1, 101)
+        fig, animate, interval=1000 // fps, blit=True, repeat=True, frames=range(1, 101)
     )
     ani.save(filename, writer=PillowWriter(fps=fps))
     plt.close()
