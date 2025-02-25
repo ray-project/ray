@@ -656,7 +656,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  void CheckWorkerSockets();
+  /// TODO.
+  void CheckForWorkerDisconnects();
 
 
   /// Trigger local GC on each worker of this raylet.

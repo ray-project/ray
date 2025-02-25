@@ -602,4 +602,30 @@ std::string ServerConnection::DebugString() const {
   return result.str();
 }
 
+bool CheckOpen(std::shared_ptr<ClientConnection> conn) {
+  int fd = conn->GetNativeHandle();
+
+  pollfd pfd = {fd, POLLHUP, 0};
+  int ret = poll(&pfd, 1, 0); // Non-blocking check
+
+  if (ret > 0) {
+      if (pfd.revents & POLLHUP) {
+        return false;
+      }
+  } else if (ret == 0) {
+    return true;
+  }
+  return true;
+}
+
+std::vector<bool> CheckForDisconnects(std::vector<std::shared_ptr<ClientConnection>> connections) {
+  std::vector<bool> result;
+  result.reserve(connections.size());
+  for (const auto &conn : connections) {
+    result.push_back(CheckOpen(conn));
+  }
+
+  return result;
+}
+
 }  // namespace ray

@@ -373,9 +373,9 @@ NodeManager::NodeManager(
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
-  periodical_runner_->RunFnPeriodically([this]() { CheckWorkerSockets(); },
+  periodical_runner_->RunFnPeriodically([this]() { CheckForWorkerDisconnects(); },
                                         1000,
-                                        "NodeManager.CheckWorkerSockets");
+                                        "NodeManager.CheckForWorkerDisconnects");
 
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
   // Run the node manger rpc server.
@@ -660,22 +660,25 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   worker_pool_.HandleJobFinished(job_id);
 }
 
-void NodeManager::CheckWorkerSockets() {
+void NodeManager::CheckForWorkerDisconnects() {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+  std::vector<std::shared_ptr<ClientConnection>> all_connections;
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
     all_workers.push_back(driver);
+    all_connections.push_back(driver->Connection());
   }
 
-  bool any = false;
   for (const auto &worker : all_workers) {
-    if (!worker->Connection()->CheckOpen()) {
-      any = true;
-      RAY_LOG(DEBUG) << "WORKER CONN CLOSED! " << worker->WorkerId();
-      DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, "HELLO WORLD");
-    }
+    all_workers.push_back(worker);
+    all_connections.push_back(worker->Connection());
   }
-  if (!any) {
-      RAY_LOG(DEBUG) << "ALL WORKER CONNS OPEN";
+
+  std::vector<bool> disconnects = CheckForDisconnects(all_connections);
+  for (int i = 0; i < disconnects.size(); i++) {
+    if (disconnects[i]) {
+      RAY_LOG(ERROR) << "WORKER CONN CLOSED! " << all_workers[i]->WorkerId();
+      DestroyWorker(all_workers[i], rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, "HELLO WORLD");
+    }
   }
 }
 

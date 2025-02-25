@@ -128,21 +128,6 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
     socket_.close(ec);
   }
 
-  bool CheckOpen() {
-    int fd = socket_.native_handle(); // Get the file descriptor
-    pollfd pfd = {fd, POLLHUP, 0};
-    int ret = poll(&pfd, 1, 0); // Non-blocking check
-
-    if (ret > 0) {
-        if (pfd.revents & POLLHUP) {
-          return false;
-        }
-    } else if (ret == 0) {
-      return true;
-    }
-      return true;
-  }
-
   /// Get the native handle of the socket.
   int GetNativeHandle() { return socket_.native_handle(); }
 
@@ -313,5 +298,8 @@ class ClientConnection : public ServerConnection {
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;
 };
+
+
+std::vector<bool> CheckForDisconnects(const std::vector<std::shared_ptr<ClientConnection>> &connections);
 
 }  // namespace ray
