@@ -764,8 +764,7 @@ Learn more about Ray State APIs
 
 ## Learn More
 
-Here are some talks, papers, and press coverage involving Ray and its libraries.
-Please raise an issue if any of the below links are broken, or if you'd like to add your own talk!
+Ray has a rich ecosystem of resources to help you learn more about distributed computing and AI scaling.
 
 ### Blog and Press
 
@@ -786,7 +785,7 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 - [Quick Tip -- Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
 - [Ray Blog](https://medium.com/distributed-computing-with-ray)
 
-### Talks (Videos)
+### Videos
 
 - [Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Data \| PyData 2021](https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000) [(slides)](https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing)
 - [Programming at any Scale with Ray \| SF Python Meetup Sept 2019](https://www.youtube.com/watch?v=LfpHyIXBhlE)
@@ -816,3 +815,5 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 -   [Tune paper](https://arxiv.org/abs/1807.05118)
 -   [Ray paper (old)](https://arxiv.org/abs/1712.05889)
 -   [Ray HotOS paper (old)](https://arxiv.org/abs/1703.03924)
+
+If you encounter technical issues, please post on the [Ray discussion forum](https://discuss.ray.io/). For general questions, announcements, and community discussions, join the [Ray community on Slack](https://www.ray.io/join-slack).
