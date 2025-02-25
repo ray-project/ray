@@ -190,18 +190,6 @@ def parse_wrk_decoded_stdout(decoded_out):
     return metrics_dict
 
 
-def wait_for_proxy(timeout: int = 30) -> None:
-    start_time = time.time()
-    node_id = ray.get_runtime_context().get_node_id()
-    proxy_statuses = ray.serve.status().proxies
-    while (
-        time.time() < start_time + timeout
-        and proxy_statuses.get(node_id, ProxyStatus.UNHEALTHY) != ProxyStatus.HEALTHY
-    ):
-        time.sleep(1)
-        proxy_statuses = ray.serve.status().proxies
-
-
 @ray.remote
 def run_one_wrk_trial(
     trial_length: str,
@@ -209,8 +197,19 @@ def run_one_wrk_trial(
     http_host: str,
     http_port: str,
     endpoint: str = "",
+    init_timeout: int = 30,
 ) -> None:
-    wait_for_proxy()
+    # wait until the proxy is ready
+    start_time = time.time()
+    node_id = ray.get_runtime_context().get_node_id()
+    proxy_statuses = ray.serve.status().proxies
+    while (
+        time.time() < start_time + init_timeout
+        and proxy_statuses.get(node_id, ProxyStatus.UNHEALTHY) != ProxyStatus.HEALTHY
+    ):
+        time.sleep(1)
+        proxy_statuses = ray.serve.status().proxies
+
     proc = subprocess.Popen(
         [
             "wrk",
