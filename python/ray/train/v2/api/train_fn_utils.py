@@ -15,41 +15,23 @@ if TYPE_CHECKING:
 class TrainContext:
     @_copy_doc(session.get_metadata)
     def get_metadata(self) -> Dict[str, Any]:
-        from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
-
-        raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
+        return internal_get_train_context().get_metadata()
 
     @_copy_doc(session.get_trial_name)
     def get_trial_name(self) -> str:
-        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
-
-        raise DeprecationWarning(
-            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_name")
-        )
+        return internal_get_train_context().get_trial_name()
 
     @_copy_doc(session.get_trial_id)
     def get_trial_id(self) -> str:
-        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
-
-        raise DeprecationWarning(
-            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_id")
-        )
+        return internal_get_train_context().get_trial_id()
 
     @_copy_doc(session.get_trial_resources)
     def get_trial_resources(self):
-        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
-
-        raise DeprecationWarning(
-            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_resources")
-        )
+        return internal_get_train_context().get_trial_resources()
 
     @_copy_doc(session.get_trial_dir)
     def get_trial_dir(self) -> str:
-        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
-
-        raise DeprecationWarning(
-            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_dir")
-        )
+        return internal_get_train_context().get_trial_dir()
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
