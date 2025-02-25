@@ -34,7 +34,6 @@ from ray.util.state.common import (
     protobuf_to_task_state_dict,
 )
 from ray.util.state.state_manager import DataSourceUnavailable, StateDataSourceClient
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +363,9 @@ class StateAPIManager:
             object_data_in_dict's schema is in ObjectState
         """
         all_node_info_reply = await self._client.get_all_node_info(
-            timeout=option.timeout, limit=None
+            timeout=option.timeout,
+            limit=None,
+            filters=[("state", "=", "ALIVE")],
         )
         tasks = [
             self._client.get_object_info(
@@ -476,14 +477,15 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
-        all_node_info_reply = await self._client.get_all_node_info(
-            timeout=option.timeout, limit=None
+        live_node_info_reply = await self._client.get_all_node_info(
+            timeout=option.timeout,
+            limit=None,
+            filters=[("state", "=", "ALIVE")],
         )
         node_infos = [
             node_info
-            for node_info in all_node_info_reply.node_info_list
-            if node_info.state == GcsNodeInfo.GcsNodeState.ALIVE
-            and node_info.runtime_env_agent_port is not None
+            for node_info in live_node_info_reply.node_info_list
+            if node_info.runtime_env_agent_port is not None
         ]
         tasks = [
             self._client.get_runtime_envs_info(
