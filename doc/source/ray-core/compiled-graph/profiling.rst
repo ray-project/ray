@@ -67,7 +67,7 @@ on the graph.
     compiled_dag.visualize()
 
 By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
-Note that this requires ``graphviz`` to be installed.
+Note that this requires ``graphviz``.
 
 The visualization for the preceding code is shown below.
 Tasks of the same actor are shown in the same color.

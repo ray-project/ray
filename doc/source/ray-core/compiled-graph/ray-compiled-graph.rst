@@ -6,15 +6,15 @@ Ray Compiled Graph
     Ray Compiled Graph is currently in developer preview. The APIs are subject to change and expected to evolve.
     The API is available from Ray 2.32.
 
-As large language models (LLM) become common, programming distributed systems with multiple GPUs is essential.
+As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential.
 :ref:`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
 
-* System overhead of ~1ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
-* Lack support for direct GPU-to-GPU communication, requiring manual development with external libraries like NCCL.
+* System overhead of ~1 ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
+* Lack support for direct GPU-to-GPU communication, requiring manual development with external libraries like NVIDIA Collective Communications Library (`NCCL <https://developer.nvidia.com/nccl>`_).
 
 Ray Compiled Graph gives you a Ray Core-like API but with:
 
-- **Less than 50us system overhead** for workloads that repeatedly execute the same task DAG.
+- **Less than 50us system overhead** for workloads that repeatedly execute the same task graph.
 - **Native support for GPU-GPU communication**, with NCCL.
 
 For example, consider the following Ray Core code, which sends data to an actor
@@ -33,12 +33,12 @@ This code shows how to compile and execute the same example as a Compiled Graph.
 .. testcode::
 
     # Compiled Graph for remote execution.
-    # less than 50us overhead to invoke `recv` (during `dag.execute(data)`).
+    # less than 50us overhead to invoke `recv` (during `graph.execute(data)`).
     with InputNode() as inp:
-        dag = receiver.recv.bind(inp)
+        graph = receiver.recv.bind(inp)
 
-    dag = dag.experimental_compile()
-    ref = dag.execute(data)
+    graph = graph.experimental_compile()
+    ref = graph.execute(data)
     ray.get(ref)
 
 Ray Compiled Graph has a static execution model. It is different from classic Ray APIs, which are eager. Because
@@ -55,7 +55,7 @@ Ray Compiled Graph APIs simplify development of high-performance multi-GPU workl
 
 - Sub-millisecond level task orchestration.
 - Direct GPU-GPU peer-to-peer or collective communication.
-- `Heterogeneous <https://www.youtube.com/watch?v=Mg08QTBILWU>` or MPMD execution.
+- `Heterogeneous <https://www.youtube.com/watch?v=Mg08QTBILWU>` or MPMD (Multiple Program Multiple Data) execution.
 
 More Resources
 --------------

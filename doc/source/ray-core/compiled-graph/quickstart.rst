@@ -13,7 +13,7 @@ This "hello world" example uses Ray Compiled Graph. First, install Ray.
     # pip install "ray[adag]"
 
 
-We will define a simple actor that echoes its argument.
+First, define a simple actor that echoes its argument.
 
 .. testcode::
 
@@ -24,7 +24,7 @@ We will define a simple actor that echoes its argument.
     def echo(self, msg):
         return msg
 
-Next we instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ray.get`` to execute tasks on the actor.
+Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ray.get`` to execute tasks on the actor.
 
 .. testcode::
     import time
@@ -46,19 +46,19 @@ Next we instantiate the actor and use the classic Ray Core APIs ``remote`` and `
 
     Execution takes 969.0364822745323 us
 
-Now, we'll create an equivalent program using Ray Compiled Graph. 
-We'll do this by first defining a graph that we can execute using classic Ray Core, without any compilation.
-Later, we'll compile this graph, which will apply optimizations and prevent further modifications to the graph.
+Now, create an equivalent program using Ray Compiled Graph. 
+First, define a graph to execute using classic Ray Core, without any compilation.
+Later, compile this graph, to apply optimizations and prevent further modifications to the graph.
 
-First, create a :ref:`Ray DAG <ray-dag-guide>`, which is a lazily executed graph of Ray tasks.
+First, create a :ref:`Ray DAG <ray-dag-guide>` (directed acyclic graph), which is a lazily executed graph of Ray tasks.
 Note 3 key differences with the classic Ray Core APIs:
 
-1. Use the ``InputNode()`` context manager to indicate the inputs to the DAG, which will be provided at run time.
+1. Use the ``InputNode()`` context manager to indicate which inputs to the DAG should be provided at run time.
 2. Use ``bind`` instead of ``remote`` to indicate lazily executed Ray tasks.
 4. Use ``execute`` to execute the DAG.
 
-Here, we define a graph and execute it.
-Note that there is **no** compilation happening here; this uses the same execution backend as the above example:
+Here, define a graph and execute it.
+Note that there is **no** compilation happening here. This uses the same execution backend as the preceding example:
 
 .. testcode::
 
@@ -81,8 +81,8 @@ Note that there is **no** compilation happening here; this uses the same executi
     print(f"Execution takes {(end - start) * 1000 * 1000} us")
 
 
-Next, we'll compile the ``dag`` using the ``experimental_compile`` API.
-The DAG can be executed using the same APIs:
+Next, compile the ``dag`` using the ``experimental_compile`` API.
+The graph uses the same APIs for execution:
 
 .. testcode::
 
@@ -105,19 +105,19 @@ The DAG can be executed using the same APIs:
 
     Execution takes 86.72196418046951 us
 
-The performance of the same DAG improved by 10X. This is because the function ``echo`` is cheap and thus highly affected by
-the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead.
+The performance of the same task graph improved by 10X. This is because the function ``echo`` is cheap and thus highly affected by
+the system overhead. Due to various bookkeeping and distributed protocols, the classic Ray Core APIs usually have 1 ms+ system overhead.
 
-Because the DAG is known ahead of time, Compiled Graph can pre-allocate all necessary
+Because the system knows the task graph ahead of time, Ray Compiled Graphs can pre-allocate all necessary
 resources ahead of time and greatly reduce the system overhead.
-For example, if the actor ``a`` is on the same node as the driver, Ray Compiled Graphs will use shared memory instead of RPC to transfer data directly between the driver and the actor.
+For example, if the actor ``a`` is on the same node as the driver, Ray Compiled Graphs uses shared memory instead of RPC to transfer data directly between the driver and the actor.
 
-Currently, the DAG tasks will be run on a **background thread** of the involved actors.
+Currently, the DAG tasks run on a **background thread** of the involved actors.
 An actor can only participate in one DAG at a time.
-Normal tasks can still be executed on the actors while they are participating in a Compiled Graph, but these tasks will execute on the main thread.
+Normal tasks can still execute on the actors while the actors participate in a Compiled Graph, but these tasks execute on the main thread.
 
 Once you're done, you can tear down the Compiled Graph by deleting it or explicitly calling ``dag.teardown()``.
-This will allow the actors to be reused for a new Compiled Graph.
+This allows reuse of the actors in a new Compiled Graph.
 
 .. testcode::
 
@@ -128,7 +128,7 @@ Specifying data dependencies
 ----------------------------
 
 When creating the DAG, a ``ray.dag.DAGNode`` can be passed as an argument to other ``.bind`` calls to specify data dependencies.
-For example, the following uses the above example to create a DAG that passes the same message from one actor to another:
+For example, the following uses the preceding example to create a DAG that passes the same message from one actor to another:
 
 .. testcode::
 
@@ -151,8 +151,8 @@ For example, the following uses the above example to create a DAG that passes th
     hello
 
 Here is another example that passes the same message to both actors, which can then execute in parallel.
-We use ``ray.dag.MultiOutputNode`` to indicate that this DAG returns multiple outputs.
-Then, ``dag.execute()`` will return multiple ``CompiledDAGRef``s, one per node:
+It uses ``ray.dag.MultiOutputNode`` to indicate that this DAG returns multiple outputs.
+Then, ``dag.execute()`` returns multiple ``CompiledDAGRef``s, one per node:
 
 
 .. testcode::
@@ -175,9 +175,9 @@ Then, ``dag.execute()`` will return multiple ``CompiledDAGRef``s, one per node:
     ["hello", "hello"]
 
 Be aware that:
-* On the same actor, Compiled Graph executions are ordered. I.e., if an actor has multiple tasks in the same Compiled Graph, it will execute all of them to completion before executing on the next DAG input.
-* Across actors in the same Compiled Graph, the execution may be pipelined. I.e., an actor may begin executing on the next DAG input while a downstream actor executes on the current one.
-* Compiled Graphs currently only supports actor tasks. Non-actor tasks are not supported.
+* On the same actor, a Compiled Graph executes in order. If an actor has multiple tasks in the same Compiled Graph, it executes all of them to completion before executing on the next DAG input.
+* Across actors in the same Compiled Graph, the execution may be pipelined. An actor may begin executing on the next DAG input while a downstream actor executes on the current one.
+* Compiled Graphs currently only supports actor tasks. Non-actor tasks aren't supported.
 
 ``asyncio`` support
 -------------------
@@ -202,12 +202,12 @@ In particular:
   :class:`ActorDiedError <ray.exceptions.ActorDiedError>`, and for other errors, it
   raises a :class:`RayChannelError <ray.exceptions.RayChannelError>`.
 
-The graph can still be executed after application exceptions. However, the graph
+The graph can still execute after application exceptions. However, the graph
 automatically shuts down in the case of system exceptions. If an actor's death causes
-the graph to shut down, the remaining actors will stay alive.
+the graph to shut down, the remaining actors stay alive.
 
-For example, here we explicitly kill an actor while it is participating in a Compiled Graph.
-The remaining actors can still be used:
+For example, this example explicitly destroys an actor while it's participating in a Compiled Graph.
+The remaining actors are reusable:
 
 .. testcode::
 
@@ -249,7 +249,7 @@ Execution Timeouts
 ------------------
 
 Some errors, such as NCCL network errors, require additional handling to avoid hanging.
-In the future, Ray will attempt to detect such errors, but currently as a fallback, it allows 
+In the future, Ray may attempt to detect such errors, but currently as a fallback, it allows 
 configurable timeouts for
 ``compiled_dag.execute()`` and :func:`ray.get() <ray.get>`.
 
@@ -264,11 +264,11 @@ to change the default timeout:
 GPU to GPU communication
 ------------------------
 Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor``s, avoiding any copies through Ray's CPU-based shared-memory object store.
-With user-provided type hints, Ray will prepare the NCCL communicator(s) and
-operation scheduling ahead of time, avoiding deadlock and overlapping compute and communication (experimental).
+With user-provided type hints, Ray prepares NCCL communicators and
+operation scheduling ahead of time, avoiding deadlock and `overlapping compute and communication <compiled-graph-overlap>`.
 
 Ray Compiled Graph uses `cupy <https://cupy.dev/>`_ under the hood to support NCCL operations.
-The version of NCCL is affected by the cupy version. The Ray team is also planning to support custom communicators in the future, for example to support collectives across CPUs or to reuse existing collective groups.
+The cupy version affects the NCCL version. The Ray team is also planning to support custom communicators in the future, for example to support collectives across CPUs or to reuse existing collective groups.
 
 First, create sender and receiver actors. Note that this example requires at least 2 GPUs.
 
