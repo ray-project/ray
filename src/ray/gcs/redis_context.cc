@@ -492,10 +492,10 @@ Status RedisContext::ConnectRedisCluster() {
   // Ray has some restrictions for RedisDB. Validate it here.
   ValidateRedisDB();
 
-  // Find the true redis master node
+  // Find the true leader
   std::vector<const char *> argv;
   std::vector<size_t> argc;
-  const std::vector<std::string> cmds = {"DEL", "DUMMY"};
+  std::vector<std::string> cmds = {"DEL", "DUMMY"};
   for (const auto &arg : cmds) {
     argv.push_back(arg.data());
     argc.push_back(arg.size());
@@ -549,7 +549,7 @@ Status RedisContext::ConnectRedisSentinel() {
 
   std::vector<const char *> argv;
   std::vector<size_t> argc;
-  const std::vector<std::string> cmds = {"SENTINEL", "MASTERS"};
+  std::vector<std::string> cmds = {"SENTINEL", "MASTERS"};
   for (const auto &arg : cmds) {
     argv.push_back(arg.data());
     argc.push_back(arg.size());
@@ -577,9 +577,8 @@ Status RedisContext::ConnectRedisSentinel() {
   auto primary = redis_reply->element[0];
   std::string actual_ip, actual_port;
   for (size_t i = 0; i < primary->elements; i += 2) {
-    const std::string key = primary->element[i]->str;  // Key (e.g., "name", "ip")
-    const std::string value =
-        primary->element[i + 1]->str;  // Value corresponding to the key
+    std::string key = primary->element[i]->str;        // Key (e.g., "name", "ip")
+    std::string value = primary->element[i + 1]->str;  // Value corresponding to the key
     if ("ip" == key) {
       actual_ip = value;
     } else if ("port" == key) {
