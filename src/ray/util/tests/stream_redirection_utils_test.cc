@@ -34,14 +34,6 @@ constexpr std::string_view kLogLine2 = "world\n";
 }  // namespace
 
 TEST(LoggingUtilTest, RedirectStderr) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      "jjyao_test",
-      ray::RayLogLevel::INFO,
-      "/tmp/jjyao.log",
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   // Works via `dup`, so have to execute before we redirect via `dup2` and close stderr.
   testing::internal::CaptureStderr();
 
@@ -83,7 +75,6 @@ TEST(LoggingUtilTest, RedirectStderr) {
   EXPECT_EQ(unlink(log_file_path2.data()), 0);
 
   // Make sure flush hook works fine and process terminates with no problem.
-  RAY_LOG(INFO) << "About to exit";
 }
 
 }  // namespace ray

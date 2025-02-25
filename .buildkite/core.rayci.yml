@@ -296,8 +296,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type tsan-clang
         --except-tags no_tsan
-        --parallelism-per-worker 2 || true
-      - sleep 100000000
+        --parallelism-per-worker 2
 
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
