@@ -42,7 +42,11 @@ elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
 fi
 
 if [[ -f min_requirements.txt ]]; then
-  pip install -r min_requirements.txt
+  if [ "$PYTHON_VERSION" = "3.13" ]; then
+    $HOME/.local/bin/uv pip install -r min_requirements.txt;
+  else
+    pip install -r min_requirements.txt;
+  fi
 fi
 
 EOF
