@@ -660,7 +660,7 @@ To get started with the dashboard, install the default installation as follows:
 pip install -U "ray[default]"
 ```
 ````
-Access the dashboard through the default URL, http://localhost:8265.
+The dashboard will now be made available while running Ray scripts. Access the dashboard through the default URL, http://localhost:8265.
 
 ```{button-ref}  observability-getting-started
 :color: primary
@@ -712,7 +712,7 @@ actors = [Actor.remote() for _ in range(2)]
 ray.get(tasks)
 ```
 
-See the summarized statistics of Ray tasks using ``ray summary tasks``.
+See the summarized statistics of Ray tasks using ``ray summary tasks`` in a terminal.
 
 ```{code-block} bash
 ray summary tasks
