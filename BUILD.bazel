@@ -813,11 +813,15 @@ ray_cc_library(
         "src/ray/stats/tag_defs.h",
     ],
     linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
+    "@platforms//os:windows": [
+    ],
+    "@platforms//os:macos": [
+        "-pthread",
+    ],
+    "@platforms//os:linux": [
+        "-lpthread",
+    ],
+    "//conditions:default": [],
     }),
     deps = [
         ":reporter_rpc",

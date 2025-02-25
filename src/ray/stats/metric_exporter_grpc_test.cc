@@ -14,6 +14,9 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -30,7 +33,6 @@
 
 namespace ray {
 
-using namespace stats;
 using opencensus::stats::Aggregation;
 using opencensus::stats::BucketBoundaries;
 using opencensus::stats::MeasureInt64;
