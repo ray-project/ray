@@ -1220,12 +1220,23 @@ class Learner(Checkpointable):
                     break
             # If the epoch iterator is exhausted, reinstantiate it.
             else:
-                # Inform the user that an epoch is finished.
-                logger.debug(
-                    f"===> [Learner {id(self)}] - Finished epoch. Reinstantiate iterator ..."
-                )
-                # Initialize a new epoch iterator.
-                self._epoch_iterator = iter(self._batched_iterable)
+                # If we iterate a limited number of times reinstantiate the iterator.
+                if num_iters:
+                    # Inform the user that an epoch is finished.
+                    logger.debug(
+                        f"===> [Learner {id(self)}] - Finished epoch. Reinstantiate iterator ..."
+                    )
+                    # Initialize a new epoch iterator.
+                    self._epoch_iterator = iter(self._batched_iterable)
+                # If a full epoch on the data should be run.
+                else:
+                    # Set all iterator attributes to
+                    # `None` - they will be recreated when entering again for the next epoch.
+                    self.iterator = None
+                    self._batched_iterable = None
+                    self._epoch_iterator = None
+                    # Exit the loop.
+                    break
 
         logger.debug(
             f"===> [Learner {id(self)}] - Number of iterations run in this training step: {i}"
