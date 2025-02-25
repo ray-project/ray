@@ -29,6 +29,27 @@ class TrainStateActor:
 
         self._export_logger = self._init_export_logger()
 
+    def create_or_update_train_run(self, run: TrainRun) -> None:
+        self._runs[run.id] = run
+        self._maybe_export_train_run(run)
+
+    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
+        self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
+        self._maybe_export_train_run_attempt(run_attempt)
+
+    def get_train_runs(self) -> Dict[str, TrainRun]:
+        return self._runs
+
+    def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
+        return self._run_attempts
+
+    # ============================
+    # Export API
+    # ============================
+
+    def is_export_api_enabled(self) -> bool:
+        return self._export_logger is not None
+
     def _init_export_logger(self) -> Optional[logging.Logger]:
         # Proto schemas should be imported within the scope of TrainStateActor to
         # prevent serialization errors.
@@ -55,29 +76,15 @@ class TrainStateActor:
             )
         return logger
 
-    def create_or_update_train_run(self, run: TrainRun) -> None:
-        self._runs[run.id] = run
-        self._maybe_export_train_run(run)
-
-    def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
-        self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
-        self._maybe_export_train_run_attempt(run_attempt)
-
-    def get_train_runs(self) -> Dict[str, TrainRun]:
-        return self._runs
-
-    def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
-        return self._run_attempts
-
     def _maybe_export_train_run(self, run: TrainRun) -> None:
-        if not self._export_logger:
+        if not self.is_export_api_enabled():
             return
 
         run_proto = train_run_to_proto(run)
         self._export_logger.send_event(run_proto)
 
     def _maybe_export_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        if not self._export_logger:
+        if not self.is_export_api_enabled():
             return
 
         run_attempt_proto = train_run_attempt_to_proto(run_attempt)
@@ -91,8 +98,12 @@ _state_actor_lock: threading.RLock = threading.RLock()
 
 
 def get_or_create_state_actor() -> ActorHandle:
-    """Get or create the Ray Train State Actor."""
+    """Get or create the Ray Train state actor singleton.
 
+    This is a long-living, detached actor living on the head node
+    that gets initialized when the first Train run happens on the
+    Ray cluster.
+    """
     with _state_actor_lock:
         state_actor = (
             ray.remote(TrainStateActor)
