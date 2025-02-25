@@ -28,16 +28,14 @@ def easy_objective(config: Dict[str, Any]) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AsyncHyperBand optimization example")
     parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Finish quickly for testing"
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
     args, _ = parser.parse_known_args()
 
     # AsyncHyperBand enables aggressive early stopping of poorly performing trials
     scheduler = AsyncHyperBandScheduler(
         grace_period=5,  # Minimum training iterations before stopping
-        max_t=100       # Maximum training iterations
+        max_t=100,  # Maximum training iterations
     )
 
     tuner = tune.Tuner(
@@ -51,7 +49,7 @@ if __name__ == "__main__":
             metric="mean_loss",
             mode="min",
             scheduler=scheduler,
-            num_samples=20  # Number of trials to run
+            num_samples=20,  # Number of trials to run
         ),
         param_space={
             "steps": 100,
