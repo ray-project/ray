@@ -186,6 +186,9 @@ def test_log_file_exists(shutdown_only):
             return suffix in appplication_log_suffixes
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Log rotation is disable on windows platform."
+)
 def test_log_rotation(shutdown_only, monkeypatch):
     max_bytes = 1
     backup_count = 3

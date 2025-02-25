@@ -1,11 +1,9 @@
 import json
 import subprocess
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TypeVar, Callable
+from functools import wraps
 
-# TODO (genesu): remove dependency on asyncache.
-from asyncache import cached
-from cachetools import TLRUCache
 from fastapi import HTTPException
 from filelock import FileLock
 
@@ -17,6 +15,7 @@ from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     get_file_from_s3,
     list_subfolders_gcs,
     list_subfolders_s3,
+    remote_object_cache,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
@@ -30,6 +29,9 @@ from ray.llm._internal.serve.configs.constants import (
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 
 CLOUD_OBJECT_MISSING = object()
+
+# Type variable for the retry decorator
+T = TypeVar("T")
 
 logger = get_logger(__name__)
 
@@ -149,19 +151,54 @@ def sync_model(
             raise
 
 
-def _validate_model_ttu(key, value, now):
-    # Return the expiration time depending on value
-    # (now + some offset)
-    # For get_lora_finetuned_context_length, we want to periodically re-check if
-    # the files are available if they weren't before (because they
-    # might have been uploaded in the meantime).
-    # If they were uploaded and we cached the sequence length response,
-    # then we just need to guard against users deleting the files
-    # from the bucket, which shouldn't happen often.
-    if value is CLOUD_OBJECT_MISSING:
-        return now + CLOUD_OBJECT_MISSING_EXPIRE_S
-    else:
-        return now + CLOUD_OBJECT_EXISTS_EXPIRE_S
+def retry_with_exponential_backoff(
+    max_tries: int,
+    exception_to_check: type[Exception],
+    base_delay: float = 1,
+    max_delay: float = 32,
+    exponential_base: float = 2,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Retry decorator with exponential backoff.
+
+    Args:
+        max_tries: Maximum number of retry attempts
+        exception_to_check: Exception type to catch and retry on
+        base_delay: Initial delay between retries in seconds
+        max_delay: Maximum delay between retries in seconds
+        exponential_base: Base for exponential calculation
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            delay = base_delay
+            last_exception = None
+
+            for attempt in range(max_tries):
+                try:
+                    return func(*args, **kwargs)
+                except exception_to_check as e:
+                    last_exception = e
+                    if attempt == max_tries - 1:  # Last attempt
+                        raise last_exception
+
+                    # Log the failure and retry
+                    logger.warning(
+                        f"Attempt {attempt + 1}/{max_tries} failed: {str(e)}. "
+                        f"Retrying in {delay} seconds..."
+                    )
+                    time.sleep(delay)
+                    # Calculate next delay with exponential backoff
+                    delay = min(delay * exponential_base, max_delay)
+
+            # This should never be reached due to the raise in the loop
+            raise last_exception if last_exception else RuntimeError(
+                "Unexpected error in retry logic"
+            )
+
+        return wrapper
+
+    return decorator
 
 
 @make_async
@@ -193,21 +230,22 @@ def _get_object_from_cloud(object_uri: str) -> Union[str, object]:
         return body_str
 
 
-@cached(
-    cache=TLRUCache(
-        maxsize=4096,
-        getsizeof=lambda x: 1,
-        ttu=_validate_model_ttu,
-        timer=time.monotonic,
-    )
+@remote_object_cache(
+    max_size=4096,
+    missing_expire_seconds=CLOUD_OBJECT_MISSING_EXPIRE_S,
+    exists_expire_seconds=CLOUD_OBJECT_EXISTS_EXPIRE_S,
+    missing_object_value=CLOUD_OBJECT_MISSING,
 )
 async def get_object_from_cloud(object_uri: str) -> Union[str, object]:
-    """Calls _get_object_from_cloud with caching.
+    """Gets an object from the cloud with caching.
 
-    We separate the caching logic from the implementation, so the
-    implementation can be faked while testing the caching logic in unit tests.
+    The cache will store missing objects for a short time and existing objects for
+    a longer time. This prevents unnecessary cloud API calls when objects don't exist
+    while ensuring we don't cache missing objects for too long in case they get created.
+
+    Returns:
+        The body of the object if it exists, or CLOUD_OBJECT_MISSING if it doesn't.
     """
-
     return await _get_object_from_cloud(object_uri)
 
 
