@@ -13,6 +13,16 @@ def Q_batch(theta):
 
 
 def get_arrows(theta_history, perturbation_interval):
+    """
+    Computes the start points and deltas for arrows showing parameter perturbations.
+    
+    Args:
+        theta_history: History of parameter values of shape (iterations, 2)
+        perturbation_interval: Number of iterations between perturbations
+        
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Arrow start points and deltas
+    """
     theta_history = theta_history[1:, :]
     arrow_start = theta_history[
         np.arange(perturbation_interval - 1, len(theta_history), perturbation_interval)
@@ -38,6 +48,22 @@ def plot_parameter_history(
     plot_until_iter=None,
     include_colorbar=True,
 ):
+    """
+    Plot parameter history overlaid on the true reward contour.
+    
+    Args:
+        results: List of result objects containing metrics dataframes
+        colors: List of colors for each result
+        labels: List of labels for each result
+        perturbation_interval: Interval at which parameter perturbations occur
+        fig: Existing figure to plot on (creates new if None)
+        ax: Existing axes to plot on (creates new if None)
+        plot_until_iter: Maximum iteration to plot (plots all if None)
+        include_colorbar: Whether to include a colorbar for the contour plot
+        
+    Returns:
+        List of scatter plot objects
+    """
     if fig is None or ax is None:
         fig, ax = plt.subplots()
 
@@ -101,6 +127,15 @@ def plot_parameter_history(
 
 
 def plot_Q_history(results, colors, labels, ax=None):
+    """
+    Plot the history of true reward values over training iterations.
+    
+    Args:
+        results: List of result objects containing metrics dataframes
+        colors: List of colors for each result
+        labels: List of labels for each result
+        ax: Existing axes to plot on (creates new if None)
+    """
     if ax is None:
         fig, ax = plt.subplots()
     ax.set_title("True Reward (Q) Value Over Training Iterations")
@@ -113,7 +148,7 @@ def plot_Q_history(results, colors, labels, ax=None):
 
 
 def make_animation(
-    results, colors, labels, perturbation_interval=None, filename="pbt.gif"
+    results, colors, labels, perturbation_interval=None, filename="pbt.gif", fps=5
 ):
     fig, ax = plt.subplots(figsize=(8, 8))
 
@@ -132,7 +167,7 @@ def make_animation(
         )
 
     ani = FuncAnimation(
-        fig, animate, interval=200, blit=True, repeat=True, frames=range(1, 101)
+        fig, animate, interval=1000//fps, blit=True, repeat=True, frames=range(1, 101)
     )
-    ani.save(filename, writer=PillowWriter())
+    ani.save(filename, writer=PillowWriter(fps=fps))
     plt.close()
