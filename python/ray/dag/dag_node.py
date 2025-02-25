@@ -581,7 +581,7 @@ class DAGNode(DAGNodeBase):
     def apply_functional(
         self,
         source_input_list: Any,
-        predictate_fn: Callable,
+        predicate_fn: Callable,
         apply_fn: Callable,
     ):
         """
@@ -591,22 +591,23 @@ class DAGNode(DAGNodeBase):
         Args:
             source_input_list: Source inputs to extract and apply function on
                 all children DAGNode instances.
-            predictate_fn: Applied on each DAGNode instance found and determine
+            predicate_fn: Applied on each DAGNode instance found and determine
                 if we should apply function to it. Can be used to filter node
                 types.
-            apply_fn: Function to appy on the node on bound attributes. Example:
+            apply_fn: Function to apply on the node on bound attributes. Example::
+
                 apply_fn = lambda node: node._get_serve_deployment_handle(
                     node._deployment, node._bound_other_args_to_resolve
                 )
 
         Returns:
             replaced_inputs: Outputs of apply_fn on DAGNodes in
-                source_input_list that passes predictate_fn.
+                source_input_list that passes predicate_fn.
         """
         replace_table = {}
         scanner = _PyObjScanner()
         for node in scanner.find_nodes(source_input_list):
-            if predictate_fn(node) and node not in replace_table:
+            if predicate_fn(node) and node not in replace_table:
                 replace_table[node] = apply_fn(node)
 
         replaced_inputs = scanner.replace_nodes(replace_table)
