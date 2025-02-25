@@ -10,10 +10,10 @@ This example runs an object detection application with Ray Serve.
 To run this example, install the following:
 
 ```bash
-pip install "ray[serve]" requests torch
+pip install "ray[serve]" requests torch pillow numpy opencv-python-headless pandas "gitpython>=3.1.30"
 ```
 
-This example uses the [ultralytics/yolov5](https://github.com/ultralytics/yolov5) model and [FastAPI](https://fastapi.tiangolo.com/). Save the following code to a file named object_detection.py.
+This example uses the [ultralytics/yolov5](https://github.com/ultralytics/yolov5) model and [FastAPI](https://fastapi.tiangolo.com/). Save the following code to a file named `object_detection.py`. It assumed that your cluster has 1 GPU available.
 
 Use the following Serve code:
 ```{literalinclude} ../doc_code/object_detection.py
