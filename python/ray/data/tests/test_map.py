@@ -1746,8 +1746,8 @@ def test_map_op_backpressure_configured_properly():
     total = 5
 
     def _map_raising(r):
-        if isinstance(r['item'], Exception):
-            raise r['item']
+        if isinstance(r["item"], Exception):
+            raise r["item"]
 
         return r
 
@@ -1762,8 +1762,7 @@ def test_map_op_backpressure_configured_properly():
     # At the end of the pipeline we fetch only first 4 elements (instead of 5) to prevent the last 1
     # from executing (1 is going to be a buffered block)
     df = ray.data.from_items(
-        [i for i in range(5)] + [ValueError('failed!')],
-        override_num_blocks=6
+        list(range(5)) + [ValueError("failed!")], override_num_blocks=6
     )
 
     # NOTE: Default back-pressure configuration allows 2 blocks in the
@@ -1772,17 +1771,22 @@ def test_map_op_backpressure_configured_properly():
     with pytest.raises(RayTaskError) as exc_info:
         df.map(_map_raising).materialize()
 
-    assert str(ValueError('failed')) in str(exc_info.value)
+    assert str(ValueError("failed")) in str(exc_info.value)
 
     # Reducing number of blocks in the generator buffer, will prevent this pipeline
     # from throwing
-    vals = df.map(
-        _map_raising,
-        concurrency=1,
-        ray_remote_args_fn=lambda: {
-            "_generator_backpressure_num_objects": 2,  # 1 for block, 1 for metadata
-        },
-    ).limit(total - 1).take_batch()['item'].tolist()
+    vals = (
+        df.map(
+            _map_raising,
+            concurrency=1,
+            ray_remote_args_fn=lambda: {
+                "_generator_backpressure_num_objects": 2,  # 1 for block, 1 for metadata
+            },
+        )
+        .limit(total - 1)
+        .take_batch()["item"]
+        .tolist()
+    )
 
     assert list(range(5))[:-1] == vals
 

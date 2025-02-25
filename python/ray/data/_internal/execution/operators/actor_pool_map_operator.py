@@ -100,8 +100,9 @@ class ActorPoolMapOperator(MapOperator):
         _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
 
         if (
-            "_generator_backpressure_num_objects" not in self._ray_actor_task_remote_args and
-            self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
+            "_generator_backpressure_num_objects"
+            not in self._ray_actor_task_remote_args
+            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
         ):
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
