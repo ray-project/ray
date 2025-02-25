@@ -1,5 +1,10 @@
-load("@rules_python//python:defs.bzl", "py_test")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_test")
+
+py_library(
+    name = "determine_tests_to_run",
+    srcs = ["determine_tests_to_run.py"],
+)
 
 py_test(
     name = "test_conditional_testing",
@@ -14,6 +19,7 @@ py_test(
         "team:ci",
     ],
     deps = [
+        ":determine_tests_to_run",
         ci_require("bazel-runfiles"),
         ci_require("pytest"),
         ci_require("pyyaml"),
