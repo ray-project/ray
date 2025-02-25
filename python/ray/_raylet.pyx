@@ -4671,7 +4671,7 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
-    def exit_current_actor(self):
+    def set_current_actor_should_exit(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .SetCurrentActorShouldExit())
 
