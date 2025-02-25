@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.aggregate import AggregateFn, Count, _AggregateOnKeyBase
+from ray.data.aggregate import AggregateFn, Count, AggregateFnV2
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, KeyType
 
 
@@ -95,8 +95,8 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
             prune_columns = False
 
         for agg in aggs:
-            if isinstance(agg, _AggregateOnKeyBase) and isinstance(agg._key_fn, str):
-                columns.add(agg._key_fn)
+            if isinstance(agg, AggregateFnV2) and agg.get_target_column():
+                columns.add(agg.get_target_column())
             elif not isinstance(agg, Count):
                 # Don't prune columns if any aggregate key is not string.
                 prune_columns = False

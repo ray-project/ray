@@ -18,7 +18,10 @@
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/impl/service_type.h>
 
+#include <algorithm>
 #include <boost/asio/detail/socket_holder.hpp>
+#include <memory>
+#include <string>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
@@ -147,7 +150,8 @@ void GrpcServer::Run() {
     //       gets occupied therefore not serving as back-pressure mechanism)
     size_t buffer_size;
     if (entry->GetMaxActiveRPCs() != -1) {
-      buffer_size = std::max(1, int(entry->GetMaxActiveRPCs() / num_threads_));
+      buffer_size = std::max<size_t>(
+          1, static_cast<size_t>(entry->GetMaxActiveRPCs() / num_threads_));
     } else {
       buffer_size = 32;
     }

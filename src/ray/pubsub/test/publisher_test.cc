@@ -14,6 +14,11 @@
 
 #include "ray/pubsub/publisher.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -27,7 +32,8 @@ namespace {
 const NodeID kDefaultPublisherId = NodeID::FromRandom();
 }
 
-using namespace pub_internal;
+using pub_internal::SubscriberState;
+using pub_internal::SubscriptionIndex;
 
 class PublisherTest : public ::testing::Test {
  public:
