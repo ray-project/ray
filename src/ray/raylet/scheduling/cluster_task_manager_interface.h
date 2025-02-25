@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -25,7 +28,7 @@ class ClusterTaskManagerInterface {
 
   // Schedule and dispatch tasks.
   virtual void ScheduleAndDispatchTasks() = 0;
-  ;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
@@ -53,6 +56,19 @@ class ClusterTaskManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
+
+  /// Attempt to cancel all queued tasks that match the resource shapes.
+  /// This function is intended to be used to cancel the infeasible tasks. To make it a
+  /// more general function, please modify the signature by adding parameters including
+  /// the failure type and the failure message.
+  ///
+  /// \param target_resource_shapes: The resource shapes to cancel.
+  ///
+  /// \return True if any task was successfully removed. This function will return false
+  /// if the task is already running. This shouldn't happen in noremal cases because the
+  /// infeasible tasks shouldn't be able to run due to resource constraints.
+  virtual bool CancelTasksWithResourceShapes(
+      const std::vector<ResourceSet> target_resource_shapes) = 0;
 
   /// Attempt to cancel all queued tasks that match the predicate.
   ///

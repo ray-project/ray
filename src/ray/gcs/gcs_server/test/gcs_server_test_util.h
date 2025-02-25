@@ -341,6 +341,11 @@ struct GcsServerMocker {
       drain_raylet_callbacks.push_back(callback);
     };
 
+    void CancelTasksWithResourceShapes(
+        const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+        const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback)
+        override{};
+
     void IsLocalWorkerDead(
         const WorkerID &worker_id,
         const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override{};
