@@ -230,6 +230,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -583,7 +584,6 @@ autosummary_filename_map = {
 autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
-    "asyncache",
     "async_timeout",
     "backoff",
     "cachetools",

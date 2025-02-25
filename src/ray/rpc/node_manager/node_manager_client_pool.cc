@@ -14,6 +14,8 @@
 
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 
+#include <memory>
+
 namespace ray {
 namespace rpc {
 
