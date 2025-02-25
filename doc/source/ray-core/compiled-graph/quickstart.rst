@@ -55,7 +55,7 @@ Note 3 key differences with the classic Ray Core APIs:
 
 1. Use the ``InputNode()`` context manager to indicate the inputs to the DAG, which will be provided at run time.
 2. Use ``bind`` instead of ``remote`` to indicate lazily executed Ray tasks.
-4. Use ``execute`` to execute the DAG.
+3. Use ``execute`` to execute the DAG.
 
 Here, we define a graph and execute it.
 Note that there is **no** compilation happening here; this uses the same execution backend as the above example:
