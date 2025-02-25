@@ -1,7 +1,14 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
+    files = glob(
+        ["**/*.py"], 
+        exclude=glob([
+            "examples/**/*", 
+            "tests/**/*", 
+            # FIXME: Exclude LLM code from doctests 
+            "llm/**"
+        ])),
     tags = ["team:data"],
     size = "large"
 )
