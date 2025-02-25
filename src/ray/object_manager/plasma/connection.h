@@ -133,7 +133,7 @@ std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client
 /// Contains all information that is associated with a Plasma store client.
 class StoreConn : public ray::ServerConnection {
  public:
-  StoreConn(ray::local_stream_socket &&socket);
+  explicit StoreConn(ray::local_stream_socket &&socket);
 
   /// Receive a file descriptor for the store.
   ///
