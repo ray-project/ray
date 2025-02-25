@@ -57,11 +57,11 @@ class TrainStateActor:
 
     def create_or_update_train_run(self, run: TrainRun) -> None:
         self._runs[run.id] = run
-        self._export_train_run(run)
+        self._maybe_export_train_run(run)
 
     def create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt):
         self._run_attempts[run_attempt.run_id][run_attempt.attempt_id] = run_attempt
-        self._export_train_run_attempt(run_attempt)
+        self._maybe_export_train_run_attempt(run_attempt)
 
     def get_train_runs(self) -> Dict[str, TrainRun]:
         return self._runs
@@ -69,15 +69,19 @@ class TrainStateActor:
     def get_train_run_attempts(self) -> Dict[str, Dict[str, TrainRunAttempt]]:
         return self._run_attempts
 
-    def _export_train_run(self, run: TrainRun) -> None:
-        if self._export_logger:
-            run_proto = train_run_to_proto(run)
-            self._export_logger.send_event(run_proto)
+    def _maybe_export_train_run(self, run: TrainRun) -> None:
+        if not self._export_logger:
+            return
 
-    def _export_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        if self._export_logger:
-            run_attempt_proto = train_run_attempt_to_proto(run_attempt)
-            self._export_logger.send_event(run_attempt_proto)
+        run_proto = train_run_to_proto(run)
+        self._export_logger.send_event(run_proto)
+
+    def _maybe_export_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
+        if not self._export_logger:
+            return
+
+        run_attempt_proto = train_run_attempt_to_proto(run_attempt)
+        self._export_logger.send_event(run_attempt_proto)
 
 
 TRAIN_STATE_ACTOR_NAME = "train_v2_state_actor"
