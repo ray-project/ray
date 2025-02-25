@@ -149,7 +149,6 @@ def _make_learner_connector(observation_space, action_space):
 def _env_creator(cfg):
     return wrap_atari_for_new_api_stack(
         gym.make("ale_py:ALE/Pong-v5", **cfg),
-        # Perform frame-stacking through ConnectorV2 API.
         framestack=4,
         dim=64,
     )
@@ -232,6 +231,12 @@ config = (
     .environment(
         env="WrappedALE/Pong-v5",
         clip_rewards=True,
+        env_config={
+            # Make analogous to old v4 + NoFrameskip.
+            "frameskip": 4,
+            "full_action_space": False,
+            "repeat_action_probability": 0.0,
+        },
     )
     # Use the new API stack that makes directly use of `ray.data`.
     .api_stack(
