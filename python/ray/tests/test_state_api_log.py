@@ -1301,7 +1301,8 @@ def test_log_get(ray_start_cluster):
 
     def verify():
         lines = get_log(task_id=task.task_id().hex())
-        assert expected_out == "".join(lines)
+        actual_out = "".join(lines)
+        assert expected_out == actual_out, actual_out
 
         return True
 

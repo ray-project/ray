@@ -34,6 +34,7 @@ ray_cc_library(
     hdrs = ["env.h"],
     deps = [
         ":logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 

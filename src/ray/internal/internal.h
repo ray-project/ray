@@ -13,6 +13,11 @@
 // limitations under the License.
 
 #pragma once
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
