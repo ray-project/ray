@@ -62,7 +62,7 @@ class Metric:
         if not _METRIC_NAME_RE.match(name):
             logger.warning(
                 f"Invalid metric name: {name}. Metric will be discard and data will not be collected or published. "
-                 "Names can only contain letters, numbers, and _. Names can only start with letters or _."
+                "Names can only contain letters, numbers, and _. Names can only start with letters or _."
             )
             return True
         return False

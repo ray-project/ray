@@ -89,7 +89,11 @@ Metric::Metric(const std::string &name,
                const std::string &description,
                const std::string &unit,
                const std::vector<std::string> &tag_keys)
-    : name_(name), description_(description), unit_(unit), measure_(nullptr), name_regex_(GetMetricNameRegex()) {
+    : name_(name),
+      description_(description),
+      unit_(unit),
+      measure_(nullptr),
+      name_regex_(GetMetricNameRegex()) {
   RAY_CHECK_WITH_DISPLAY(std::regex_match(name, Metric::name_regex_),
                          "Invalid metric name: " + name +
                              ". Names can only contain letters, numbers, and _. "
@@ -99,7 +103,7 @@ Metric::Metric(const std::string &name,
   }
 }
 
-const std::regex& Metric::GetMetricNameRegex() {
+const std::regex &Metric::GetMetricNameRegex() {
   const static std::regex name_regex("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
   return name_regex;
 }

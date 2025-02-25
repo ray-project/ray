@@ -112,7 +112,7 @@ class Metric {
 
   Metric &operator()() { return *this; }
 
-  static const std::regex& GetMetricNameRegex();
+  static const std::regex &GetMetricNameRegex();
 
   /// Get the name of this metric.
   std::string GetName() const { return name_; }
