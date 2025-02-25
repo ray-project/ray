@@ -17,7 +17,9 @@
 #include <gtest/gtest_prod.h>
 
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"

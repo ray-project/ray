@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
+#include <type_traits>
+
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -451,6 +453,68 @@ std::string GcsAutoscalerStateManager::DebugString() const {
     stream << "} * " << num_pending << "\n";
   }
   return stream.str();
+}
+
+absl::flat_hash_map<ray::NodeID, std::vector<google::protobuf::Map<std::string, double>>>
+GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  absl::flat_hash_map<ray::NodeID,
+                      std::vector<google::protobuf::Map<std::string, double>>>
+      per_node_infeasible_requests;
+  if (!autoscaling_state_.has_value()) {
+    return per_node_infeasible_requests;
+  }
+
+  // obtain the infeasible requests from the autoscaler state
+  std::vector<google::protobuf::Map<std::string, double>>
+      autoscaler_infeasible_resource_shapes;
+  autoscaler_infeasible_resource_shapes.reserve(
+      autoscaling_state_.value().infeasible_resource_requests_size());
+  for (int i = 0; i < autoscaling_state_.value().infeasible_resource_requests_size();
+       i++) {
+    autoscaler_infeasible_resource_shapes.emplace_back(
+        autoscaling_state_.value().infeasible_resource_requests(i).resources_bundle());
+  }
+
+  // collect the infeasible requests per node
+  for (const auto &[node_id, time_resource_data_pair] : node_resource_info_) {
+    const auto &resource_load_by_shape =
+        time_resource_data_pair.second.resource_load_by_shape();
+
+    for (int i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
+      bool is_infeasible_shape = false;
+      auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
+      for (const auto &shape : autoscaler_infeasible_resource_shapes) {
+        const auto &resource_demand = resource_load_by_shape.resource_demands(i);
+        if (resource_demand.num_infeasible_requests_queued() > 0 &&
+            MapEqual(shape, resource_demand.shape())) {
+          is_infeasible_shape = true;
+          infeasible_resource_shape = shape;
+          break;
+        }
+      }
+
+      if (is_infeasible_shape) {
+        per_node_infeasible_requests[node_id].emplace_back(infeasible_resource_shape);
+      }
+    }
+  }
+  return per_node_infeasible_requests;
+}
+
+void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+
+  // Obtain the node & infeasible request mapping
+  auto per_node_infeasible_requests = GetPerNodeInfeasibleResourceRequests();
+  if (per_node_infeasible_requests.empty()) {
+    return;
+  }
+
+  // Cancel the infeasible requests
+  // NOTE(mengjin): This is just a stub for now, but will soon be implemented to support
+  // cancel infeasible resource requests
 }
 
 }  // namespace gcs

@@ -33,6 +33,10 @@ cp kubectl-ray ~/.local/bin
 
 Replace `~/.local/bin` with the directory in your `PATH`.
 
+## Shell Completion
+
+Follow the instructions for installing and enabling [kubectl plugin-completion]
+
 ## Usage
 
 After installing the plugin, you can use `kubectl ray --help` to see the available commands and options.
@@ -193,3 +197,5 @@ Use `kubectl ray delete` command to clean up the resources.
 $ kubectl ray delete rayjob/rayjob-sample
 $ kubectl ray delete rayjob/rayjob-interactive-mode
 ```
+
+[kubectl plugin-completion]: https://github.com/marckhouzam/kubectl-plugin_completion?tab=readme-ov-file#tldr
