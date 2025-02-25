@@ -1038,12 +1038,21 @@ def test_metrics_disablement(_setup_cluster_for_test):
 
         time.sleep(1)
 
+
 def test_invalid_metric_names():
-    with pytest.raises(ValueError, match="Empty name is not allowed. Please provide a metric name."):
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
         Metric("")
-    with pytest.raises(ValueError, match="Invalid metric name: faulty-metric. Names can only start with letters or _. Names can only contain letters, numbers, and _"):
+    with pytest.raises(
+        ValueError,
+        match="Invalid metric name: faulty-metric. Names can only start with letters or _. Names can only contain letters, numbers, and _",
+    ):
         Metric("faulty-metric")
-    with pytest.raises(ValueError, match="Invalid metric name: 1cannotstartwithnumber. Names can only start with letters or _. Names can only contain letters, numbers, and _"):
+    with pytest.raises(
+        ValueError,
+        match="Invalid metric name: 1cannotstartwithnumber. Names can only start with letters or _. Names can only contain letters, numbers, and _",
+    ):
         Metric("1cannotstartwithnumber")
 
 

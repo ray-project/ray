@@ -35,7 +35,9 @@ class Metric:
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
-        self._validate_metric_name(name)
+        # Metrics with invalid names will be discarded and will not be collected
+        # by Prometheus
+        self.discard_metric = self._is_invalid_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -54,13 +56,16 @@ class Metric:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
 
-    def _validate_metric_name(self, name: str):
+    def _is_invalid_metric_name(self, name: str):
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
         if not _METRIC_NAME_RE.match(name):
-            raise ValueError(
-                f"Invalid metric name: {name}. Names can only start with letters or _. Names can only contain letters, numbers, and _"
+            logger.warning(
+                f"Invalid metric name: {name}. Metric will be discard and data will not be collected or published. "
+                 "Names can only contain letters, numbers, and _. Names can only start with letters or _."
             )
+            return True
+        return False
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
@@ -172,6 +177,8 @@ class Counter(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
+        if self.discard_metric:
+            return
         self._metric = CythonCount(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
@@ -188,6 +195,8 @@ class Counter(Metric):
             value(int, float): Value to increment the counter by (default=1).
             tags(Dict[str, str]): Tags to set or override for this counter.
         """
+        if self.discard_metric:
+            return
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
         if value <= 0:
@@ -235,6 +244,8 @@ class Histogram(Metric):
                 )
 
         self.boundaries = boundaries
+        if self.discard_metric:
+            return
         self._metric = CythonHistogram(
             self._name, self._description, self.boundaries, self._tag_keys
         )
@@ -248,6 +259,8 @@ class Histogram(Metric):
             value(int, float): Value to set the gauge to.
             tags(Dict[str, str]): Tags to set or override for this gauge.
         """
+        if self.discard_metric:
+            return
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
@@ -293,6 +306,8 @@ class Gauge(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
+        if self.discard_metric:
+            return
         self._metric = CythonGauge(self._name, self._description, self._tag_keys)
 
     def set(self, value: Optional[Union[int, float]], tags: Dict[str, str] = None):
@@ -305,7 +320,7 @@ class Gauge(Metric):
                 no-op.
             tags(Dict[str, str]): Tags to set or override for this gauge.
         """
-        if value is None:
+        if self.discard_metric or value is None:
             return
 
         if not isinstance(value, (int, float)):
