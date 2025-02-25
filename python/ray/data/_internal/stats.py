@@ -385,10 +385,11 @@ class _StatsActor:
             for field_name, prom_metric in self.execution_metrics_misc.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
-        if (
-            DataContext.get_current().enable_per_node_metrics
-            and per_node_metrics is not None
-        ):
+        # Update per node metrics if they exist, the creation of these metrics is controlled
+        # by the _data_context.enable_per_node_metrics flag in the streaming executor but
+        # that is not exposed in the _StatsActor so here we simply check if the metrics exist
+        # and if so, update them
+        if per_node_metrics is not None:
             for node_id, node_metrics in per_node_metrics.items():
                 # Translate node_id into node_name (the node ip), cache node info
                 if node_id not in self._ray_nodes_cache:
