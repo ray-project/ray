@@ -19,10 +19,7 @@ def try_import_boto3():
     try:
         return try_import("boto3", error=True)
     except ImportError:
-        raise ImportError(
-            "You must `pip install boto3` "
-            "to check models in S3."
-        )
+        raise ImportError("You must `pip install boto3` " "to check models in S3.")
 
 
 def get_file_from_s3(
