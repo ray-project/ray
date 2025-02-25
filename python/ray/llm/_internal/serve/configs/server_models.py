@@ -386,6 +386,7 @@ class LLMConfig(BaseModelExtended):
         # Ensure A10 is converted to A10G.
         if value == "A10":
             value = "A10G"
+        value = value.replace("_", "-")
 
         if value not in [t.value for t in GPUType]:
             raise ValueError(f"Unsupported accelerator type: {value}")
