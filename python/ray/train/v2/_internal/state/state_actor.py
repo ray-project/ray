@@ -1,5 +1,4 @@
 import logging
-import os
 import threading
 import ray
 
@@ -10,6 +9,7 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
 )
 from ray.actor import ActorHandle
+from ray.train.v2._internal.logging import get_log_directory
 from ray.train.v2._internal.state.export import (
     train_run_to_proto,
     train_run_attempt_to_proto,
@@ -41,14 +41,12 @@ class TrainStateActor:
         if not export_api_enabled:
             return None
 
-        log_path = os.path.join(
-            ray._private.worker._global_node.get_session_dir_path(), "logs"
-        )
+        log_directory = get_log_directory()
         logger = None
         try:
             logger = get_export_event_logger(
                 ExportEvent.SourceType.EXPORT_TRAIN_RUN,
-                log_path,
+                log_directory,
             )
         except Exception:
             logger.exception(
