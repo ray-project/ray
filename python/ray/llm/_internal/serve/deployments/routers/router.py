@@ -59,6 +59,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelData,
     Model,
+    AutoscalingConfig,
 )
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
@@ -428,9 +429,12 @@ class LLMRouter:
                     autoscaling_config = llm_config.deployment_config[
                         "autoscaling_config"
                     ]
-                    model_min_replicas += autoscaling_config.min_replicas
-                    model_initial_replicas += autoscaling_config.initial_replicas
-                    model_max_replicas += autoscaling_config.max_replicas
+                else:
+                    # When autoscaling config is not provided, we use the default.
+                    autoscaling_config = AutoscalingConfig()
+                model_min_replicas += autoscaling_config.min_replicas
+                model_initial_replicas += autoscaling_config.initial_replicas
+                model_max_replicas += autoscaling_config.max_replicas
             min_replicas = int(model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
             initial_replicas = int(
                 model_initial_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
