@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sys
 from typing import (
     Any,
     AsyncGenerator,
@@ -65,7 +66,6 @@ from ray.llm._internal.serve.deployments.routers.middleware import (
     add_exception_handling_middleware,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
-import sys
 
 # Import asyncio timeout depends on python version
 if sys.version_info >= (3, 11):
