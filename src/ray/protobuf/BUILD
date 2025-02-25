@@ -1,8 +1,8 @@
-package(default_visibility = ["//visibility:public"])
-
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
+
+package(default_visibility = ["//visibility:public"])
 
 proto_library(
     name = "common_proto",
@@ -250,11 +250,11 @@ proto_library(
     name = "export_event_proto",
     srcs = ["export_api/export_event.proto"],
     deps = [
-        ":export_task_event_proto",
-        ":export_node_event_proto",
         ":export_actor_event_proto",
         ":export_driver_job_event_proto",
-        ":export_submission_job_event_proto"
+        ":export_node_event_proto",
+        ":export_submission_job_event_proto",
+        ":export_task_event_proto",
     ],
 )
 
@@ -271,7 +271,10 @@ python_grpc_compile(
 proto_library(
     name = "export_task_event_proto",
     srcs = ["export_api/export_task_event.proto"],
-    deps = [":common_proto", ":export_runtime_env_proto"],
+    deps = [
+        ":common_proto",
+        ":export_runtime_env_proto",
+    ],
 )
 
 cc_proto_library(
@@ -333,7 +336,10 @@ python_grpc_compile(
 proto_library(
     name = "export_driver_job_event_proto",
     srcs = ["export_api/export_driver_job_event.proto"],
-    deps = [":common_proto", ":export_runtime_env_proto"],
+    deps = [
+        ":common_proto",
+        ":export_runtime_env_proto",
+    ],
 )
 
 cc_proto_library(

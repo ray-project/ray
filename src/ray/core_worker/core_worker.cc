@@ -1171,8 +1171,7 @@ void CoreWorker::Exit(
     exiting_detail_ = std::optional<std::string>{detail};
   }
   // Release the resources early in case draining takes a long time.
-  auto status =
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << "Failed to notify Raylet. It is either the raylet is already dead or the "

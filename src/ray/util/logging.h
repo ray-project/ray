@@ -297,11 +297,15 @@ class RayLog {
   /// Get max bytes value from env variable.
   /// Return default value, which indicates no rotation, if env not set, parse failure or
   /// value 0.
+  ///
+  /// Log rotation is disable on windows platform.
   static size_t GetRayLogRotationMaxBytesOrDefault();
 
   /// Get log rotation backup count.
   /// Return default value, which indicates no rotation, if env not set, parse failure or
   /// value 0.
+  ///
+  /// Log rotation is disabled on windows platform.
   static size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.

@@ -1,11 +1,16 @@
-from typing import Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig
-from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    # NOTE: `ray.train.torch` module imports in this file will break
+    # with a circular import error if the TorchTrainer class is captured
+    # in the scope of a Ray task.
+    from ray.train.torch.config import TorchConfig
 
 
 @PublicAPI(stability="stable")
@@ -181,7 +186,7 @@ class TorchTrainer(DataParallelTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        torch_config: Optional[TorchConfig] = None,
+        torch_config: Optional["TorchConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -190,6 +195,8 @@ class TorchTrainer(DataParallelTrainer):
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        from ray.train.torch.config import TorchConfig
+
         torch_config = torch_config or TorchConfig()
         if not torch_config.backend:
             torch_config.backend = "nccl" if scaling_config.use_gpu else "gloo"

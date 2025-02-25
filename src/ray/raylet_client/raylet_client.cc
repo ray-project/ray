@@ -165,9 +165,9 @@ Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
+Status RayletClient::NotifyDirectCallTaskBlocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
+  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }

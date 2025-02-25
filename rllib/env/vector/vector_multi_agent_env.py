@@ -1,10 +1,10 @@
-import gymnasium as gym
-import numpy as np
+from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
+import gymnasium as gym
 from gymnasium.core import RenderFrame
 from gymnasium.envs.registration import EnvSpec
 from gymnasium.utils import seeding
-from typing import Any, Dict, Optional, Tuple, TypeVar
+import numpy as np
 
 
 ArrayType = TypeVar("ArrayType")
@@ -16,6 +16,8 @@ class VectorMultiAgentEnv:
     spec: Optional[EnvSpec] = None
     render_mode: Optional[str] = None
     closed: bool = False
+
+    envs: Optional[List] = None
 
     # TODO (simon, sven): We could think about enabling here different
     # spaces for different envs (e.g. different high/lows). In this

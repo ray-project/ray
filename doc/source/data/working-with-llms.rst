@@ -138,6 +138,21 @@ To optimize model loading, you can configure the `load_format` to `runai_streame
         batch_size=64,
     )
 
+To do multi-LoRA batch inference, you need to set LoRA related parameters in `engine_kwargs`. See :doc:`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>` for details.
+
+.. testcode::
+
+    config = vLLMEngineProcessorConfig(
+        model="unsloth/Llama-3.1-8B-Instruct",
+        engine_kwargs={
+            enable_lora=True,
+            max_lora_rank=32,
+            max_loras=1,
+        },
+        concurrency=1,
+        batch_size=64,
+    )
+
 .. _openai_compatible_api_endpoint:
 
 Batch inference with an OpenAI-compatible endpoint
