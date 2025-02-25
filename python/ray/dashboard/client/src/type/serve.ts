@@ -129,4 +129,5 @@ export type ServeApplicationsRsp = {
   applications: {
     [name: string]: ServeApplication;
   };
+  public_url?: string;
 };
