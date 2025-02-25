@@ -286,14 +286,6 @@ class _NcclGroup(Communicator):
                 "different ranks."
             )
 
-    @property
-    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-        return self._recv_stream
-
-    @property
-    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-        return self._send_stream
-
     def destroy(self) -> None:
         """
         Destroy the NCCL group.
