@@ -38,14 +38,34 @@ class TestModelConfig:
                 accelerator_type="L4",
             )
 
+    def test_accelerator_type_optional(self):
+        """Test that accelerator_type is optional when initializing LLMConfig."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model")
+        )
+        assert llm_config.model_loading_config.model_id == "test_model"
+        assert llm_config.accelerator_type is None
+
     def test_invalid_accelerator_type(self):
-        """Test that an invalid accelerator type raises an error."""
-        with pytest.raises(
-            pydantic.ValidationError,
-        ):
+        """Test that invalid accelerator types raise validation errors."""
+        with pytest.raises(pydantic.ValidationError):
             LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
-                accelerator_type="INVALID_GPU",  # Should raise error
+                accelerator_type="INVALID_GPU",  # Invalid string value
+            )
+
+        # Test invalid numeric value
+        with pytest.raises(pydantic.ValidationError):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type=123,  # Must be a string
+            )
+
+        # Test unsupported GPU type
+        with pytest.raises(pydantic.ValidationError):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="A100-40GB",  # Unsupported GPU type
             )
 
     def test_invalid_generation_config(self):
@@ -73,7 +93,6 @@ class TestModelConfig:
         """Test that get_serve_options returns the correct options."""
         serve_options = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            accelerator_type="L4",
             deployment_config={
                 "autoscaling_config": {
                     "min_replicas": 0,
@@ -99,7 +118,7 @@ class TestModelConfig:
             },
             "placement_group_bundles": [
                 {"CPU": 1, "GPU": 0},
-                {"GPU": 1, "accelerator_type:L4": 0.001},
+                {"GPU": 1},
             ],
             "placement_group_strategy": "STRICT_PACK",
             "name": "Test:test_model",
