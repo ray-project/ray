@@ -11,6 +11,17 @@ Learn how to:
 2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for your training job.
 3. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
+
+Requirements
+-----------
+
+Before you begin, make sure you have the necessary packages installed:
+
+.. code-block:: bash
+
+    pip install "ray[train]" torch transformers datasets evaluate numpy
+
+
 Quickstart
 ----------
 
