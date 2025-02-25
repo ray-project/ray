@@ -152,7 +152,7 @@ For example, the following uses the preceding example to create a DAG that passe
 
 Here is another example that passes the same message to both actors, which can then execute in parallel.
 It uses ``ray.dag.MultiOutputNode`` to indicate that this DAG returns multiple outputs.
-Then, ``dag.execute()`` returns multiple ``CompiledDAGRef``s, one per node:
+Then, ``dag.execute()`` returns multiple ``CompiledDAGRef`` objects, one per node:
 
 
 .. testcode::
@@ -263,7 +263,7 @@ to change the default timeout:
 
 GPU to GPU communication
 ------------------------
-Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor``s, avoiding any copies through Ray's CPU-based shared-memory object store.
+Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor`` objects, avoiding any copies through Ray's CPU-based shared-memory object store.
 With user-provided type hints, Ray prepares NCCL communicators and
 operation scheduling ahead of time, avoiding deadlock and `overlapping compute and communication <compiled-graph-overlap>`.
 
