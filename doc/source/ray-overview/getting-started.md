@@ -2,9 +2,9 @@
 
 # Getting Started
 
-Ray is an open-source unified framework for scaling AI and Python applications. It provides a simple, universal API for building distributed applications that can scale from a laptop to a cluster.
+Ray is an open source unified framework for scaling AI and Python applications. It provides a simple, universal API for building distributed applications that can scale from a laptop to a cluster.
 
-## What is Ray?
+## What's Ray?
 
 Ray simplifies distributed computing by providing:
 - **Scalable compute primitives**: Tasks and actors for painless parallel programming
@@ -307,7 +307,7 @@ This example runs serves a scikit-learn gradient boosting classifier.
 :end-before: __serve_example_end__
 ```
 
-As a result you will see `{"result": "versicolor"}`.
+The response shows `{"result": "versicolor"}`.
 
 ```{button-ref}  ../serve/index
 :color: primary
@@ -429,7 +429,7 @@ public class RayDemo {
         Ray.init();
         List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
         // Invoke the `square` method 4 times remotely as Ray tasks.
-        // The tasks will run in parallel in the background.
+        // The tasks run in parallel in the background.
         for (int i = 0; i < 4; i++) {
             objectRefList.add(Ray.task(RayDemo::square, i).remote());
         }
@@ -460,7 +460,7 @@ Learn more about Ray Core
 :animate: fade-in-slide-down
 
 Ray provides actors to allow you to parallelize an instance of a class in Python or Java.
-When you instantiate a class that is a Ray actor, Ray will start a remote instance
+When you instantiate a class that is a Ray actor, Ray starts a remote instance
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
@@ -535,13 +535,13 @@ public class RayDemo {
         Ray.init();
         List<ActorHandle<Counter>> counters = new ArrayList<>();
         // Create 4 actors from the `Counter` class.
-        // They will run in remote worker processes.
+        // These run in remote worker processes.
         for (int i = 0; i < 4; i++) {
             counters.add(Ray.actor(Counter::new).remote());
         }
 
         // Invoke the `increment` method on each actor.
-        // This will send an actor task to each remote actor.
+        // This sends an actor task to each remote actor.
         for (ActorHandle<Counter> counter : counters) {
             counter.task(Counter::increment).remote();
         }
@@ -678,7 +678,7 @@ To get started with the dashboard, install the default installation as follows:
 pip install -U "ray[default]"
 ```
 ````
-The dashboard will now be made available while running Ray scripts. Access the dashboard through the default URL, http://localhost:8265.
+The dashboard automatically becomes available when running Ray scripts. Access the dashboard through the default URL, http://localhost:8265.
 
 ```{button-ref}  observability-getting-started
 :color: primary
@@ -770,7 +770,7 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 
 - [Modern Parallel and Distributed Python: A Quick Tutorial on Ray](https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8)
 - [Why Every Python Developer Will Love Ray](https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/)
-- [Ray: A Distributed System for AI (BAIR)](http://bair.berkeley.edu/blog/2018/01/09/ray/)
+- [Ray: A Distributed System for AI (Berkeley Artificial Intelligence Research, BAIR)](http://bair.berkeley.edu/blog/2018/01/09/ray/)
 - [10x Faster Parallel Python Without Python Multiprocessing](https://towardsdatascience.com/10x-faster-parallel-python-without-python-multiprocessing-e5017c93cce1)
 - [Implementing A Parameter Server in 15 Lines of Python with Ray](https://ray-project.github.io/2018/07/15/parameter-server-in-fifteen-lines.html)
 - [Ray Distributed AI Framework Curriculum](https://rise.cs.berkeley.edu/blog/ray-intel-curriculum/)
@@ -782,7 +782,7 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 - [Scaling Multi Agent Reinforcement Learning](http://bair.berkeley.edu/blog/2018/12/12/rllib/)
 - [Functional RL with Keras and Tensorflow Eager](https://bair.berkeley.edu/blog/2019/10/14/functional-rl/)
 - [How to Speed up Pandas by 4x with one line of code](https://www.kdnuggets.com/2019/11/speed-up-pandas-4x.html)
-- [Quick Tip -- Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
+- [Quick Tip—Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
 - [Ray Blog](https://medium.com/distributed-computing-with-ray)
 
 ### Videos
@@ -807,8 +807,8 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 
 ### Papers
 
--   [Ray 2.0 Architecture whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
--   [Ray 1.0 Architecture whitepaper (old)](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
+-   [Ray 2.0 Architecture white paper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
+-   [Ray 1.0 Architecture white paper (old)](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
 -   [Exoshuffle: large-scale data shuffle in Ray](https://arxiv.org/abs/2203.05072)
 -   [RLlib paper](https://arxiv.org/abs/1712.09381)
 -   [RLlib flow paper](https://arxiv.org/abs/2011.12719)
@@ -816,4 +816,4 @@ Ray has a rich ecosystem of resources to help you learn more about distributed c
 -   [Ray paper (old)](https://arxiv.org/abs/1712.05889)
 -   [Ray HotOS paper (old)](https://arxiv.org/abs/1703.03924)
 
-If you encounter technical issues, please post on the [Ray discussion forum](https://discuss.ray.io/). For general questions, announcements, and community discussions, join the [Ray community on Slack](https://www.ray.io/join-slack).
+If you encounter technical issues, post on the [Ray discussion forum](https://discuss.ray.io/). For general questions, announcements, and community discussions, join the [Ray community on Slack](https://www.ray.io/join-slack).
