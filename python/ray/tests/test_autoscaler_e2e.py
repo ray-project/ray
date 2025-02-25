@@ -266,6 +266,105 @@ def test_node_launch_exception_serialization(shutdown_only):
     assert after_serialization.src_exc_info is None
 
 
+def test_infeasible_task_early_cancellation_normal_tasks(shutdown_only):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-i": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        },
+        autoscaler_v2=True,  # Test with V2 autoscaler only
+    )
+
+    try:
+        import time
+
+        cluster.start()
+        ray.init(address="auto")
+
+        @ray.remote(num_cpus=1)
+        def f():
+            print("Starting f")
+            time.sleep(1)
+            print("Ending f")
+            return 1
+
+        @ray.remote(num_cpus=10)
+        def g():
+            return 2
+
+        f_obj = f.remote()
+        g_obj = g.remote()
+
+        try:
+            [ray.get(f_obj, timeout=5), ray.get(g_obj, timeout=5)]
+        except Exception as e:
+            assert isinstance(e, ray.exceptions.TaskUnschedulableError)
+            assert (
+                "The task is not schedulable: Tasks or actors with resource shapes [{CPU: 100000}] failed to schedule because there are not enough resources for the tasks or actors on the whole cluster."
+                in str(e)
+            )
+
+    finally:
+        cluster.shutdown()
+
+
+def test_infeasible_task_early_cancellation_actor_creation(shutdown_only):
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-i": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        },
+        autoscaler_v2=True,  # Test with V2 autoscaler only
+    )
+
+    try:
+        import time
+
+        cluster.start()
+        ray.init(address="auto")
+
+        @ray.remote(num_cpus=1)
+        class Actor1:
+            def f(self):
+                print("Starting f")
+                time.sleep(1)
+                print("Ending f")
+                return 1
+
+        @ray.remote(num_cpus=10)
+        class Actor2:
+            def f(eslf):
+                return 1
+
+        try:
+            actor_1 = Actor1.remote()
+            actor_2 = Actor2.remote()
+            [
+                ray.get(actor_1.f.remote(), timeout=5),
+                ray.get(actor_2.f.remote(), timeout=5),
+            ]
+        except Exception as e:
+            print(e)
+            assert isinstance(e, ray.exceptions.ActorUnschedulableError)
+            assert (
+                "The actor is not schedulable: Tasks or actors with resource shapes [{CPU: 100000}] failed to schedule because there are not enough resources for the tasks or actors on the whole cluster."
+                in str(e)
+            )
+
+    finally:
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     import os
     import pytest
