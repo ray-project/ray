@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 def test_warn_copying_non_congtiguous_numpy_arrays_warns_once():
-    warning_regex = re.compile(".*not zero-copy serialized.*")
+    warning_regex = re.compile(".*cannot be zero-copy.*")
     warnings.simplefilter("always")
     with pytest.warns(UserWarning, match=warning_regex) as record:
-        non_contiguous_arr = np.zeros(1024)[::2]
+        non_contiguous_arr = np.zeros(1024 * 1204)[::2]
         ray.put(non_contiguous_arr)
         ray.put(non_contiguous_arr)
     numpy_arr_warnings = [
@@ -36,10 +36,10 @@ def test_warn_copying_non_congtiguous_numpy_arrays_warns_once():
 
 
 def test_warn_copying_torch_tensor_warns_once():
-    warning_regex = re.compile(".*not zero-copy serialized.*")
+    warning_regex = re.compile(".*cannot be zero-copy.*")
     warnings.simplefilter("always")
     with pytest.warns(UserWarning, match=warning_regex) as record:
-        arr = torch.zeros(1024 * 1024 * 1024)
+        arr = torch.zeros(1024 * 1024)
         ray.put(arr)
         ray.put(arr)
     torch_warnings = [

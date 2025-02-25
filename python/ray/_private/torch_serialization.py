@@ -21,8 +21,14 @@ def _torch_tensor_reduce(obj: torch.Tensor):
         and obj.nbytes >= DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE
     ):
         warnings.warn(
-            "Torch tensors are not zero-copy serialized and can lead to worse "
-            "performance. Convert to a numpy array.",
+            "Torch tensors cannot be zero-copy serialized and "
+            "deserialized which may lead to worse performance. "
+            "To avoid this, convert the tensor to a numpy array using "
+            "mytensor.to_numpy() before passing or returning the tensor to enable "
+            "zero-copy deserialization."
+            f"\n\tTensor shape: {obj.shape}"
+            f"\n\tTensor dtype: {obj.dtype}"
+            f"\n\tArray first few values: {obj[:5]}",
             UserWarning,
         )
         _torch_serializer_has_warned = True
