@@ -1784,6 +1784,7 @@ def exit_actor():
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
         # raise a custom error to the main thread to tell it to exit.
+        worker.core_worker.exit_current_actor()
         if worker.core_worker.current_actor_is_asyncio():
             raise AsyncioActorExit()
 

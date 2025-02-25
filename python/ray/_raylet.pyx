@@ -4671,6 +4671,10 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
+    def exit_current_actor(self):
+        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .SetCurrentActorShouldExit())
+
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
