@@ -1,4 +1,3 @@
-# TODO (genesu): clean up these utils.
 from typing import (
     List,
     Optional,
@@ -12,9 +11,7 @@ from typing import (
     NamedTuple,
 )
 import os
-import re
 import requests
-import subprocess
 import time
 import inspect
 import asyncio
@@ -29,9 +26,6 @@ from ray.llm._internal.serve.configs.server_models import S3AWSCredentials
 T = TypeVar("T")
 
 logger = get_logger(__name__)
-
-AWS_EXECUTABLE = "aws"
-GCP_EXECUTABLE = "gcloud"
 
 
 class CloudFileSystem:
@@ -300,12 +294,26 @@ def get_file_from_gcs(
 
 
 def list_subfolders_s3(folder_uri: str) -> List[str]:
-    """Legacy wrapper for CloudFileSystem.list_subfolders"""
+    """List the subfolders in an S3 folder.
+    
+    Args:
+        folder_uri: URI to list the subfolders for.
+    
+    Returns:
+        List of subfolder names (without trailing slashes).
+    """
     return CloudFileSystem.list_subfolders(folder_uri)
 
 
 def list_subfolders_gcs(folder_uri: str) -> List[str]:
-    """Legacy wrapper for CloudFileSystem.list_subfolders"""
+    """List the subfolders in a GCS folder.
+    
+    Args:
+        folder_uri: URI to list the subfolders for.
+    
+    Returns:
+        List of subfolder names (without trailing slashes).
+    """
     return CloudFileSystem.list_subfolders(folder_uri)
 
 
@@ -325,225 +333,103 @@ def download_model_from_gcs(
     CloudFileSystem.download_model(destination_path, bucket_uri, tokenizer_only)
 
 
-def check_s3_path_exists_and_can_be_accessed(
-    s3_folder_uri: str,
-    aws_executable: str = AWS_EXECUTABLE,
-    subprocess_run=subprocess.run,
-    env: Optional[Dict[str, str]] = None,
-) -> bool:
-    """
-    Check if a given path exists and can be accessed in an S3 bucket.
-
-    :param s3_folder_uri: The Path object pointing to the desired folder in S3.
-    :param aws_executable: Path to the AWS CLI executable.
-    :param env: Environment variables to be passed to the subprocess.
-    :param subprocess_run: the subprocess run method, added for testing.
-    :return: True if the path exists, False otherwise.
-    """
-    try:
-        fs, path = CloudFileSystem.get_fs_and_path(s3_folder_uri)
-        file_info = fs.get_file_info(path)
-        return file_info.type in (pa_fs.FileType.Directory, pa_fs.FileType.File)
-    except Exception:
-        # Fall back to CLI method if PyArrow fails
-        # Use AWS CLI to list objects in the specified folder
-        result = subprocess_run(
-            [aws_executable, "s3", "ls", s3_folder_uri],
-            capture_output=True,
-            env=env,
-        )
-        # If the command executed successfully and the output is not empty, the folder exists
-        return result.returncode == 0 and bool(result.stdout.strip())
-
-
-def download_files_from_s3(
-    path: str,
-    bucket_uri: str,
-    s3_sync_args: Optional[List[str]] = None,
-    aws_executable: str = AWS_EXECUTABLE,
-    env: Optional[Dict[str, str]] = None,
-) -> None:
-    """Download files from an S3 bucket to disk.
-
+def check_s3_path_exists_and_can_be_accessed(object_uri: str) -> bool:
+    """Checks if an S3 path exists and can be accessed.
+    
     Args:
-        path: The path to download to.
-        bucket_uri: The s3 URI to download from.
-        s3_sync_args: Args to pass to s3.
-        aws_executable: Name of the AWS executable.
-        env: Passed to subprocess.check_output().
+        object_uri: The URI to check.
+    
+    Returns:
+        True if the path exists and can be accessed, False otherwise.
     """
-    path = str(path)
-    os.makedirs(path, exist_ok=True)
-    
-    # Check if we can use PyArrow directly
     try:
-        # If s3_sync_args includes complex filtering that PyArrow can't handle,
-        # we should fall back to the CLI method
-        if s3_sync_args and any("--exclude" in arg or "--include" in arg for arg in s3_sync_args):
-            raise ValueError("Complex filtering requires AWS CLI")
-        
-        # Check that URI exists
-        if not check_s3_path_exists_and_can_be_accessed(bucket_uri, aws_executable, env=env):
-            if not bucket_uri.endswith("/"):
-                bucket_uri_with_slash = bucket_uri + "/"
-                if not check_s3_path_exists_and_can_be_accessed(
-                    bucket_uri_with_slash, aws_executable, env=env
-                ):
-                    raise FileNotFoundError(f"URI {bucket_uri} does not exist.")
-                bucket_uri = bucket_uri_with_slash
-            else:
-                raise FileNotFoundError(f"URI {bucket_uri} does not exist.")
-        
-        logger.info("Downloading files from %s to %s using PyArrow", bucket_uri, path)
-        CloudFileSystem.download_files(path, bucket_uri)
-        return
+        fs, path = CloudFileSystem.get_fs_and_path(object_uri)
+        # Check if the path exists
+        if object_uri.endswith('/'):
+            # Check if directory exists
+            file_info = fs.get_file_info(path)
+            return file_info.type == pa_fs.FileType.Directory
+        else:
+            # Check if file exists
+            file_info = fs.get_file_info(path)
+            return file_info.type == pa_fs.FileType.File
     except Exception as e:
-        logger.info(f"PyArrow download failed, falling back to AWS CLI: {e}")
+        logger.info(f"Failed to check if {object_uri} exists: {e}")
+        return False
+
+
+def download_files_from_s3(path: str, bucket_uri: str) -> None:
+    """Download files from S3 to a local directory.
     
-    # Fall back to CLI method
-    s3_sync_args = s3_sync_args or []
+    Args:
+        path: Local directory where files will be downloaded
+        bucket_uri: S3 URI for the bucket
+    """
     
     # Check that URI exists
-    exists = check_s3_path_exists_and_can_be_accessed(
-        bucket_uri, aws_executable, env=env
-    )
-    if not exists and not bucket_uri.endswith("/"):
-        bucket_uri += "/"
-        exists = check_s3_path_exists_and_can_be_accessed(
-            bucket_uri, aws_executable, env=env
-        )
-    if not exists:
-        raise FileNotFoundError(f"URI {bucket_uri} does not exist.")
+    if not check_s3_path_exists_and_can_be_accessed(bucket_uri):
+        if not bucket_uri.endswith("/"):
+            bucket_uri += "/"
+            if not check_s3_path_exists_and_can_be_accessed(bucket_uri):
+                raise FileNotFoundError(f"URI {bucket_uri} does not exist.")
     
-    logger.info("Downloading files from %s to %s using AWS CLI", bucket_uri, path)
-    try:
-        subprocess.check_output(
-            [aws_executable, "s3", "sync", "--quiet"]
-            + s3_sync_args
-            + [bucket_uri, path],
-            env=env,
-        )
-    except subprocess.CalledProcessError:
-        logger.exception("Encountered an error while downloading files.")
+    CloudFileSystem.download_files(
+        path=path,
+        bucket_uri=bucket_uri,
+    )
 
 
 def download_model_from_s3(
     path: str,
     bucket_uri: str,
-    s3_sync_args: Optional[List[str]] = None,
     tokenizer_only: bool = False,
-    aws_executable: str = AWS_EXECUTABLE,
-    env: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Download a model from an S3 bucket and save it in TRANSFORMERS_CACHE for
     seamless interoperability with Hugging Face's Transformers library.
-
+    
     The downloaded model may have a 'hash' file containing the commit hash
     corresponding to the commit on Hugging Face Hub.
     """
     path = str(path)
-    extended_env = None
-    if env:
-        extended_env = {**os.environ.copy(), **env}
     
-    # Try using PyArrow first
-    try:
-        if s3_sync_args and (
-            "--exclude" in s3_sync_args or "--include" in s3_sync_args
-        ):
-            raise ValueError("Complex filtering requires AWS CLI")
-        
-        # Make sure the hash file is not present in the local directory
-        if os.path.exists(os.path.join("..", "hash")):
-            os.remove(os.path.join("..", "hash"))
-        
-        fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-        
-        # Get hash file first
-        hash_path = os.path.join(source_path, "hash")
-        try:
-            with fs.open_input_file(hash_path) as f:
-                f_hash = f.read().decode("utf-8").strip()
-                with open(os.path.join("..", "hash"), "w") as local_hash:
-                    local_hash.write(f_hash)
-        except:
-            f_hash = "0000000000000000000000000000000000000000"
-            logger.warning(
-                f"hash file does not exist in {bucket_uri}. Using {f_hash} as the hash."
-            )
-        
-        # Create necessary directories
-        target_path = os.path.join(path, "snapshots", f_hash)
-        os.makedirs(target_path, exist_ok=True)
-        os.makedirs(os.path.join(path, "refs"), exist_ok=True)
-        
-        # Download model files
-        if tokenizer_only:
-            substrings_to_include = ["token", "config.json"]
-        else:
-            substrings_to_include = None
-        
-        CloudFileSystem.download_files(
-            path=target_path,
-            bucket_uri=bucket_uri,
-            substrings_to_include=substrings_to_include,
-        )
-        
-        # Write hash to refs/main
-        with open(os.path.join(path, "refs", "main"), "w") as f:
-            f.write(f_hash)
-        
-        return
-    except Exception as e:
-        logger.info(f"PyArrow download failed, falling back to AWS CLI: {e}")
-    
-    # Fall back to CLI method
-    s3_sync_args = s3_sync_args or []
-
     # Make sure the hash file is not present in the local directory
     if os.path.exists(os.path.join("..", "hash")):
         os.remove(os.path.join("..", "hash"))
-
-    s3_hash_file_path = os.path.join(bucket_uri, "hash")
+    
+    fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
+    
+    # Get hash file first
+    hash_path = os.path.join(source_path, "hash")
     try:
-        subprocess.check_output(
-            [aws_executable, "s3", "cp", "--quiet"]
-            + s3_sync_args
-            + [s3_hash_file_path, "."],
-            env=extended_env,
-        )
-    except subprocess.CalledProcessError:
-        logger.exception(
-            "Encountered an error while copying the hash file at "
-            f"{s3_hash_file_path} to the working directory ({os.getcwd()})."
-        )
-
-    if not os.path.exists(os.path.join("..", "hash")):
+        with fs.open_input_file(hash_path) as f:
+            f_hash = f.read().decode("utf-8").strip()
+            with open(os.path.join("..", "hash"), "w") as local_hash:
+                local_hash.write(f_hash)
+    except:
         f_hash = "0000000000000000000000000000000000000000"
         logger.warning(
             f"hash file does not exist in {bucket_uri}. Using {f_hash} as the hash."
         )
-    else:
-        with open(os.path.join("..", "hash"), "r") as f:
-            f_hash = f.read().strip()
-
+    
+    # Create necessary directories
     target_path = os.path.join(path, "snapshots", f_hash)
-    subprocess.check_output(["mkdir", "-p", target_path])
-    subprocess.check_output(["mkdir", "-p", os.path.join(path, "refs")])
-
-    download_files_from_s3(
-        target_path,
-        bucket_uri,
-        s3_sync_args=s3_sync_args
-        + (
-            ["--exclude", "*", "--include", "*token*", "--include", "config.json"]
-            if tokenizer_only
-            else []
-        ),
-        aws_executable=aws_executable,
-        env=extended_env,
+    os.makedirs(target_path, exist_ok=True)
+    os.makedirs(os.path.join(path, "refs"), exist_ok=True)
+    
+    # Download model files
+    if tokenizer_only:
+        substrings_to_include = ["token", "config.json"]
+    else:
+        substrings_to_include = None
+    
+    CloudFileSystem.download_files(
+        path=target_path,
+        bucket_uri=bucket_uri,
+        substrings_to_include=substrings_to_include,
     )
+    
+    # Write hash to refs/main
     with open(os.path.join(path, "refs", "main"), "w") as f:
         f.write(f_hash)
 
