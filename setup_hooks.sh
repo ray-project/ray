@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -eu
 
 # This stops git rev-parse from failing if we run this from the .git directory
@@ -12,4 +12,3 @@ RELATIVE_PATH="../../ci/lint"
 
 ln -sf "${RELATIVE_PATH}/pre-push" "${ROOT}/.git/hooks/pre-push"
 ln -sf "${RELATIVE_PATH}/prepare-commit-msg" "${ROOT}/.git/hooks/prepare-commit-msg"
-

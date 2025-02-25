@@ -63,6 +63,7 @@ action choices eventually maximize the cumulative reward over the agent's lifeti
 
 .. figure:: images/envs/single_agent_setup.svg
     :width: 600
+    :align: left
 
     **Single-agent setup:** One agent lives in the environment and takes actions computed by a single policy.
     The mapping from agent to policy is fixed ("default_agent" maps to "default_policy").
@@ -272,6 +273,7 @@ Performance and Scaling
 
 .. figure:: images/envs/env_runners.svg
     :width: 600
+    :align: left
 
     **EnvRunner with gym.Env setup:** Environments in RLlib are located within the :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actors, whose number
     (`n`) you can scale through the `config.env_runners(num_env_runners=..)` setting. Each :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actor
