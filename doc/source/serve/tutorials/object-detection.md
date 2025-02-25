@@ -25,7 +25,7 @@ Use the following Serve code:
 Use `serve run object_detection:entrypoint` to start the Serve application.
 
 :::{note}
-The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. After a period time when no requests arrive, Serve downscales `ObjectDetection` back to 0 replicas to save GPU resources.
+The autoscaling config sets `min_replicas` to 0, which means the deployment starts with no `ObjectDetection` replicas. These replicas spawn only when a request arrives. After a period time when no requests arrive, Serve scales down `ObjectDetection` back to 0 replicas to save GPU resources.
 
 :::
 
