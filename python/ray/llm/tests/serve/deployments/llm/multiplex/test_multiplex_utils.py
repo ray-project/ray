@@ -3,7 +3,9 @@ from unittest.mock import Mock, patch, call
 
 import pytest
 
-from ray.llm._internal.serve.deployments.llm.multiplex.utils import retry_with_exponential_backoff
+from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
+    retry_with_exponential_backoff,
+)
 
 
 def test_retry_success_first_try():
@@ -13,8 +15,7 @@ def test_retry_success_first_try():
 
     # Apply our retry decorator
     decorated_fn = retry_with_exponential_backoff(
-        max_tries=3,
-        exception_to_check=ValueError
+        max_tries=3, exception_to_check=ValueError
     )(mock_fn)
 
     # Call the decorated function
@@ -34,9 +35,7 @@ def test_retry_success_after_retries():
 
     # Apply our retry decorator with a small delay for faster testing
     decorated_fn = retry_with_exponential_backoff(
-        max_tries=3,
-        exception_to_check=ValueError,
-        base_delay=0.01
+        max_tries=3, exception_to_check=ValueError, base_delay=0.01
     )(mock_fn)
 
     # Call the decorated function
@@ -57,9 +56,7 @@ def test_retry_exhaustion():
 
     # Apply our retry decorator with a small delay for faster testing
     decorated_fn = retry_with_exponential_backoff(
-        max_tries=3,
-        exception_to_check=ValueError,
-        base_delay=0.01
+        max_tries=3, exception_to_check=ValueError, base_delay=0.01
     )(mock_fn)
 
     # Call the decorated function and expect it to raise ValueError
@@ -81,8 +78,7 @@ def test_retry_wrong_exception():
 
     # Apply our retry decorator
     decorated_fn = retry_with_exponential_backoff(
-        max_tries=3,
-        exception_to_check=ValueError
+        max_tries=3, exception_to_check=ValueError
     )(mock_fn)
 
     # Call the decorated function and expect it to raise TypeError immediately
@@ -109,7 +105,7 @@ def test_retry_backoff_timing():
             exception_to_check=ValueError,
             base_delay=1,
             max_delay=8,
-            exponential_base=2
+            exponential_base=2,
         )(mock_fn)
 
         # Call the decorated function and expect it to raise ValueError
@@ -134,7 +130,7 @@ def test_retry_max_delay():
             exception_to_check=ValueError,
             base_delay=2,
             max_delay=3,
-            exponential_base=2
+            exponential_base=2,
         )(mock_fn)
 
         # Call the decorated function and expect it to raise ValueError
@@ -155,8 +151,7 @@ def test_retry_preserves_function_metadata():
 
     # Apply our retry decorator
     decorated_fn = retry_with_exponential_backoff(
-        max_tries=3,
-        exception_to_check=ValueError
+        max_tries=3, exception_to_check=ValueError
     )(test_function)
 
     # Verify the metadata is preserved

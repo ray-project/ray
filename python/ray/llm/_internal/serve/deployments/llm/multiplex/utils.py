@@ -153,8 +153,6 @@ def sync_model(
             raise
 
 
-
-
 def retry_with_exponential_backoff(
     max_tries: int,
     exception_to_check: type[Exception],
@@ -203,7 +201,6 @@ def retry_with_exponential_backoff(
         return wrapper
 
     return decorator
-
 
 
 def _validate_model_ttu(key, value, now):
