@@ -24,10 +24,16 @@ logger = logging.getLogger(__name__)
 
 torch, _ = try_import_torch()
 
+MOG_COMPONENTS = "mog_components"
+NEXT_MOG_COMPONENTS = "next_mog_components"
+MOG_COMPONENTS_ALPHA = "alphas"
+MOG_COMPONENTS_MEANS = "means"
+MOG_COMPONENTS_SIGMAS = "sigmas"
+
 
 class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
     """
-    A custom PPOTorchLearner with added log-likelihood loss for mixture of Gaussian (MoG) model.
+    A custom `PPOTorchLearner` with added log-likelihood loss for Mixture of Gaussian (MoG) model.
 
     This additional loss component optimizes the policy by incorporating a MoG model
     in the critic network. The MoG increases expressiveness in modeling multimodal
@@ -44,7 +50,7 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
     a form of the negative log-likelihood loss.
     """
 
-    def compute_log_likelihood(
+    def _compute_log_likelihood(
         self,
         td_targets: torch.Tensor,
         mu_current: torch.Tensor,
@@ -53,11 +59,11 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
     ) -> torch.Tensor:
 
         """
-        Computes a custom negative log-likelihood loss for a mixture of Gaussian (MoG)
+        Computes a custom negative log-likelihood loss for a Mixture of Gaussian (MoG)
 
-        This loss function incorporates a small adjustment: passing alpha_current through
-        a log_softmax instead of a regular softmax to prevent very small values that could
-        lead to numerical instability
+        This loss function incorporates a small adjustment: passing `alpha_current` through
+        a `log_softmax` instead of a regular `softmax` to prevent very small values that could
+        lead to numerical instability.
 
         The purpose of this loss is to measure how well the critic's predicted value distribution
         aligns with the target value distribution, as derived from the Bellman operator.
@@ -65,18 +71,15 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
         difference between them.
 
         Args:
-            td_targets : torch.Tensor
-                The target values for the value function, derived from the next timestep.
-            mu_current : torch.Tensor
-                The predicted means of the MoG for the current timestep.
-            sigma_current : torch.Tensor
-                The predicted standard deviations of the MoG for the current timestep
-            alpha_current : torch.Tensor
-                The predicted mixture weights of the MoG for the current timestep.
+            td_targets: The target values for the value function, derived from the next
+                timestep.
+            mu_current: The predicted means of the MoG for the current timestep.
+            sigma_current: The predicted standard deviations of the MoG for the current
+                timestep
+            alpha_current: The predicted mixture weights of the MoG for the current timestep.
 
         Returns:
-            summing_log : torch.Tensor
-                The computed negative log-likelihood loss for the given inputs.
+            The computed negative log-likelihood loss for the given inputs.
         """
 
         td_targets_expanded = td_targets.unsqueeze(1)
@@ -88,7 +91,7 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
         logp = torch.clamp(
             factor - torch.square(mus) / (2 * torch.square(sigma_clamped)), -1e10, 10
         )
-        # Little trick of using log_softmax on the current alphas to prevent nans
+        # Little trick of using `log_softmax`` on the current alphas to prevent NaNs.
         loga = torch.clamp(nn.functional.log_softmax(alpha_current, dim=-1), 1e-6, None)
 
         summing_log = -torch.logsumexp(logp + loga, dim=-1)
@@ -148,17 +151,17 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
 
         # Compute the MOG value loss using the negative log-likelihood
         if config.use_critic:
-            rewards = batch["rewards"]
-            dones = batch["dones"]
-            gamma = config["gamma"]
+            rewards = batch[Columns.REWARDS]
+            dones = batch[Columns.TERMINATEDS]
+            gamma = config.gamma
 
-            mog_components = batch[Columns.MOG_COMPONENTS]
+            mog_components = batch[MOG_COMPONENTS]
             mu_current = mog_components["means"]
             sigmas_current = mog_components["sigmas"]
             alpha_current = mog_components["alphas"]
 
             """TODO: fix this for multi-learner setup"""
-            mog_output_next = batch[Columns.NEXT_MOG_COMPONENTS]
+            mog_output_next = batch[NEXT_MOG_COMPONENTS]
             mu_next = mog_output_next["means"]
             alpha_next = mog_output_next["alphas"]
             alpha_next = torch.clamp(
@@ -168,8 +171,8 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
             # Detach target
             next_state_values = torch.sum(mu_next * alpha_next, dim=1).clone().detach()
             td_targets = rewards + gamma * next_state_values * (1 - dones.float())
-            # This alpha current should not be passed through a softmax yet
-            log_likelihood = self.compute_log_likelihood(
+            # This `alpha_current` should not be passed through a softmax yet.
+            log_likelihood = self._compute_log_likelihood(
                 td_targets, mu_current, sigmas_current, alpha_current
             )
             log_likelihood_clipped = torch.clamp(log_likelihood, -10, 80)
@@ -184,7 +187,7 @@ class PPOTorchLearnerWithMOGLoss(PPOTorchLearner):
         # Ignore the value function -> Set all to 0.0.
         else:
             z = torch.tensor(0.0, device=surrogate_loss.device)
-            value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
+            value_fn_out = z
 
         total_loss = possibly_masked_mean(
             -surrogate_loss
