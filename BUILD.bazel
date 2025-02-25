@@ -2469,7 +2469,7 @@ ray_cc_library(
         "src/ray/object_manager/object_buffer_pool.cc",
     ],
     hdrs = [
-        "src/ray/object_manager/object_buffer_pool.h",  
+        "src/ray/object_manager/object_buffer_pool.h",
     ],
     deps = [
         ":memory_object_reader",
