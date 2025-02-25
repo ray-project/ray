@@ -13,3 +13,13 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "fake_cgroup_setup_test",
+    srcs = ["fake_cgroup_setup_test.cc"],
+    deps = [
+        "//src/ray/common/cgroup:fake_cgroup_setup",
+        "@com_google_googletest//:gtest_main",
+    ],
+    tags = ["team:core"]
+)
