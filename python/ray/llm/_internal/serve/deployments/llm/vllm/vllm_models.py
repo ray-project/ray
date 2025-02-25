@@ -147,13 +147,10 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        if self.accelerator_type is None:
-            bundles = [{"GPU": 1} for _ in range(self.num_gpu_workers)]
-        else:
-            bundles = [
-                {"GPU": 1, self.ray_accelerator_type(): 0.001}
-                for _ in range(self.num_gpu_workers)
-            ]
+        bundle = {"GPU": 1}
+        if self.accelerator_type:
+            bundle[self.ray_accelerator_type()] = 0.001
+        bundles = [bundle for _ in range(self.num_gpu_workers)]
 
         return bundles
 
