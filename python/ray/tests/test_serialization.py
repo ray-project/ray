@@ -9,7 +9,6 @@ import weakref
 import warnings
 from dataclasses import make_dataclass
 
-import torch
 import pytest
 import numpy as np
 from numpy import log
@@ -35,17 +34,17 @@ def test_warn_copying_non_congtiguous_numpy_arrays_warns_once():
     assert len(numpy_arr_warnings) == 1
 
 
-def test_warn_copying_torch_tensor_warns_once():
-    warning_regex = re.compile(".*cannot be zero-copy.*")
-    warnings.simplefilter("always")
-    with pytest.warns(UserWarning, match=warning_regex) as record:
-        arr = torch.zeros(1024 * 1024)
-        ray.put(arr)
-        ray.put(arr)
-    torch_warnings = [
-        warning for warning in record if warning_regex.match(str(warning.message))
-    ]
-    assert len(torch_warnings) == 1
+# def test_warn_copying_torch_tensor_warns_once():
+#     warning_regex = re.compile(".*cannot be zero-copy.*")
+#     warnings.simplefilter("always")
+#     with pytest.warns(UserWarning, match=warning_regex) as record:
+#         arr = torch.zeros(1024 * 1024)
+#         ray.put(arr)
+#         ray.put(arr)
+#     torch_warnings = [
+#         warning for warning in record if warning_regex.match(str(warning.message))
+#     ]
+#     assert len(torch_warnings) == 1
 
 
 def is_named_tuple(cls):

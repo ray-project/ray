@@ -1,3 +1,4 @@
+import ray.cloudpickle as cloudpickle
 import warnings
 
 import numpy as np
@@ -32,4 +33,4 @@ def _numpy_ndarray_reduce(obj: np.ndarray):
             UserWarning,
         )
         _numpy_serializer_has_warned = True
-    return obj.__reduce__()
+    return obj.__reduce_ex__(cloudpickle.pickle.HIGHEST_PROTOCOL)

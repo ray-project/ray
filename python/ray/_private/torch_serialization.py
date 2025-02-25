@@ -1,4 +1,4 @@
-import pickle
+import ray.cloudpickle as cloudpickle
 import warnings
 
 from ray._private.ray_constants import DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE
@@ -32,4 +32,4 @@ def _torch_tensor_reduce(obj: torch.Tensor):
             UserWarning,
         )
         _torch_serializer_has_warned = True
-    return obj.__reduce_ex__(pickle.HIGHEST_PROTOCOL)
+    return obj.__reduce_ex__(cloudpickle.pickle.HIGHEST_PROTOCOL)
