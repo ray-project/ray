@@ -17,7 +17,6 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import (
-    IO,
     Any,
     AnyStr,
     Callable,
@@ -469,8 +468,10 @@ class Worker:
         self._enable_record_actor_task_log = (
             ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
         )
-        self._out_file = None
-        self._err_file = None
+        # Whether rotation is enabled for out file and err file, task log position report will be skipped if rotation enabled, since the position cannot be accurate.
+        self._file_rotation_enabled = False
+        self._out_filepath = None
+        self._err_filepath = None
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
@@ -624,13 +625,17 @@ class Worker:
         finally:
             ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
-    def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
-        """Set the worker's err file where stderr is redirected to"""
-        self._err_file = err_file
+    def set_file_rotation_enabled(self, rotation_enabled: bool) -> None:
+        """Set whether rotation is enabled for outfile and errfile."""
+        self._file_rotation_enabled = rotation_enabled
 
-    def set_out_file(self, out_file=Optional[IO[AnyStr]]) -> None:
+    def set_err_file(self, err_filepath=Optional[AnyStr]) -> None:
+        """Set the worker's err file where stderr is redirected to"""
+        self._err_filepath = err_filepath
+
+    def set_out_file(self, out_filepath=Optional[AnyStr]) -> None:
         """Set the worker's out file where stdout is redirected to"""
-        self._out_file = out_file
+        self._out_filepath = out_filepath
 
     def record_task_log_start(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task starts executing for
@@ -643,6 +648,8 @@ class Worker:
             return
 
         if not hasattr(self, "core_worker"):
+            return
+        if self._file_rotation_enabled:
             return
 
         self.core_worker.record_task_log_start(
@@ -667,6 +674,10 @@ class Worker:
         if not hasattr(self, "core_worker"):
             return
 
+        # Disable file offset fetch if rotation enabled (since file offset doesn't make sense for rotated files).
+        if self._file_rotation_enabled:
+            return
+
         self.core_worker.record_task_log_end(
             task_id,
             attempt_number,
@@ -674,24 +685,24 @@ class Worker:
             self.get_current_err_offset(),
         )
 
-    def get_err_file_path(self) -> str:
-        """Get the err log file path"""
-        return self._err_file.name if self._err_file is not None else ""
-
     def get_out_file_path(self) -> str:
         """Get the out log file path"""
-        return self._out_file.name if self._out_file is not None else ""
+        return self._out_filepath if self._out_filepath is not None else ""
+
+    def get_err_file_path(self) -> str:
+        """Get the err log file path"""
+        return self._err_filepath if self._err_filepath is not None else ""
 
     def get_current_out_offset(self) -> int:
         """Get the current offset of the out file if seekable, else 0"""
-        if self._out_file is not None and self._out_file.seekable():
-            return self._out_file.tell()
+        if self._out_filepath is not None:
+            return os.path.getsize(self._out_filepath)
         return 0
 
     def get_current_err_offset(self) -> int:
         """Get the current offset of the err file if seekable, else 0"""
-        if self._err_file is not None and self._err_file.seekable():
-            return self._err_file.tell()
+        if self._err_filepath is not None:
+            return os.path.getsize(self._err_filepath)
         return 0
 
     def get_serialization_context(self):
