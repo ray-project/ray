@@ -322,15 +322,13 @@ training code.
             from ray.train.huggingface import TransformersTrainer
             from ray.train import ScalingConfig
 
-            # Dataset
-            def preprocess(examples):
-                ...
 
             hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            processed_ds = hf_datasets.map(preprocess, ...)
+            # optional: preprocess the dataset
+            # hf_datasets = hf_datasets.map(preprocess, ...)
 
-            ray_train_ds = ray.data.from_huggingface(processed_ds["train"])
-            ray_eval_ds = ray.data.from_huggingface(processed_ds["validation"])
+            ray_train_ds = ray.data.from_huggingface(hf_datasets["train"])
+            ray_eval_ds = ray.data.from_huggingface(hf_datasets["validation"])
 
             # Define the Trainer generation function
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -358,7 +356,7 @@ training code.
             ray_trainer = TransformersTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
-                datasets={"train": ray_train_ds, "evaluation": ray_eval_ds},
+                datasets={"train": ray_train_ds, "validation": ray_eval_ds},
             )
             result = ray_trainer.fit()
 
@@ -382,15 +380,13 @@ training code.
             )
             from ray.train import ScalingConfig
 
-            # Dataset
-            def preprocess(examples):
-                ...
 
             hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
-            processed_ds = hf_datasets.map(preprocess, ...)
+            # optional: preprocess the dataset
+            # hf_datasets = hf_datasets.map(preprocess, ...)
 
-            ray_train_ds = ray.data.from_huggingface(processed_ds["train"])
-            ray_eval_ds = ray.data.from_huggingface(processed_ds["evaluation"])
+            ray_train_ds = ray.data.from_huggingface(hf_datasets["train"])
+            ray_eval_ds = ray.data.from_huggingface(hf_datasets["validation"])
 
             # [1] Define the full training function
             # =====================================
@@ -402,7 +398,7 @@ training code.
                 # [2] Build Ray Data iterables
                 # ============================
                 train_dataset = ray.train.get_dataset_shard("train")
-                eval_dataset = ray.train.get_dataset_shard("evaluation")
+                eval_dataset = ray.train.get_dataset_shard("validation")
 
                 train_iterable_ds = train_dataset.iter_torch_batches(batch_size=8)
                 eval_iterable_ds = eval_dataset.iter_torch_batches(batch_size=8)
@@ -438,6 +434,6 @@ training code.
             ray_trainer = TorchTrainer(
                 train_func,
                 scaling_config=scaling_config,
-                datasets={"train": ray_train_ds, "evaluation": ray_eval_ds},
+                datasets={"train": ray_train_ds, "validation": ray_eval_ds},
             )
             result = ray_trainer.fit()
