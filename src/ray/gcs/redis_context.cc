@@ -30,6 +30,20 @@ extern "C" {
 #include "absl/strings/str_split.h"
 #include "ray/common/ray_config.h"
 
+namespace {
+std::optional<std::pair<std::string, int>> ParseIffMovedError(
+    const std::string &error_msg) {
+  std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
+  if (parts[0] != "MOVED") {
+    return std::nullopt;
+  }
+  RAY_CHECK_EQ(parts.size(), 3u);
+  std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
+  RAY_CHECK_EQ(ip_port.size(), 2u);
+  return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
+}
+}  // namespace
+
 namespace ray {
 namespace gcs {
 
@@ -421,20 +435,6 @@ ConnectWithRetries(const std::string &address,
   return resp;
 }
 
-namespace {
-std::optional<std::pair<std::string, int>> ParseIffMovedError(
-    const std::string &error_msg) {
-  std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
-  if (parts[0] != "MOVED") {
-    return std::nullopt;
-  }
-  RAY_CHECK_EQ(parts.size(), 3u);
-  std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
-  RAY_CHECK_EQ(ip_port.size(), 2u);
-  return std::make_pair(ip_port[0], std::stoi(ip_port[1]));
-}
-}  // namespace
-
 void RedisContext::ValidateRedisDB() {
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "CLUSTER"});
   // cluster_state:ok
@@ -501,7 +501,7 @@ Status RedisContext::ConnectRedisCluster() {
     argc.push_back(arg.size());
   }
 
-  auto exp_back_off = ExponentialBackOff(RayConfig::instance().redis_retry_base_ms(),
+  auto exp_back_off = ExponentialBackoff(RayConfig::instance().redis_retry_base_ms(),
                                          RayConfig::instance().redis_retry_multiplier(),
                                          RayConfig::instance().redis_retry_max_ms());
   size_t pending_retries = RayConfig::instance().num_redis_request_retries() + 1;
@@ -738,7 +738,7 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
   }
   // Run the command. We try to reconnect if the connection is lost, and we retry with
   // exponential backoff using the same connection if error happens.
-  auto exp_back_off = ExponentialBackOff(RayConfig::instance().redis_retry_base_ms(),
+  auto exp_back_off = ExponentialBackoff(RayConfig::instance().redis_retry_base_ms(),
                                          RayConfig::instance().redis_retry_multiplier(),
                                          RayConfig::instance().redis_retry_max_ms());
   size_t pending_retries = RayConfig::instance().num_redis_request_retries() + 1;
