@@ -42,9 +42,9 @@ class FakeCgroupSetup : public BaseCgroupSetup {
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
  protected:
-  void CleanupSystemProcess(pid_t pid) override;
+  void CleanupSystemProcess(pid_t pid);
 
-  void CleanupCgroupContext(const AppProcCgroupMetadata &ctx) override;
+  void CleanupCgroupContext(const AppProcCgroupMetadata &ctx);
 
  private:
   // TODO(hjiang): For physical mode, as of now we only support max memory, more resource
