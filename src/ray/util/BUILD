@@ -338,3 +338,11 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+ray_cc_library(
+    name = "concurrent_flat_map",
+    hdrs = ["concurrent_flat_map.h"],
+    deps = [
+        ":mutex_protected",
+    ],
+)
