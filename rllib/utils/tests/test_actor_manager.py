@@ -34,7 +34,7 @@ class Actor(FaultAwareApply):
         self.count = 0
         self.maybe_crash = maybe_crash
         self.config = {
-            "recreate_failed_env_runners": True,
+            "restart_failed_env_runners": True,
         }
 
     def _maybe_crash(self):
@@ -166,7 +166,7 @@ class TestActorManager(unittest.TestCase):
 
         results1 = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results1.extend(
                 manager.foreach_actor(lambda w: w.call(), timeout_seconds=0)
             )
@@ -231,7 +231,7 @@ class TestActorManager(unittest.TestCase):
 
         results = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results.extend(manager.foreach_actor(lambda w: w.call()))
             # Wait for actors to recover.
             wait_for_restore()
@@ -356,7 +356,7 @@ class TestActorManager(unittest.TestCase):
         manager.set_actor_state(2, False)
 
         # These actors are actually healthy.
-        manager.probe_unhealthy_actors()
+        manager.probe_unhealthy_actors(mark_healthy=True)
         # Both actors are now healthy.
         self.assertEqual(len(manager.healthy_actor_ids()), 4)
 
@@ -371,8 +371,8 @@ class TestActorManager(unittest.TestCase):
             tags="pingpong", timeout_seconds=10.0
         )
         results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=2.0)
-        self.assertEquals(len(results_ping_pong), 4)
-        self.assertEquals(len(results_call), 4)
+        self.assertEqual(len(results_ping_pong), 4)
+        self.assertEqual(len(results_call), 4)
         for result in results_ping_pong:
             data = result.get()
             self.assertEqual(data, "pong")
@@ -387,7 +387,7 @@ class TestActorManager(unittest.TestCase):
         manager.foreach_actor_async(lambda w: w.call())
         time.sleep(1)
         results = manager.fetch_ready_async_reqs(timeout_seconds=5)
-        self.assertEquals(len(results), 8)
+        self.assertEqual(len(results), 8)
         for result in results:
             data = result.get()
             self.assertEqual(result.tag, None)
@@ -405,7 +405,7 @@ class TestActorManager(unittest.TestCase):
         results = manager.fetch_ready_async_reqs(
             timeout_seconds=5, tags=["pingpong", "call"]
         )
-        self.assertEquals(len(results), 8)
+        self.assertEqual(len(results), 8)
         for result in results:
             data = result.get()
             if isinstance(data, str):
@@ -422,11 +422,11 @@ class TestActorManager(unittest.TestCase):
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
         time.sleep(1)
         results = manager.fetch_ready_async_reqs(timeout_seconds=5, tags=["incorrect"])
-        self.assertEquals(len(results), 0)
+        self.assertEqual(len(results), 0)
 
         # now test that passing no tags still gives back all of the results
         results = manager.fetch_ready_async_reqs(timeout_seconds=5)
-        self.assertEquals(len(results), 8)
+        self.assertEqual(len(results), 8)
         for result in results:
             data = result.get()
             if isinstance(data, str):

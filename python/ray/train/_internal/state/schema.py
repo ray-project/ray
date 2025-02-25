@@ -5,13 +5,18 @@ from ray._private.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
 
+MAX_ERROR_STACK_TRACE_LENGTH = 50000
+
 
 @DeveloperAPI
 class RunStatusEnum(str, Enum):
     """Enumeration for the status of a train run."""
 
+    # (Deprecated) Replaced by RUNNING.
     # The train run has started
     STARTED = "STARTED"
+    # The train run is running
+    RUNNING = "RUNNING"
     # The train run was terminated as expected
     FINISHED = "FINISHED"
     # The train run was terminated early due to errors in the training function
@@ -48,6 +53,55 @@ class TrainWorkerInfo(BaseModel):
 
 
 @DeveloperAPI
+class MemoryInfo(BaseModel):
+    rss: int
+    vms: int
+    pfaults: Optional[int]
+    pageins: Optional[int]
+
+
+@DeveloperAPI
+class ProcessStats(BaseModel):
+    cpuPercent: float
+    # total memory, free memory, memory used ratio
+    mem: Optional[List[int]]
+    memoryInfo: MemoryInfo
+
+
+class ProcessGPUUsage(BaseModel):
+    # This gpu usage stats from a process
+    pid: int
+    gpuMemoryUsage: int
+
+
+@DeveloperAPI
+class GPUStats(BaseModel):
+    uuid: str
+    index: int
+    name: str
+    utilizationGpu: Optional[float]
+    memoryUsed: float
+    memoryTotal: float
+    processInfo: ProcessGPUUsage
+
+
+@DeveloperAPI
+class TrainWorkerInfoWithDetails(TrainWorkerInfo):
+    """Metadata of a Ray Train worker."""
+
+    processStats: Optional[ProcessStats] = Field(
+        None, description="Process stats of the worker."
+    )
+    gpus: List[GPUStats] = Field(
+        default_factory=list,
+        description=(
+            "GPU stats of the worker. "
+            "Only returns GPUs that are attached to the worker process."
+        ),
+    )
+
+
+@DeveloperAPI
 class TrainDatasetInfo(BaseModel):
     name: str = Field(
         description="The key of the dataset dict specified in Ray Train Trainer."
@@ -72,7 +126,7 @@ class TrainRunInfo(BaseModel):
     )
     run_status: RunStatusEnum = Field(
         description="The current status of the train run. It can be one of the "
-        "following: STARTED, FINISHED, ERRORED, or ABORTED."
+        "following: RUNNING, FINISHED, ERRORED, or ABORTED."
     )
     status_detail: str = Field(
         description="Detailed information about the current run status, "
@@ -91,6 +145,9 @@ class TrainRunInfo(BaseModel):
 class TrainRunInfoWithDetails(TrainRunInfo):
     """Metadata for a Ray Train run and information about its workers."""
 
+    workers: List[TrainWorkerInfoWithDetails] = Field(
+        description="A List of Train workers sorted by global ranks."
+    )
     job_details: Optional[JobDetails] = Field(
         None, description="Details of the job that started this Train run."
     )

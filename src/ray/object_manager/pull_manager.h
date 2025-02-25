@@ -31,13 +31,14 @@
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/util/container_util.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
 
 // Identifier for task metrics reporting, which is tuple of the task name
 // (empty string if unknown), and is_retry bool.
-typedef std::pair<std::string, bool> TaskMetricsKey;
+using TaskMetricsKey = std::pair<std::string, bool>;
 
 enum BundlePriority {
   /// Bundle requested by ray.get().
@@ -65,13 +66,13 @@ class PullManager {
   /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
-      NodeID &self_node_id,
-      const std::function<bool(const ObjectID &)> object_is_local,
-      const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-      const std::function<void(const ObjectID &)> cancel_pull_request,
-      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
-      const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time_seconds,
+      NodeID self_node_id,
+      std::function<bool(const ObjectID &)> object_is_local,
+      std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      std::function<void(const ObjectID &)> cancel_pull_request,
+      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<double()> get_time_seconds,
       int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,

@@ -5,7 +5,7 @@
 Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster v.s. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
 
 :::{note}
-Ray Dashboard is only intended for interactive development and debugging because the Dashboard UI and the underlying data are not accessible after Clusters are terminated. For production monitoring and debugging, users should rely on [persisted logs](../cluster/kubernetes/user-guides/logging.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
+Ray Dashboard is useful for interactive development and debugging because when clusters terminate, the dashboard UI and the underlying data are no longer accessible. For production monitoring and debugging, you should rely on [persisted logs](../cluster/kubernetes/user-guides/persist-kuberay-custom-resource-logs.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
 :::
 
 ## Changing the Ray Dashboard port
@@ -24,10 +24,10 @@ Pass the keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 :::{tab-item} VM Cluster Launcher
 Include the ``--dashboard-port`` argument in the `head_start_ray_commands` section of the [Cluster Launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
 ```yaml
-head_start_ray_commands: 
-  - ray stop 
+head_start_ray_commands:
+  - ray stop
   # Replace ${YOUR_PORT} with the port number you need.
-  - ulimit -n 65536; ray start --head --dashboard-port=${YOUR_PORT} --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml 
+  - ulimit -n 65536; ray start --head --dashboard-port=${YOUR_PORT} --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 ```
 :::
@@ -66,7 +66,7 @@ The dashboard is now visible at ``http://localhost:8265``.
 :::{tab-item} KubeRay
 
 The KubeRay operator makes Dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access
-Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``. 
+Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
 There are two ways to expose Dashboard outside the Cluster:
 
@@ -77,7 +77,7 @@ Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashb
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
 ```shell
-$ kubectl port-forward service/${RAYCLUSTER_NAME}-head-svc 8265:8265 
+$ kubectl port-forward service/${RAYCLUSTER_NAME}-head-svc 8265:8265
 # Visit ${YOUR_IP}:8265 for the Dashboard (e.g. 127.0.0.1:8265 or ${YOUR_VM_IP}:8265)
 ```
 
@@ -199,7 +199,7 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 To view embedded time-series visualizations in Ray Dashboard, the following must be set up:
 
 1. The head node of the cluster is able to access Prometheus and Grafana.
-2. The browser of the dashboard user is able to access Grafana. 
+2. The browser of the dashboard user is able to access Grafana.
 
 Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `RAY_PROMETHEUS_NAME`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
 
@@ -225,8 +225,15 @@ By default, Ray Dashboard assumes Prometheus is hosted at `localhost:9090`. You 
 Then, configure `RAY_PROMETHEUS_HOST` environment variable properly as stated above. For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88, set `RAY_PROMETHEUS_HOST=http://55.66.77.88:9000`.
 
 
+#### Customize headers for requests from the Ray dashboard to Prometheus
+
+If Prometheus requires additional headers for authentication, set `RAY_PROMETHEUS_HEADERS` in one of the following JSON formats for Ray dashboard to send them to Prometheus:
+1. `{"Header1": "Value1", "Header2": "Value2"}`
+2. `[["Header1", "Value1"], ["Header2", "Value2"], ["Header2", "Value3"]]`
+
+
 #### Alternate Grafana host location
-By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000` You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the browsers of dashboard users can access it.
+By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000`. You can choose to run Grafana on a non-default port or on a different machine as long as the head node and the dashboard browsers of can access it.
 
 If Grafana is exposed with NGINX ingress on a Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
 

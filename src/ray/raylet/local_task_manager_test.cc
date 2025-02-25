@@ -28,8 +28,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/test/util.h"
 
-namespace ray {
-namespace raylet {
+namespace ray::raylet {
 
 using ::testing::_;
 
@@ -37,9 +36,7 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec,
-                 const PopWorkerCallback &callback,
-                 const std::string &allocated_instances_serialized_json) {
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
@@ -53,6 +50,16 @@ class MockWorkerPool : public WorkerPoolInterface {
       bool filter_dead_workers, bool filter_io_workers) const {
     RAY_CHECK(false) << "Not used.";
     return {};
+  }
+
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
+  };
+
+  std::shared_ptr<WorkerInterface> GetRegisteredDriver(const WorkerID &worker_id) const {
+    RAY_CHECK(false) << "Not used.";
+    return nullptr;
   }
 
   void TriggerCallbacksWithNotOKStatus(
@@ -155,11 +162,12 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
       "",
       0,
       TaskID::Nil(),
+      "",
       nullptr);
 
   spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
 
-  return RayTask(spec_builder.Build());
+  return RayTask(std::move(spec_builder).ConsumeAndBuild());
 }
 
 class MockObjectManager : public ObjectManagerInterface {
@@ -190,7 +198,7 @@ class LocalTaskManagerTest : public ::testing::Test {
         dependency_manager_(object_manager_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
-            scheduler_,
+            *scheduler_,
             dependency_manager_, /* is_owner_alive= */
             [](const WorkerID &worker_id, const NodeID &node_id) { return true; },
             /* get_node_info= */
@@ -337,5 +345,4 @@ int main(int argc, char **argv) {
   return RUN_ALL_TESTS();
 }
 
-}  // namespace raylet
-}  // namespace ray
+}  // namespace ray::raylet

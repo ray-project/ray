@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
@@ -12,6 +12,21 @@ from ray.util.annotations import PublicAPI
 class WriteObservationsToEpisodes(ConnectorV2):
     """Writes the observations from the batch into the running episodes.
 
+    Note: This is one of the default env-to-module ConnectorV2 pieces that are added
+    automatically by RLlib into every env-to-module connector pipelines, unless
+    `config.add_default_connectors_to_env_to_module_pipeline` is set to False.
+
+    The default env-to-module connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+
+    This ConnectorV2:
     - Operates on a batch that already has observations in it and a list of Episode
     objects.
     - Writes the observation(s) from the batch to all the given episodes. Thereby
@@ -59,16 +74,16 @@ class WriteObservationsToEpisodes(ConnectorV2):
 
         # Call the connector (and thereby write the transformed observations back
         # into the episodes).
-        output_data = connector(
+        output_batch = connector(
             rl_module=None,  # This particular connector works without an RLModule.
-            data=batch,
+            batch=batch,
             episodes=episodes,
             explore=True,
             shared_data={},
         )
 
         # The connector does NOT change the data batch being passed through.
-        check(output_data, batch)
+        check(output_batch, batch)
 
         # However, the connector has overwritten the last observations in the episodes.
         check(episodes[0].get_observations(-1), [0.0, 1.0])
@@ -80,13 +95,13 @@ class WriteObservationsToEpisodes(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Optional[Dict[str, Any]],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = data.get(Columns.OBS)
+        observations = batch.get(Columns.OBS)
 
         if observations is None:
             raise ValueError(
@@ -104,13 +119,13 @@ class WriteObservationsToEpisodes(ConnectorV2):
         for sa_episode, obs in self.single_agent_episode_iterator(
             episodes=episodes, zip_with_batch_column=observations
         ):
-            # Make sure episodes are NOT finalized yet (we are expecting to run in an
+            # Make sure episodes are NOT numpy'ized yet (we are expecting to run in an
             # env-to-module pipeline).
-            assert not sa_episode.is_finalized
+            assert not sa_episode.is_numpy
             # Write new information into the episode.
             sa_episode.set_observations(at_indices=-1, new_data=obs)
             # Change the observation space of the sa_episode.
             sa_episode.observation_space = self.observation_space
 
-        # Return the unchanged batch data.
-        return data
+        # Return the unchanged `batch`.
+        return batch

@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional, Tuple, Union
 import click
 
 import ray._private.ray_constants as ray_constants
-from ray._private.storage import _load_class
 from ray._private.utils import (
     get_or_create_event_loop,
+    load_class,
     parse_metadata_json,
     parse_resources_json,
 )
@@ -248,7 +248,7 @@ def submit(
 
     if ray_constants.RAY_JOB_SUBMIT_HOOK in os.environ:
         # Submit all args as **kwargs per the JOB_SUBMIT_HOOK contract.
-        _load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
+        load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
             address=address,
             job_id=submission_id,
             submission_id=submission_id,
@@ -305,7 +305,7 @@ def submit(
     if not no_wait:
         if int(sdk_version) > 0:
             cli_logger.print(
-                "Tailing logs until the job exits " "(disable with --no-wait):"
+                "Tailing logs until the job exits (disable with --no-wait):"
             )
             job_status = get_or_create_event_loop().run_until_complete(
                 _tail_logs(client, job_id)

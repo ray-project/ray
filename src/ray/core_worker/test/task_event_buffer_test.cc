@@ -16,6 +16,9 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <filesystem>
+#include <fstream>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -24,6 +27,7 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/util/event.h"
 
 using ::testing::_;
 using ::testing::Return;
@@ -173,6 +177,20 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   )");
   }
 };
+
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
+                         std::string filter = "") {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
+  }
+  read_file.close();
+}
 
 TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
   ASSERT_NE(task_event_buffer_, nullptr);

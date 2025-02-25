@@ -450,7 +450,7 @@ your class trainable or to ``session.report()`` in your function trainable. The 
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
-to do that depending on whether you are using class or functional Trainable API. 
+to do that depending on whether you are using class or functional Trainable API.
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
@@ -611,7 +611,6 @@ To take multiple random samples, add ``num_samples: N`` to the experiment config
 If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
 .. literalinclude:: doc_code/faq.py
-    :emphasize-lines: 16
     :language: python
     :start-after: __grid_search_2_start__
     :end-before: __grid_search_2_end__
@@ -634,7 +633,7 @@ You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment var
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_trial_dir>`
+:meth:`tune.get_context().get_trial_dir() <ray.tune.TuneContext.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py

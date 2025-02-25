@@ -1,16 +1,17 @@
-from typing import Set, Dict, Any
+import logging
+import os
+import pathlib
+import sys
 from datetime import datetime
 from importlib import import_module
-import os
-import sys
-from jinja2.filters import FILTERS
+from typing import Any, Dict
+
 import sphinx
+from docutils import nodes
+from jinja2.filters import FILTERS
 from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
-from docutils import nodes
-import pathlib
-import logging
 
 DEFAULT_API_GROUP = "Others"
 
@@ -24,11 +25,16 @@ from custom_directives import (  # noqa
     parse_navbar_config,
     setup_context,
     pregenerate_example_rsts,
+    generate_versions_json,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+assert not os.path.exists("../../python/ray/_raylet.so"), (
+    "_raylet.so should not be imported for the purpose for doc build, "
+    "please rename the file to _raylet.so.bak and try again."
+)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -64,7 +70,15 @@ extensions = [
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
+    "sphinx_docsearch",
 ]
+
+# Configuration for algolia
+# Note: This API key grants read access to our indexes and is intended to be public.
+# See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
+docsearch_app_id = "LBHF0PABBL"
+docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
+docsearch_index_name = "docs-ray"
 
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
@@ -104,7 +118,11 @@ myst_heading_anchors = 3
 # arising from type annotations. See https://github.com/ray-project/ray/pull/46103
 # for additional context.
 nitpicky = True
-nitpick_ignore_regex = [("py:class", ".*")]
+nitpick_ignore_regex = [
+    ("py:class", ".*"),
+    # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
+    ("py:obj", "ray\.data\.datasource\.datasink\.WriteReturnType"),
+]
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to
@@ -212,6 +230,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -234,7 +253,6 @@ if os.environ.get("LINKCHECK_ALL"):
         "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
         # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
         "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
-        # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
@@ -287,24 +305,22 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register for Ray Summit 2024</a></b> with keynotes from Mira Murati, Marc Andreessen, and Anastasis Germanidis.""",
+    "announcement": False,
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "theme-switcher",
+        "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
     "navbar_center": ["navbar-links"],
     "navbar_align": "left",
-    "navbar_persistent": [
-        "search-button-field",
-        "theme-switcher",
-    ],
     "secondary_sidebar_items": [
         "page-toc",
-        "edit-this-page",
+        "edit-on-github",
     ],
     "content_footer_items": [
         "csat",
@@ -312,6 +328,10 @@ html_theme_options = {
     "navigation_depth": 4,
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
+    "switcher": {
+        "json_url": "https://docs.ray.io/en/master/_static/versions.json",
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+    },
 }
 
 html_context = {
@@ -322,7 +342,13 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": ["main-sidebar"],
+    "**": [
+        (
+            "main-sidebar-readthedocs"
+            if os.getenv("READTHEDOCS") == "True"
+            else "main-sidebar"
+        )
+    ],
     "ray-overview/examples": [],
 }
 
@@ -396,6 +422,11 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def has_public_constructor(class_name, module_name):
+    cls = getattr(import_module(module_name), class_name)
+    return _is_public_api(cls)
+
+
 def get_api_groups(method_names, class_name, module_name):
     api_groups = set()
     cls = getattr(import_module(module_name), class_name)
@@ -433,6 +464,7 @@ def _is_api_group(obj, group):
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 FILTERS["get_api_groups"] = get_api_groups
 FILTERS["select_api_group"] = select_api_group
+FILTERS["has_public_constructor"] = has_public_constructor
 
 
 def add_custom_assets(
@@ -483,6 +515,10 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 
 def setup(app):
+    # Only generate versions JSON during RTD build
+    if os.getenv("READTHEDOCS") == "True":
+        generate_versions_json()
+
     pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
@@ -544,10 +580,15 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
+    "cupy",
     "dask",
     "datasets",
     "fastapi",
@@ -559,6 +600,7 @@ autodoc_mock_imports = [
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -581,11 +623,13 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",

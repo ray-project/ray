@@ -35,6 +35,8 @@ def test_correct_python_version():
 
 
 class MockBaseModel:
+    model_fields = {}
+
     def __init__(self, *args, **kwargs):
         pass
 

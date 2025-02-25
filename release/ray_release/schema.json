@@ -28,7 +28,8 @@
 					"type": "string",
 					"enum": [
 						"3.9",
-						"3.11"
+						"3.11",
+						"3.12"
 					]
 				},
 				"frequency": {
@@ -79,6 +80,9 @@
 					"minimum": -1
 				},
 				"cloud_id": {
+					"type": "string"
+				},
+				"project_id": {
 					"type": "string"
 				},
 				"cloud_name": {

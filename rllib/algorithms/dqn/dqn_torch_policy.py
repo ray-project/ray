@@ -24,7 +24,7 @@ from ray.rllib.policy.torch_mixins import (
     LearningRateSchedule,
     TargetNetworkMixin,
 )
-
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
@@ -45,6 +45,7 @@ if nn:
     F = nn.functional
 
 
+@OldAPIStack
 class QLoss:
     def __init__(
         self,
@@ -117,6 +118,7 @@ class QLoss:
             }
 
 
+@OldAPIStack
 class ComputeTDErrorMixin:
     """Assign the `compute_td_error` method to the DQNTorchPolicy
 
@@ -142,6 +144,7 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
+@OldAPIStack
 def build_q_model_and_distribution(
     policy: Policy,
     obs_space: gym.spaces.Space,
@@ -227,6 +230,7 @@ def build_q_model_and_distribution(
     return model, get_torch_categorical_class_with_temperature(temperature)
 
 
+@OldAPIStack
 def get_distribution_inputs_and_class(
     policy: Policy,
     model: ModelV2,
@@ -254,6 +258,7 @@ def get_distribution_inputs_and_class(
     )
 
 
+@OldAPIStack
 def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     """Constructs the loss for DQNTorchPolicy.
 
@@ -369,6 +374,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
     return q_loss.loss
 
 
+@OldAPIStack
 def adam_optimizer(
     policy: Policy, config: AlgorithmConfigDict
 ) -> "torch.optim.Optimizer":
@@ -383,6 +389,7 @@ def adam_optimizer(
     )
 
 
+@OldAPIStack
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     stats = {}
     for stats_key in policy.model_gpu_towers[0].tower_stats["q_loss"].stats.keys():
@@ -399,12 +406,14 @@ def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     return stats
 
 
+@OldAPIStack
 def setup_early_mixins(
     policy: Policy, obs_space, action_space, config: AlgorithmConfigDict
 ) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+@OldAPIStack
 def before_loss_init(
     policy: Policy,
     obs_space: gym.spaces.Space,
@@ -415,6 +424,7 @@ def before_loss_init(
     TargetNetworkMixin.__init__(policy)
 
 
+@OldAPIStack
 def compute_q_values(
     policy: Policy,
     model: ModelV2,
@@ -470,6 +480,7 @@ def compute_q_values(
     return value, logits, probs_or_logits, state
 
 
+@OldAPIStack
 def grad_process_and_td_error_fn(
     policy: Policy, optimizer: "torch.optim.Optimizer", loss: TensorType
 ) -> Dict[str, TensorType]:
@@ -477,6 +488,7 @@ def grad_process_and_td_error_fn(
     return apply_grad_clipping(policy, optimizer, loss)
 
 
+@OldAPIStack
 def extra_action_out_fn(
     policy: Policy, input_dict, state_batches, model, action_dist
 ) -> Dict[str, TensorType]:

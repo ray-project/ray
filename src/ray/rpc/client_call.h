@@ -19,6 +19,10 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_chaos.h"
@@ -26,6 +30,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/util/thread_utils.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -57,7 +62,7 @@ class ClientCallManager;
 ///
 /// \tparam Reply Type of the reply message.
 template <class Reply>
-using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
+using ClientCallback = std::function<void(const Status &status, Reply &&reply)>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
@@ -102,7 +107,8 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (callback_ != nullptr) {
-      callback_(status, reply_);
+      // This should be only called once.
+      callback_(status, std::move(reply_));
     }
   }
 
@@ -201,7 +207,7 @@ class ClientCallManager {
         num_threads_(num_threads),
         shutdown_(false),
         call_timeout_ms_(call_timeout_ms) {
-    rr_index_ = rand() % num_threads_;
+    rr_index_ = std::rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
@@ -265,7 +271,8 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(
+        &call->reply_, &call->status_, static_cast<void *>(tag));
     return call;
   }
 

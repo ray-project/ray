@@ -26,6 +26,9 @@ def get_system_info():
     if architecture == "x86_64":
         # In the Prometheus filename, it's called amd64
         architecture = "amd64"
+    elif architecture == "aarch64":
+        # In the Prometheus filename, it's called arm64
+        architecture = "arm64"
     return os_type, architecture
 
 
@@ -74,12 +77,13 @@ def install_prometheus(file_path):
 
 def start_prometheus(prometheus_dir):
 
-    # Currently, Ray never modifies this config file, so we can just use the
-    # hardcoded path. (It just copies it to a more user-friendly location, in
-    # MetricsHead._create_default_prometheus_configs.)
-    # However, if in the future Ray ever modifies this file at runtime, we'll
-    # need to use the user-friendly location instead, and reload the config
-    # file after it's updated by Ray.
+    # The function assumes the Ray cluster to be monitored by Prometheus uses the
+    # default configuration with "/tmp/ray" as the default root temporary directory.
+    #
+    # This is to support the `ray metrics launch-prometheus` command, when a Ray cluster
+    # hasn't started yet and the user doesn't have a way to get a `--temp-dir`
+    # anywhere. So we choose to use a hardcoded default value.
+
     config_file = Path(PROMETHEUS_CONFIG_INPUT_PATH)
 
     if not config_file.exists():
@@ -89,6 +93,7 @@ def start_prometheus(prometheus_dir):
         f"{prometheus_dir}/prometheus",
         "--config.file",
         str(config_file),
+        "--web.enable-lifecycle",
     ]
     try:
         process = subprocess.Popen(prometheus_cmd)
@@ -103,6 +108,7 @@ def print_shutdown_message(process_id):
     message = (
         f"Prometheus is running with PID {process_id}.\n"
         "To stop Prometheus, use the command: "
+        "`ray metrics shutdown-prometheus`, "
         f"'kill {process_id}', or if you need to force stop, "
         f"use 'kill -9 {process_id}'."
     )

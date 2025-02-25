@@ -118,7 +118,7 @@ py_test(
 
 py_test(
     name = "torch_quick_start",
-    size = "small",
+    size = "medium",
     main = "examples/pytorch/torch_quick_start.py",
     srcs = ["examples/pytorch/torch_quick_start.py"],
     tags = ["team:ml", "exclusive"],
@@ -155,15 +155,6 @@ py_test(
     tags = ["team:ml", "exclusive", "gpu"],
     deps = [":train_lib"],
     args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
-)
-
-py_test(
-    name = "horovod_cifar_pbt_example",
-    size = "small",
-    srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "manual"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
 )
 
 py_test(
@@ -269,6 +260,14 @@ py_test(
     srcs = ["tests/test_torch_accelerate.py"],
     tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib",  ":conftest"]
+)
+
+py_test(
+    name = "test_api_migrations",
+    size = "small",
+    srcs = ["tests/test_api_migrations.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -488,14 +487,6 @@ py_test(
 )
 
 py_test(
-    name = "test_sklearn_predictor",
-    size = "small",
-    srcs = ["tests/test_sklearn_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_storage",
     size = "small",
     srcs = ["tests/test_storage.py"],
@@ -556,6 +547,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_torch_detection_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_torch_device_manager",
+    size = "small",
+    srcs = ["tests/test_torch_device_manager.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu_only"],
     deps = [":train_lib", ":conftest"]
 )
 

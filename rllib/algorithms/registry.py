@@ -1,4 +1,4 @@
-"""Registry of algorithm names for `rllib train --run=<alg_name>`"""
+"""Registry of algorithm names for tune.Tuner(trainable=[..])."""
 
 import importlib
 import re

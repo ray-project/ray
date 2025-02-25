@@ -12,10 +12,10 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    SingleAgentRLModuleSpec,
+    RLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
@@ -25,8 +25,6 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -76,7 +74,7 @@ class TfLearner(Learner):
 
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
-        # fixed value of a schedule setting).
+        # fixed value or a schedule setting).
         optimizer = tf.keras.optimizers.Adam()
         params = self.get_parameters(module)
 
@@ -100,7 +98,8 @@ class TfLearner(Learner):
         gradient_tape: "tf.GradientTape",
         **kwargs,
     ) -> ParamDict:
-        grads = gradient_tape.gradient(loss_per_module[ALL_MODULES], self._params)
+        total_loss = sum(loss_per_module.values())
+        grads = gradient_tape.gradient(total_loss, self._params)
         return grads
 
     @override(Learner)
@@ -123,8 +122,8 @@ class TfLearner(Learner):
 
     @override(Learner)
     def restore_from_path(self, path: Union[str, pathlib.Path]) -> None:
-        # This operation is potentially very costly because a MARL Module is created at
-        # build time, destroyed, and then a new one is created from a checkpoint.
+        # This operation is potentially very costly because a MultiRLModule is created
+        # at build time, destroyed, and then a new one is created from a checkpoint.
         # However, it is necessary due to complications with the way that Ray Tune
         # restores failed trials. When Tune restores a failed trial, it reconstructs the
         # entire experiment from the initial config. Therefore, to reflect any changes
@@ -161,7 +160,7 @@ class TfLearner(Learner):
         return list(module.trainable_variables)
 
     @override(Learner)
-    def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
+    def rl_module_is_compatible(self, module: RLModule) -> bool:
         return isinstance(module, TfRLModule)
 
     @override(Learner)
@@ -195,7 +194,7 @@ class TfLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
     ) -> None:
         # TODO(Avnishn):
         # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
@@ -216,7 +215,7 @@ class TfLearner(Learner):
             )
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiRLModuleSpec:
         with self._strategy.scope():
             marl_spec = super().remove_module(module_id, **kwargs)
 
@@ -238,17 +237,17 @@ class TfLearner(Learner):
             A strategy for the learner to use for distributed training.
 
         """
-        if self._distributed:
+        if self.config.num_learners > 1:
             strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        elif self._use_gpu:
+        elif self.config.num_gpus_per_learner > 0:
             # mirrored strategy is typically used for multi-gpu training
             # on a single machine, however we can use it for single-gpu
             devices = tf.config.list_logical_devices("GPU")
-            assert self._local_gpu_idx < len(devices), (
-                f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                "not available."
+            assert self.config.local_gpu_idx < len(devices), (
+                f"local_gpu_idx {self.config.local_gpu_idx} is not a valid GPU id or "
+                "is not available."
             )
-            local_gpu = [devices[self._local_gpu_idx].name]
+            local_gpu = [devices[self.config.local_gpu_idx].name]
             strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
         else:
             # the default strategy is a no-op that can be used in the local mode
@@ -283,12 +282,12 @@ class TfLearner(Learner):
             self._possibly_traced_update = self._untraced_update
 
     @override(Learner)
-    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+    def _update(self, batch: Dict) -> Tuple[Any, Any, Any]:
         return self._possibly_traced_update(batch)
 
     def _untraced_update(
         self,
-        batch: NestedDict,
+        batch: Dict,
         # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
         #  eager_tracing=True mode.
         #  It seems there may be a clash between the traced-by-tf function and the
@@ -299,19 +298,16 @@ class TfLearner(Learner):
         self.metrics.activate_tensor_mode()
 
         def helper(_batch):
-            # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
-            #  constraint on forward_train and compute_loss APIs. This seems to be
-            #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
-            #  so remove this after we upgrade officially to tf==2.12.
-            _batch = NestedDict(_batch.copy())
             with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
-                loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+                loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=_batch)
             gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
             del tape
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
+            # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
+            # results.
             return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
         return self._strategy.run(helper, args=(batch,))
@@ -354,3 +350,8 @@ class TfLearner(Learner):
         from ray.rllib.utils.tf_utils import clip_gradients
 
         return clip_gradients
+
+    @staticmethod
+    @override(Learner)
+    def _get_global_norm_function() -> Callable:
+        return tf.linalg.global_norm

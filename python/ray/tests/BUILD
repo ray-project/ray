@@ -105,7 +105,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client_proxy.py",
-    "test_client_compat.py",
     "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
@@ -161,6 +160,7 @@ py_test_module_list(
     "test_task_events.py",
     "test_task_events_2.py",
     "test_task_events_3.py",
+    "test_system_metrics.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -186,6 +186,7 @@ py_test_module_list(
     "test_runtime_env_plugin.py",
     "test_runtime_env_setup_func.py",
     "test_runtime_env_strong_type.py",
+    "test_runtime_env_py_executable.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
@@ -224,15 +225,6 @@ py_test_module_list(
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "no_windows", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
-    "test_serve_ray_minimal.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "minimal", "team:serve"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -290,7 +282,9 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_distributed_sort.py",
     "test_environ.py",
+    "test_exceptiongroup.py",
     "test_get_or_create_actor.py",
+    "test_ids.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
     "test_list_actors_3.py",
@@ -305,6 +299,7 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_widgets.py",
     "accelerators/test_accelerators.py",
+    "test_wait.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -445,12 +440,13 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
-    "test_actor_retry.py",
+    "test_actor_lineage_reconstruction.py",
+    "test_actor_retry1.py",
+    "test_actor_retry2.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
     "test_multi_node.py",
-    "test_threaded_actor.py",
     "test_generators.py",
     "test_stress_failure.py",
     "test_state_api.py",
@@ -527,6 +523,7 @@ py_test_module_list(
   files = [
     "test_plasma_unlimited.py",
     "test_implicit_resource.py",
+    "test_threaded_actor.py",
   ],
   size = "enormous",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
@@ -567,6 +564,8 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_3.py",
     "test_runtime_env_conda_and_pip_4.py",
     "test_runtime_env_conda_and_pip_5.py",
+    "test_runtime_env_uv.py",
+    "test_runtime_env_uv_run.py",
   ],
   size = "large",
   tags = ["exclusive", "post_wheel_build", "team:core"],
@@ -663,7 +662,7 @@ py_test(
     size = "medium",
     srcs = ["test_typing.py", "typing_files/check_typing_bad.py",
             "typing_files/check_typing_good.py"],
-    # Note(can): known issue of mypy and latest torch on windows 
+    # Note(can): known issue of mypy and latest torch on windows
     # (https://github.com/python/mypy/issues/17189)
     tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
@@ -684,6 +683,14 @@ py_test(
     srcs = ["test_pydantic_serialization.py", "pydantic_module.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+  name = "test_collections_utils",
+  size = "small",
+  srcs = ["test_collections_utils.py"],
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"]
 )
 
 py_test(
@@ -718,6 +725,7 @@ py_test_module_list(
     "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
+    "test_wait.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
@@ -745,6 +753,9 @@ py_test_module_list(
   name_suffix = "_debug_mode",
   tags = ["exclusive", "debug_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
+  env = {
+    "RAY_DEBUG_MODE" : "1",
+  }
 )
 
 py_test_module_list(

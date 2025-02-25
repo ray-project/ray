@@ -1,4 +1,9 @@
+from typing import TYPE_CHECKING
+
 from .operator import Operator
+
+if TYPE_CHECKING:
+    from ray.data import DataContext
 
 
 class Plan:
@@ -8,6 +13,13 @@ class Plan:
     that's useful for plan optimization or execution.
     """
 
+    def __init__(self, context: "DataContext"):
+        self._context = context
+
     @property
     def dag(self) -> Operator:
         raise NotImplementedError
+
+    @property
+    def context(self) -> "DataContext":
+        return self._context

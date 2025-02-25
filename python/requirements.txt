@@ -8,6 +8,7 @@
 
 ## setup.py install_requires
 click>=7.0
+cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
@@ -24,7 +25,10 @@ grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
 numpy>=1.20
 
-pyarrow >= 6.0.1
+# pyarrow 18 causes macos build failures.
+# See https://github.com/ray-project/ray/pull/48300
+pyarrow >= 9.0.0
+pyarrow <18; sys_platform == "darwin" and platform_machine == "x86_64"
 
 # ray[all]
 smart_open
@@ -37,22 +41,24 @@ colorful
 rich
 opentelemetry-sdk
 fastapi
-gymnasium==0.28.1
+gymnasium==1.0.0
 virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api
 opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-scikit-image==0.21.0
+scikit-image>=0.21.0
 prometheus_client>=0.7.1
 pandas
 tensorboardX
-aiohttp>=3.7,<3.9
+aiohttp>=3.7
 starlette
 typer
 fsspec
 pandas>=1.3
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3  # Serve users can use pydantic<2
-py-spy>=0.2.0
+py-spy>=0.2.0; python_version < '3.12'
+py-spy>=0.4.0; python_version >= '3.12'
 memray; sys_platform != "win32" # memray is not supported on Windows
+pyOpenSSL

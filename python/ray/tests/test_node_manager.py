@@ -14,6 +14,13 @@ import subprocess
 from ray._private.utils import get_num_cpus
 import time
 import sys
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from typing import List, Optional
+import logging
+import tempfile
+import collections
+import shutil
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -355,6 +362,167 @@ def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
             workers = list_workers(filters=[("worker_type", "=", "WORKER")])
             assert len(workers) == get_num_cpus(), workers
             time.sleep(1)
+
+
+def test_can_use_prestart_idle_workers(ray_start_cluster):
+    """Test that actors and GPU tasks can use prestarted workers."""
+    cluster = ray_start_cluster
+    NUM_CPUS = 4
+    NUM_GPUS = 4
+    cluster.add_node(num_cpus=NUM_CPUS, num_gpus=NUM_GPUS)
+    ray.init(address=cluster.address)
+
+    wait_for_condition(
+        lambda: len(list_workers(filters=[("worker_type", "=", "WORKER")])) == NUM_CPUS
+    )
+
+    # These workers don't have job_id or is_actor_worker.
+    workers = list_workers(filters=[("worker_type", "=", "WORKER")], detail=True)
+    worker_pids = {worker.pid for worker in workers}
+    assert len(worker_pids) == NUM_CPUS
+
+    @ray.remote
+    class A:
+        def getpid(self):
+            return os.getpid()
+
+    @ray.remote
+    def f():
+        return os.getpid()
+
+    used_worker_pids = set()
+    cpu_actor = A.options(num_cpus=1).remote()
+    used_worker_pids.add(ray.get(cpu_actor.getpid.remote()))
+
+    gpu_actor = A.options(num_gpus=1).remote()
+    used_worker_pids.add(ray.get(gpu_actor.getpid.remote()))
+
+    used_worker_pids.add(ray.get(f.options(num_cpus=1).remote()))
+    used_worker_pids.add(ray.get(f.options(num_gpus=1).remote()))
+
+    assert used_worker_pids == worker_pids
+
+
+MyPlugin = "HangOnSecondWorkerPlugin"
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_node_manager.HangOnSecondWorkerPlugin"
+PLUGIN_TIMEOUT = 10
+
+
+class HangOnSecondWorkerPlugin(RuntimeEnvPlugin):
+    """
+    The first worker will start up normally, but all subsequent workers will hang at
+    start up indefinitely. How it works: Ray RuntimeEnvAgent caches the modified context
+    so we can't do it in modify_context. Instead, we use a bash command to read a file
+    and hang forever. We don't have a good file lock mechanism in bash (flock is not
+    installed by default in macos), so we also serialize the worker startup.
+    """
+
+    name = MyPlugin
+
+    def __init__(self):
+        # Each URI has a temp dir, a counter file, and a hang.sh script.
+        self.uris = collections.defaultdict(dict)
+
+    def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
+        return [runtime_env[self.name]]
+
+    async def create(
+        self,
+        uri: Optional[str],
+        runtime_env,
+        context: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> float:
+        d = self.uris[uri]
+        d["temp_dir"] = tempfile.mkdtemp()
+        logger.info(f"caching temp dir {d['temp_dir']} for uri {uri}")
+        d["counter_file"] = os.path.join(d["temp_dir"], "script_run_count")
+        with open(d["counter_file"], "w+") as f:
+            f.write("0")
+        d["hang_sh"] = os.path.join(d["temp_dir"], "hang.sh")
+        with open(d["hang_sh"], "w+") as f:
+            f.write(
+                f"""#!/bin/bash
+
+counter_file="{d['counter_file']}"
+
+count=$(cat "$counter_file")
+
+if [ "$count" -eq "0" ]; then
+  echo "1" > "$counter_file"
+  echo "first time run"
+  exit 0
+elif [ "$count" -eq "1" ]; then
+  echo "2" > "$counter_file"
+  echo "second time run, sleeping..."
+  sleep 1000
+fi
+"""
+            )
+        os.chmod(d["hang_sh"], 0o755)
+        return 0.1
+
+    def modify_context(
+        self,
+        uris: List[str],
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> None:
+        logger.info(f"Starting worker: {uris}, {runtime_env}")
+        if self.name not in runtime_env:
+            return
+        assert len(uris) == 1
+        uri = uris[0]
+        hang_sh = self.uris[uri]["hang_sh"]
+        ctx.command_prefix += ["bash", hang_sh, "&&"]
+
+    def delete_uri(self, uri: str, logger: logging.Logger) -> float:
+        temp_dir = self.uris[uri]["temp_dir"]
+        shutil.rmtree(temp_dir)
+        del self.uris[uri]
+        logger.info(f"temp_dir removed: {temp_dir}")
+
+
+@pytest.fixture
+def serialize_worker_startup(monkeypatch):
+    """Only one worker starts up each time, since our bash script is not process-safe"""
+    monkeypatch.setenv("RAY_worker_maximum_startup_concurrency", "1")
+    yield
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + MY_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_can_reuse_released_workers(
+    serialize_worker_startup, set_runtime_env_plugins, ray_start_cluster
+):
+    """
+    Uses a runtime env plugin to make sure only 1 worker can start and all subsequent
+    workers will hang in runtime start up forever. We issue 10 tasks and test that
+    all the following tasks can still be scheduled on the first worker released from the
+    first task, i.e. tasks are not binded to the workers that they requested to start.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote(runtime_env={"env_vars": {"HELLO": "WORLD"}, MyPlugin: "key"})
+    def f():
+        # Sleep for a while to make sure other tasks also request workers.
+        time.sleep(1)
+        print(f"pid={os.getpid()}, env HELLO={os.environ.get('HELLO')}")
+        return os.getpid()
+
+    objs = [f.remote() for i in range(10)]
+
+    pids = ray.get(objs)
+    for pid in pids:
+        assert pid == pids[0]
 
 
 if __name__ == "__main__":

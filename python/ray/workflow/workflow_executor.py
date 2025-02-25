@@ -282,7 +282,7 @@ class WorkflowExecutor:
             metadata: WorkflowExecutionMetadata = fut.result()
             state.task_execution_metadata[task_id].finish_time = time.time()
             logger.info(
-                f"Task status [{WorkflowStatus.SUCCESSFUL}]\t"
+                f"Task status [{WorkflowStatus.SUCCESSFUL.value}]\t"
                 f"[{workflow_id}@{task_id}]"
             )
             await self._post_process_ready_task(task_id, metadata, output_ref)
@@ -304,7 +304,7 @@ class WorkflowExecutor:
             else:
                 reason = "an unknown error"
             logger.error(
-                f"Task status [{WorkflowStatus.FAILED}] due to {reason}.\t"
+                f"Task status [{WorkflowStatus.FAILED.value}] due to {reason}.\t"
                 f"[{workflow_id}@{task_id}]"
             )
 

@@ -8,28 +8,34 @@ from __future__ import print_function
 import argparse
 import os
 import re
+import sys
 import tarfile
 
 import numpy as np
 from filelock import FileLock
-from tensorflow.keras.layers import (
-    LSTM,
-    Activation,
-    Dense,
-    Dropout,
-    Embedding,
-    Input,
-    Permute,
-    add,
-    concatenate,
-    dot,
-)
-from tensorflow.keras.models import Model, Sequential, load_model
-from tensorflow.keras.optimizers import RMSprop
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.utils import get_file
 
-from ray import train, tune
+from ray import tune
+
+if sys.version_info >= (3, 12):
+    # Skip this test in Python 3.12+ because TensorFlow is not supported.
+    sys.exit(0)
+else:
+    from tensorflow.keras.layers import (
+        LSTM,
+        Activation,
+        Dense,
+        Dropout,
+        Embedding,
+        Input,
+        Permute,
+        add,
+        concatenate,
+        dot,
+    )
+    from tensorflow.keras.models import Model, Sequential, load_model
+    from tensorflow.keras.optimizers import RMSprop
+    from tensorflow.keras.preprocessing.sequence import pad_sequences
+    from tensorflow.keras.utils import get_file
 
 
 def tokenize(sent):
@@ -291,10 +297,10 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         MemNNModel,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="pbt_babi_memnn",
             stop={"training_iteration": 4 if args.smoke_test else 100},
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,

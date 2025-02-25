@@ -10,7 +10,7 @@ tf1, tf, tfv = try_import_tf()
 
 env_name = "CartPole-v1"
 # Use the vector env API.
-env = gym.vector.make(env_name, num_envs=1, asynchronous=False)
+env = gym.make_vec(env_name, num_envs=1, vectorization_mode="sync")
 
 terminated = truncated = False
 # Reset the env.
@@ -28,7 +28,7 @@ config = (
 algo = config.build()
 
 # Extract the actual RLModule from the local (Dreamer) EnvRunner.
-rl_module = algo.workers.local_worker().module
+rl_module = algo.env_runner.module
 # Get initial states from RLModule (note that these are always B=1, so this matches
 # our num_envs=1; if you are using a vector env >1, you would have to repeat the
 # returned states `num_env` times to get the correct batch size):

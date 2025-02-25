@@ -14,7 +14,7 @@ Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform
 | `x.y.z`                      | A specific Ray release, e.g. 2.9.3 |
 | `nightly`                    | The most recent Ray development build (a recent commit from GitHub `master`) |
 
-The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py38`, `py39` and `py310`. If unspecified, the tag points to an image using `Python 3.8`.
+The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py39`, `py310` and `py311`. If unspecified, the tag points to an image using `Python 3.9`.
 
 The optional `Platform` tag specifies the platform where the image is intended for:
 

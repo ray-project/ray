@@ -67,7 +67,9 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                             required_placement_resources,
                             "",
                             /*depth=*/0,
-                            local_mode_ray_tuntime_.GetCurrentTaskId());
+                            local_mode_ray_tuntime_.GetCurrentTaskId(),
+                            // Stacktrace is not available in local mode.
+                            /*call_site=*/"");
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
@@ -98,7 +100,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   for (size_t i = 0; i < invocation.args.size(); i++) {
     builder.AddArg(*invocation.args[i]);
   }
-  auto task_specification = builder.Build();
+  auto task_specification = std::move(builder).ConsumeAndBuild();
 
   ObjectID return_object_id = task_specification.ReturnId(0);
 

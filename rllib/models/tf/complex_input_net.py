@@ -98,7 +98,7 @@ class ComplexInputNetwork(TFModelV2):
                 concat_size += int(self.one_hot[i].num_outputs)
             # Everything else (1D Box).
             else:
-                size = int(np.product(component.shape))
+                size = int(np.prod(component.shape))
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),

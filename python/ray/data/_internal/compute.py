@@ -88,7 +88,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
-        if size:
+        if size is not None:
             if size < 1:
                 raise ValueError("size must be >= 1", size)
             if max_size is not None or min_size is not None:
@@ -131,7 +131,7 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not isinstance(compute_spec, (TaskPoolStrategy, ActorPoolStrategy)):
         raise ValueError(
             "In Ray 2.5, the compute spec must be either "
-            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
+            f"TaskPoolStrategy or ActorPoolStrategy, was: {compute_spec}."
         )
     elif not compute_spec or compute_spec == "tasks":
         return TaskPoolStrategy()
@@ -141,11 +141,3 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
-
-
-def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
-    return (
-        not compute_spec
-        or compute_spec == "tasks"
-        or isinstance(compute_spec, TaskPoolStrategy)
-    )

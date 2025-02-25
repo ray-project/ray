@@ -20,6 +20,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/airflow_logo_full.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/astronomer/astro-provider-ray?style=social)]
+                :target: https://github.com/astronomer/astro-provider-ray
+
+            Apache Airflow® is an open-source platform that enables users to programmatically author, schedule, and monitor workflows using directed acyclic graphs (DAGs). With the Ray provider, users can seamlessly orchestrate Ray jobs within Airflow DAGs.
+
+        +++
+        .. button-link:: https://astronomer.github.io/astro-provider-ray/
+            :color: primary
+            :outline:
+            :expand:
+
+            Apache Airflow Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/buildflow.png
             :class: card-figure
 
@@ -79,6 +100,27 @@ more information.
             :expand:
 
             Dask Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/data_juicer.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/modelscope/data-juicer?style=social)]
+                :target: https://github.com/modelscope/data-juicer
+
+            Data-Juicer is a one-stop multimodal data processing system to make data higher-quality, juicier, and more digestible for foundation models. It integrates with Ray for distributed data processing on large-scale datasets with over 100 multimodal operators and supports TB-size dataset deduplication.
+
+        +++
+        .. button-link:: https://github.com/modelscope/data-juicer?tab=readme-ov-file#distributed-data-processing
+            :color: primary
+            :outline:
+            :expand:
+
+            Data-Juicer Integration
 
 
     .. grid-item-card::

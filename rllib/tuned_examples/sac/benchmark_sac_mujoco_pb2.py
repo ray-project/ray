@@ -6,7 +6,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
 )
 from ray.tune.schedulers.pb2 import PB2
-from ray import train, tune
+from ray import tune
 
 # Needs the following packages to be installed on Ubuntu:
 #   sudo apt-get libosmesa-dev
@@ -44,7 +44,9 @@ pb2_scheduler = PB2(
     # Copy bottom % with top % weights.
     quantile_fraction=0.25,
     hyperparam_bounds={
-        "lr": [1e-5, 1e-3],
+        "actor_lr": [1e-5, 1e-3],
+        "critic_lr": [1e-6, 1e-4],
+        "alpha_lr": [1e-6, 1e-3],
         "gamma": [0.95, 0.99],
         "n_step": [1, 3],
         "initial_alpha": [1.0, 1.5],
@@ -61,11 +63,6 @@ for env, stop_criteria in benchmark_envs.items():
     config = (
         SACConfig()
         .environment(env=env)
-        # Enable new API stack and use EnvRunner.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .env_runners(
             rollout_fragment_length="auto",
             num_env_runners=1,
@@ -80,7 +77,9 @@ for env, stop_criteria in benchmark_envs.items():
         # TODO (simon): Adjust to new model_config_dict.
         .training(
             initial_alpha=tune.choice([1.0, 1.5]),
-            lr=tune.uniform(1e-5, 1e-3),
+            actor_lr=tune.uniform(1e-5, 1e-3),
+            critic_lr=tune.uniform([1e-6, 1e-4]),
+            alpha_lr=tune.uniform([1e-6, 1e-3]),
             target_entropy=tune.choice([-10, -5, -1, "auto"]),
             n_step=tune.choice([1, 3, (1, 3)]),
             tau=tune.uniform(0.001, 0.1),
@@ -120,7 +119,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "SAC",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_sac_mujoco_pb2_" + env,
         ),
@@ -143,7 +142,7 @@ for env, stop_criteria in benchmark_envs.items():
     tuner = tune.Tuner(
         "SAC",
         param_space=best_result.config,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop_criteria,
             name="benchmark_sac_mujoco_pb2_" + env + "_best",
         ),

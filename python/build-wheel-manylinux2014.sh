@@ -10,10 +10,11 @@ PYTHON_VERSIONS=(
   "py310 cp310-cp310"
   "py311 cp311-cp311"
   "py312 cp312-cp312"
+  "py313 cp313-cp313"
 )
 
-# Add the repo folder to the safe.dictory global variable to avoid the failure
-# because of secruity check from git, when executing the following command
+# Add the repo folder to the safe.directory global variable to avoid the failure
+# because of security check from git, when executing the following command
 # `git clean ...`,  while building wheel locally.
 git config --global --add safe.directory /ray
 

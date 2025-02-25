@@ -88,7 +88,9 @@ def get_train_dataset(args, image_resolution=512):
             transform_image, fn_kwargs={"output_column_name": "instance_image"}
         )
         .drop_columns(["image"])
-        .add_column("instance_prompt_ids", lambda df: [instance_prompt_ids] * len(df))
+        .add_column(
+            "instance_prompt_ids", lambda df: pd.Series([instance_prompt_ids] * len(df))
+        )
     )
     # END: Apply preprocessing steps as Ray Dataset operations
 
@@ -97,7 +99,9 @@ def get_train_dataset(args, image_resolution=512):
             transform_image, fn_kwargs={"output_column_name": "class_image"}
         )
         .drop_columns(["image"])
-        .add_column("class_prompt_ids", lambda df: [class_prompt_ids] * len(df))
+        .add_column(
+            "class_prompt_ids", lambda df: pd.Series([class_prompt_ids] * len(df))
+        )
     )
     # --- Ray Data
 

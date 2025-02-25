@@ -39,7 +39,7 @@ class ResourceRequest {
   ResourceRequest() : ResourceRequest({}, false) {}
 
   /// Construct a ResourceRequest with a given resource map.
-  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
+  explicit ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
       : ResourceRequest(resource_map, false){};
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
@@ -131,15 +131,16 @@ class TaskResourceInstances {
       boost::select_first_range<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>;
 
   /// Construct an empty TaskResourceInstances.
-  TaskResourceInstances() {}
+  TaskResourceInstances() = default;
 
   /// Construct a TaskResourceInstances with the values from a ResourceSet.
-  TaskResourceInstances(const ResourceSet &resources) {
+  explicit TaskResourceInstances(const ResourceSet &resources) {
     for (auto &resource_id : resources.ResourceIds()) {
       std::vector<FixedPoint> instances;
       auto value = resources.Get(resource_id);
       if (resource_id.IsUnitInstanceResource()) {
         size_t num_instances = static_cast<size_t>(value.Double());
+        instances.reserve(instances.size() + num_instances);
         for (size_t i = 0; i < num_instances; i++) {
           instances.push_back(1.0);
         };
@@ -196,7 +197,7 @@ class TaskResourceInstances {
   /// Set the per-instance values for a particular resource.
   TaskResourceInstances &Set(const ResourceID resource_id,
                              const std::vector<FixedPoint> &instances) {
-    if (instances.size() == 0) {
+    if (instances.empty()) {
       Remove(resource_id);
     } else {
       resources_[resource_id] = instances;

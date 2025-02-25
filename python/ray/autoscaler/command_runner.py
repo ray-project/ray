@@ -20,7 +20,7 @@ class CommandRunnerInterface:
         cmd: Optional[str] = None,
         timeout: int = 120,
         exit_on_fail: bool = False,
-        port_forward: List[Tuple[int, int]] = None,
+        port_forward: Optional[List[Tuple[int, int]]] = None,
         with_output: bool = False,
         environment_variables: Optional[Dict[str, object]] = None,
         run_env: str = "auto",

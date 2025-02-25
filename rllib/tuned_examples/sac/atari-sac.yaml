@@ -5,8 +5,8 @@
 atari-sac-tf-and-torch:
     env:
         grid_search:
-            - ALE/MsPacman-v5
-            - ALE/Pong-v5
+            - ale_py:ALE/MsPacman-v5
+            - ale_py:ALE/Pong-v5
     run: SAC
     stop:
         timesteps_total: 20000000

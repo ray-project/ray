@@ -67,7 +67,7 @@ export type GPUStats = {
   utilizationGpu?: number;
   memoryUsed: number;
   memoryTotal: number;
-  processes?: ProcessGPUUsage[];
+  processesPids?: ProcessGPUUsage[];
 };
 
 export type NodeDetailExtend = {

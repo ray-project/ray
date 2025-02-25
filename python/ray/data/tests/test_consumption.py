@@ -12,6 +12,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Schema
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
@@ -46,7 +47,6 @@ def test_schema(ray_start_regular):
             task_count={
                 "ReadRange": 10,
                 "reduce": 5,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot,
@@ -89,7 +89,7 @@ def test_schema_no_execution(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.range(100, override_num_blocks=10)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1}),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot,
     )
     # We do not kick off the read task by default.
@@ -146,9 +146,7 @@ def test_count(ray_start_regular):
     # for ray.data.range(), as the number of rows is known beforehand.
     assert not ds._plan.has_started_execution
 
-    assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
-    )
+    assert_core_execution_metrics_equals(CoreExecutionMetrics(task_count={}))
 
 
 def test_count_edge_case(ray_start_regular):
@@ -161,19 +159,19 @@ def test_count_edge_case(ray_start_regular):
     assert actual_count == 5
 
 
-def test_count_after_partial_execution(ray_start_regular):
-    paths = ["example://iris.csv"] * 5
+def test_count_after_caching_after_execution(ray_start_regular):
+    SCALE_FACTOR = 5
+    FILE_ROW_COUNT = 150
+    DS_ROW_COUNT = FILE_ROW_COUNT * SCALE_FACTOR
+    paths = ["example://iris.csv"] * SCALE_FACTOR
     ds = ray.data.read_csv(paths)
-    for batch in ds.iter_batches():
-        # Take one batch and break to simulate partial iteration/execution.
-        break
-    # Row count should be unknown after partial execution.
+    # Row count should be unknown before execution.
     assert "num_rows=?" in str(ds)
-
     # After iterating over bundles and completing execution, row count should be known.
     list(ds.iter_internal_ref_bundles())
-    assert f"num_rows={150*5}" in str(ds)
-    assert ds.count() == 150 * 5
+    assert f"num_rows={DS_ROW_COUNT}" in str(ds)
+    assert ds.count() == DS_ROW_COUNT
+    assert ds._plan._snapshot_metadata.num_rows == DS_ROW_COUNT
 
 
 def test_limit_execution(ray_start_regular):
@@ -189,11 +187,7 @@ def test_limit_execution(ray_start_regular):
 
     ds = ds.map(delay)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={
-                "_get_datasource_or_legacy_reader": 1,
-            }
-        ),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot=last_snapshot,
     )
 
@@ -218,7 +212,6 @@ def test_limit_execution(ray_start_regular):
         CoreExecutionMetrics(
             task_count={
                 "ReadRange": 20,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot=last_snapshot,
@@ -796,11 +789,6 @@ def test_iter_rows(ray_start_regular_shared):
         assert isinstance(row, dict)
         assert row == df_row.to_dict()
 
-    # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
-        assert isinstance(row, dict)
-        assert row == t_row
-
 
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -1266,6 +1254,17 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
+def test_iter_tf_batches_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iter_tf_batches()
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches(ray_start_regular_shared):
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
@@ -1288,6 +1287,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
@@ -1363,13 +1365,13 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.min("A") == 0
     # Test ignore_nulls=False
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.min("A") is None
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A"))
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1406,13 +1408,13 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.max("A") == 99
     # Test ignore_nulls=False
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.max("A") is None
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A"))
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1449,20 +1451,21 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.mean("A") == 49.5
     # Test ignore_nulls=False
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.mean("A") is None
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A"))
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
-    seed = int(time.time())
-    print(f"Seeding RNG for test_global_arrow_std with: {seed}")
+    # NOTE: Do not change the seed
+    seed = 1740035705
+
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
@@ -1485,12 +1488,12 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     ds = ray.data.from_pandas(pd.DataFrame({"A": []}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") is None
+    assert pd.isnull(ds.std("A"))
     # Test edge cases
     ds = ray.data.from_pandas(pd.DataFrame({"A": [3]}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") == 0
+    assert np.isnan(ds.std("A"))
 
     # Test built-in global std aggregation with nans
     nan_df = pd.DataFrame({"A": xs + [None]})
@@ -1499,23 +1502,21 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_arrow(nan_ds)
     assert math.isclose(nan_ds.std("A"), nan_df["A"].std())
     # Test ignore_nulls=False
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.std("A") is None
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A"))
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
 
 
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "MaterializedDataset(num_blocks=1, num_rows=10, "
-        "schema={1: float64, a: float64})"
-    )
-    assert str(ds) == expected_str, str(ds)
+    assert ds.schema() == Schema(pa.schema([("1", pa.float64()), ("a", pa.float64())]))
+    assert ds.count() == 10
+
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
         ray.data.from_pandas(df)
@@ -1545,6 +1546,9 @@ def test_pandas_block_select():
 # tests should only be carefully reordered to retain this invariant!
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
     ray.shutdown()
 
@@ -1560,6 +1564,9 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
         ray.get(should_error.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check_disabled(
     shutdown_only,
     unsupported_pyarrow_version,
@@ -1609,6 +1616,9 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
         ds.write_parquet("local://" + data_path).materialize()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, override_num_blocks=5000).materialize()

@@ -13,7 +13,7 @@ from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -96,6 +96,7 @@ class ExecutionPlan:
             f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
             f"snapshot_operator={self._snapshot_operator}"
+            f")"
         )
 
     def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
@@ -164,7 +165,7 @@ class ExecutionPlan:
                 else:
                     assert len(sources) == 1
                     plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-                    plan.link_logical_plan(LogicalPlan(sources[0]))
+                    plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
         else:
@@ -278,6 +279,7 @@ class ExecutionPlan:
         execution plan.
         """
         self._logical_plan = logical_plan
+        self._logical_plan._context = self._context
 
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
@@ -342,8 +344,8 @@ class ExecutionPlan:
         schema = None
         if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
-        elif self._logical_plan.dag.schema() is not None:
-            schema = self._logical_plan.dag.schema()
+        elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
+            schema = self._logical_plan.dag.aggregate_output_metadata().schema
         elif fetch_if_missing:
             iter_ref_bundles, _, _ = self.execute_to_iterator()
             for ref_bundle in iter_ref_bundles:
@@ -374,7 +376,7 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        return self._logical_plan.dag.input_files()
+        return self._logical_plan.dag.aggregate_output_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -386,8 +388,8 @@ class ExecutionPlan:
         """
         if self.has_computed_output():
             num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
-        elif self._logical_plan.dag.num_rows() is not None:
-            num_rows = self._logical_plan.dag.num_rows()
+        elif self._logical_plan.dag.aggregate_output_metadata().num_rows is not None:
+            num_rows = self._logical_plan.dag.aggregate_output_metadata().num_rows
         else:
             num_rows = None
         return num_rows
@@ -418,7 +420,7 @@ class ExecutionPlan:
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
+        executor = StreamingExecutor(ctx, metrics_tag)
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -490,7 +492,7 @@ class ExecutionPlan:
 
                 metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
                 executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options),
+                    context,
                     metrics_tag,
                 )
                 blocks = execute_to_legacy_block_list(
@@ -568,9 +570,6 @@ class ExecutionPlan:
             return DatasetStats(metadata={}, parent=None)
         return self._snapshot_stats
 
-    def stats_summary(self) -> DatasetStatsSummary:
-        return self.stats().to_summary()
-
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return all(isinstance(op, Read) for op in self._logical_plan.sources())
@@ -584,8 +583,8 @@ class ExecutionPlan:
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
     def has_computed_output(self) -> bool:
-        """Whether this plan has a computed snapshot for the final operator, i.e. for the
-        output of this plan.
+        """Whether this plan has a computed snapshot for the final operator, i.e. for
+        the output of this plan.
         """
         return (
             self._snapshot_bundle is not None

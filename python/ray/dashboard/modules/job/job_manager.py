@@ -6,7 +6,7 @@ import random
 import string
 import time
 import traceback
-from typing import Any, Dict, Iterator, Optional, Union
+from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -29,6 +29,8 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
+from ray.dashboard.modules.job.utils import get_head_node_id
+from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig
@@ -69,8 +71,10 @@ class JobManager:
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
+        self._logs_dir = logs_dir
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._gcs_address = gcs_aio_client.address
+        self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -397,12 +401,8 @@ class JobManager:
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
 
-        head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
-            "head_node_id".encode(),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-            timeout=30,
-        )
-        if head_node_id_bytes is None:
+        head_node_id = await get_head_node_id(self._gcs_aio_client)
+        if head_node_id is None:
             logger.info(
                 "Head node ID not found in GCS. Using Ray's default actor "
                 "scheduling strategy for the job driver instead of running "
@@ -410,7 +410,6 @@ class JobManager:
             )
             scheduling_strategy = "DEFAULT"
         else:
-            head_node_id = head_node_id_bytes.decode()
             logger.info(
                 "Head node ID found in GCS; scheduling job driver on "
                 f"head node {head_node_id}"
@@ -507,6 +506,7 @@ class JobManager:
                 "Please use a different submission_id."
             )
 
+        driver_logger = self._get_job_driver_logger(submission_id)
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.
@@ -527,7 +527,6 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
-            driver_logger = self._get_job_driver_logger(submission_id)
             driver_logger.info("Runtime env is setting up.")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
@@ -541,7 +540,14 @@ class JobManager:
                     runtime_env, submission_id, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
+            ).remote(
+                submission_id,
+                entrypoint,
+                metadata or {},
+                self._gcs_address,
+                self._cluster_id_hex,
+                self._logs_dir,
+            )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
                 resources_specified=resources_specified,
@@ -554,8 +560,7 @@ class JobManager:
             )
         except Exception as e:
             tb_str = traceback.format_exc()
-
-            logger.warning(
+            driver_logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
                 f". Full traceback:\n{tb_str}"
             )
@@ -567,6 +572,8 @@ class JobManager:
                     f". Full traceback:\n{tb_str}"
                 ),
             )
+        finally:
+            close_logger_file_descriptor(driver_logger)
 
         return submission_id
 
@@ -616,12 +623,12 @@ class JobManager:
         """Get all logs produced by a job."""
         return self._log_client.get_logs(job_id)
 
-    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+    async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Return an iterator following the logs of a job."""
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
-        for lines in self._log_client.tail_logs(job_id):
+        async for lines in self._log_client.tail_logs(job_id):
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)

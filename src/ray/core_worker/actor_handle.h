@@ -29,7 +29,7 @@ namespace core {
 
 class ActorHandle {
  public:
-  ActorHandle(rpc::ActorHandle inner) : inner_(inner) {}
+  ActorHandle(rpc::ActorHandle inner) : inner_(std::move(inner)) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,
@@ -45,7 +45,8 @@ class ActorHandle {
               const std::string &ray_namespace,
               int32_t max_pending_calls,
               bool execute_out_of_order = false,
-              absl::optional<bool> enable_task_events = absl::nullopt);
+              absl::optional<bool> enable_task_events = absl::nullopt,
+              const std::unordered_map<std::string, std::string> &labels = {});
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -104,6 +105,10 @@ class ActorHandle {
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+
+  const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
+    return inner_.labels();
+  }
 
  private:
   // Protobuf-defined persistent state of the actor handle.

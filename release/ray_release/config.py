@@ -31,12 +31,17 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 )
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
-    "prj_FKRmeV5pA6X72aVscFALNC32",
+    "prj_6rfevmf12tbsbd6g3al5f6zssh",
 )
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
+
+RELEASE_TEST_CONFIG_FILES = [
+    "release/release_tests.yaml",
+    "release/release_data_tests.yaml",
+]
 
 
 def read_and_validate_release_test_collection(
@@ -76,11 +81,22 @@ def _test_definition_invariant(
 
 
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
+    default_definition = {}
     tests = []
     for test_definition in test_definitions:
+        if test_definition["name"] == "DEFAULTS":
+            default_definition = copy.deepcopy(test_definition)
+            continue
+
+        # Add default values to the test definition.
+        test_definition = deep_update(
+            copy.deepcopy(default_definition), test_definition
+        )
+
         if "variations" not in test_definition:
             tests.append(Test(test_definition))
             continue
+
         variations = test_definition.pop("variations")
         _test_definition_invariant(
             test_definition,
@@ -187,7 +203,7 @@ def validate_aws_config(aws_config: Dict[str, Any]) -> Optional[str]:
         if not ebs:
             continue
 
-        if not ebs.get("DeleteOnTermination", False) is True:
+        if ebs.get("DeleteOnTermination", False) is not True:
             return "Ebs volume does not have `DeleteOnTermination: true` set"
     return None
 
@@ -237,3 +253,9 @@ def get_test_cloud_id(test: Test) -> str:
     else:
         cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
     return cloud_id
+
+
+def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
+    if default_project_id is None:
+        default_project_id = str(DEFAULT_ANYSCALE_PROJECT)
+    return test.get("cluster", {}).get("project_id", default_project_id)
