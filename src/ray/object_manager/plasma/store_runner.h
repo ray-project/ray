@@ -2,6 +2,7 @@
 
 #include <boost/asio.hpp>
 #include <memory>
+#include <string>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"

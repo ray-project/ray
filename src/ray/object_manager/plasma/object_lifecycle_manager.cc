@@ -17,6 +17,11 @@
 
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/time/clock.h"
 #include "ray/common/ray_config.h"
 

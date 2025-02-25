@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"

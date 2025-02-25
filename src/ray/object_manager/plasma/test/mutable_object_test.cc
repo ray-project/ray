@@ -13,6 +13,10 @@
 // limitations under the License.
 
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"

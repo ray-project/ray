@@ -17,6 +17,9 @@
 
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
+#include <string>
+#include <utility>
+
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/util/logging.h"

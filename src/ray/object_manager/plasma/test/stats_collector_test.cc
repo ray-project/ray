@@ -13,6 +13,10 @@
 // limitations under the License.
 
 #include <limits>
+#include <memory>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/random/random.h"
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"

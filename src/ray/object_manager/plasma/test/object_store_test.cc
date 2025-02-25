@@ -15,6 +15,8 @@
 #include "ray/object_manager/plasma/object_store.h"
 
 #include <limits>
+#include <string>
+#include <utility>
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"

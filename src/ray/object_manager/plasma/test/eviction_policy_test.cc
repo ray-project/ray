@@ -14,6 +14,8 @@
 
 #include "ray/object_manager/plasma/eviction_policy.h"
 
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/object_store.h"

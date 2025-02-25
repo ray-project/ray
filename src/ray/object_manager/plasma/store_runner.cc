@@ -7,6 +7,10 @@
 #include <unistd.h>
 #endif
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/util/thread_utils.h"
