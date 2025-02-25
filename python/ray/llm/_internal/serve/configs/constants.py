@@ -20,7 +20,6 @@ DEFAULT_MULTIPLEX_DOWNLOAD_TRIES = int(
 
 DEFAULT_TARGET_ONGOING_REQUESTS = 16
 
-FALLBACK_MAX_ONGOING_REQUESTS = 64
 
 # If true, a default runtime_env will be injected to import rayllm on worker startup.
 # This is a startup time optimization to avoid the latency penalty of sequentially
@@ -47,7 +46,7 @@ ENGINE_START_TIMEOUT_S = int(os.getenv("RAYLLM_ENGINE_START_TIMEOUT_S", str(60 *
 MIN_NUM_TOPLOGPROBS_ALLOWED = 0
 MAX_NUM_TOPLOGPROBS_ALLOWED = 5
 MODEL_RESPONSE_BATCH_TIMEOUT_MS = float(
-    os.getenv("RAYLLM_MODEL_RESPONSE_BATCH_TIMEOUT_MS", "200")
+    os.getenv("RAYLLM_MODEL_RESPONSE_BATCH_TIMEOUT_MS", "50")
 )
 RAYLLM_ENABLE_REQUEST_PROMPT_LOGS = (
     os.environ.get("RAYLLM_ENABLE_REQUEST_PROMPT_LOGS", "1") == "1"
@@ -67,3 +66,21 @@ RAYLLM_ROUTER_HTTP_TIMEOUT = float(os.environ.get("RAYLLM_ROUTER_HTTP_TIMEOUT", 
 ENABLE_VERBOSE_TELEMETRY = bool(int(os.getenv("RAYLLM_ENABLE_VERBOSE_TELEMETRY", "0")))
 
 RAYLLM_VLLM_ENGINE_CLS_ENV = "RAYLLM_VLLM_ENGINE_CLS"
+
+# The ratio of number of router replicas to number of model replicas. Default to 2
+# meaning that there are 2 router replicas for every model replica.
+ROUTER_TO_MODEL_REPLICA_RATIO = float(
+    os.getenv("RAYLLM_ROUTER_TO_MODEL_REPLICA_RATIO", "2")
+)
+
+RAYLLM_ROUTER_MIN_REPLICAS = int(os.environ.get("RAYLLM_ROUTER_MIN_REPLICAS", 0))
+RAYLLM_ROUTER_INITIAL_REPLICAS = int(
+    os.environ.get("RAYLLM_ROUTER_INITIAL_REPLICAS", 2)
+)
+RAYLLM_ROUTER_MAX_REPLICAS = int(os.environ.get("RAYLLM_ROUTER_MAX_REPLICAS", 16))
+RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS = int(
+    os.environ.get(
+        "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
+        DEFAULT_TARGET_ONGOING_REQUESTS,  # 16
+    )
+)

@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import AsyncGenerator, Optional, Type, Union
+from typing import AsyncGenerator, Optional, Type, Union, Dict, Any
 
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve
@@ -372,7 +372,7 @@ class ResponsePostprocessor:
             )
 
 
-class VLLMDeploymentImpl(LLMDeployment):
+class VLLMService(LLMDeployment):
     _default_engine_cls = VLLMEngine
     _default_image_retriever_cls = ImageRetriever
 
@@ -384,8 +384,10 @@ class VLLMDeploymentImpl(LLMDeployment):
         image_retriever_cls: Optional[Type[ImageRetriever]] = None,
         model_downloader: Optional[LoraModelLoader] = None,
     ):
-        """
-        Constructor takes in an LLMConfig object and start the underlying vllm engine.
+        """Constructor of VLLMDeployment.
+
+        Only the llm_config is public api, the other arguments are private
+        and used for testing.
 
         Args:
             llm_config: LLMConfig for the model.
@@ -513,9 +515,13 @@ class VLLMDeploymentImpl(LLMDeployment):
             yield llm_response
 
     async def chat(self, request: ChatCompletionRequest) -> LLMChatResponse:
-        """
-        Inferencing to the vllm engine for chat, and return the response as
-        LLMChatResponse.
+        """Runs a chat request to the vllm engine, and return the response.
+
+        Args:
+            request: A ChatCompletionRequest object.
+
+        Returns:
+            A LLMChatResponse object.
         """
         request_id = get_serve_request_id()
         prompt = Prompt(
@@ -529,9 +535,13 @@ class VLLMDeploymentImpl(LLMDeployment):
         )
 
     async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
-        """
-        Inferencing to the vllm engine for completion api, and return the response as
-        LLMCompletionsResponse.
+        """Runs a completion request to the vllm engine, and return the response.
+
+        Args:
+            request: A CompletionRequest object.
+
+        Returns:
+            A LLMCompletionsResponse object.
         """
         request_id = get_serve_request_id()
         prompt = Prompt(
@@ -546,6 +556,7 @@ class VLLMDeploymentImpl(LLMDeployment):
         )
 
     async def check_health(self):
+        """Check the health of the vllm engine."""
         return await self.engine.check_health()
 
     async def _load_model(self, lora_model_id: str) -> DiskMultiplexConfig:
@@ -557,6 +568,21 @@ class VLLMDeploymentImpl(LLMDeployment):
     async def _disk_lora_model(self, lora_model_id: str) -> DiskMultiplexConfig:
         disk_lora_model: DiskMultiplexConfig = await self.load_model(lora_model_id)
         return disk_lora_model
+
+    @classmethod
+    def as_deployment(
+        cls, deployment_options: Dict[str, Any] = None
+    ) -> serve.Deployment:
+        """Convert the VLLMService to a Ray Serve deployment.
+
+        Args:
+            deployment_options: A dictionary of deployment options.
+
+        Returns:
+            A Ray Serve deployment.
+        """
+        deployment_options = deployment_options or {}
+        return VLLMDeployment.options(**deployment_options)
 
 
 @serve.deployment(
@@ -578,8 +604,8 @@ class VLLMDeploymentImpl(LLMDeployment):
     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
 )
-class VLLMDeployment(VLLMDeploymentImpl):
-    # Note (genesu): We are separating the VLLMDeploymentImpl and VLLMDeployment just
+class VLLMDeployment(VLLMService):
+    # Note (genesu): We are separating the VLLMService and VLLMDeployment just
     # to give developers an ability to test the implementation outside the Ray Serve.
     # But in practice we should always test the VLLMDeployment class as a Serve
     # deployment to ensure all functionalities can be run remotely asynchronously.

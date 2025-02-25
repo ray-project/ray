@@ -1,8 +1,8 @@
 # Requirements to run release tests from buildkite (client dependencies will be installed separately)
 # Copy anyscale pin to requirements.txt and util.py
-anyscale >= 0.24.62
-bazel-runfiles
 aioboto3
+anyscale >= 0.26.1
+bazel-runfiles
 boto3
 click
 freezegun
@@ -16,10 +16,10 @@ PyGithub
 requests
 twine == 5.0.0
 docker >= 7.1.0
+aws_requests_auth
 
 # Below are requirements only used by ray_ci
 tzdata
-aws_requests_auth
 requests >= 2.31.0
 -r requirements-doc.txt
 
