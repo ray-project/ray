@@ -394,6 +394,17 @@ bool WorkerContext::CurrentActorIsAsync() const {
   return current_actor_is_asyncio_;
 }
 
+void WorkerContext::SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_) {
+  absl::WriterMutexLock lock(&mutex_);
+  RAY_CHECK(!current_actor_id_.IsNil());
+  current_actor_should_exit_ = true;
+}
+
+bool WorkerContext::CurrentActorShouldExit() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_actor_should_exit_;
+}
+
 bool WorkerContext::CurrentActorDetached() const {
   absl::ReaderMutexLock lock(&mutex_);
   return is_detached_actor_;
