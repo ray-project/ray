@@ -274,6 +274,8 @@ class Learner(Checkpointable):
         # In case of offline learning and multiple learners, each learner receives a
         # repeatable iterator that iterates over a split of the streamed data.
         self.iterator: DataIterator = None
+        self._batched_iterable = None
+        self._epoch_iterator = None
 
     # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
     #  all Learner workers and then immediately builds them any ways? Unless there is
@@ -1116,9 +1118,6 @@ class Learner(Checkpointable):
                 "`num_iters` instead."
             )
 
-        if not self.iterator:
-            self.iterator = iterator
-
         self._check_is_built()
 
         # Call `before_gradient_based_update` to allow for non-gradient based
@@ -1165,18 +1164,26 @@ class Learner(Checkpointable):
         def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
             return self._convert_batch_type(batch, to_device=True, use_stream=True)
 
-        i = 0
-        logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
-        while num_iters is None or i < num_iters:
-            for batch in self.iterator.iter_batches(
+        if not self.iterator:
+            # A `DataIterator` that can iterate in different ways over the data.
+            self.iterator = iterator
+            # Holds a batched_iterable over the dataset.
+            self._batched_iterable = self.iterator.iter_batches(
                 # Note, this needs to be one b/c data is already mapped to
                 # `MultiAgentBatch`es of `minibatch_size`.
                 batch_size=minibatch_size,
                 _collate_fn=_collate_fn,
                 _finalize_fn=_finalize_fn,
                 **kwargs,
-            ):
-                # TODO (simon): Add metrics for the `dataset_num_iter`.
+            )
+            # Create an iterator that can be stopped and resumed during an epoch.
+            self._epoch_iterator = iter(self._batched_iterable)
+
+        i = 0
+        logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
+        while num_iters is None or i < num_iters:
+            # If the epoch iterator is iterable, iterate batches.
+            for batch in self._epoch_iterator:
                 # Update the iteration counter.
                 i += 1
 
@@ -1211,9 +1218,17 @@ class Learner(Checkpointable):
                 # If `num_iters` is reached break and return.
                 if num_iters and i == num_iters:
                     break
+            # If the epoch iterator is exhausted, reinstantiate it.
+            else:
+                # Inform the user that an epoch is finished.
+                logger.debug(
+                    f"===> [Learner {id(self)}] - Finished epoch. Reinstantiate iterator ..."
+                )
+                # Initialize a new epoch iterator.
+                self._epoch_iterator = iter(self._batched_iterable)
 
         logger.debug(
-            f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
+            f"===> [Learner {id(self)}] - Number of iterations run in this training step: {i}"
         )
 
         # Log all individual RLModules' loss terms and its registered optimizers'

@@ -194,11 +194,17 @@ if args.num_learners and args.num_learners > 1:
         )
 # Anyscale RLUnplugged storage bucket. The bucket contains from the
 # original `RLUnplugged` bucket only the first `atari/Pong` run.
-anyscale_storage_bucket = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
+# TODO (simon, artur): Create an extra bucket for the data and do not
+# use the `ANYSCALE_ARTIFACT_STORAGE`.
+anyscale_storage_bucket = (
+    "s3://anyscale-customer-dataplane-data-staging/artifact_storage/"
+    "anyscale_storage_bucketorg_7c1Kalm9WcX2bNIjW53GUT/cld_kf64x96s2u94pxyyxkzwx6tsxs"
+)
+# anyscale_storage_bucket = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
 anyscale_rlunplugged_atari_path = anyscale_storage_bucket + "/rllib/rl_unplugged/atari"
 
 # We only use the Atari game `Pong` here. Users can choose other Atari
-# games and set here the name. This will download `TfRecords` dataset from GCS.
+# games and set here the name.
 game = "Pong"
 
 # Path to the directory with all runs from Atari Pong.
@@ -238,6 +244,7 @@ config = (
         evaluation_num_env_runners=1,
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
+        evaluation_config=BCConfig.overrides(exploration=False),
     )
     .learners(
         num_learners=args.num_learners,
@@ -283,7 +290,7 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.005
+        lr=0.0008
         * max(
             1,
             (args.num_learners if args.num_learners and args.num_learners > 1 else 1)
