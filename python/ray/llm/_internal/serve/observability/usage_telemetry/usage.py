@@ -20,6 +20,7 @@ RAYLLM_TELEMETRY_NAMESPACE = "rayllm_telemetry"
 RAYLLM_TELEMETRY_ACTOR_NAME = "rayllm_telemetry"
 
 logger = get_logger(__name__)
+DEFAULT_GPU_TYPE = "UNSPECIFIED"
 
 
 class TelemetryTags(str, Enum):
@@ -256,7 +257,7 @@ def push_telemetry_report_for_all_models(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             tensor_parallel_degree=engine_config.tensor_parallel_degree,
-            gpu_type=engine_config.accelerator_type,
+            gpu_type=model.accelerator_type or DEFAULT_GPU_TYPE,
             num_gpus=engine_config.num_gpu_workers,
         )
         _push_telemetry_report(telemetry_model)
