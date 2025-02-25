@@ -1,9 +1,7 @@
 import asyncio
 import os
 import subprocess
-import time
-from typing import Dict, Optional, Callable, TypeVar, Any
-from functools import wraps
+from typing import Dict, Optional
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
@@ -13,6 +11,7 @@ from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_lora_mirror_config,
     sync_model,
     make_async,
+    retry_with_exponential_backoff,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -40,60 +39,6 @@ class GlobalCounter:
 
 
 global_id_manager = GlobalCounter()
-
-# Type variable for the retry decorator
-T = TypeVar("T")
-
-
-def retry_with_exponential_backoff(
-    max_tries: int,
-    exception_to_check: type[Exception],
-    base_delay: float = 1,
-    max_delay: float = 32,
-    exponential_base: float = 2,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Retry decorator with exponential backoff.
-
-    Args:
-        max_tries: Maximum number of retry attempts
-        exception_to_check: Exception type to catch and retry on
-        base_delay: Initial delay between retries in seconds
-        max_delay: Maximum delay between retries in seconds
-        exponential_base: Base for exponential calculation
-    """
-
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> T:
-            delay = base_delay
-            last_exception = None
-
-            for attempt in range(max_tries):
-                try:
-                    return func(*args, **kwargs)
-                except exception_to_check as e:
-                    last_exception = e
-                    if attempt == max_tries - 1:  # Last attempt
-                        raise last_exception
-
-                    # Log the failure and retry
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{max_tries} failed: {str(e)}. "
-                        f"Retrying in {delay} seconds..."
-                    )
-                    time.sleep(delay)
-                    # Calculate next delay with exponential backoff
-                    delay = min(delay * exponential_base, max_delay)
-
-            # This should never be reached due to the raise in the loop
-            raise last_exception if last_exception else RuntimeError(
-                "Unexpected error in retry logic"
-            )
-
-        return wrapper
-
-    return decorator
-
 
 class LoraModelLoader:
     """Download Lora weights from remote, and manage a CPU memory cache.
@@ -208,12 +153,12 @@ class LoraModelLoader:
     def _load_model_sync(
         self, lora_mirror_config: LoraMirrorConfig
     ) -> DiskMultiplexConfig:
-        @retry_with_exponential_backoff(
+        """Load a model from the given mirror configuration."""
+        # Apply retry decorator to _download_lora at runtime with instance parameters
+        download_with_retries = retry_with_exponential_backoff(
             max_tries=self.max_tries,
             exception_to_check=subprocess.SubprocessError,
-        )
-        def download_with_retries(config: LoraMirrorConfig) -> str:
-            return self._download_lora(config)
+        )(lambda config: self._download_lora(config))
 
         local_path = download_with_retries(lora_mirror_config)
         # the lora_assigned_id is consistent for the lifetime of the disk cache entry
