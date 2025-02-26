@@ -812,13 +812,6 @@ ray_cc_library(
         "src/ray/stats/stats.h",
         "src/ray/stats/tag_defs.h",
     ],
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
-    }),
     deps = [
         ":reporter_rpc",
         ":stats_metric",
@@ -872,17 +865,6 @@ ray_cc_library(
         "src/ray/raylet/scheduling/scheduler_stats.h",
         "src/ray/raylet/scheduling/scheduling_policy.h",
     ],
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "@platforms//os:macos": [
-            "-pthread",
-        ],
-        "@platforms//os:linux": [
-            "-lpthread",
-        ],
-        "//conditions:default": [],
-    }),
     deps = [
         ":gcs_client_lib",
         ":ray_common",
@@ -940,13 +922,6 @@ ray_cc_library(
         "src/ray/raylet/worker_killing_policy_retriable_fifo.h",
         "src/ray/raylet/worker_pool.h",
     ],
-    linkopts = select({
-        "@platforms//os:windows": [
-        ],
-        "//conditions:default": [
-            "-lpthread",
-        ],
-    }),
     deps = [
         ":gcs",
         ":gcs_client_lib",
