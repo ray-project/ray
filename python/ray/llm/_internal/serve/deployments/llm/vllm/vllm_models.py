@@ -56,7 +56,7 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="Configuration for GCS mirror. This is for where the weights are downloaded from.",
     )
-    accelerator_type: GPUType = Field(
+    accelerator_type: Optional[GPUType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
@@ -121,10 +121,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
-
-        # Ray uses a hyphen instead of an underscore for
-        # accelerator_type.
-        return f"accelerator_type:{self.accelerator_type.replace('_', '-')}"
+        return f"accelerator_type:{self.accelerator_type}"
 
     @property
     def tensor_parallel_degree(self) -> int:
@@ -147,10 +144,10 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        bundles = [
-            {"GPU": 1, self.ray_accelerator_type(): 0.001}
-            for _ in range(self.num_gpu_workers)
-        ]
+        bundle = {"GPU": 1}
+        if self.accelerator_type:
+            bundle[self.ray_accelerator_type()] = 0.001
+        bundles = [bundle for _ in range(self.num_gpu_workers)]
 
         return bundles
 
