@@ -12,8 +12,10 @@ from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
-from ray.core.generated.export_train_run_pb2 import ExportTrainRun
-from ray.core.generated.export_train_run_attempt_pb2 import ExportTrainRunAttempt
+from ray.core.generated.export_train_state_pb2 import (
+    ExportTrainRun,
+    ExportTrainRunAttempt,
+)
 from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)

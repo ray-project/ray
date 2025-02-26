@@ -1,5 +1,5 @@
-from ray.core.generated.export_train_run_pb2 import ExportTrainRun as ProtoTrainRun
-from ray.core.generated.export_train_run_attempt_pb2 import (
+from ray.core.generated.export_train_state_pb2 import (
+    ExportTrainRun as ProtoTrainRun,
     ExportTrainRunAttempt as ProtoTrainRunAttempt,
 )
 from ray.train.v2._internal.state.schema import (
