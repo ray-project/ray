@@ -778,13 +778,6 @@ class PlasmaObjectNotAvailable(RayError):
 
 
 @PublicAPI
-class AsyncioActorExit(RayError):
-    """Raised when an asyncio actor intentionally exits via exit_actor()."""
-
-    pass
-
-
-@PublicAPI
 class RuntimeEnvSetupError(RayError):
     """Raised when a runtime environment fails to be set up.
 
@@ -916,7 +909,6 @@ RAY_EXCEPTION_TYPES = [
     ObjectReconstructionFailedLineageEvictedError,
     OwnerDiedError,
     GetTimeoutError,
-    AsyncioActorExit,
     RuntimeEnvSetupError,
     TaskPlacementGroupRemoved,
     ActorPlacementGroupRemoved,

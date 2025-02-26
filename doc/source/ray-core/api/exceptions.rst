@@ -15,7 +15,6 @@ Exceptions
     ray.exceptions.ActorDiedError
     ray.exceptions.ActorUnschedulableError
     ray.exceptions.ActorUnavailableError
-    ray.exceptions.AsyncioActorExit
     ray.exceptions.LocalRayletDiedError
     ray.exceptions.WorkerCrashedError
     ray.exceptions.TaskPlacementGroupRemoved

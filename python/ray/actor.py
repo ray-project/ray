@@ -27,9 +27,7 @@ from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     ObjectRefGenerator,
     PythonFunctionDescriptor,
-    raise_sys_exit_with_custom_error_message,
 )
-from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -1786,12 +1784,6 @@ def exit_actor():
         # raise a custom error to the main thread to tell it to exit.
         worker.core_worker.set_current_actor_should_exit()
         return
-        if worker.core_worker.current_actor_is_asyncio():
-            raise AsyncioActorExit()
-
-        # Set a flag to indicate this is an intentional actor exit. This
-        # reduces log verbosity.
-        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
     else:
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "
