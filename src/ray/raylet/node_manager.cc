@@ -678,7 +678,7 @@ void NodeManager::CheckForUnexpectedWorkerDisconnects() {
   RAY_CHECK(all_connections.size() == all_workers.size());
 
   std::vector<bool> disconnects = CheckForClientDisconnects(all_connections);
-  for (int i = 0; i < disconnects.size(); i++) {
+  for (size_t i = 0; i < disconnects.size(); i++) {
     if (disconnects[i]) {
       std::string msg = "Worker connection closed unexpectedly.";
       RAY_LOG(DEBUG).WithField(all_workers[i]->WorkerId()) << msg;

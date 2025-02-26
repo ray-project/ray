@@ -156,9 +156,9 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
   fill_resource_usage_helper(backlog_tracker_range, false);
 
   if (skipped_requests > 0) {
-    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
-                  << " scheduling classes. Some resource loads may not be reported to "
-                     "the autoscaler.";
+    RAY_LOG(WARNING) << "There are more than " << max_resource_shapes_per_load_report_
+                     << " scheduling classes. Some resource loads may not be reported to "
+                        "the autoscaler.";
   }
 }
 

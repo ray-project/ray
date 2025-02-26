@@ -159,7 +159,7 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
   ComputeStats();
   if (num_tasks_to_schedule_ + num_tasks_to_dispatch_ + num_infeasible_tasks_ > 1000) {
     RAY_LOG(WARNING)
-        << "More than 1000 tasks are queued in this node. This can cause slow down.";
+        << "More than 1000 tasks are queued for scheduling on this node. This can slow down the raylet.";
   }
 
   std::stringstream buffer;
