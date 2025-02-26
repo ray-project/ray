@@ -2993,29 +2993,25 @@ class CompiledDAG:
         channel_details=False,
     ) -> str:
         """
-        Visualize the compiled graph using Graphviz.
-
-        For non-ASCII formats, the visualization will be saved to a file specified
-        by the `filename` argument.
-
-        This method generates a graphical representation of the compiled graph,
-        showing tasks and their dependencies.This method should be called
-        **after** the graph has been compiled using `experimental_compile()`.
+        Visualize the compiled graph by showing tasks and their dependencies.
+        This method should be called **after** the graph has been compiled using
+        `experimental_compile()`.
 
         Args:
-            filename: The name of the output file (without extension).
+            filename: For non-ASCII formats, the output file name (without extension).
+                For ASCII format, the visualization will be printed to the console,
+                and this argument is ignored.
             format: The format of the output file (e.g., 'png', 'pdf', 'ascii').
-            view: For non-ascii: Whether to open the file with the default viewer.
-                For ascii: Whether to print the visualization and return None
-                    or return the ascii visualization string directly.
+            view: For non-ASCII formats: Whether to open the file with the default
+                viewer. For ASCII format: Whether to print the visualization and return
+                None or return the ascii visualization string directly.
             channel_details: If True, adds channel details to edges.
 
         Returns:
-            str:
-                - For Graphviz-based formats (e.g., 'png', 'pdf', 'jpeg'), returns
-                the Graphviz DOT string representation of the compiled graph.
-                - For ASCII format, returns the ASCII string representation of the
-                compiled graph.
+            The string representation of the compiled graph. For Graphviz-based formats
+            (e.g., 'png', 'pdf', 'jpeg'), returns the Graphviz DOT string representation
+            of the compiled graph. For ASCII format, returns the ASCII string
+            representation of the compiled graph.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
