@@ -1009,16 +1009,11 @@ def test_exit_actor_async_actor_nested_task(shutdown_only, tmp_path):
         async def exit(self):
             exit_actor()
 
-        async def normal_task(self):
-            pass
-
     a = AsyncActor.remote()
     ray.get(a.__ray_ready__.remote())
-    ray.get(a.start_exit_task.remote())
-    # Wait for the actor to exit.
-    time.sleep(1)
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(a.normal_task.remote())
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(a.start_exit_task.remote())
+    assert "exit_actor()" in str(exc_info.value)
 
     def verify():
         with open(async_temp_file) as f:
