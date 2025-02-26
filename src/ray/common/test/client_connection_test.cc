@@ -14,13 +14,12 @@
 
 #include "ray/common/client_connection.h"
 
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
 #include <list>
 #include <memory>
 #include <utility>
 #include <vector>
-
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -260,10 +259,9 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
 #if !defined(_WIN32)
   ClientHandler client_handler = [](ClientConnection &client) {};
 
-  MessageHandler message_handler = [](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {};
+  MessageHandler message_handler = [](std::shared_ptr<ClientConnection> client,
+                                      int64_t message_type,
+                                      const std::vector<uint8_t> &message) {};
 
   auto conn = ClientConnection::Create(
       client_handler, message_handler, std::move(in_), "conn", {}, error_message_type_);

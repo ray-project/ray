@@ -374,7 +374,6 @@ NodeManager::NodeManager(
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
-
   periodical_runner_->RunFnPeriodically(
       [this]() { CheckForUnexpectedWorkerDisconnects(); },
       RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
@@ -665,7 +664,8 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
 
 void NodeManager::CheckForUnexpectedWorkerDisconnects() {
   std::vector<std::shared_ptr<ClientConnection>> all_connections;
-  std::vector<std::shared_ptr<WorkerInterface>> all_workers = worker_pool_.GetAllRegisteredWorkers();
+  std::vector<std::shared_ptr<WorkerInterface>> all_workers =
+      worker_pool_.GetAllRegisteredWorkers();
   all_connections.reserve(all_workers.size());
   for (const auto &worker : all_workers) {
     all_connections.push_back(worker->Connection());

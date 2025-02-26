@@ -664,7 +664,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// before detecing an EOF on the socket.
   void CheckForUnexpectedWorkerDisconnects();
 
-
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);
 

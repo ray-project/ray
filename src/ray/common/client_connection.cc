@@ -14,20 +14,19 @@
 
 #include "ray/common/client_connection.h"
 
-#include <chrono>
-#include <memory>
-#include <string>
-#include <sstream>
-#include <thread>
-#include <utility>
-#include <vector>
-
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <boost/asio/placeholders.hpp>
 #include <boost/asio/read.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/bind/bind.hpp>
+#include <chrono>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
@@ -608,7 +607,8 @@ std::string ServerConnection::DebugString() const {
   return result.str();
 }
 
-std::vector<bool> CheckForClientDisconnects(const std::vector<std::shared_ptr<ClientConnection>> &conns) {
+std::vector<bool> CheckForClientDisconnects(
+    const std::vector<std::shared_ptr<ClientConnection>> &conns) {
   std::vector<bool> result(conns.size(), false);
 #if defined(_WIN32)
   return result;
@@ -621,12 +621,12 @@ std::vector<bool> CheckForClientDisconnects(const std::vector<std::shared_ptr<Cl
 
   int ret = poll(poll_fds.data(), poll_fds.size(), 0);
   if (ret > 0) {
-      for (size_t i = 0; i < conns.size(); ++i) {
-          // Check if the POLLHUP event occurred.
-          if (poll_fds[i].revents & POLLHUP) {
-              result[i] = true;
-          }
+    for (size_t i = 0; i < conns.size(); ++i) {
+      // Check if the POLLHUP event occurred.
+      if (poll_fds[i].revents & POLLHUP) {
+        result[i] = true;
       }
+    }
   } else if (ret < 0) {
     RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << ret;
   }
