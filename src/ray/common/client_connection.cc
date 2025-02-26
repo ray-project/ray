@@ -613,7 +613,7 @@ std::vector<bool> CheckForClientDisconnects(
 #if defined(_WIN32)
   return result;
 #else
-  // Poll for SIGHUP on all of the FDs in a single syscall.
+  // Poll for POLLHUP on all of the FDs in a single syscall.
   std::vector<pollfd> poll_fds(conns.size());
   for (size_t i = 0; i < conns.size(); ++i) {
     poll_fds[i] = {conns[i]->GetNativeHandle(), POLLHUP, 0};
