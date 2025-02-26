@@ -350,8 +350,8 @@ Resources
 
         return formatted_output.strip()
 
-    @classmethod
-    def _node_usage_report(cls, data: ClusterStatus, verbose: bool) -> str:
+    @staticmethod
+    def _node_usage_report(data: ClusterStatus, verbose: bool) -> str:
         usage_by_node = {}
         node_type_mapping = {}
         idle_time_map = {}
@@ -406,8 +406,8 @@ Resources
 
         return sio.getvalue()
 
-    @classmethod
-    def _header_info(cls, data: ClusterStatus, verbose: bool) -> str:
+    @staticmethod
+    def _header_info(data: ClusterStatus, verbose: bool) -> str:
         time = datetime.fromtimestamp(data.stats.request_ts_s)
         if time is None:
             time = datetime.now()
@@ -431,8 +431,8 @@ Resources
                 )
         return header
 
-    @classmethod
-    def _available_node_report(cls, data: ClusterStatus) -> str:
+    @staticmethod
+    def _available_node_report(data: ClusterStatus) -> str:
         available_node_report_lines = []
         active_nodes = _count_by(data.active_nodes, "ray_node_type_name")
 
@@ -445,8 +445,8 @@ Resources
             available_node_report = "\n".join(available_node_report_lines)
         return available_node_report
 
-    @classmethod
-    def _idle_node_report(cls, data: ClusterStatus) -> str:
+    @staticmethod
+    def _idle_node_report(data: ClusterStatus) -> str:
         idle_nodes = _count_by(data.idle_nodes, "ray_node_type_name")
         if not idle_nodes:
             idle_node_report = " (no idle nodes)"
@@ -458,8 +458,8 @@ Resources
             idle_node_report = "\n".join(idle_node_report_lines)
         return idle_node_report
 
-    @classmethod
-    def _failed_node_report(cls, data: ClusterStatus, verbose: bool) -> str:
+    @staticmethod
+    def _failed_node_report(data: ClusterStatus, verbose: bool) -> str:
         failure_lines = []
         failed_nodes = []
         for node in data.failed_nodes:
@@ -504,8 +504,8 @@ Resources
 
         return failure_report
 
-    @classmethod
-    def _pending_node_report(cls, data: ClusterStatus) -> str:
+    @staticmethod
+    def _pending_node_report(data: ClusterStatus) -> str:
         pending_lines = []
         pending_launches = _count_by(data.pending_launches, "ray_node_type_name")
         pending_nodes = []
@@ -525,8 +525,8 @@ Resources
             pending_report = " (no pending nodes)"
         return pending_report
 
-    @classmethod
-    def _demand_report(cls, data: ClusterStatus) -> str:
+    @staticmethod
+    def _demand_report(data: ClusterStatus) -> str:
         demand_lines = []
         resource_demands = []
         for demand in data.resource_demands.ray_task_actor_demand:
@@ -578,8 +578,8 @@ Resources
             demand_report = " (no resource demands)"
         return demand_report
 
-    @classmethod
-    def _cluster_usage_report(cls, data: ClusterStatus, verbose: bool) -> str:
+    @staticmethod
+    def _cluster_usage_report(data: ClusterStatus, verbose: bool) -> str:
         usage = {
             u.resource_name: (u.used, u.total) for u in data.cluster_resource_usage
         }
