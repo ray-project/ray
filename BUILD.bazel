@@ -2406,6 +2406,7 @@ ray_cc_library(
         "src/ray/object_manager/object_manager.h",
     ],
     deps = [
+
         ":chunk_object_reader",
         ":object_buffer_pool",
         ":object_manager_common",
