@@ -2402,9 +2402,24 @@ ray_cc_library(
     deps = [
         ":chunk_object_reader",
         ":object_buffer_pool",
+        ":object_manager_common",
+        ":object_directory",
+        ":ownership_based_object_directory",
+        ":object_manager_rpc",
         ":plasma_store_server_lib",
         ":pull_manager",
         ":push_manager",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/protobuf:node_manager_cc_proto",
+        "@boost//:asio",
+        "@boost//:bind",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -2417,9 +2432,13 @@ ray_cc_library(
         "src/ray/object_manager/push_manager.h",
     ],
     deps = [
+        ":stats_metric",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
-        ":stats_metric",
+        "//src/ray/common:status",
+        "//src/ray/util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -2432,9 +2451,20 @@ ray_cc_library(
         "src/ray/object_manager/pull_manager.h",
     ],
     deps = [
-        ":ownership_based_object_directory",
         ":object_manager_rpc",
+        ":ownership_based_object_directory",
+        ":stats_metric",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_object",
+        "//src/ray/common:status",
         "//src/ray/util:counter_map",
+        "//src/ray/util:container_util",
+        "@boost//:asio",
+        "@boost//:bind",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -2449,7 +2479,13 @@ ray_cc_library(
     deps = [
         ":gcs_client_lib",
         ":object_directory",
+        ":subscriber_lib",
         ":worker_rpc",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/util:sequencer",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -2459,7 +2495,11 @@ ray_cc_library(
         "src/ray/object_manager/object_directory.h",
     ],
     deps = [
+        ":gcs_client_lib",
         ":object_manager_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
     ],
 )
 
@@ -2473,6 +2513,15 @@ ray_cc_library(
     ],
     deps = [
         ":memory_object_reader",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/util:logging",
+        "@boost//:asio",
+        "@boost//:bind",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -2485,7 +2534,11 @@ ray_cc_library(
         "src/ray/object_manager/common.h",
     ],
     deps = [
-        ":ray_common",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "@boost//:asio",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2513,6 +2566,7 @@ ray_cc_library(
     ],
     deps = [
         ":spilled_object_reader",
+        "//src/ray/util:logging",
     ],
 )
 
@@ -2526,6 +2580,9 @@ ray_cc_library(
     ],
     deps = [
         ":object_reader",
+        "//src/ray/util:logging",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_prod",
     ],
 )
 
@@ -2535,7 +2592,7 @@ ray_cc_library(
         "src/ray/object_manager/object_reader.h",
     ],
     deps = [
-        ":grpc_common_lib",
+        "//src/ray/protobuf:common_cc_proto",
     ],
 )
 
