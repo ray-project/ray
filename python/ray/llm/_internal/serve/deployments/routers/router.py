@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sys
 from typing import (
     Any,
     AsyncGenerator,
@@ -13,8 +14,7 @@ from typing import (
     Union,
 )
 
-# TODO (genesu): remove dependency on async_timeout.
-import async_timeout
+
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from ray import serve
@@ -66,6 +66,12 @@ from ray.llm._internal.serve.deployments.routers.middleware import (
     add_exception_handling_middleware,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
+
+# Import asyncio timeout depends on python version
+if sys.version_info >= (3, 11):
+    from asyncio import timeout
+else:
+    from async_timeout import timeout
 
 logger = get_logger(__name__)
 
@@ -349,7 +355,7 @@ class LLMRouter:
         Returns:
             A response object with completions.
         """
-        async with async_timeout.timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="completions")
             if body.stream:
                 first_response, wrapper = await _peek_at_openai_json_generator(results)
@@ -381,7 +387,7 @@ class LLMRouter:
             A response object with completions.
         """
 
-        async with async_timeout.timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="chat")
             if body.stream:
                 first_response, wrapper = await _peek_at_openai_json_generator(results)
