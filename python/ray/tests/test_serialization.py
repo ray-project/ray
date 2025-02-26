@@ -22,7 +22,7 @@ from ray import cloudpickle
 logger = logging.getLogger(__name__)
 
 
-def test_warn_copying_non_congtiguous_numpy_arrays_warns_once():
+def test_warn_copying_non_contiguous_numpy_arrays_warns_once(ray_start_regular):
     warning_regex = re.compile(".*cannot be zero-copy.*")
     warnings.simplefilter("always")
     with pytest.warns(UserWarning, match=warning_regex) as record:
@@ -35,7 +35,7 @@ def test_warn_copying_non_congtiguous_numpy_arrays_warns_once():
     assert len(numpy_arr_warnings) == 1
 
 
-def test_warn_copying_torch_tensor_warns_once():
+def test_warn_copying_torch_tensor_warns_once(ray_start_regular):
     warning_regex = re.compile(".*cannot be zero-copy.*")
     warnings.simplefilter("always")
     with pytest.warns(UserWarning, match=warning_regex) as record:
