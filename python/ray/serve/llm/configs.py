@@ -2,7 +2,6 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig as _LLMConfig,
     LLMServingArgs as _LLMServingArgs,
     ModelLoadingConfig as _ModelLoadingConfig,
-    S3AWSCredentials as _S3AWSCredentials,
     S3MirrorConfig as _S3MirrorConfig,
     GCSMirrorConfig as _GCSMirrorConfig,
     LoraConfig as _LoraConfig,
@@ -28,14 +27,6 @@ class LLMServingArgs(_LLMServingArgs):
 @PublicAPI(stability="alpha")
 class ModelLoadingConfig(_ModelLoadingConfig):
     """The configuration for loading an LLM model."""
-
-    pass
-
-
-# TODO (Kourosh): S3AWSCredentials should be removed. It feels extra.
-@PublicAPI(stability="alpha")
-class S3AWSCredentials(_S3AWSCredentials):
-    """The configuration for loading an LLM model from S3."""
 
     pass
 

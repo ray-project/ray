@@ -199,8 +199,8 @@ async def test_lora_include_adapters_in_list_models(
 ):
     """Check that LoRA adapters are included in the models list.
 
-    This test pulls real configs from an S3 bucket. It requires
-    `anyscale-dev-product` AWS credentials to run.
+    This test pulls real configs from an S3 bucket located in
+    `anyscale-legacy-work` account.
 
     This test is similar to test_lora_list_base_model. It checks that
     the LoRA adapters are included in the list of models.

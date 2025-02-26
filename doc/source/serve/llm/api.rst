@@ -30,7 +30,6 @@ Configs
    LLMServingArgs
    ModelLoadingConfig
    S3MirrorConfig
-   S3AWSCredentials
    GCSMirrorConfig
    LoraConfig
 
