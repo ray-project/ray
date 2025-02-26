@@ -249,13 +249,14 @@ def test_torch_tensor_nccl(
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    compiled_dag.teardown()
+
     # Test that actors can be reused for a new DAG.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
         dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
-    compiled_dag.teardown()
     compiled_dag = dag.experimental_compile()
 
     # Test that we can pass different shapes and data.
@@ -301,13 +302,14 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    compiled_dag.teardown()
+
     # Test that actors can be reused for a new DAG.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
         dag = dag.with_tensor_transport(transport="auto")
         dag = receiver.recv.bind(dag)
 
-    compiled_dag.teardown()
     compiled_dag = dag.experimental_compile()
     assert isinstance(data_annotated.type_hint, TorchTensorType)
     assert data_annotated.type_hint.transport == expected_transport
