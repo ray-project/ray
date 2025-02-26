@@ -317,6 +317,7 @@ class LLMRouter:
             # Add the base model.
             all_models[base_model_id] = await self.model(base_model_id)
 
+            logger.info(f"{base_model_id=}, {llm_config.lora_config=}")
             if llm_config.lora_config is not None:
                 # Add all the fine-tuned models.
                 lora_model_ids = get_lora_model_ids(

@@ -230,6 +230,12 @@ def get_lora_model_ids(
 ) -> List[str]:
     """Get the model IDs of all the LoRA models.
 
+    The dynamic_lora_loading_path is expected to hold subfolders each for
+    a different lora checkpoint. Each subfolder name will correspond to
+    the unique identifier for the lora checkpoint. The lora model is
+    accessible via <base_model_id>:<lora_id>. Therefore, we prepend
+    the base_model_id to each subfolder name.
+
     Args:
         dynamic_lora_loading_path: the cloud folder that contains all the LoRA
             weights.
@@ -240,26 +246,11 @@ def get_lora_model_ids(
         itself.
     """
 
-    # The organization hosting the model. E.g. this would be "google" for the
-    # model "google/gemma-2-9b-it".
-    model_provider_organization = base_model_id.split("/")[0]
-
-    # Ensure that the dynamic_lora_loading_path has no trailing slash.
-    dynamic_lora_loading_path = dynamic_lora_loading_path.rstrip("/")
-
-    # This folder contains all the LoRA subfolders.
-    lora_folder = f"{dynamic_lora_loading_path}/{model_provider_organization}/"
-
-    lora_subfolders = CloudFileSystem.list_subfolders(lora_folder)
+    lora_subfolders = CloudFileSystem.list_subfolders(dynamic_lora_loading_path)
 
     lora_model_ids = []
     for subfolder in lora_subfolders:
-        # There may be multiple models from the same provider. All their LoRAs
-        # will be in these lora_subfolders. We must select only the LoRA
-        # adapters for the passed-in base_model_id.
-        model = base_model_id.split("/")[1]
-        if subfolder.startswith(model):
-            lora_model_ids.append(f"{model_provider_organization}/{subfolder}")
+        lora_model_ids.append(f"{base_model_id}:{subfolder}")
 
     return lora_model_ids
 
