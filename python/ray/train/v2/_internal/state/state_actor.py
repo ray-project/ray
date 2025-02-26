@@ -9,11 +9,7 @@ from ray._private.event.export_event_logger import (
     check_export_api_enabled,
 )
 from ray.actor import ActorHandle
-from ray.train.v2._internal.logging import get_log_directory
-from ray.train.v2._internal.state.export import (
-    train_run_to_proto,
-    train_run_attempt_to_proto,
-)
+from ray.train.v2._internal.logging.logging import get_log_directory
 from ray.train.v2._internal.state.schema import TrainRun, TrainRunAttempt
 
 logger = logging.getLogger(__name__)
@@ -80,12 +76,16 @@ class TrainStateActor:
         if not self.is_export_api_enabled():
             return
 
+        from ray.train.v2._internal.state.export import train_run_to_proto
+
         run_proto = train_run_to_proto(run)
         self._export_logger.send_event(run_proto)
 
     def _maybe_export_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
         if not self.is_export_api_enabled():
             return
+
+        from ray.train.v2._internal.state.export import train_run_attempt_to_proto
 
         run_attempt_proto = train_run_attempt_to_proto(run_attempt)
         self._export_logger.send_event(run_attempt_proto)
