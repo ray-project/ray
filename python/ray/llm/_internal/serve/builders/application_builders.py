@@ -64,4 +64,6 @@ def build_openai_app(llm_serving_args: LLMServingArgs) -> Application:
 
     llm_deployments = _get_llm_deployments(llm_configs)
 
-    return LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
+    return LLMRouter.as_deployment(llm_configs=llm_configs).bind(
+        llm_deployments=llm_deployments
+    )
