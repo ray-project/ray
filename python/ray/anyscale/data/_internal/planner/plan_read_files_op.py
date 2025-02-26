@@ -21,7 +21,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFnDataType,
 )
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.block import Block, DataBatch
+from ray.data.block import Block, DataBatch, BlockType
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -43,7 +43,9 @@ class FilterMapTransformFn(MapTransformFn):
 
     def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         for block in blocks:
-            block = TableBlockAccessor.normalize_block_types([block], "arrow")[0]
+            block = TableBlockAccessor.normalize_block_types([block], BlockType.ARROW)[
+                0
+            ]
             yield block.filter(self._filter_expr)
 
     def __repr__(self) -> str:

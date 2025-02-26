@@ -642,6 +642,7 @@ def test_map_batches_transformer_non_fusion(ray_start_regular_shared):
         .map_batches(column_udf("id", lambda x: x + 3), batch_size=1)
         .map_batches(column_udf("id", lambda x: x + 4), batch_size=2)
         .map_batches(column_udf("id", lambda x: x + 5), batch_size=1)
+        .repartition(num_blocks=None, target_num_rows_per_block=1)
     )
 
     plan = get_execution_plan(ds._plan._logical_plan)
@@ -662,6 +663,7 @@ def test_map_batches_transformer_non_fusion(ray_start_regular_shared):
         BuildOutputBlocksMapTransformFn,
         BlocksToBatchesMapTransformFn,
         BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
         BuildOutputBlocksMapTransformFn,
     ]
 
