@@ -3,7 +3,9 @@ import json
 import os
 import pathlib
 import sys
+import re
 import requests
+import warnings
 from collections import defaultdict
 
 from pprint import pformat
@@ -26,7 +28,7 @@ from ray._private.test_utils import (
 )
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
-from ray.util.metrics import Counter, Gauge, Histogram
+from ray.util.metrics import Counter, Gauge, Histogram, Metric
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -1037,6 +1039,21 @@ def test_metrics_disablement(_setup_cluster_for_test):
         import time
 
         time.sleep(1)
+
+
+def test_invalid_metric_names():
+    warnings.simplefilter("always")
+    faulty_metric_regex = re.compile(".*Invalid metric name.*")
+    with pytest.raises(
+        ValueError, match="Empty name is not allowed. Please provide a metric name."
+    ):
+        Metric("")
+    with pytest.warns(UserWarning, match=faulty_metric_regex):
+        Metric("name-cannot-have-dashes")
+    with pytest.warns(UserWarning, match=faulty_metric_regex):
+        Metric("1namecannotstartwithnumber")
+    with pytest.warns(UserWarning, match=faulty_metric_regex):
+        Metric("name.cannot.have.dots")
 
 
 if __name__ == "__main__":
