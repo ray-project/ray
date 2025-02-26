@@ -1986,12 +1986,12 @@ cdef void execute_task(
                                      exc_info=True)
                     task_exception_instance = e
                 finally:
+                    # Record the end of the task log.
+                    worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
                         raise task_exception_instance
                     if core_worker.current_actor_should_exit():
                         raise_sys_exit_with_custom_error_message("exit_actor() is called.")
-                    # Record the end of the task log.
-                    worker.record_task_log_end(task_id, attempt_number)
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
