@@ -5,6 +5,8 @@ from ray.rllib.callbacks.callbacks import RLlibCallback
 
 
 class TestMultiCallback(unittest.TestCase):
+    """A tests suite to test the `MultiCallback`."""
+
     @classmethod
     def setUp(cls) -> None:
         ray.init()
@@ -14,6 +16,12 @@ class TestMultiCallback(unittest.TestCase):
         ray.shutdown()
 
     def test_multicallback_with_custom_callback_function(self):
+        """Tests if callbacks in `MultiCallback` get executed.
+
+        This also tests, if multiple callbacks from different sources, i.e.
+        `callback_class` and `on_episode_step` run correctly.
+        """
+        # Define two standard `RLlibCallback`.
         class TestRLlibCallback1(RLlibCallback):
             def on_episode_step(
                 self,
@@ -54,6 +62,7 @@ class TestMultiCallback(unittest.TestCase):
                     "callback_2", 2, reduce="mean", clear_on_reduce=True
                 )
 
+        # Define a custom callback function.
         def custom_on_episode_step_callback(
             episode,
             env_runner=None,
@@ -71,6 +80,7 @@ class TestMultiCallback(unittest.TestCase):
                 "custom_callback", 3, reduce="mean", clear_on_reduce=True
             )
 
+        # Configure the algorithm.
         config = (
             PPOConfig()
             .environment("CartPole-v1")
@@ -78,14 +88,18 @@ class TestMultiCallback(unittest.TestCase):
                 enable_env_runner_and_connector_v2=True,
                 enable_rl_module_and_learner=True,
             )
+            # Use the callbacks and callback function.
             .callbacks(
                 callbacks_class=[TestRLlibCallback1, TestRLlibCallback2],
                 on_episode_step=custom_on_episode_step_callback,
             )
         )
 
+        # Build the algorithm. At this stage, callbacks get already validated.
         algo = config.build()
 
+        # Run 10 training iteration and check, if the metrics defined in the
+        # callbacks made it into the results. Furthermore, check, if the values are correct.
         for _ in range(10):
             results = algo.train()
             self.assertIn("callback_1", results["env_runners"])
@@ -98,28 +112,30 @@ class TestMultiCallback(unittest.TestCase):
         algo.stop()
 
     def test_multicallback_validation_error(self):
-
+        """Check, if the validation safeguard catches wrong `MultiCallback`s."""
         with self.assertRaises(ValueError):
-            config = (
+            (
                 PPOConfig()
                 .environment("CartPole-v1")
                 .api_stack(
                     enable_env_runner_and_connector_v2=True,
                     enable_rl_module_and_learner=True,
                 )
+                # This is wrong b/c it needs callables.
                 .callbacks(callbacks_class=["TestRLlibCallback1", "TestRLlibCallback2"])
             )
 
     def test_single_callback_validation_error(self):
-
+        """Tests if the validation safeguard catches wrong `RLlibCallback`s."""
         with self.assertRaises(ValueError):
-            config = (
+            (
                 PPOConfig()
                 .environment("CartPole-v1")
                 .api_stack(
                     enable_env_runner_and_connector_v2=True,
                     enable_rl_module_and_learner=True,
                 )
+                # This is wrong b/c it needs callables.
                 .callbacks(callbacks_class="TestRLlibCallback")
             )
 
