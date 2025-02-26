@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <cstring>
 
 #include "ray/util/logging.h"
@@ -27,6 +28,11 @@ namespace ray {
 
 #if defined(__APPLE__) || defined(__linux__)
 void SpawnSubprocessAndCleanup(std::function<void()> cleanup) {
+  static std::atomic<bool> cleanup_proc_registered{false};
+  bool expected = false;
+  RAY_CHECK(cleanup_proc_registered.compare_exchange_strong(expected, /*desired=*/true))
+      << "Cleanup callback should be only called once per process";
+
   std::array<int, 2> pipe_fd;  // Intentionally no initialization.
   RAY_CHECK_NE(pipe(pipe_fd.data()), -1)
       << "Fails to create pipe because " << strerror(errno);
