@@ -338,3 +338,13 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+ray_cc_library(
+    name = "process_cleaner",
+    srcs = ["process_cleaner.cc"],
+    hdrs = ["process_cleaner.h"],
+    deps = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["//src/ray/util:logging"],
+    }),
+)
