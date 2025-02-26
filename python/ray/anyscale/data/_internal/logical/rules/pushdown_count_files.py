@@ -20,6 +20,10 @@ class PushdownCountFiles(Rule):
     the number of rows. This avoids reading any actual data.
     """
 
+    # NOTE: Default CPU allocation is 1, so we're lowering this to allow
+    #       at least 10 tasks to run per CPU core
+    _PER_TASK_NUM_CPUS_ALLOCATION = 0.1
+
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         count = plan.dag
         if not isinstance(count, Count):
@@ -57,6 +61,7 @@ class PushdownCountFiles(Rule):
             batch_format="pyarrow",
             batch_size=None,
             zero_copy_batch=True,
+            ray_remote_args={"num_cpus": self._PER_TASK_NUM_CPUS_ALLOCATION},
         )
 
         return LogicalPlan(count_rows_op, plan._context)
