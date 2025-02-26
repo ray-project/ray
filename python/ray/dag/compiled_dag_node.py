@@ -2057,19 +2057,20 @@ class CompiledDAG:
                 self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
-            def _check_outer_ref_alive(self) -> bool:
+            def _outer_ref_alive(self) -> bool:
                 if get_outer() is None:
                     logger.error(
                         "CompiledDAG has been destructed before teardown. "
                         "This should not occur please report an issue at "
-                        "https://github.com/ray-project/ray/issues/new/."
+                        "https://github.com/ray-project/ray/issues/new/.",
+                        stack_info=True,
                     )
                     return False
                 return True
 
             def wait_teardown(self, kill_actors: bool = False):
                 outer = get_outer()
-                if not self._check_outer_ref_alive():
+                if not self._outer_ref_alive():
                     return
 
                 from ray.dag import DAGContext
@@ -2121,7 +2122,7 @@ class CompiledDAG:
                         return
 
                     outer = get_outer()
-                    if not self._check_outer_ref_alive():
+                    if not self._outer_ref_alive():
                         return
 
                     logger.info("Tearing down compiled DAG")
@@ -2160,7 +2161,7 @@ class CompiledDAG:
             def run(self):
                 try:
                     outer = get_outer()
-                    if not self._check_outer_ref_alive():
+                    if not self._outer_ref_alive():
                         return
                     ray.get(list(outer.worker_task_refs.values()))
                 except KeyboardInterrupt:
