@@ -235,7 +235,7 @@ def push_telemetry_report_for_all_models(
         use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
-            from ray.llm._internal.serve.configs.server_models import AutoscalingConfig
+            from ray.serve.config import AutoscalingConfig
 
             autoscaling_config = AutoscalingConfig(
                 **model.deployment_config["autoscaling_config"]

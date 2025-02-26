@@ -23,5 +23,7 @@ namespace ray {
 // Set and override environment variable [name].
 void SetEnv(const std::string &name, const std::string &value);
 void UnsetEnv(const std::string &name);
+// Return whether the given env is set to true.
+bool IsEnvTrue(const std::string &name);
 
 }  // namespace ray
