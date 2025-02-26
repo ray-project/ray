@@ -2057,10 +2057,10 @@ class CompiledDAG:
                 self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
-            def _check_outer_ref_alive(self):
+            def _check_outer_ref_alive(self) -> bool:
                 if get_outer() is None:
                     logger.error(
-                        "CompiledDag has been destructed before teardown. "
+                        "CompiledDAG has been destructed before teardown. "
                         "This should not occur please report an issue at "
                         "https://github.com/ray-project/ray/issues/new/."
                     )
@@ -2069,7 +2069,7 @@ class CompiledDAG:
 
             def wait_teardown(self, kill_actors: bool = False):
                 outer = get_outer()
-                if self._check_outer_ref_alive() is False:
+                if not self._check_outer_ref_alive():
                     return
 
                 from ray.dag import DAGContext
@@ -2121,7 +2121,7 @@ class CompiledDAG:
                         return
 
                     outer = get_outer()
-                    if self._check_outer_ref_alive() is False:
+                    if not self._check_outer_ref_alive():
                         return
 
                     logger.info("Tearing down compiled DAG")
@@ -2160,7 +2160,7 @@ class CompiledDAG:
             def run(self):
                 try:
                     outer = get_outer()
-                    if self._check_outer_ref_alive() is False:
+                    if not self._check_outer_ref_alive():
                         return
                     ray.get(list(outer.worker_task_refs.values()))
                 except KeyboardInterrupt:
@@ -3218,7 +3218,7 @@ class CompiledDAG:
         Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
         or compile a new DAG.
-        Note: This should be explicitly called before compiling another graph on the
+        Note: This method is automatically called when the CompiledDAG is destructed or the script exits. However, this should be explicitly called before compiling another graph on the
         same actors. Python may not garbage collect the CompiledDAG object immediately
         when you may expect.
         """
