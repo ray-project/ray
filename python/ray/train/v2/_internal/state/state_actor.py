@@ -1,15 +1,15 @@
-import logging
-import threading
-import ray
-
 from collections import defaultdict
+import logging
+import os
+import threading
 from typing import Dict, Optional
+
+import ray
 from ray._private.event.export_event_logger import (
     get_export_event_logger,
     check_export_api_enabled,
 )
 from ray.actor import ActorHandle
-from ray.train.v2._internal.logging.logging import get_log_directory
 from ray.train.v2._internal.state.schema import TrainRun, TrainRunAttempt
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,10 @@ class TrainStateActor:
         if not export_api_enabled:
             return None
 
-        log_directory = get_log_directory()
+        log_directory = os.path.join(
+            ray._private.global_node.get_session_dir_path(),
+            "logs",
+        )
         logger = None
         try:
             logger = get_export_event_logger(
