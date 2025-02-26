@@ -52,7 +52,8 @@ message ExportTrainRun {
   optional string status_detail = 6;
   // The timestamp when the Train run started in ns.
   uint64 start_time = 7;
-  // The timestamp when the Train run ended in ns. If not set, the run is still in progress
+  // The timestamp when the Train run ended in ns. If not set, the run is still
+  // in progress
   optional uint64 end_time = 8;
 }
 
@@ -86,7 +87,8 @@ message ExportTrainRunAttempt {
 
   // Resources allocated for a Train worker or run
   message TrainResources {
-    // A dictionary specifying the types and amounts of resources allocated (e.g., CPU, GPU)
+    // A dictionary specifying the types and amounts of resources allocated
+    // (e.g., CPU, GPU)
     map<string, double> resources = 1;
   }
 
@@ -124,7 +126,8 @@ message ExportTrainRunAttempt {
   optional string status_detail = 4;
   // The timestamp when the Train run attempt started in ns.
   uint64 start_time = 5;
-  // The timestamp when the Train run attempt ended in ns. If null, the attempt is still ongoing
+  // The timestamp when the Train run attempt ended in ns. If null, the attempt
+  // is still ongoing
   optional uint64 end_time = 6;
   // The resources (e.g., CPU, GPU) allocated to the Train run attempt
   repeated TrainResources resources = 7;
