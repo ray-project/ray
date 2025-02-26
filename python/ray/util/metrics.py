@@ -17,9 +17,9 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 # Copied from Prometheus Python Client. While the regex is not part of the public API
-# for Prometheus, it's not expected to change
+# for Prometheus, it's not expected to change.
 # https://github.com/prometheus/client_python/blob/46eae7bae88f76951f7246d9f359f2dd5eeff110/prometheus_client/validation.py#L4
-_METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+_VALID_METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 
 
 @DeveloperAPI
@@ -37,8 +37,8 @@ class Metric:
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         # Metrics with invalid names will be discarded and will not be collected
-        # by Prometheus
-        self.discard_metric = self._is_invalid_metric_name(name)
+        # by Prometheus.
+        self._discard_metric = self._is_invalid_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -57,10 +57,10 @@ class Metric:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
 
-    def _is_invalid_metric_name(self, name: str):
+    def _is_invalid_metric_name(self, name: str) -> bool:
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
-        if not _METRIC_NAME_RE.match(name):
+        if not _VALID_METRIC_NAME_RE.match(name):
             warnings.warn(
                 f"Invalid metric name: {name}. Metric will be discarded "
                 "and data will not be collected or published. "
@@ -111,6 +111,9 @@ class Metric:
         Args:
             value: The value to be recorded as a metric point.
         """
+        if self._discard_metric:
+            return
+
         assert self._metric is not None
 
         final_tags = self._get_final_tags(tags)
@@ -181,9 +184,10 @@ class Counter(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        if self.discard_metric:
-            return
-        self._metric = CythonCount(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonCount(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__
@@ -199,8 +203,6 @@ class Counter(Metric):
             value(int, float): Value to increment the counter by (default=1).
             tags(Dict[str, str]): Tags to set or override for this counter.
         """
-        if self.discard_metric:
-            return
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
         if value <= 0:
@@ -248,11 +250,12 @@ class Histogram(Metric):
                 )
 
         self.boundaries = boundaries
-        if self.discard_metric:
-            return
-        self._metric = CythonHistogram(
-            self._name, self._description, self.boundaries, self._tag_keys
-        )
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonHistogram(
+                self._name, self._description, self.boundaries, self._tag_keys
+            )
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
@@ -263,8 +266,6 @@ class Histogram(Metric):
             value(int, float): Value to set the gauge to.
             tags(Dict[str, str]): Tags to set or override for this gauge.
         """
-        if self.discard_metric:
-            return
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
@@ -310,9 +311,10 @@ class Gauge(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        if self.discard_metric:
-            return
-        self._metric = CythonGauge(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonGauge(self._name, self._description, self._tag_keys)
 
     def set(self, value: Optional[Union[int, float]], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.
@@ -324,7 +326,7 @@ class Gauge(Metric):
                 no-op.
             tags(Dict[str, str]): Tags to set or override for this gauge.
         """
-        if self.discard_metric or value is None:
+        if value is None:
             return
 
         if not isinstance(value, (int, float)):
