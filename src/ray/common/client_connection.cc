@@ -21,8 +21,12 @@
 #include <boost/asio/write.hpp>
 #include <boost/bind/bind.hpp>
 #include <chrono>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
@@ -32,6 +36,7 @@
 #include <Windows.h>
 #else
 #include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 #endif
 
@@ -600,6 +605,34 @@ std::string ServerConnection::DebugString() const {
   }
   result << "\n- pending async bytes: " << num_bytes;
   return result.str();
+}
+
+std::vector<bool> CheckForClientDisconnects(
+    const std::vector<std::shared_ptr<ClientConnection>> &conns) {
+  std::vector<bool> result(conns.size(), false);
+#if defined(_WIN32)
+  return result;
+#else
+  // Poll for SIGHUP on all of the FDs in a single syscall.
+  std::vector<pollfd> poll_fds(conns.size());
+  for (size_t i = 0; i < conns.size(); ++i) {
+    poll_fds[i] = {conns[i]->GetNativeHandle(), POLLHUP, 0};
+  }
+
+  int ret = poll(poll_fds.data(), poll_fds.size(), 0);
+  if (ret > 0) {
+    for (size_t i = 0; i < conns.size(); ++i) {
+      // Check if the POLLHUP event occurred.
+      if (poll_fds[i].revents & POLLHUP) {
+        result[i] = true;
+      }
+    }
+  } else if (ret < 0) {
+    RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << ret;
+  }
+
+  return result;
+#endif
 }
 
 }  // namespace ray

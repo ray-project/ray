@@ -20,6 +20,9 @@
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <deque>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/common_protocol.h"
@@ -296,5 +299,10 @@ class ClientConnection : public ServerConnection {
   uint64_t read_length_;
   std::vector<uint8_t> read_message_;
 };
+
+// Returns `true` for any connections that have disconnected unexpectedly (i.e., SIGHUP).
+// This functionality is not supported on Windows, so will always return all `false`.
+std::vector<bool> CheckForClientDisconnects(
+    const std::vector<std::shared_ptr<ClientConnection>> &connections);
 
 }  // namespace ray
