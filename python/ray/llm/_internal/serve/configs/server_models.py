@@ -33,7 +33,6 @@ from ray.llm._internal.utils import try_import
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
-from ray.serve.config import AutoscalingConfig
 from ray.serve._private.config import DeploymentConfig
 
 from ray.llm._internal.serve.configs.constants import (
@@ -326,20 +325,11 @@ class LLMConfig(BaseModelExtended):
     @field_validator("deployment_config")
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the deployment config dictionary."""
-        autoscaling_config = value.pop("autoscaling_config", None)
         try:
             DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
 
-        if autoscaling_config is not None:
-            try:
-                AutoscalingConfig(**autoscaling_config)
-            except Exception as e:
-                raise ValueError(
-                    f"Invalid autoscaling config: {autoscaling_config}"
-                ) from e
-            value["autoscaling_config"] = autoscaling_config
         return value
 
     def ray_accelerator_type(self) -> str:

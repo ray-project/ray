@@ -4,7 +4,6 @@ from ray import serve
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     LLMConfig,
-    AutoscalingConfig,
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.builders.application_builders import (
@@ -14,6 +13,7 @@ from ray.llm._internal.serve.builders.application_builders import (
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
 )
+from ray.serve.config import AutoscalingConfig
 import subprocess
 import yaml
 import os
