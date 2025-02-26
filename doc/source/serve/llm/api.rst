@@ -29,8 +29,7 @@ Configs
    LLMConfig
    LLMServingArgs
    ModelLoadingConfig
-   S3MirrorConfig
-   GCSMirrorConfig
+   CloudMirrorConfig
    LoraConfig
 
 .. currentmodule:: ray.serve.llm.deployments

@@ -102,12 +102,6 @@ class CloudMirrorConfig(BaseModelExtended):
         return None
 
 
-# For backward compatibility, keep the old classes as aliases
-MirrorConfig = CloudMirrorConfig
-S3MirrorConfig = CloudMirrorConfig
-GCSMirrorConfig = CloudMirrorConfig
-
-
 class AutoscalingConfig(BaseModel, extra="allow"):
     """
     The model here provides reasonable defaults for llm model serving.
@@ -269,7 +263,7 @@ class ModelLoadingConfig(BaseModelExtended):
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
-    model_source: Optional[Union[str, S3MirrorConfig, GCSMirrorConfig]] = Field(
+    model_source: Optional[Union[str, CloudMirrorConfig]] = Field(
         default=None,
         description=(
             "Where to obtain the model weights from. "

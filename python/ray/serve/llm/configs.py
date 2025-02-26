@@ -2,8 +2,7 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig as _LLMConfig,
     LLMServingArgs as _LLMServingArgs,
     ModelLoadingConfig as _ModelLoadingConfig,
-    S3MirrorConfig as _S3MirrorConfig,
-    GCSMirrorConfig as _GCSMirrorConfig,
+    CloudMirrorConfig as _CloudMirrorConfig,
     LoraConfig as _LoraConfig,
 )
 
@@ -32,15 +31,8 @@ class ModelLoadingConfig(_ModelLoadingConfig):
 
 
 @PublicAPI(stability="alpha")
-class S3MirrorConfig(_S3MirrorConfig):
-    """The configuration for mirroring an LLM model from S3."""
-
-    pass
-
-
-@PublicAPI(stability="alpha")
-class GCSMirrorConfig(_GCSMirrorConfig):
-    """The configuration for mirroring an LLM model from GCS."""
+class CloudMirrorConfig(_CloudMirrorConfig):
+    """The configuration for mirroring an LLM model from cloud storage."""
 
     pass
 
