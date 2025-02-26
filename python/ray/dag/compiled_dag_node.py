@@ -2057,13 +2057,19 @@ class CompiledDAG:
                 self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
-            def wait_teardown(self, kill_actors: bool = False):
-                outer = get_outer()
-                if outer is None:
+            def _check_outer_ref_alive(self):
+                if get_outer() is None:
                     logger.error(
                         "CompiledDag has been destructed before teardown. "
-                        "This should not occur please report an issue."
+                        "This should not occur please report an issue at "
+                        "https://github.com/ray-project/ray/issues/new/."
                     )
+                    return False
+                return True
+
+            def wait_teardown(self, kill_actors: bool = False):
+                outer = get_outer()
+                if self._check_outer_ref_alive() is False:
                     return
 
                 from ray.dag import DAGContext
@@ -2115,11 +2121,7 @@ class CompiledDAG:
                         return
 
                     outer = get_outer()
-                    if outer is None:
-                        logger.error(
-                            "CompiledDag has been destructed before teardown. "
-                            "This should not occur please report an issue."
-                        )
+                    if self._check_outer_ref_alive() is False:
                         return
 
                     logger.info("Tearing down compiled DAG")
@@ -2158,6 +2160,8 @@ class CompiledDAG:
             def run(self):
                 try:
                     outer = get_outer()
+                    if self._check_outer_ref_alive() is False:
+                        return
                     ray.get(list(outer.worker_task_refs.values()))
                 except KeyboardInterrupt:
                     logger.info(
@@ -3210,9 +3214,14 @@ class CompiledDAG:
             output.type_hint.register_custom_serializer()
 
     def teardown(self, kill_actors: bool = False):
-        """Teardown and cancel all actor tasks for this DAG. After this
+        """
+        Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
-        or compile a new DAG."""
+        or compile a new DAG.
+        Note: This should be explicitly called before compiling another graph on the
+        same actors. Python may not garbage collect the CompiledDAG object immediately
+        when you may expect.
+        """
         if self._is_teardown:
             return
 

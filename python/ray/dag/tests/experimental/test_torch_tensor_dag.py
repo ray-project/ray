@@ -249,6 +249,9 @@ def test_torch_tensor_nccl(
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    # We need to explicitly teardown because Python will not del right
+    # when the reassign happens, so channels will not be properly closed
+    # before we open new ones on these actors below.
     compiled_dag.teardown()
 
     # Test that actors can be reused for a new DAG.
@@ -302,6 +305,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    # Same reason as comment for teardown in test_torch_tensor_nccl
     compiled_dag.teardown()
 
     # Test that actors can be reused for a new DAG.
