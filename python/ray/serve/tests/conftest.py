@@ -221,6 +221,7 @@ def ray_instance(request):
         },
     )
 
+    serve.shutdown()
     ray.shutdown()
 
     os.environ.clear()
