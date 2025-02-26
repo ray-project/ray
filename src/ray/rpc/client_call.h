@@ -31,7 +31,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/util/thread_utils.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {
