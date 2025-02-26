@@ -853,7 +853,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             )
         elif not ensure_copy and len(to_concat) == 1:
             # Skip copying
-            storage = to_concat[0].storage
+            return to_concat[0]
         else:
             storage = pa.concat_arrays([c.storage for c in to_concat])
 
