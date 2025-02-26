@@ -23,7 +23,7 @@ message ExportTrainRun {
   // Enumeration of the possible statuses for a Train run
   enum RunStatus {
     // Default value required by proto3
-    UNSPECIFIED = 0;
+    RUN_STATUS_UNSPECIFIED = 0;
 
     // Active States
     INITIALIZING = 1;
@@ -61,7 +61,7 @@ message ExportTrainRunAttempt {
   // Enumeration of the possible statuses for a Train run attempt
   enum RunAttemptStatus {
     // Default value required by proto3
-    UNSPECIFIED = 0;
+    RUN_ATTEMPT_STATUS_UNSPECIFIED = 0;
 
     // Active States
     PENDING = 1;
@@ -76,7 +76,7 @@ message ExportTrainRunAttempt {
   // Enumeration of the statuses for a Train worker actor
   enum ActorStatus {
     // Default value required by proto3
-    UNSPECIFIED = 0;
+    ACTOR_STATUS_UNSPECIFIED = 0;
 
     // The actor is currently active
     ALIVE = 1;
