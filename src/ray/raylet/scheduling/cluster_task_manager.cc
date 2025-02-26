@@ -17,6 +17,10 @@
 #include <google/protobuf/map.h>
 
 #include <boost/range/join.hpp>
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
@@ -122,6 +126,47 @@ bool ClusterTaskManager::CancelTasks(
   }
 
   return tasks_cancelled;
+}
+
+bool ClusterTaskManager::CancelTasksWithResourceShapes(
+    const std::vector<ResourceSet> target_resource_shapes) {
+  auto predicate = [target_resource_shapes,
+                    this](const std::shared_ptr<internal::Work> &work) {
+    return this->IsWorkWithResourceShape(work, target_resource_shapes);
+  };
+
+  std::stringstream resource_shapes_str;
+  resource_shapes_str << "[";
+  bool first = true;
+  for (const auto &resource_shape : target_resource_shapes) {
+    if (!first) {
+      resource_shapes_str << ",";
+    }
+    resource_shapes_str << resource_shape.DebugString();
+    first = false;
+  }
+  resource_shapes_str << "]";
+
+  return CancelTasks(
+      predicate,
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+      "Canceling tasks with resource shapes " + resource_shapes_str.str() +
+          " because there are not enough resources for the tasks on the whole cluster.");
+}
+
+bool ClusterTaskManager::IsWorkWithResourceShape(
+    const std::shared_ptr<internal::Work> &work,
+    const std::vector<ResourceSet> &target_resource_shapes) {
+  SchedulingClass scheduling_class =
+      work->task.GetTaskSpecification().GetSchedulingClass();
+  ResourceSet resource_set =
+      TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).resource_set;
+  for (const auto &target_resource_shape : target_resource_shapes) {
+    if (resource_set == target_resource_shape) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool ClusterTaskManager::CancelAllTaskOwnedBy(
