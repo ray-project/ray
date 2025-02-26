@@ -4,3 +4,5 @@ pillow
 httpx>=0.27.2
 pynvml>=12.0.0
 xgrammar>=0.1.11, !=0.1.13, !=0.1.12
+jupytext>1.13.6
+sphinx==6.2.1
