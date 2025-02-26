@@ -783,7 +783,7 @@ class FaultTolerantActorManager:
                         )
                     )
                 else:
-                    calls.append(self._actors[i].apply.remote(f))
+                    calls.append(self._actors[raid].apply.remote(f))
         elif isinstance(func, str):
             for i, raid in enumerate(remote_actor_ids):
                 calls.append(
@@ -926,11 +926,11 @@ class FaultTolerantActorManager:
             temp_remote_actor_ids = []
             temp_kwargs = []
             for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
-                if self.is_actor_healthy(i):
+                if self.is_actor_healthy(raid):
                     k = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
                     temp_func.append(f)
                     temp_kwargs.append(k)
-                    temp_remote_actor_ids.append(i)
+                    temp_remote_actor_ids.append(raid)
             func = temp_func
             kwargs = temp_kwargs
             remote_actor_ids = temp_remote_actor_ids
