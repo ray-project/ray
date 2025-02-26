@@ -755,7 +755,6 @@ def test_tpu_logs(tmp_path):
         mock_publisher,
         is_proc_alive,
         max_files_open=5,
-        is_tpu=True,
     )
     # Verify TPU logs are ingested by LogMonitor.
     log_monitor.update_log_filenames()
