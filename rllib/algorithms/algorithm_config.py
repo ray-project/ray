@@ -2518,12 +2518,20 @@ class AlgorithmConfig(_Config):
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
             #  (which should then become the default value for this attribute).
-            if not callable(callbacks_class):
-                raise ValueError(
-                    "`config.callbacks_class` must be a callable method that "
-                    "returns a subclass of DefaultCallbacks, got "
-                    f"{callbacks_class}!"
-                )
+            if isinstance(callbacks_class, list):
+                if not all(callable(c) for c in callbacks_class):
+                    raise ValueError(
+                        "If `config.callbacks_class` is a list of callbacks, each element "
+                        "must be a callable method that returns a subclass of DefaultCallbacks, got "
+                        f"{callbacks_class}!"
+                    )
+            else:
+                if not callable(callbacks_class):
+                    raise ValueError(
+                        "`config.callbacks_class` must be a callable method that "
+                        "returns a subclass of DefaultCallbacks, got "
+                        f"{callbacks_class}!"
+                    )
             self.callbacks_class = callbacks_class
         if on_algorithm_init is not NotProvided:
             self.callbacks_on_algorithm_init = on_algorithm_init
