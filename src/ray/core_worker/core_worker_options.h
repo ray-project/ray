@@ -69,7 +69,7 @@ struct CoreWorkerOptions {
       // can run without a pause.
       int64_t generator_backpressure_num_objects)>;
 
-  using FetchP2pDependencyCallback = std::function<void(const std::vector<rpc::ObjectReference> &dependencies)>;
+  using FetchP2pDependencyCallback = std::function<void(std::unordered_map<ObjectID, std::shared_ptr<Buffer>> &)>;
 
   CoreWorkerOptions()
       : store_socket(""),

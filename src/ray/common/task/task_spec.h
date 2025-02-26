@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "ray/common/buffer.h"
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -503,6 +504,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;
+
+  bool ArgIsErrorType(size_t arg_index, rpc::ErrorType error_type) const;
+
+  std::unordered_map<ObjectID, std::shared_ptr<Buffer>> GetInActorDependenciesMetadata() const;
+
+  std::vector<rpc::ObjectReference> GetInActorDependencies() const;
+
+  std::vector<rpc::ObjectReference> GetPlasmaDependencies() const;
 
  private:
   void ComputeResources();

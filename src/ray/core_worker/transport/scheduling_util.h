@@ -82,15 +82,17 @@ class DependencyWaiterImpl : public DependencyWaiter {
   DependencyWaiterInterface &dependency_client_;
 };
 
-class P2pDependencyWaiter : public DependencyWaiter {
+class P2pDependencyWaiter {
  public:
-  P2pDependencyWaiter(std::function<void(const std::vector<rpc::ObjectReference> &dependencies)> fetch_callback);
+  using DependencyMetadata = std::unordered_map<ObjectID, std::shared_ptr<Buffer>>;
 
-  void Wait(const std::vector<rpc::ObjectReference> &dependencies,
-            std::function<void()> on_dependencies_available) override;
+  P2pDependencyWaiter(std::function<void(DependencyMetadata &dependencies)> fetch_callback);
+
+  void Wait(DependencyMetadata &dependencies,
+            std::function<void()> on_dependencies_available);
 
  private:
-  std::function<void(const std::vector<rpc::ObjectReference> &dependencies)> fetch_callback_;
+  std::function<void(DependencyMetadata &)> fetch_callback_;
 
 };
 

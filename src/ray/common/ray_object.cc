@@ -142,4 +142,13 @@ bool RayObject::IsInPlasmaError() const {
   return metadata == kObjectInPlasmaStr;
 }
 
+bool RayObject::IsInActorError() const {
+  if (metadata_ == nullptr) {
+    return false;
+  }
+  const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
+                                  metadata_->Size());
+  return metadata == std::to_string(ray::rpc::ErrorType::OBJECT_IN_ACTOR);
+}
+
 }  // namespace ray

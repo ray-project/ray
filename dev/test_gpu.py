@@ -46,6 +46,17 @@ import torch.distributed as dist
 # - send PushTaskRequest RPC to the actor to actually execute the task
 # ---> if argument has OBJECT_IN_ACTOR error, submit a Send task or RPC to actor A
 
+
+# B.foo.remote()
+# -> driver assign B.foo execution index 0
+# -> resolve arguments: there are no arguments, so immediately send PushTaskRequest RPC to B
+# -> B will queue B.foo
+# B.bar.remote(<some GPU object ref>)
+# -> driver assigns B.bar execution index 1
+# -> resolve arguments: there's a GPU object ref, so we need to set up a recv call on B.
+#   -> attach metadata with the GPU object argument that allows B to start the recv call
+
+
 # Actor PushTaskRequest handler:
 # - Queue the task.
 # - Call DependencyWaiter.wait() on the task's OBJECT_IN_PLASMA arguments.
@@ -116,7 +127,7 @@ if __name__ == "__main__":
 
     ref = actors[0].randn.remote(shape)
     print("ObjectRef:", ref)
-    ref = actors[0].sum.remote(ref)
+    ref = actors[1].sum.remote(ref)
     print(ray.get(ref))
 
     ## After getting response from actor A, driver will now have in its local

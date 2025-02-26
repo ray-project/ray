@@ -116,6 +116,8 @@ class RayObject {
   /// large to return directly as part of a gRPC response).
   bool IsInPlasmaError() const;
 
+  bool IsInActorError() const;
+
   /// Mark this object as accessed before.
   void SetAccessed() { accessed_ = true; };
 

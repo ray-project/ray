@@ -404,7 +404,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t generator_backpressure_num_objects
         ) nogil) task_execution_callback
         (void(
-            const c_vector[CObjectReference] &arg_refs,
+            unordered_map[CObjectID, shared_ptr[CBuffer]] &arg_refs,
         ) nogil) fetch_p2p_dependency_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals

@@ -558,10 +558,12 @@ message TaskSpec {
   bytes root_detached_actor_id = 40;
   // The key-value labels for task and actor.
   map<string, string> labels = 41;
+  // A list of any in-actor objects that were passed as arguments to this task.
+  repeated InActorObjectMetadata in_actor_dependencies = 42;
   // Human readable stacktrace of the task invocation, or actor creation. The exact data
   // format depends on the language. Only populated if environment variable
   // `RAY_record_task_actor_creation_sites` is set to `true`.
-  optional string call_site = 42;
+  optional string call_site = 43;
 }
 
 message TaskInfoEntry {
@@ -685,6 +687,13 @@ message TaskArg {
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
   repeated ObjectReference nested_inlined_refs = 4;
+}
+
+message InActorObjectMetadata {
+  // Object ID.
+  bytes object_id = 1;
+  // Metadata that is passed to Python to fetch the object.
+  bytes metadata = 2;
 }
 
 message ReturnObject {

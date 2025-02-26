@@ -33,7 +33,24 @@ void InlineDependencies(
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
-        if (!it->second->IsInPlasmaError()) {
+        if (it->second->IsInActorError()) {
+          RAY_LOG(INFO) << "Adding IN_ACTOR dep " << id << " to task " << task.TaskId();
+          // TaskSpec:
+          // TaskArg: (metadata=ErrorType::OBJECT_IN_ACTOR, data=None)
+          // in_actor_dependencies: [(arg's ObjectID, serialized RayActorObjectMetadata)]
+
+          // Add the IN_ACTOR error.
+          RAY_CHECK(it->second->HasMetadata());
+          const auto &metadata = it->second->GetMetadata();
+          mutable_arg->set_metadata(metadata->Data(), metadata->Size());
+
+          auto dep = msg.add_in_actor_dependencies();
+          dep->set_object_id(id.Binary());
+
+          RAY_CHECK(it->second->HasData());
+          const auto &data = it->second->GetData();
+          dep->set_metadata(data->Data(), data->Size());
+        } else if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
           // clearing the reference and replacing it with the raw value.
           mutable_arg->clear_object_ref();

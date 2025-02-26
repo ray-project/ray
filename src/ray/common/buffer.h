@@ -81,6 +81,15 @@ class LocalMemoryBuffer : public Buffer {
     }
   }
 
+  LocalMemoryBuffer(const uint8_t *data, size_t size)
+      : has_data_copy_(true) {
+    RAY_CHECK(data != nullptr);
+    buffer_ = reinterpret_cast<uint8_t *>(aligned_malloc(size, BUFFER_ALIGNMENT));
+    std::copy(data, data + size, buffer_);
+    data_ = buffer_;
+    size_ = size;
+  }
+
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
   LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
     buffer_ = reinterpret_cast<uint8_t *>(aligned_malloc(size, BUFFER_ALIGNMENT));

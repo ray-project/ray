@@ -109,22 +109,36 @@ void ActorSchedulingQueue::Add(
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.Wait(dependencies, [seq_no, this]() {
-      RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-      auto it = pending_actor_tasks_.find(seq_no);
-      if (it != pending_actor_tasks_.end()) {
-        const TaskSpecification &task_spec = it->second.TaskSpec();
-        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-            task_spec.TaskId(),
-            task_spec.JobId(),
-            task_spec.AttemptNumber(),
-            task_spec,
-            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-            /* include_task_info */ false));
-        it->second.MarkDependenciesSatisfied();
-        ScheduleRequests();
+
+    auto in_actor_dependencies_metadata = task_spec.GetInActorDependenciesMetadata();
+    std::vector<rpc::ObjectReference> plasma_dependencies;
+    for (const auto &dep : dependencies) {
+      const auto &obj_id = ObjectID::FromBinary(dep.object_id());
+      // All object refs that don't have in-actor metadata are plasma refs.
+      if (!in_actor_dependencies_metadata.count(obj_id)) {
+        plasma_dependencies.push_back(dep);
       }
-    });
+    }
+
+    p2p_waiter_.Wait(in_actor_dependencies_metadata, [seq_no, task_spec, this]() {
+      const auto plasma_dependencies = task_spec.GetPlasmaDependencies();
+      waiter_.Wait(plasma_dependencies, [seq_no, this]() {
+        RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+        auto it = pending_actor_tasks_.find(seq_no);
+        if (it != pending_actor_tasks_.end()) {
+          const TaskSpecification &task_spec = it->second.TaskSpec();
+          RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+              task_spec.TaskId(),
+              task_spec.JobId(),
+              task_spec.AttemptNumber(),
+              task_spec,
+              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+              /* include_task_info */ false));
+          it->second.MarkDependenciesSatisfied();
+          ScheduleRequests();
+        }
+      });
+      });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),

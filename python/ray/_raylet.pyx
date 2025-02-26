@@ -271,10 +271,11 @@ class RayActorObjectMetadata:
     """
     Metadata for an object stored in a Ray actor's local Python store.
     """
-    def __init__(self, obj_id, shape, dtype):
+    def __init__(self, obj_id, shape, dtype, src_rank):
         self.obj_id = obj_id
         self.shape = shape
         self.dtype = dtype
+        self.src_rank = src_rank
 
 
 class DynamicObjectRefGenerator:
@@ -2252,13 +2253,40 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
         <uint8_t*>py_bytes, len(py_bytes), True)
 
 cdef void fetch_p2p_dependency_handler(
-        const c_vector[CObjectReference] &c_arg_refs) nogil:
-    with gil, disable_client_hook():
-        assert False
+        unordered_map[CObjectID, shared_ptr[CBuffer]] &c_arg_refs) nogil:
+    cdef:
+        unordered_map[CObjectID, shared_ptr[CBuffer]].iterator it
 
-        # TODO:
-        # - Get the RayActorObjectMetadata from CoreWorker in-memory object store.
-        # - Actually perform the recv, and store in in-actor store.
+    # TODO: Return a RayStatus. Exceptions seem to hang(?) instead.
+    with gil, disable_client_hook():
+        # TODO: Make sure we use the correct group here. Should be able to look up
+        # the right group by name.
+        import torch
+        import torch.distributed as dist
+
+        # Deserialize the CBuffer into a RayActorObjectMetadata.
+        data_metadata_pairs = []
+        ids_to_deserialize = []
+        it = c_arg_refs.begin()
+        while it != c_arg_refs.end():
+            ids_to_deserialize.append(ObjectRef(dereference(it).first.Binary()))
+            metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
+            data_metadata_pairs.append((Buffer.make(dereference(it).second), metadata))
+
+            postincrement(it)
+
+        metadata = ray._private.worker.global_worker.deserialize_objects(
+            data_metadata_pairs, ids_to_deserialize)[0]
+        print("RECEIVING", metadata.obj_id)
+
+        # Perform the recv.
+        tensor = torch.zeros(metadata.shape, dtype=metadata.dtype)
+        dist.recv(tensor, metadata.src_rank)
+        # Put the resulting tensor into the actor's object store, where the
+        # task execution handler can read it.
+        ray._private.worker.global_worker.in_actor_object_store[metadata.obj_id] = tensor
+        print("RECEIVED", tensor)
+
 
 cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
@@ -4417,7 +4445,7 @@ cdef class CoreWorker:
                 ray._private.worker.global_worker.in_actor_object_store[return_id.Hex()] = output
                 # Replace it with the tensor metadata and the OBJECT_IN_ACTOR
                 # metadata.
-                output = RayActorObjectMetadata(return_id.Hex(), output.shape, output.dtype)
+                output = RayActorObjectMetadata(return_id.Hex(), output.shape, output.dtype, torch.distributed.get_rank())
                 serialized_object = context.serialize(output)
                 # metadata = b"PYTHON"
                 # Replace with OBJECT_IN_ACTOR metadata, so that the driver can

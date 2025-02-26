@@ -22,6 +22,10 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
+namespace {
+
+}
+
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
@@ -287,6 +291,12 @@ const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
 size_t TaskSpecification::ArgDataSize(size_t arg_index) const {
   return message_->args(arg_index).data().size();
 }
+
+bool TaskSpecification::ArgIsErrorType(size_t arg_index, rpc::ErrorType error_type) const {
+  const std::string_view metadata(message_->args(arg_index).data().data(), message_->args(arg_index).data().size());
+  return metadata == std::to_string(error_type);
+}
+
 
 const uint8_t *TaskSpecification::ArgMetadata(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).metadata().data());
@@ -629,6 +639,36 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   }
 
   return concurrency_groups;
+}
+
+std::unordered_map<ObjectID, std::shared_ptr<Buffer>> TaskSpecification::GetInActorDependenciesMetadata() const {
+  std::unordered_map<ObjectID, std::shared_ptr<Buffer>> deps;
+  for (const auto &dep : message_->in_actor_dependencies()) {
+    deps[ObjectID::FromBinary(dep.object_id())] = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<const uint8_t *>(dep.metadata().data()), dep.metadata().size());
+  }
+  return deps;
+}
+
+std::vector<rpc::ObjectReference> TaskSpecification::GetInActorDependencies() const {
+  // TODO: Fix or get rid of this method.
+  std::vector<rpc::ObjectReference> dependencies;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    if (ArgByRef(i) && ArgIsErrorType(i, rpc::ErrorType::OBJECT_IN_ACTOR)) {
+      dependencies.push_back(message_->args(i).object_ref());
+    }
+  }
+  return dependencies;
+}
+
+std::vector<rpc::ObjectReference> TaskSpecification::GetPlasmaDependencies() const {
+  // TODO: Fix or get rid of this method.
+  std::vector<rpc::ObjectReference> dependencies;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    if (ArgByRef(i) && ArgIsErrorType(i, rpc::ErrorType::OBJECT_IN_PLASMA)) {
+      dependencies.push_back(message_->args(i).object_ref());
+    }
+  }
+  return dependencies;
 }
 
 }  // namespace ray

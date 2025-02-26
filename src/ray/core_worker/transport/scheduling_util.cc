@@ -59,6 +59,10 @@ DependencyWaiterImpl::DependencyWaiterImpl(DependencyWaiterInterface &dependency
 
 void DependencyWaiterImpl::Wait(const std::vector<rpc::ObjectReference> &dependencies,
                                 std::function<void()> on_dependencies_available) {
+  if (dependencies.size() == 0) {
+    on_dependencies_available();
+    return;
+  }
   auto tag = next_request_id_++;
   requests_[tag] = on_dependencies_available;
   RAY_CHECK_OK(dependency_client_.WaitForDirectActorCallArgs(dependencies, tag));
@@ -72,12 +76,16 @@ void DependencyWaiterImpl::OnWaitComplete(int64_t tag) {
   requests_.erase(it);
 }
 
-P2pDependencyWaiter::P2pDependencyWaiter(std::function<void(const std::vector<rpc::ObjectReference> &dependencies)> fetch_callback) : fetch_callback_(fetch_callback) {}
+P2pDependencyWaiter::P2pDependencyWaiter(std::function<void(DependencyMetadata &dependencies)> fetch_callback) : fetch_callback_(fetch_callback) {}
 
-void P2pDependencyWaiter::Wait(const std::vector<rpc::ObjectReference> &dependencies,
-                               std::function<void()> on_dependencies_available) {
+void P2pDependencyWaiter::Wait(DependencyMetadata &dependencies,
+            std::function<void()> on_dependencies_available) {
+  for (const auto &dep : dependencies) {
+    RAY_LOG(INFO) << "WAIT ON IN_ACTOR DEP " << dep.first;
+  }
   // Call into Python to recv the objects.
   fetch_callback_(dependencies);
+  RAY_LOG(INFO) << "WAIT ON IN_ACTOR DEPS DONE";
   on_dependencies_available();
 }
 
