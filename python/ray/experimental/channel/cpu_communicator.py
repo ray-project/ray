@@ -178,9 +178,3 @@ class CPUCommunicator(Communicator):
 
     def get_transport_name(self) -> str:
         return "cpu"
-
-    def recv_stream(self):
-        raise NotImplementedError
-
-    def send_stream(self):
-        raise NotImplementedError

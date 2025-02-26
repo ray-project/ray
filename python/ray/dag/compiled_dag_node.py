@@ -4,7 +4,6 @@ from collections import defaultdict
 from contextlib import nullcontext
 from dataclasses import dataclass, asdict
 from typing import (
-    TYPE_CHECKING,
     Any,
     Dict,
     FrozenSet,
@@ -82,9 +81,6 @@ from ray.dag.dag_node_operation import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-if TYPE_CHECKING:
-    import cupy as cp
 
 logger = logging.getLogger(__name__)
 
@@ -552,33 +548,6 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        if not overlap_gpu_communication:
-            return
-
-        # Set up send_stream and recv_stream when overlap_gpu_communication
-        # is configured
-        if self.output_type_hint.requires_nccl():
-            nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().communicators.get(nccl_group_id)
-            assert nccl_group is not None
-            self._send_stream = nccl_group.send_stream
-        if self.input_type_hints:
-            for type_hint in self.input_type_hints:
-                if type_hint.requires_nccl():
-                    nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().communicators.get(
-                        nccl_group_id
-                    )
-                    assert nccl_group is not None
-                    if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group.recv_stream, (
-                            "Currently all torch tensor input channels of a "
-                            "Compiled Graph task should use the same recv cuda stream."
-                        )
-                    self._recv_stream = nccl_group.recv_stream
-
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
     ) -> None:
@@ -738,14 +707,12 @@ class ExecutableTask:
         """
         if op_type == _DAGNodeOperationType.READ:
             with _device_context_manager():
-                with self._recv_stream:
-                    return self._read(overlap_gpu_communication)
+                return self._read(overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             with _device_context_manager():
-                with self._send_stream:
-                    return self._write()
+                return self._write()
 
 
 @dataclass
