@@ -27,7 +27,6 @@
 #include "ray/rpc/common.h"
 #include "ray/stats/metric.h"
 #include "ray/util/thread_utils.h"
-#include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {
