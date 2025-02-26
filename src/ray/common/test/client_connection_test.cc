@@ -253,6 +253,30 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   ASSERT_EQ(num_messages, 0);
 }
 
+TEST_F(ClientConnectionTest, UnexpectedDisconnect) {
+  ClientHandler client_handler = [](ClientConnection &client) {};
+
+  MessageHandler message_handler = [](
+                                       std::shared_ptr<ClientConnection> client,
+                                       int64_t message_type,
+                                       const std::vector<uint8_t> &message) {
+    return;
+  };
+
+  auto writer = ClientConnection::Create(
+      client_handler, message_handler, std::move(in_), "writer", {}, error_message_type_);
+
+  auto reader = ClientConnection::Create(client_handler,
+                                         message_handler,
+                                         std::move(out_),
+                                         "reader",
+                                         {},
+                                         error_message_type_);
+
+  std::vector<bool> disconnects = CheckForClientDisconnects({writer});
+  ASSERT_EQ(disconnects.size(), 1);
+}
+
 }  // namespace raylet
 
 }  // namespace ray

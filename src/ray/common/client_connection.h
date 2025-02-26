@@ -299,7 +299,6 @@ class ClientConnection : public ServerConnection {
   std::vector<uint8_t> read_message_;
 };
 
-
-std::vector<bool> CheckForDisconnects(const std::vector<std::shared_ptr<ClientConnection>> &connections);
+std::vector<bool> CheckForClientDisconnects(const std::vector<std::shared_ptr<ClientConnection>> &connections);
 
 }  // namespace ray

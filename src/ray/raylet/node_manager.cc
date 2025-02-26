@@ -30,6 +30,7 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
+#include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/common/memory_monitor.h"
@@ -373,9 +374,11 @@ NodeManager::NodeManager(
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
-  periodical_runner_->RunFnPeriodically([this]() { CheckForWorkerDisconnects(); },
-                                        1000,
-                                        "NodeManager.CheckForWorkerDisconnects");
+
+  periodical_runner_->RunFnPeriodically(
+      [this]() { CheckForUnexpectedWorkerDisconnects(); },
+      RayConfig::instance().raylet_check_for_unexpected_worker_disconnect_interval_ms(),
+      "NodeManager.CheckForUnexpectedWorkerDisconnects");
 
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
   // Run the node manger rpc server.
@@ -660,24 +663,26 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   worker_pool_.HandleJobFinished(job_id);
 }
 
-void NodeManager::CheckForWorkerDisconnects() {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers();
+void NodeManager::CheckForUnexpectedWorkerDisconnects() {
   std::vector<std::shared_ptr<ClientConnection>> all_connections;
+  std::vector<std::shared_ptr<WorkerInterface>> all_workers = worker_pool_.GetAllRegisteredWorkers();
+  all_connections.reserve(all_workers.size());
+  for (const auto &worker : all_workers) {
+    all_connections.push_back(worker->Connection());
+  }
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
     all_workers.push_back(driver);
     all_connections.push_back(driver->Connection());
   }
 
-  for (const auto &worker : all_workers) {
-    all_workers.push_back(worker);
-    all_connections.push_back(worker->Connection());
-  }
+  RAY_CHECK(all_connections.size() == all_workers.size());
 
-  std::vector<bool> disconnects = CheckForDisconnects(all_connections);
+  std::vector<bool> disconnects = CheckForClientDisconnects(all_connections);
   for (int i = 0; i < disconnects.size(); i++) {
     if (disconnects[i]) {
-      RAY_LOG(ERROR) << "WORKER CONN CLOSED! " << all_workers[i]->WorkerId();
-      DestroyWorker(all_workers[i], rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, "HELLO WORLD");
+      std::string msg = "Worker connection closed unexpectedly.";
+      RAY_LOG(DEBUG).WithField(all_workers[i]->WorkerId()) << msg;
+      DestroyWorker(all_workers[i], rpc::WorkerExitType::SYSTEM_ERROR, msg);
     }
   }
 }

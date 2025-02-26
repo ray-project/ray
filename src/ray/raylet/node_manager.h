@@ -656,8 +656,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                               rpc::NotifyGCSRestartReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  /// TODO.
-  void CheckForWorkerDisconnects();
+  /// Checks the local socket connection for all registered workers and drivers.
+  /// If any of them have disconnected unexpectedly (i.e., we receive a SIGHUP),
+  /// we disconnect and kill the worker process.
+  ///
+  /// This is an optimization to avoid processing all messages sent by the worker
+  /// before detecing an EOF on the socket.
+  void CheckForUnexpectedWorkerDisconnects();
 
 
   /// Trigger local GC on each worker of this raylet.
