@@ -1,5 +1,6 @@
 import logging
 import re
+import warnings
 
 from typing import Dict, Any, List, Optional, Tuple, Union
 
@@ -60,9 +61,12 @@ class Metric:
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. Please provide a metric name.")
         if not _METRIC_NAME_RE.match(name):
-            logger.warning(
-                f"Invalid metric name: {name}. Metric will be discard and data will not be collected or published. "
-                "Names can only contain letters, numbers, and _. Names can only start with letters or _."
+            warnings.warn(
+                f"Invalid metric name: {name}. Metric will be discarded "
+                "and data will not be collected or published. "
+                "Metric names can only contain letters, numbers, _, and :. "
+                "Metric names cannot start with numbers.",
+                UserWarning,
             )
             return True
         return False

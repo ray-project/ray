@@ -94,10 +94,12 @@ Metric::Metric(const std::string &name,
       unit_(unit),
       measure_(nullptr),
       name_regex_(GetMetricNameRegex()) {
-  RAY_CHECK_WITH_DISPLAY(std::regex_match(name, Metric::name_regex_),
-                         "Invalid metric name: " + name +
-                             ". Names can only contain letters, numbers, and _. "
-                             "Names cannot start with numbers. Names cannot be empty.");
+  RAY_CHECK_WITH_DISPLAY(
+      std::regex_match(name, Metric::name_regex_),
+      "Invalid metric name: " + name +
+          ". Metric names can only contain letters, numbers, _, and :. "
+          "Metric names cannot start with numbers. Metric name cannot be "
+          "empty.");
   for (const auto &key : tag_keys) {
     tag_keys_.push_back(opencensus::tags::TagKey::Register(key));
   }

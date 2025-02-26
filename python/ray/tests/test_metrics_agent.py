@@ -3,7 +3,9 @@ import json
 import os
 import pathlib
 import sys
+import re
 import requests
+import warnings
 from collections import defaultdict
 
 from pprint import pformat
@@ -1040,20 +1042,18 @@ def test_metrics_disablement(_setup_cluster_for_test):
 
 
 def test_invalid_metric_names():
+    warnings.simplefilter("always")
+    faulty_metric_regex = re.compile(".*Invalid metric name.*")
     with pytest.raises(
         ValueError, match="Empty name is not allowed. Please provide a metric name."
     ):
         Metric("")
-    with pytest.raises(
-        ValueError,
-        match="Invalid metric name: faulty-metric. Names can only start with letters or _. Names can only contain letters, numbers, and _",
-    ):
-        Metric("faulty-metric")
-    with pytest.raises(
-        ValueError,
-        match="Invalid metric name: 1cannotstartwithnumber. Names can only start with letters or _. Names can only contain letters, numbers, and _",
-    ):
-        Metric("1cannotstartwithnumber")
+    with pytest.warns(UserWarning, match=faulty_metric_regex):
+        Metric("name-cannot-have-dashes")
+    with pytest.warns(UserWarning, match=faulty_metric_regex):
+        Metric("1namecannotstartwithnumber")
+    with pytest.warns(UserWarning, match=faulty_metric_regex):
+        Metric("name.cannot.have.dots")
 
 
 if __name__ == "__main__":
