@@ -59,8 +59,7 @@ class TrainStateActor:
             return None
 
         log_directory = os.path.join(
-            ray._private.global_node.get_session_dir_path(),
-            "logs",
+            ray._private.worker._global_node.get_session_dir_path(), "logs"
         )
         logger = None
         try:
