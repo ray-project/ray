@@ -114,6 +114,57 @@ def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
     assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
 
 
+def test_hf_prompt_format_on_prompt_dict(hf_prompt_format):
+    """Test if generate_prompt() can handle messages structured as dictionaries."""
+    messages = {"prompt": [{"message":
+        {"role": "system", "content": "You are a helpful assistant."}}, {"message": 
+        {
+            "role": "user",
+            "content": [
+                {"field": "text", "content": "Can this animal"},
+                {
+                    "field": "image_url",
+                    "image_url": {"url": "https://example.com/dog.jpg"},
+                },
+                {"field": "text", "content": "live here?"},
+                {
+                    "field": "image_url",
+                    "image_url": {"url": "https://example.com/mountain.jpg"},
+                },
+            ],
+        }}, {"message":
+        {
+            "role": "assistant",
+            "content": (
+                "It looks like you've shared an image of a "
+                "dog lying on a wooden floor, and another "
+                "image depicting a serene landscape with a "
+                "sunset over a snowy hill or mountain."
+            ),
+        }, "message":
+        {
+            "role": "user",
+                "content": "So you are suggesting you can find a poppy living in the snowy mountain?",
+            }}
+        ],
+    }
+
+    # Generate prompt using the dictionary-structured messages
+    formated_prompt = hf_prompt_format.generate_prompt(messages=messages)
+
+    # Assertions to verify correct processing
+    assert formated_prompt.text == (
+        "<s>[INST]Can this animal[IMG]live here?[IMG][/INST]It looks like you've "
+        "shared an image of a dog lying on a wooden floor, and another image "
+        "depicting a serene landscape with a sunset over a snowy hill or "
+        "mountain.</s>[INST]You are a helpful assistant.\n\nSo you are suggesting "
+        "you can find a poppy living in the snowy mountain?[/INST]"
+    )
+    assert len(formated_prompt.image) == 2
+    assert formated_prompt.image[0].image_url == "https://example.com/dog.jpg"
+    assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
+
+
 def test_validation_message():
     # check that message with assistant role can have content that
     # is a string or none, but nothing else

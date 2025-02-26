@@ -140,6 +140,7 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
         )
 
     def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
+        print(f"messages: {messages}")
         if isinstance(messages, Prompt):
             if isinstance(messages.prompt, str):
                 if not messages.use_prompt_format:
