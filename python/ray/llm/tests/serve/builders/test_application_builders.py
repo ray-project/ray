@@ -139,7 +139,7 @@ class TestBuildOpenaiApp:
         )
         assert router_autoscaling_config.min_replicas == 8  # (1 + 1 + 2) * 2
         assert router_autoscaling_config.initial_replicas == 10  # (1 + 1 + 3) * 2
-        assert router_autoscaling_config.max_replicas == 408  # (100 + 100 + 4) * 2
+        assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
         assert (
             router_autoscaling_config.target_ongoing_requests
             == RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS
