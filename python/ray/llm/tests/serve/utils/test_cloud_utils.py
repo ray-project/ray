@@ -5,23 +5,15 @@ from ray.llm._internal.serve.deployments.utils.cloud_utils import (
     CloudFileSystem,
     CloudObjectCache,
     remote_object_cache,
-    check_s3_path_exists_and_can_be_accessed,
-    get_aws_credentials,
-    get_file_from_gcs,
-    get_file_from_s3,
-    get_gcs_bucket_name_and_prefix,
 )
 
 
-from pathlib import Path
-from typing import Optional, Tuple, Union
+import tempfile
+import os
 from unittest.mock import MagicMock, patch
 
-import ray
 import pyarrow.fs as pa_fs
-from pytest import fixture, mark, raises
-
-from ray.llm._internal.serve.configs.server_models import S3AWSCredentials
+from pytest import raises
 
 
 class MockSyncFetcher:
@@ -154,7 +146,7 @@ class TestCloudObjectCache:
         assert len(cache) == 1
 
 
-class Testremote_object_cacheDecorator:
+class TestRemoteObjectCacheDecorator:
     """Tests for the remote_object_cache decorator."""
 
     @pytest.mark.asyncio
@@ -202,233 +194,6 @@ class Testremote_object_cacheDecorator:
         assert call_count == 6
 
 
-class TestGetAWSCredentials:
-    @patch("requests.post")
-    def test_get_aws_credentials_success(self, mock_post):
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "AWS_ACCESS_KEY_ID": "dummy_access_key",
-            "AWS_SECRET_ACCESS_KEY": "dummy_secret_key",
-        }
-        mock_response.ok = True
-        mock_post.return_value = mock_response
-
-        credentials_config = S3AWSCredentials(
-            auth_token_env_variable=None,
-            create_aws_credentials_url="http://dummy-url.com",
-        )
-        result = get_aws_credentials(credentials_config)
-
-        assert result == {
-            "AWS_ACCESS_KEY_ID": "dummy_access_key",
-            "AWS_SECRET_ACCESS_KEY": "dummy_secret_key",
-        }
-        mock_post.assert_called_once_with("http://dummy-url.com", headers=None)
-
-    @patch("requests.post")
-    def test_get_aws_credentials_request_failure(self, mock_post):
-        mock_response = MagicMock()
-        mock_response.ok = False
-        mock_response.reason = "Bad Request"
-        mock_post.return_value = mock_response
-
-        credentials_config = S3AWSCredentials(
-            auth_token_env_variable=None,
-            create_aws_credentials_url="http://dummy-url.com",
-        )
-        result = get_aws_credentials(credentials_config)
-
-        assert result is None
-        mock_post.assert_called_once_with(
-            "http://dummy-url.com",
-            headers=None,
-        )
-
-
-class TestCheckS3PathExists:
-    @patch("subprocess.run")
-    def test_check_s3_path_exists_found(self, mock_run):
-        # Test when S3 path exists
-        mock_result = MagicMock()
-        mock_result.returncode = 0  # Simulate path found
-        mock_result.stdout.strip.return_value = "some-file"
-        mock_run.return_value = mock_result
-        s3_folder_uri = Path("s3://dummy-bucket/dummy-path")
-        result = check_s3_path_exists_and_can_be_accessed(
-            s3_folder_uri, subprocess_run=mock_run
-        )
-
-        assert result
-
-    @patch("subprocess.run")
-    def test_check_s3_path_not_exists(self, mock_run):
-        # Test when S3 path does not exist
-        mock_result = MagicMock()
-        mock_result.returncode = 1  # Simulate path not found
-        mock_result.stdout.strip.return_value = ""
-        mock_run.return_value = mock_result
-
-        s3_folder_uri = Path("s3://dummy-bucket/nonexistent-path/")
-        result = check_s3_path_exists_and_can_be_accessed(
-            s3_folder_uri, subprocess_run=mock_run
-        )
-
-        assert not result
-
-    @patch("subprocess.run")
-    def test_check_s3_path_invalid_aws_executable(self, mock_run):
-        # Test with Invalid AWS Executable
-        mock_run.side_effect = OSError("Invalid AWS executable")
-
-        s3_folder_uri = Path("s3://dummy-bucket/dummy-path/")
-        with raises(OSError):
-            check_s3_path_exists_and_can_be_accessed(
-                s3_folder_uri, subprocess_run=mock_run
-            )
-
-
-class TestGetGcsBucketNameAndPrefix:
-    def run_and_validate(
-        self,
-        gcs_uri: str,
-        expected_bucket_name: str,
-        expected_prefix: str,
-        is_file: bool = False,
-    ):
-        bucket_name, prefix = get_gcs_bucket_name_and_prefix(gcs_uri, is_file=is_file)
-
-        assert bucket_name == expected_bucket_name
-        assert prefix == expected_prefix
-
-    @mark.parametrize("trailing_slash", [True, False])
-    def test_plain_bucket_name(self, trailing_slash: bool):
-        gcs_uri = "gs://bucket_name"
-        if trailing_slash:
-            gcs_uri += "/"
-
-        expected_bucket_name = "bucket_name"
-        expected_prefix = ""
-
-        self.run_and_validate(gcs_uri, expected_bucket_name, expected_prefix)
-
-    @mark.parametrize("trailing_slash", [True, False])
-    def test_bucket_name_with_prefix(self, trailing_slash: bool):
-        gcs_uri = "gs://bucket_name/my/prefix"
-        if trailing_slash:
-            gcs_uri += "/"
-
-        expected_bucket_name = "bucket_name"
-        expected_prefix = "my/prefix/"
-
-        self.run_and_validate(gcs_uri, expected_bucket_name, expected_prefix)
-
-    def test_object_name_with_prefix(self):
-        gcs_uri = "gs://bucket_name/my/prefix.txt"
-
-        expected_bucket_name = "bucket_name"
-        expected_prefix = "my/prefix.txt"
-
-        self.run_and_validate(
-            gcs_uri, expected_bucket_name, expected_prefix, is_file=True
-        )
-
-    def test_invalid_uri(self):
-        gcs_uri = "s3://bucket/prefix"
-        expected_bucket_name = None
-        expected_prefix = None
-
-        with raises(ValueError):
-            self.run_and_validate(gcs_uri, expected_bucket_name, expected_prefix)
-
-
-class TestGetFileFromRemoteStorage:
-    """Tests behavior of helper methods to get a file from S3 or GCS."""
-
-    def _get_file(self, storage: str) -> Tuple[str, str]:
-        """Gets a storage type and returns the file path and expected body"""
-        if storage == "s3":
-            return (
-                "s3://rayllm-ci/test_file.txt",
-                "This is a test file to unittest downloading files from s3.\n",
-            )
-        elif storage == "gs":
-            return (
-                "gs://anyscale-public-access-bucket/test_file.txt",
-                "This is a test file to unittest downloading files from s3.\n",
-            )
-        else:
-            raise ValueError(f"storage {storage} is not supported.")
-
-    def _download_file(
-        self, storage: str, file_uri: str, decode_as_utf_8: bool = False
-    ) -> Optional[Union[str, bytes]]:
-        """Download file from remote storage with appropriate mocks."""
-        # This new version avoids using decorators and applies patches manually
-        with patch("pyarrow.fs.S3FileSystem") as mock_s3fs, patch(
-            "pyarrow.fs.GcsFileSystem"
-        ) as mock_gcsfs:
-            # Create mock file system and mock file content
-            mock_fs = MagicMock()
-            mock_file = MagicMock()
-            mock_file.read.return_value = (
-                b"This is a test file to unittest downloading files from s3.\n"
-            )
-            mock_fs.open_input_file.return_value.__enter__.return_value = mock_file
-
-            # Configure the mock to simulate file existence based on the path
-            if "fake_bucket" in file_uri or file_uri.endswith("foo.txt"):
-                # For non-existent files/buckets, return a non-file type
-                mock_fs.get_file_info.return_value.type = pa_fs.FileType.NotFound
-            else:
-                # For existing files, return a file type
-                mock_fs.get_file_info.return_value.type = pa_fs.FileType.File
-
-            # Set appropriate mock based on storage type
-            if storage == "s3":
-                mock_s3fs.return_value = mock_fs
-                return get_file_from_s3(file_uri, decode_as_utf_8=decode_as_utf_8)
-            elif storage == "gs":
-                mock_gcsfs.return_value = mock_fs
-                return get_file_from_gcs(file_uri, decode_as_utf_8=decode_as_utf_8)
-            else:
-                raise ValueError(f"storage {storage} is not supported.")
-
-    @mark.parametrize("storage", ["s3", "gs"])
-    @mark.parametrize("decode_as_utf_8", [False, True])
-    def test_get_file(self, storage: str, decode_as_utf_8: bool):
-        """Tests if we can successfully get files from s3."""
-
-        file_uri, expected_body = self._get_file(storage)
-        str_body = self._download_file(
-            storage, file_uri, decode_as_utf_8=decode_as_utf_8
-        )
-
-        str_expected = (
-            expected_body.encode("utf-8") if not decode_as_utf_8 else expected_body
-        )
-        assert str_body == str_expected
-
-    @mark.parametrize("storage", ["s3", "gs"])
-    def test_get_nonexistent_bucket(self, storage: str):
-        """Tests if bucket doesn't exist, do we return None"""
-
-        uri = f"{storage}://fake_bucket/foo.txt"
-        body = self._download_file(storage, uri, decode_as_utf_8=True)
-        assert body is None
-
-    @mark.parametrize("storage", ["s3", "gs"])
-    def test_get_nonexistent_file(self, storage: str):
-        """Tests if file doesn't exit, do we return None"""
-
-        cur_uri, *_ = self._get_file(storage)
-        # Note: foo.txt does not exist hopefully
-        parts = cur_uri.split("/")
-        parts[-1] = "foo.txt"
-        new_uri = "/".join(parts)
-        body = self._download_file(storage, new_uri, decode_as_utf_8=True)
-        assert body is None
-
-
 class TestCloudFileSystem:
     """Tests for the CloudFileSystem class."""
 
@@ -460,6 +225,134 @@ class TestCloudFileSystem:
         """Test unsupported URI scheme."""
         with raises(ValueError, match="Unsupported URI scheme"):
             CloudFileSystem.get_fs_and_path("file:///tmp/file")
+
+    @patch("pyarrow.fs.S3FileSystem")
+    def test_get_file(self, mock_s3fs):
+        """Test getting a file from cloud storage."""
+        # Setup mock filesystem and file
+        mock_fs = MagicMock()
+        mock_s3fs.return_value = mock_fs
+
+        # Mock file content and info
+        mock_file = MagicMock()
+        mock_file.read.return_value = b"test file content"
+        mock_fs.open_input_file.return_value.__enter__.return_value = mock_file
+        mock_fs.get_file_info.return_value.type = pa_fs.FileType.File
+
+        # Test getting file as string (default)
+        content = CloudFileSystem.get_file("s3://bucket/test.txt")
+        assert content == "test file content"
+
+        # Test getting file as bytes
+        content_bytes = CloudFileSystem.get_file(
+            "s3://bucket/test.txt", decode_as_utf_8=False
+        )
+        assert content_bytes == b"test file content"
+
+        # Test non-existent file
+        mock_fs.get_file_info.return_value.type = pa_fs.FileType.NotFound
+        assert CloudFileSystem.get_file("s3://bucket/nonexistent.txt") is None
+
+    @patch("pyarrow.fs.GcsFileSystem")
+    def test_list_subfolders(self, mock_gcsfs):
+        """Test listing subfolders in cloud storage."""
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+        mock_gcsfs.return_value = mock_fs
+
+        # Create mock file infos for directory listing
+        dir1 = MagicMock()
+        dir1.type = pa_fs.FileType.Directory
+        dir1.path = "bucket/parent/dir1"
+
+        dir2 = MagicMock()
+        dir2.type = pa_fs.FileType.Directory
+        dir2.path = "bucket/parent/dir2"
+
+        file1 = MagicMock()
+        file1.type = pa_fs.FileType.File
+        file1.path = "bucket/parent/file.txt"
+
+        mock_fs.get_file_info.return_value = [dir1, dir2, file1]
+
+        # Test listing subfolders
+        folders = CloudFileSystem.list_subfolders("gs://bucket/parent")
+        assert sorted(folders) == ["dir1", "dir2"]
+
+    @patch("pyarrow.fs.S3FileSystem")
+    def test_download_files(self, mock_s3fs):
+        """Test downloading files from cloud storage."""
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+        mock_s3fs.return_value = mock_fs
+
+        # Create mock file infos for listing
+        file_info1 = MagicMock()
+        file_info1.type = pa_fs.FileType.File
+        file_info1.path = "bucket/dir/file1.txt"
+
+        file_info2 = MagicMock()
+        file_info2.type = pa_fs.FileType.File
+        file_info2.path = "bucket/dir/subdir/file2.txt"
+
+        dir_info = MagicMock()
+        dir_info.type = pa_fs.FileType.Directory
+        dir_info.path = "bucket/dir/subdir"
+
+        mock_fs.get_file_info.return_value = [file_info1, file_info2, dir_info]
+
+        # Mock file content
+        mock_file = MagicMock()
+        mock_file.read.return_value = b"test content"
+        mock_fs.open_input_file.return_value.__enter__.return_value = mock_file
+
+        # Create temp directory for testing
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Test downloading files
+            CloudFileSystem.download_files(tempdir, "s3://bucket/dir")
+
+            # Check that files were downloaded correctly
+            assert os.path.exists(os.path.join(tempdir, "file1.txt"))
+            assert os.path.exists(os.path.join(tempdir, "subdir", "file2.txt"))
+
+            # Check content of downloaded files
+            with open(os.path.join(tempdir, "file1.txt"), "rb") as f:
+                assert f.read() == b"test content"
+
+    @patch("pyarrow.fs.GcsFileSystem")
+    def test_download_model(self, mock_gcsfs):
+        """Test downloading a model from cloud storage."""
+        # Setup mock filesystem
+        mock_fs = MagicMock()
+        mock_gcsfs.return_value = mock_fs
+
+        # Mock hash file
+        mock_hash_file = MagicMock()
+        mock_hash_file.read.return_value = b"abcdef1234567890"
+        mock_fs.open_input_file.return_value.__enter__.return_value = mock_hash_file
+
+        # Mock file info for hash file
+        mock_fs.get_file_info.return_value.type = pa_fs.FileType.File
+
+        # Create temp directory for testing
+        with tempfile.TemporaryDirectory() as tempdir:
+            # Test downloading model
+            with patch.object(CloudFileSystem, "download_files") as mock_download:
+                CloudFileSystem.download_model(tempdir, "gs://bucket/model", False)
+
+                # Check that hash file was processed
+                assert os.path.exists(os.path.join(tempdir, "refs", "main"))
+                with open(os.path.join(tempdir, "refs", "main"), "r") as f:
+                    assert f.read() == "abcdef1234567890"
+
+                # Check that download_files was called correctly
+                mock_download.assert_called_once()
+                call_args = mock_download.call_args[1]
+                assert call_args["path"] == os.path.join(
+                    tempdir, "snapshots", "abcdef1234567890"
+                )
+                assert call_args["bucket_uri"] == "gs://bucket/model"
+                assert call_args["substrings_to_include"] == []
 
 
 if __name__ == "__main__":

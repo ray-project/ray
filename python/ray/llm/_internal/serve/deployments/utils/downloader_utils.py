@@ -6,10 +6,7 @@ from typing import List
 from filelock import FileLock
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.utils.cloud_utils import (
-    CloudFileSystem,
-    get_aws_credentials,
-)
+from ray.llm._internal.serve.deployments.utils.cloud_utils import CloudFileSystem
 from ray.llm._internal.serve.configs.server_models import (
     GCSMirrorConfig,
     MirrorConfig,
@@ -48,7 +45,7 @@ def get_model_location_on_disk(model_id: str) -> str:
     return model_id_or_path
 
 
-class BaseDownloader(ABC):
+class _BaseModelDownloader(ABC):
     """Base class for downloading models from cloud storage."""
 
     def __init__(self, model_id: str, mirror_config: "MirrorConfig"):
@@ -92,7 +89,7 @@ class BaseDownloader(ABC):
         ...
 
 
-class S3Downloader(BaseDownloader):
+class S3ModelDownloader(_BaseModelDownloader):
     """Downloader for models stored in S3.
 
     Args:
@@ -102,9 +99,6 @@ class S3Downloader(BaseDownloader):
 
     def __init__(self, model_id: str, mirror_config: "S3MirrorConfig"):
         super().__init__(model_id, mirror_config)
-        self.aws_credentials = None
-        if mirror_config.aws_credentials:
-            self.aws_credentials = get_aws_credentials(mirror_config.aws_credentials)
 
     def get_model(
         self,
@@ -176,7 +170,7 @@ class S3Downloader(BaseDownloader):
         return paths
 
 
-class GCSDownloader(BaseDownloader):
+class GCSModelDownloader(_BaseModelDownloader):
     """Downloader for models stored in GCS.
 
     Args:

@@ -11,7 +11,6 @@ from typing import (
     NamedTuple,
 )
 import os
-import requests
 import time
 import inspect
 import asyncio
@@ -20,7 +19,6 @@ import asyncio
 import pyarrow.fs as pa_fs
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.configs.server_models import S3AWSCredentials
 
 
 T = TypeVar("T")
@@ -236,234 +234,7 @@ class CloudFileSystem:
             raise
 
 
-# Maintain backward compatibility with existing function names
-def _get_fs_and_path(object_uri: str) -> Tuple[pa_fs.FileSystem, str]:
-    """Legacy wrapper for CloudFileSystem.get_fs_and_path"""
-    return CloudFileSystem.get_fs_and_path(object_uri)
-
-
-def get_file_from_s3(
-    object_uri: str, decode_as_utf_8: bool = True
-) -> Optional[Union[str, bytes]]:
-    """Legacy wrapper for CloudFileSystem.get_file"""
-    return CloudFileSystem.get_file(object_uri, decode_as_utf_8)
-
-
-def get_gcs_bucket_name_and_prefix(
-    bucket_uri: str, is_file: bool = False
-) -> Tuple[str, str]:
-    """Gets the GCS bucket name and prefix from the bucket_uri.
-
-    The bucket name never includes a trailing slash.
-    If is_file is False, the prefix always includes a trailing slash.
-
-    Args:
-        bucket_uri: The URI to the directory path or the file path on remote
-            storage.
-        is_file: If bucket_uri is a file path and not a directory path.
-
-    Returns:
-        Tuple containing a bucket name and the object / directory prefix.
-    """
-
-    if not bucket_uri.startswith("gs://"):
-        raise ValueError(
-            f'Got invalid bucket_uri "{bucket_uri}". Expected a value that '
-            'starts with "gs://".'
-        )
-
-    stripped_uri = bucket_uri[len("gs://") :]
-    split_uri = stripped_uri.split("/", maxsplit=1)
-
-    bucket_name = split_uri[0]
-
-    if len(split_uri) > 1:
-        bucket_prefix = split_uri[1]
-    else:
-        bucket_prefix = ""
-
-    # Ensure non-empty bucket_prefixes have a trailing slash.
-    if not is_file and bucket_prefix != "" and not bucket_prefix.endswith("/"):
-        bucket_prefix += "/"
-
-    return bucket_name, bucket_prefix
-
-
-def get_file_from_gcs(
-    object_uri: str,
-    decode_as_utf_8: bool = True,
-) -> Optional[Union[str, bytes]]:
-    """Legacy wrapper for CloudFileSystem.get_file"""
-    return CloudFileSystem.get_file(object_uri, decode_as_utf_8)
-
-
-def list_subfolders_s3(folder_uri: str) -> List[str]:
-    """List the subfolders in an S3 folder.
-
-    Args:
-        folder_uri: URI to list the subfolders for.
-
-    Returns:
-        List of subfolder names (without trailing slashes).
-    """
-    return CloudFileSystem.list_subfolders(folder_uri)
-
-
-def list_subfolders_gcs(folder_uri: str) -> List[str]:
-    """List the subfolders in a GCS folder.
-
-    Args:
-        folder_uri: URI to list the subfolders for.
-
-    Returns:
-        List of subfolder names (without trailing slashes).
-    """
-    return CloudFileSystem.list_subfolders(folder_uri)
-
-
-def download_files_from_gcs(
-    path: str,
-    bucket_uri: str,
-    substrings_to_include: Optional[List[str]] = None,
-) -> None:
-    """Legacy wrapper for CloudFileSystem.download_files"""
-    CloudFileSystem.download_files(path, bucket_uri, substrings_to_include)
-
-
-def download_model_from_gcs(
-    destination_path: str, bucket_uri: str, tokenizer_only: bool
-) -> None:
-    """Legacy wrapper for CloudFileSystem.download_model"""
-    CloudFileSystem.download_model(destination_path, bucket_uri, tokenizer_only)
-
-
-def check_s3_path_exists_and_can_be_accessed(object_uri: str) -> bool:
-    """Checks if an S3 path exists and can be accessed.
-
-    Args:
-        object_uri: The URI to check.
-
-    Returns:
-        True if the path exists and can be accessed, False otherwise.
-    """
-    try:
-        fs, path = CloudFileSystem.get_fs_and_path(object_uri)
-        # Check if the path exists
-        if object_uri.endswith("/"):
-            # Check if directory exists
-            file_info = fs.get_file_info(path)
-            return file_info.type == pa_fs.FileType.Directory
-        else:
-            # Check if file exists
-            file_info = fs.get_file_info(path)
-            return file_info.type == pa_fs.FileType.File
-    except Exception as e:
-        logger.info(f"Failed to check if {object_uri} exists: {e}")
-        return False
-
-
-def download_files_from_s3(path: str, bucket_uri: str) -> None:
-    """Download files from S3 to a local directory.
-
-    Args:
-        path: Local directory where files will be downloaded
-        bucket_uri: S3 URI for the bucket
-    """
-
-    # Check that URI exists
-    if not check_s3_path_exists_and_can_be_accessed(bucket_uri):
-        if not bucket_uri.endswith("/"):
-            bucket_uri += "/"
-            if not check_s3_path_exists_and_can_be_accessed(bucket_uri):
-                raise FileNotFoundError(f"URI {bucket_uri} does not exist.")
-
-    CloudFileSystem.download_files(
-        path=path,
-        bucket_uri=bucket_uri,
-    )
-
-
-def download_model_from_s3(
-    path: str,
-    bucket_uri: str,
-    tokenizer_only: bool = False,
-) -> None:
-    """
-    Download a model from an S3 bucket and save it in TRANSFORMERS_CACHE for
-    seamless interoperability with Hugging Face's Transformers library.
-
-    The downloaded model may have a 'hash' file containing the commit hash
-    corresponding to the commit on Hugging Face Hub.
-    """
-    path = str(path)
-
-    # Make sure the hash file is not present in the local directory
-    if os.path.exists(os.path.join("..", "hash")):
-        os.remove(os.path.join("..", "hash"))
-
-    fs, source_path = CloudFileSystem.get_fs_and_path(bucket_uri)
-
-    # Get hash file first
-    hash_path = os.path.join(source_path, "hash")
-    try:
-        with fs.open_input_file(hash_path) as f:
-            f_hash = f.read().decode("utf-8").strip()
-            with open(os.path.join("..", "hash"), "w") as local_hash:
-                local_hash.write(f_hash)
-    except:
-        f_hash = "0000000000000000000000000000000000000000"
-        logger.warning(
-            f"hash file does not exist in {bucket_uri}. Using {f_hash} as the hash."
-        )
-
-    # Create necessary directories
-    target_path = os.path.join(path, "snapshots", f_hash)
-    os.makedirs(target_path, exist_ok=True)
-    os.makedirs(os.path.join(path, "refs"), exist_ok=True)
-
-    # Download model files
-    if tokenizer_only:
-        substrings_to_include = ["token", "config.json"]
-    else:
-        substrings_to_include = None
-
-    CloudFileSystem.download_files(
-        path=target_path,
-        bucket_uri=bucket_uri,
-        substrings_to_include=substrings_to_include,
-    )
-
-    # Write hash to refs/main
-    with open(os.path.join(path, "refs", "main"), "w") as f:
-        f.write(f_hash)
-
-
-def get_aws_credentials(
-    s3_aws_credentials_config: S3AWSCredentials,
-) -> Optional[Dict[str, str]]:
-    """
-    This function creates temporary AWS credentials from a configured rayllm by issuing a POST request to the configured API.
-    The function optionally uses an env variable for authorization and the returned result is a set of env variables that should
-    be injected to the process issuing the S3 sync.
-    """
-    token = (
-        os.getenv(s3_aws_credentials_config.auth_token_env_variable)
-        if s3_aws_credentials_config.auth_token_env_variable
-        else None
-    )
-    headers = {"Authorization": f"Bearer {token}"} if token else None
-    resp = requests.post(
-        s3_aws_credentials_config.create_aws_credentials_url, headers=headers
-    )
-    if not resp.ok:
-        logger.error(f"Request to create AWS credentials had failed with {resp.reason}")
-        return None
-
-    env = resp.json()
-    return env
-
-
-class CacheEntry(NamedTuple):
+class _CacheEntry(NamedTuple):
     value: Any
     expire_time: Optional[float]
 
@@ -501,7 +272,7 @@ class CloudObjectCache:
             missing_expire_seconds: How long to cache missing objects (None for no expiration)
             exists_expire_seconds: How long to cache existing objects (None for no expiration)
         """
-        self._cache: Dict[str, CacheEntry] = {}
+        self._cache: Dict[str, _CacheEntry] = {}
         self._max_size = max_size
         self._fetch_fn = fetch_fn
         self._missing_expire_seconds = missing_expire_seconds
@@ -592,7 +363,7 @@ class CloudObjectCache:
             )
             del self._cache[oldest_key]
 
-        self._cache[key] = CacheEntry(value, expire_time)
+        self._cache[key] = _CacheEntry(value, expire_time)
 
     def __len__(self) -> int:
         return len(self._cache)
