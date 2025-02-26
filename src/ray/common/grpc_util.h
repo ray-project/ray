@@ -156,6 +156,23 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
+/// Debug string for a google protobuf map.
+template <class K, class V>
+inline std::string DebugString(const ::google::protobuf::Map<K, V> &pb_map) {
+  std::stringstream ss;
+  ss << "{";
+  bool first = true;
+  for (const auto &pair : pb_map) {
+    if (!first) {
+      ss << ",";
+      first = false;
+    }
+    ss << pair.first << ":" << pair.second;
+  }
+  ss << "}";
+  return ss.str();
+}
+
 /// Check whether 2 google::protobuf::Map are equal. This function assumes that the
 /// value of the map is either a simple type that supports operator== or a protobuf
 /// message that can be compared using

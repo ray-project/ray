@@ -147,11 +147,15 @@ bool ClusterTaskManager::CancelTasksWithResourceShapes(
   }
   resource_shapes_str << "]";
 
+  RAY_LOG(INFO) << "Cancelling infeasible tasks with resource shapes "
+                << resource_shapes_str.str();
+
   return CancelTasks(
       predicate,
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-      "Canceling tasks with resource shapes " + resource_shapes_str.str() +
-          " because there are not enough resources for the tasks on the whole cluster.");
+      "Tasks or actors with resource shapes " + resource_shapes_str.str() +
+          " failed to schedule because there are not enough resources for the tasks "
+          "or actors on the whole cluster.");
 }
 
 bool ClusterTaskManager::IsWorkWithResourceShape(
