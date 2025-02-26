@@ -6,7 +6,7 @@ Train with DeepSpeed ZeRO-3 and Ray Train
 .. raw:: html
 
     <a id="try-anyscale-quickstart-deepspeed_example" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=deepspeed_example">
-      <img src="../../../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart" />
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
       <br/><br/>
     </a>
 

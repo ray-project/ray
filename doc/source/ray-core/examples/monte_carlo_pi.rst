@@ -6,7 +6,7 @@ Monte Carlo Estimation of π
 .. raw:: html
 
     <a id="try-anyscale-quickstart-monte_carlo_pi" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=monte_carlo_pi">
-      <img src="../../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart" />
+      <img src="../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
       <br/><br/>
     </a>
 
