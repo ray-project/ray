@@ -21,10 +21,13 @@
 #include <boost/asio/write.hpp>
 #include <boost/bind/bind.hpp>
 #include <chrono>
-#include <memory.h>
+#include <memory>
 #include <poll.h>
+#include <string>
 #include <sstream>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
@@ -611,7 +614,7 @@ std::vector<bool> CheckForClientDisconnects(std::vector<std::shared_ptr<ClientCo
     int fd = conn->GetNativeHandle();
 
     pollfd pfd = {fd, POLLHUP, 0};
-    int ret = poll(&pfd, 1, 0); // Non-blocking check
+    int ret = poll(&pfd, 1, 0);
     bool dc = false;
     if (ret > 0 && pfd.revents & POLLHUP) {
       dc = true;
