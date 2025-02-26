@@ -2,7 +2,6 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime
 from enum import Enum
-from io import StringIO
 from itertools import chain
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -370,41 +369,43 @@ Resources
             for node in data.active_nodes
         }
 
-        sio = StringIO()
+        node_usage_report_lines = []
         if verbose:
             if usage_by_node:
                 for node_id, usage in usage_by_node.items():
-                    print(file=sio)  # Print a newline.
-                    node_string = f"Node: {node_id}"
+                    node_usage_report_lines.append("")
+                    node_type_line = f"Node: {node_id}"
                     if node_id in node_type_mapping:
                         node_type = node_type_mapping[node_id]
-                        node_string += f" ({node_type})"
-                    print(node_string, file=sio)
+                        node_type_line += f" ({node_type})"
+                    node_usage_report_lines.append(node_type_line)
                     if (
                         idle_time_map
                         and node_id in idle_time_map
                         and idle_time_map[node_id] > 0
                     ):
-                        print(f" Idle: {idle_time_map[node_id]} ms", file=sio)
+                        node_usage_report_lines.append(
+                            f" Idle: {idle_time_map[node_id]} ms"
+                        )
 
-                    print(" Usage:", file=sio)
+                    node_usage_report_lines.append(" Usage:")
                     for line in parse_usage(usage, verbose):
-                        print(f"  {line}", file=sio)
-                    # Don't print anything if not provided.
+                        node_usage_report_lines.append(f"  {line}")
+                    # Don't add any lines if not provided.
                     if not node_activities:
                         continue
-                    print(" Activity:", file=sio)
+                    node_usage_report_lines.append(" Activity:")
                     if node_id not in node_activities:
-                        print("  (no activity)", file=sio)
+                        node_usage_report_lines.append("  (no activity)")
                     else:
                         # Note: We have node instance ID here.
                         _, reasons = node_activities[node_id]
                         for reason in reasons:
-                            print(f"  {reason}", file=sio)
+                            node_usage_report_lines.append(f"s  {reason}")
         else:
-            print(file=sio)
+            node_usage_report_lines.append("")
 
-        return sio.getvalue()
+        return "\n".join(node_usage_report_lines)
 
     @staticmethod
     def _header_info(data: ClusterStatus, verbose: bool) -> str:
@@ -585,10 +586,11 @@ Resources
         }
         usage_lines = parse_usage(usage, verbose)
 
-        sio = StringIO()
+        usage_report = []
         for line in usage_lines:
-            print(f" {line  }", file=sio)
-        return sio.getvalue()
+            usage_report.append(f" {line  }")
+        usage_report.append("")
+        return "\n".join(usage_report)
 
 
 class ClusterStatusParser:
