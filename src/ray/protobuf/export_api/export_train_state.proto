@@ -43,9 +43,9 @@ message ExportTrainRun {
   // Human-readable name assigned to the Train run
   string name = 2;
   // The Ray Job ID associated with this Train run
-  string job_id = 3;
+  bytes job_id = 3;
   // Unique ID of the actor managing the Train run
-  string controller_actor_id = 4;
+  bytes controller_actor_id = 4;
   // The current execution status of the Train run
   RunStatus status = 5;
   // Additional details about the current status, including error messages if applicable
@@ -61,7 +61,7 @@ message ExportTrainRunAttempt {
   // Enumeration of the possible statuses for a Train run attempt
   enum RunAttemptStatus {
     // Default value required by proto3
-    ACTOR_STATUS_ = 0;
+    UNSPECIFIED = 0;
 
     // Active States
     PENDING = 1;
@@ -76,7 +76,7 @@ message ExportTrainRunAttempt {
   // Enumeration of the statuses for a Train worker actor
   enum ActorStatus {
     // Default value required by proto3
-    ACTOR_STATUS_UNSPECIFIED = 0;
+    UNSPECIFIED = 0;
 
     // The actor is currently active
     ALIVE = 1;
@@ -99,9 +99,9 @@ message ExportTrainRunAttempt {
     // The rank of the worker's node in the cluster
     int32 node_rank = 3;
     // The unique ID of the worker's actor
-    string actor_id = 4;
+    bytes actor_id = 4;
     // The unique ID of the node where the worker is running
-    string node_id = 5;
+    bytes node_id = 5;
     // The IP address of the node where the worker is running
     string node_ip = 6;
     // The process ID of the worker
