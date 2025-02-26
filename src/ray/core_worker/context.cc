@@ -295,6 +295,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
     }
     current_actor_id_ = task_spec.ActorCreationId();
+    current_actor_should_exit_ = false;
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
