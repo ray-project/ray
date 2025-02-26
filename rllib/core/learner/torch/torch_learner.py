@@ -202,8 +202,8 @@ class TorchLearner(Learner):
         for pid, grad in gradients_dict.items():
             # If updates should not be skipped turn `nan` and `inf` gradients to zero.
             if (
-                not torch.isfinite(grad).all()
-                and not self.config.torch_skip_nan_gradients
+                not self.config.torch_skip_nan_gradients
+                and not torch.isfinite(grad).all()
             ):
                 # Warn the user about `nan` gradients.
                 logger.warning(f"Gradients {pid} contain `nan/inf` values.")
@@ -260,7 +260,7 @@ class TorchLearner(Learner):
                     # Update the scaler.
                     scaler.update()
                 # `step` the optimizer (default), but only if all gradients are finite.
-                elif all(
+                elif self.config.torch_skip_nan_gradients or all(
                     param.grad is None or torch.isfinite(param.grad).all()
                     for group in optim.param_groups
                     for param in group["params"]
