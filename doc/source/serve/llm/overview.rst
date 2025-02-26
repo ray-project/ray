@@ -87,7 +87,7 @@ Deployment through ``LLMRouter``
     )
 
     # Deploy the application
-    deployment = VLLMService.as_deployment().bind(llm_config)
+    deployment = VLLMService.as_deployment(llm_config.get_serve_options(name_prefix="VLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
 
@@ -165,8 +165,8 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
     )
 
     # Deploy the application
-    deployment1 = VLLMService.as_deployment().bind(llm_config1)
-    deployment2 = VLLMService.as_deployment().bind(llm_config2)
+    deployment1 = VLLMService.as_deployment(llm_config1.get_serve_options(name_prefix="VLLM:")).bind(llm_config1)
+    deployment2 = VLLMService.as_deployment(llm_config2.get_serve_options(name_prefix="VLLM:")).bind(llm_config2)
     llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
     serve.run(llm_app)
 
