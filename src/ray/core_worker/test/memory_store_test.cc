@@ -14,9 +14,13 @@
 
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
+#include <gtest/gtest.h>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "gtest/gtest.h"
 #include "mock/ray/core_worker/memory_store.h"
+#include "ray/common/status.h"
+#include "ray/common/status_or.h"
 #include "ray/common/test_util.h"
 
 namespace ray {
@@ -256,11 +260,11 @@ TEST_F(TestMemoryStoreWait, TestWaitNoWaiting) {
   memory_store->Put(plasma_store_object, object_ids[2]);
   memory_store->Put(memory_store_object, object_ids[3]);
 
-  const auto status_or_results =
-      memory_store->Wait(object_ids_set, num_objects, 1000, ctx);
-  const auto &[ready, plasma_object_ids] = status_or_results.value();
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+  const auto status = memory_store->Wait(
+      object_ids_set, num_objects, 1000, ctx, &ready, &plasma_object_ids);
 
-  ASSERT_TRUE(status_or_results.ok());
+  ASSERT_TRUE(status.ok());
   ASSERT_EQ(ready.size(), 2);
   ASSERT_TRUE(ready.contains(object_ids[0]) && ready.contains(object_ids[3]));
   ASSERT_EQ(plasma_object_ids.size(), 2);
@@ -284,18 +288,19 @@ TEST_F(TestMemoryStoreWait, TestWaitWithWaiting) {
   memory_store->Put(memory_store_object, object_ids[0]);
   memory_store->Put(plasma_store_object, object_ids[1]);
 
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   auto future = std::async(std::launch::async, [&]() {
-    return memory_store->Wait(object_ids_set, num_objects, 100, ctx);
+    return memory_store->Wait(
+        object_ids_set, num_objects, 100, ctx, &ready, &plasma_object_ids);
   });
   ASSERT_EQ(future.wait_for(std::chrono::milliseconds(1)), std::future_status::timeout);
   memory_store->Put(plasma_store_object, object_ids[2]);
   ASSERT_EQ(future.wait_for(std::chrono::milliseconds(1)), std::future_status::timeout);
   memory_store->Put(memory_store_object, object_ids[3]);
 
-  const auto status_or_results = future.get();
-  const auto &[ready, plasma_object_ids] = status_or_results.value();
+  const auto status = future.get();
 
-  ASSERT_TRUE(status_or_results.ok());
+  ASSERT_TRUE(status.ok());
   ASSERT_EQ(ready.size(), 2);
   ASSERT_TRUE(ready.contains(object_ids[0]) && ready.contains(object_ids[3]));
   ASSERT_EQ(plasma_object_ids.size(), 2);
@@ -310,10 +315,11 @@ TEST_F(TestMemoryStoreWait, TestWaitTimeout) {
   memory_store->Put(plasma_store_object, *object_ids_set.begin());
   int num_objects = 2;
 
-  const auto status_or_results = memory_store->Wait(object_ids_set, num_objects, 10, ctx);
-  const auto &[ready, plasma_object_ids] = status_or_results.value();
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+  const auto status = memory_store->Wait(
+      object_ids_set, num_objects, 10, ctx, &ready, &plasma_object_ids);
 
-  ASSERT_TRUE(status_or_results.ok());
+  ASSERT_TRUE(status.ok());
   ASSERT_TRUE(ready.empty());
   ASSERT_EQ(object_ids_set, plasma_object_ids);
 }

@@ -77,8 +77,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
-from ray._private.storage import _load_class
-from ray._private.utils import get_ray_doc_version
+from ray._private.utils import get_ray_doc_version, load_class
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -469,6 +468,8 @@ class Worker:
         self._enable_record_actor_task_log = (
             ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
         )
+        # Whether rotation is enabled for out file and err file, task log position report will be skipped if rotation enabled, since the position cannot be accurate.
+        self._file_rotation_enabled = False
         self._out_filepath = None
         self._err_filepath = None
         # Create the lock here because the serializer will use it before
@@ -624,6 +625,10 @@ class Worker:
         finally:
             ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
+    def set_file_rotation_enabled(self, rotation_enabled: bool) -> None:
+        """Set whether rotation is enabled for outfile and errfile."""
+        self._file_rotation_enabled = rotation_enabled
+
     def set_err_file(self, err_filepath=Optional[AnyStr]) -> None:
         """Set the worker's err file where stderr is redirected to"""
         self._err_filepath = err_filepath
@@ -643,6 +648,8 @@ class Worker:
             return
 
         if not hasattr(self, "core_worker"):
+            return
+        if self._file_rotation_enabled:
             return
 
         self.core_worker.record_task_log_start(
@@ -665,6 +672,10 @@ class Worker:
             return
 
         if not hasattr(self, "core_worker"):
+            return
+
+        # Disable file offset fetch if rotation enabled (since file offset doesn't make sense for rotated files).
+        if self._file_rotation_enabled:
             return
 
         self.core_worker.record_task_log_end(
@@ -870,7 +881,7 @@ class Worker:
                 returned list. If False, then the first found exception will be
                 raised.
             skip_deserialization: If true, only the buffer will be released and
-                the object associated with the buffer will not be deserailized.
+                the object associated with the buffer will not be deserialized.
         Returns:
             list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
@@ -1621,7 +1632,7 @@ def init(
             )
 
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
         job_config.set_runtime_env(runtime_env)
@@ -1633,7 +1644,7 @@ def init(
     # higher priority in case user also provided runtime_env for ray.init()
     else:
         if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ and not _skip_env_hook:
-            runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env = load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
                 runtime_env
             )
 

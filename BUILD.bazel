@@ -875,9 +875,13 @@ ray_cc_library(
     linkopts = select({
         "@platforms//os:windows": [
         ],
-        "//conditions:default": [
+        "@platforms//os:macos": [
+            "-pthread",
+        ],
+        "@platforms//os:linux": [
             "-lpthread",
         ],
+        "//conditions:default": [],
     }),
     deps = [
         ":gcs_client_lib",
@@ -2147,6 +2151,7 @@ ray_cc_test(
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
         ":ray_mock",
+        "//src/ray/util:process",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2679,33 +2684,28 @@ ray_cc_test(
 )
 
 ray_cc_library(
-    name = "gcs",
+    name = "gcs_pb_util",
     srcs = [
         "//:src/ray/gcs/pb_utils.cc",
-        "//:src/ray/gcs/redis_async_context.cc",
-        "//:src/ray/gcs/redis_client.cc",
-        "//:src/ray/gcs/redis_context.cc",
     ],
     hdrs = [
         "//:src/ray/gcs/pb_util.h",
-        "//:src/ray/gcs/redis_async_context.h",
-        "//:src/ray/gcs/redis_client.h",
-        "//:src/ray/gcs/redis_context.h",
     ],
     deps = [
+        ":ray_common",
+        "//src/ray/protobuf:autoscaler_cc_proto",
+    ],
+)
+
+ray_cc_library(
+    name = "gcs",
+    deps = [
         ":gcs_callback",
-        ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
-        ":ray_common",
-        ":stats_lib",
-        "//src/ray/protobuf:agent_manager_cc_proto",
-        "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/protobuf:gcs_service_cc_proto",
-        "//src/ray/util",
-        "//src/ray/util:exponential_backoff",
-        "@boost//:asio",
-    ],
+        ":gcs_pb_util",
+        ":redis_client",
+    ]
 )
 
 ray_cc_test(

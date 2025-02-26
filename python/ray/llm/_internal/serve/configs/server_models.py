@@ -1,6 +1,6 @@
-import yaml
 import pydantic
 import os
+import ray
 
 from enum import Enum
 from ray.llm._internal.serve.configs.error_handling import TooManyStoppingSequences
@@ -28,7 +28,8 @@ from pydantic import (
     model_validator,
 )
 
-from transformers import PretrainedConfig
+from ray.llm._internal.utils import try_import
+
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
@@ -37,8 +38,8 @@ from ray.llm._internal.serve.configs.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     DEFAULT_TARGET_ONGOING_REQUESTS,
-    FALLBACK_MAX_ONGOING_REQUESTS,
     MAX_NUM_STOPPING_SEQUENCES,
+    ENABLE_WORKER_PROCESS_SETUP_HOOK,
 )
 from ray.llm._internal.serve.configs.prompt_formats import (
     Prompt,
@@ -48,25 +49,13 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
+from ray.llm._internal.serve.configs.base import BaseModelExtended
+
+transformers = try_import("transformers")
+
 
 GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
-
-
-class BaseModelExtended(BaseModel):
-    # NOTE(edoakes): Pydantic protects the namespace `model_` by default and prints
-    # warnings if you define fields with that prefix. However, we added such fields
-    # before this behavior existed. To avoid spamming user-facing logs, we mark the
-    # namespace as not protected. This means we need to be careful about overriding
-    # internal attributes starting with `model_`.
-    # See: https://github.com/anyscale/ray-llm/issues/1425
-    model_config = ConfigDict(protected_namespaces=tuple())
-
-    @classmethod
-    def parse_yaml(cls: Type[ModelT], file, **kwargs) -> ModelT:
-        kwargs.setdefault("Loader", yaml.SafeLoader)
-        dict_args = yaml.load(file, **kwargs)
-        return cls.model_validate(dict_args)
 
 
 logger = get_logger(__name__)
@@ -160,6 +149,9 @@ class AutoscalingConfig(BaseModel, extra="allow"):
 
     @model_validator(mode="before")
     def sync_target_ongoing_requests(cls, values):
+        """This is a temporary validator to sync the target_ongoing_requests
+        and target_num_ongoing_requests_per_replica fields.
+        """
         target_ongoing_requests = values.get("target_ongoing_requests", None)
         target_num_ongoing_requests_per_replica = values.get(
             "target_num_ongoing_requests_per_replica", None
@@ -192,44 +184,25 @@ class ServeMultiplexConfig(BaseModelExtended):
 
 # See: https://docs.ray.io/en/latest/serve/configure-serve-deployment.html
 class DeploymentConfig(BaseModelExtended):
+    class Config:
+        extra = "forbid"
+
     autoscaling_config: Optional[AutoscalingConfig] = Field(
-        AutoscalingConfig(),
+        default=None,
         description="Configuration for autoscaling the number of workers",
     )
     max_ongoing_requests: Optional[int] = Field(
         None,
         description="Sets the maximum number of queries in flight that are sent to a single replica.",
     )
-    # max_concurrent_queries is the deprecated field
-    # max_ongoing_requests should be used instead
-    max_concurrent_queries: Optional[int] = Field(
-        None,
-        description="This field is deprecated. max_ongoing_requests should be used instead.",
-        exclude=True,
-    )
+
     ray_actor_options: Optional[Dict[str, Any]] = Field(
         None, description="the Ray actor options to pass into the replica's actor."
     )
     graceful_shutdown_timeout_s: int = Field(
         300,
         description="Controller waits for this duration to forcefully kill the replica for shutdown, in seconds.",
-    )  # XXX: hardcoded
-
-    @model_validator(mode="before")
-    def populate_max_ongoing_requests(cls, values):
-        max_ongoing_requests = values.get("max_ongoing_requests", None)
-        max_concurrent_queries = values.get("max_concurrent_queries", None)
-        # max_concurrent_queries takes priority because users may have set this value
-        # before max_ongoing_requests exists
-        final_value = (
-            max_ongoing_requests
-            or max_concurrent_queries
-            or FALLBACK_MAX_ONGOING_REQUESTS
-        )
-        values["max_ongoing_requests"] = final_value
-        values["max_concurrent_queries"] = final_value
-
-        return values
+    )
 
 
 class InputModality(str, Enum):
@@ -289,7 +262,6 @@ class LoraConfig(BaseModelExtended):
 
 class ModelLoadingConfig(BaseModelExtended):
     model_id: str = Field(
-        default=...,
         description="The ID that should be used by end users to access this model.",
     )
     model_source: Optional[Union[str, S3MirrorConfig, GCSMirrorConfig]] = Field(
@@ -315,7 +287,6 @@ class LLMConfig(BaseModelExtended):
     # model_config is a Pydantic setting. This setting merges with
     # model_configs in parent classes.
     model_config = ConfigDict(
-        use_enum_values=True,
         extra="forbid",
     )
 
@@ -331,8 +302,8 @@ class LLMConfig(BaseModelExtended):
         description="The settings for how to download and expose the model."
     )
 
-    llm_engine: LLMEngine = Field(
-        default=LLMEngine.VLLM,
+    llm_engine: str = Field(
+        default=LLMEngine.VLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -346,7 +317,7 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    accelerator_type: GPUType = Field(
+    accelerator_type: str = Field(
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
@@ -354,9 +325,9 @@ class LLMConfig(BaseModelExtended):
         default=None, description="Settings for LoRA adapter."
     )
 
-    deployment_config: DeploymentConfig = Field(
-        default_factory=DeploymentConfig,
-        description="The Ray Serve deployment settings for the model deployment.",
+    deployment_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="The Ray @server.deployment options. See @server.deployment for more details.",
     )
 
     _supports_vision: bool = PrivateAttr(False)
@@ -370,7 +341,7 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = PretrainedConfig.from_pretrained(model_id_or_path)
+        hf_config = transformers.PretrainedConfig.from_pretrained(model_id_or_path)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
     def apply_checkpoint_info(
@@ -413,8 +384,31 @@ class LLMConfig(BaseModelExtended):
     def validate_accelerator_type(cls, value: str):
         # Ensure A10 is converted to A10G.
         if value == "A10":
-            return "A10G"
+            value = "A10G"
 
+        if value not in [t.value for t in GPUType]:
+            raise ValueError(f"Unsupported accelerator type: {value}")
+
+        return value
+
+    @field_validator("llm_engine")
+    def validate_llm_engine(cls, value: str) -> str:
+        """Validates the llm_engine string value."""
+        try:
+            # Validate the engine
+            LLMEngine(value)
+        except ValueError as e:
+            raise ValueError(f"Unsupported engine: {value}") from e
+        return value
+
+    @field_validator("deployment_config")
+    def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the deployment config dictionary."""
+        try:
+            # Only validate the deployment config
+            DeploymentConfig(**value)
+        except Exception as e:
+            raise ValueError(f"Invalid deployment config: {value}") from e
         return value
 
     def ray_accelerator_type(self) -> str:
@@ -449,6 +443,112 @@ class LLMConfig(BaseModelExtended):
             # Note (genesu): This should never happen because we validate the engine
             # in the config.
             raise ValueError(f"Unsupported engine: {self.llm_engine}")
+
+    def _set_deployment_placement_options(self) -> Dict[str, Any]:
+        deployment_config = self.deployment_config
+        engine_config = self.get_engine_config()
+
+        ray_actor_options = deployment_config.get("ray_actor_options", {})
+        deployment_config["ray_actor_options"] = ray_actor_options
+
+        replica_actor_resources = {
+            "CPU": ray_actor_options.get("num_cpus", 1),
+            "GPU": ray_actor_options.get("num_gpus", 0),
+            **ray_actor_options.get("resources", {}),
+        }
+        if "memory" in ray_actor_options:
+            replica_actor_resources["memory"] = ray_actor_options["memory"]
+
+        if (
+            "placement_group_bundles" in deployment_config
+            or "placement_group_strategy" in deployment_config
+        ):
+            raise ValueError(
+                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. "
+                "Use scaling_config to configure replica placement group."
+            )
+
+        # TODO (Kourosh): There is some test code leakage happening here that should be removed.
+        try:
+            # resources.mock_resource is a special key we used in tests to skip placement
+            # group on the gpu nodes.
+            if "mock_resource" in ray_actor_options.get("resources", {}):
+                bundles = []
+            else:
+                bundles = engine_config.placement_bundles
+        except ValueError:
+            # May happen if all bundles are empty.
+            bundles = []
+
+        bundles = [replica_actor_resources] + bundles
+        deployment_config.update(
+            {
+                "placement_group_bundles": bundles,
+                "placement_group_strategy": engine_config.placement_strategy,
+            }
+        )
+
+        return deployment_config
+
+    def _get_deployment_name(self, name_prefix: str) -> str:
+        unsanitized_deployment_name = name_prefix + self.model_id
+        return unsanitized_deployment_name.replace("/", "--").replace(".", "_")
+
+    def get_serve_options(
+        self,
+        *,
+        name_prefix: str,
+    ) -> Dict[str, Any]:
+        """Get the Serve options for the given LLM config.
+
+        This method is used to generate the Serve options for the given LLM config.
+
+
+        Examples:
+            .. testcode::
+                :skipif: True
+
+                from ray import serve
+                from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
+                from ray.serve.llm.deployments import VLLMDeployment
+
+
+                llm_config = LLMConfig(
+                    model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                    accelerator_type="L4",
+                    runtime_env={"env_vars": {"FOO": "bar"}},
+                )
+                serve_options = llm_config.get_serve_options(name_prefix="Test:")
+                vllm_app = VLLMDeployment.options(**serve_options).bind(llm_config)
+                serve.run(vllm_app)
+
+        Keyword Args:
+            name_prefix: The prefix to use for the deployment name.
+
+        Returns:
+            The dictionary to use in .options() when creating the deployment.
+        """
+
+        deployment_config = self._set_deployment_placement_options()
+
+        default_runtime_env = ray.get_runtime_context().runtime_env
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            default_runtime_env[
+                "worker_process_setup_hook"
+            ] = "ray.llm._internal.serve._worker_process_setup_hook"
+
+        ray_actor_options = deployment_config.get("ray_actor_options", {})
+        ray_actor_options["runtime_env"] = {
+            **default_runtime_env,
+            # Existing runtime_env should take precedence over the default.
+            **ray_actor_options.get("runtime_env", {}),
+            **(self.runtime_env if self.runtime_env else {}),
+        }
+        deployment_config["ray_actor_options"] = ray_actor_options
+
+        # Set the name of the deployment config to map to the model ID.
+        deployment_config["name"] = self._get_deployment_name(name_prefix)
+        return deployment_config
 
 
 def _is_yaml_file(filename: str) -> bool:

@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from pydantic import ConfigDict, Field
 from ray import serve
@@ -9,11 +9,11 @@ from ray.util.placement_group import (
     placement_group,
     placement_group_table,
 )
-from vllm.lora.request import LoRARequest
+from ray.llm._internal.utils import try_import
 
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.configs.base import BaseModelExtended
 from ray.llm._internal.serve.configs.server_models import (
-    BaseModelExtended,
     DiskMultiplexConfig,
     GCSMirrorConfig,
     GenerationRequest,
@@ -26,6 +26,12 @@ from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
 )
+
+
+vllm = try_import("vllm")
+
+if TYPE_CHECKING:
+    from vllm.lora.request import LoRARequest
 
 logger = get_logger(__name__)
 
@@ -198,12 +204,13 @@ class VLLMGenerationRequest(GenerationRequest):
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None
 
     @property
-    def lora_request(self) -> LoRARequest:
+    def lora_request(self) -> "LoRARequest":
+
         disk_vllm_config = self.disk_multiplex_config
         if not disk_vllm_config:
             return None
         else:
-            return LoRARequest(
+            return vllm.lora.request.LoRARequest(
                 lora_name=disk_vllm_config.model_id,
                 lora_int_id=disk_vllm_config.lora_assigned_int_id,
                 lora_local_path=disk_vllm_config.local_path,
