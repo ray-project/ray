@@ -620,14 +620,14 @@ std::vector<bool> CheckForClientDisconnects(const std::vector<std::shared_ptr<Cl
   }
 
   int ret = poll(poll_fds.data(), poll_fds.size(), 0);
-	if (ret > 0) {
-			for (size_t i = 0; i < conns.size(); ++i) {
-					// Check if the POLLHUP event occurred.
-					if (poll_fds[i].revents & POLLHUP) {
-							result[i] = true;
-					}
-			}
-	} else if (ret < 0) {
+  if (ret > 0) {
+      for (size_t i = 0; i < conns.size(); ++i) {
+          // Check if the POLLHUP event occurred.
+          if (poll_fds[i].revents & POLLHUP) {
+              result[i] = true;
+          }
+      }
+  } else if (ret < 0) {
     RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << ret;
   }
 
