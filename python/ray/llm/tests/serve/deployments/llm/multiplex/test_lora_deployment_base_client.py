@@ -161,7 +161,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 1: test a path that exists in the cloud. The LoRA adapters
         # must be included.
         (
-            "s3://air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-7b-chat-hf",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-7b-chat-hf",
             "meta-llama/Llama-2-7b-chat-hf",
             [
                 "meta-llama/Llama-2-7b-chat-hf:gen-config-but-no-context-len:1234",
@@ -174,7 +174,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # case). But test a different model. Ensure that only this model's
         # LoRA adapters are returned.
         (
-            "s3://air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-13b-chat-hf",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-13b-chat-hf",
             "meta-llama/Llama-2-13b-chat-hf",
             [
                 "meta-llama/Llama-2-13b-chat-hf:pre-long-context-model:1234",
@@ -184,7 +184,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 3: test a path that doesn't exist in the cloud. Only the
         # base model_id should be included.
         (
-            "s3://air-example-data/rayllm-ossci/path-does-not-exist/",
+            "s3://anonymous@air-example-data/rayllm-ossci/path-does-not-exist/",
             "meta-llama/Llama-2-7b-chat-hf",
             ["meta-llama/Llama-2-7b-chat-hf"],
         ),
