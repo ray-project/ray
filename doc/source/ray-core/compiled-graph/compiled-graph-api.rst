@@ -17,8 +17,9 @@ DAG Construction
 .. autosummary::
     :nosignatures:
     :toctree: doc/
+    :no-index: ray.actor.ActorMethod.bind
 
-    ray.actor.ActorMethod.bind:no-index:
+    ray.actor.ActorMethod.bind
     ray.dag.DAGNode.with_tensor_transport
 
 Compiled Graph Operations
