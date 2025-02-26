@@ -1,3 +1,7 @@
+import pytest
+import sys
+
+
 class TestOpenAICompatibilityNoAcceleratorType:
     """Test that rayllm is compatible with OpenAI API without specifying accelerator_type"""
 
@@ -36,3 +40,7 @@ class TestOpenAICompatibilityNoAcceleratorType:
         assert chat_completion.id
         assert isinstance(chat_completion.choices, list)
         assert chat_completion.choices[0].message.content
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
