@@ -79,6 +79,7 @@ BUILD.bazel:
 
 def test_conditional_testing_pull_request():
     script = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/determine_tests_to_run.py")
+    config_file = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/test_rules.txt")
 
     class FileToTags:
         file: str
@@ -147,10 +148,9 @@ def test_conditional_testing_pull_request():
             envs["BUILDKITE_PULL_REQUEST"] = "true"
             envs["BUILDKITE_COMMIT"] = commit
 
+            args = [sys.executable, script, config_file]
             output = (
-                subprocess.check_output([sys.executable, script], env=envs, cwd=workdir)
-                .decode()
-                .strip()
+                subprocess.check_output(args, env=envs, cwd=workdir).decode().strip()
             )
             tags = output.split()
 
