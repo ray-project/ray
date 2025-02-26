@@ -70,6 +70,58 @@ def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
     assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
 
 
+def test_hf_prompt_format_on_prompt_dict(hf_prompt_format):
+    """Test if generate_prompt() can handle messages structured as dictionaries."""
+    messages = Prompt(
+        prompt=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {
+                "role": "user",
+                "content": [
+                    {"field": "text", "content": "Can this animal"},
+                    {
+                        "field": "image_url",
+                        "image_url": {"url": "https://example.com/dog.jpg"},
+                    },
+                    {"field": "text", "content": "live here?"},
+                    {
+                        "field": "image_url",
+                        "image_url": {"url": "https://example.com/mountain.jpg"},
+                    },
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "It looks like you've shared an image of a "
+                    "dog lying on a wooden floor, and another "
+                    "image depicting a serene landscape with a "
+                    "sunset over a snowy hill or mountain."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "So you are suggesting you can find a poppy living in the snowy mountain?",
+            },
+        ]
+    )
+
+    # Generate prompt using the dictionary-structured messages
+    formated_prompt = hf_prompt_format.generate_prompt(messages=messages)
+
+    # Assertions to verify correct processing
+    assert formated_prompt.text == (
+        "<s>[INST]Can this animal[IMG]live here?[IMG][/INST]It looks like you've "
+        "shared an image of a dog lying on a wooden floor, and another image "
+        "depicting a serene landscape with a sunset over a snowy hill or "
+        "mountain.</s>[INST]You are a helpful assistant.\n\nSo you are suggesting "
+        "you can find a poppy living in the snowy mountain?[/INST]"
+    )
+    assert len(formated_prompt.image) == 2
+    assert formated_prompt.image[0].image_url == "https://example.com/dog.jpg"
+    assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
+
+
 def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
     messages = [
         Message(role="system", content="You are a helpful assistant."),
@@ -114,13 +166,14 @@ def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
     assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
 
 
-def test_hf_prompt_format_on_prompt_dict(hf_prompt_format):
-    """Test if generate_prompt() can handle messages structured as dictionaries."""
-    messages = {"prompt": [{"message":
-        {"role": "system", "content": "You are a helpful assistant."}}, {"message": 
-        {
-            "role": "user",
-            "content": [
+def test_hf_prompt_format_on_list_of_messages_dict(hf_prompt_format):
+    """Test if generate_prompt() can handle a list of message dictionaries."""
+
+    messages = [
+        Message(role="system", content="You are a helpful assistant."),
+        Message(
+            role="user",
+            content=[
                 {"field": "text", "content": "Can this animal"},
                 {
                     "field": "image_url",
@@ -132,37 +185,34 @@ def test_hf_prompt_format_on_prompt_dict(hf_prompt_format):
                     "image_url": {"url": "https://example.com/mountain.jpg"},
                 },
             ],
-        }}, {"message":
-        {
-            "role": "assistant",
-            "content": (
-                "It looks like you've shared an image of a "
-                "dog lying on a wooden floor, and another "
-                "image depicting a serene landscape with a "
-                "sunset over a snowy hill or mountain."
-            ),
-        }, "message":
-        {
-            "role": "user",
-                "content": "So you are suggesting you can find a poppy living in the snowy mountain?",
-            }}
-        ],
-    }
+        ),
+        Message(
+            role="assistant",
+            content="It looks like you've shared an image of a "
+            "dog lying on a wooden floor, and another "
+            "image depicting a serene landscape with a "
+            "sunset over a snowy hill or mountain.",
+        ),
+        Message(
+            role="user",
+            content="So you are suggesting you can find a poppy living in the snowy mountain?",
+        ),
+    ]
 
-    # Generate prompt using the dictionary-structured messages
-    formated_prompt = hf_prompt_format.generate_prompt(messages=messages)
+    # Generate prompt using the list of message dictionaries
+    formatted_prompt = hf_prompt_format.generate_prompt(messages=messages)
 
     # Assertions to verify correct processing
-    assert formated_prompt.text == (
+    assert formatted_prompt.text == (
         "<s>[INST]Can this animal[IMG]live here?[IMG][/INST]It looks like you've "
         "shared an image of a dog lying on a wooden floor, and another image "
         "depicting a serene landscape with a sunset over a snowy hill or "
         "mountain.</s>[INST]You are a helpful assistant.\n\nSo you are suggesting "
         "you can find a poppy living in the snowy mountain?[/INST]"
     )
-    assert len(formated_prompt.image) == 2
-    assert formated_prompt.image[0].image_url == "https://example.com/dog.jpg"
-    assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
+    assert len(formatted_prompt.image) == 2
+    assert formatted_prompt.image[0].image_url == "https://example.com/dog.jpg"
+    assert formatted_prompt.image[1].image_url == "https://example.com/mountain.jpg"
 
 
 def test_validation_message():
