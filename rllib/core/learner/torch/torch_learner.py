@@ -202,8 +202,8 @@ class TorchLearner(Learner):
         for pid, grad in gradients_dict.items():
             # If updates should not be skipped turn `nan` and `inf` gradients to zero.
             if (
-                not torch.isfinite(grad).all()
-                and not self.config.torch_skip_nan_gradients
+                not self.config.torch_skip_nan_gradients
+                and not torch.isfinite(grad).all()
             ):
                 # Warn the user about `nan` gradients.
                 logger.warning(f"Gradients {pid} contain `nan/inf` values.")
