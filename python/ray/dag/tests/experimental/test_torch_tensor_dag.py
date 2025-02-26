@@ -255,6 +255,7 @@ def test_torch_tensor_nccl(
         dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
+    compiled_dag.teardown()
     compiled_dag = dag.experimental_compile()
 
     # Test that we can pass different shapes and data.
@@ -306,6 +307,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
         dag = dag.with_tensor_transport(transport="auto")
         dag = receiver.recv.bind(dag)
 
+    compiled_dag.teardown()
     compiled_dag = dag.experimental_compile()
     assert isinstance(data_annotated.type_hint, TorchTensorType)
     assert data_annotated.type_hint.transport == expected_transport
