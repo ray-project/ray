@@ -346,3 +346,16 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "process_cleanup_test",
+    srcs = ["process_cleanup_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:process_cleaner",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
