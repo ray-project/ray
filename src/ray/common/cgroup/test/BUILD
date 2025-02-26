@@ -17,9 +17,9 @@ ray_cc_test(
 ray_cc_test(
     name = "fake_cgroup_setup_test",
     srcs = ["fake_cgroup_setup_test.cc"],
+    tags = ["team:core"],
     deps = [
         "//src/ray/common/cgroup:fake_cgroup_setup",
         "@com_google_googletest//:gtest_main",
     ],
-    tags = ["team:core"]
 )
