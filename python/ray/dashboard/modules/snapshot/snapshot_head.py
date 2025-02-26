@@ -12,7 +12,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
-from ray._private.storage import _load_class
+from ray._private.utils import load_class
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
             try:
-                cluster_activity_callable = _load_class(
+                cluster_activity_callable = load_class(
                     os.environ[RAY_CLUSTER_ACTIVITY_HOOK]
                 )
                 external_activity_output = cluster_activity_callable()
