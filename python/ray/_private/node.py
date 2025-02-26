@@ -856,6 +856,7 @@ class Node:
             )
         return redirect_output
 
+    # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
     def get_log_file_names(
         self,
         name: str,
