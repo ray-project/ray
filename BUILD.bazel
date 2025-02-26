@@ -2399,12 +2399,8 @@ ray_cc_test(
 
 ray_cc_library(
     name = "object_manager",
-    srcs = [
-        "src/ray/object_manager/object_manager.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/object_manager.h",
-    ],
+    srcs = ["src/ray/object_manager/object_manager.cc"],
+    hdrs = ["src/ray/object_manager/object_manager.h"],
     deps = [
         ":chunk_object_reader",
         ":object_buffer_pool",
@@ -2431,12 +2427,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "push_manager",
-    srcs = [
-        "src/ray/object_manager/push_manager.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/push_manager.h",
-    ],
+    srcs = ["src/ray/object_manager/push_manager.cc"],
+    hdrs = ["src/ray/object_manager/push_manager.h"],
     deps = [
         ":stats_metric",
         "//src/ray/common:id",
@@ -2450,12 +2442,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "pull_manager",
-    srcs = [
-        "src/ray/object_manager/pull_manager.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/pull_manager.h",
-    ],
+    srcs = ["src/ray/object_manager/pull_manager.cc"],
+    hdrs = ["src/ray/object_manager/pull_manager.h"],
     deps = [
         ":object_manager_rpc",
         ":ownership_based_object_directory",
@@ -2476,12 +2464,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "ownership_based_object_directory",
-    srcs = [
-        "src/ray/object_manager/ownership_based_object_directory.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/ownership_based_object_directory.h",
-    ],
+    srcs = ["src/ray/object_manager/ownership_based_object_directory.cc"],
+    hdrs = ["src/ray/object_manager/ownership_based_object_directory.h"],
     deps = [
         ":gcs_client_lib",
         ":object_directory",
@@ -2497,9 +2481,7 @@ ray_cc_library(
 
 ray_cc_library(
     name = "object_directory",
-    hdrs = [
-        "src/ray/object_manager/object_directory.h",
-    ],
+    hdrs = ["src/ray/object_manager/object_directory.h"],
     deps = [
         ":gcs_client_lib",
         ":object_manager_common",
@@ -2511,12 +2493,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "object_buffer_pool",
-    srcs = [
-        "src/ray/object_manager/object_buffer_pool.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/object_buffer_pool.h",
-    ],
+    srcs = ["src/ray/object_manager/object_buffer_pool.cc"],
+    hdrs = ["src/ray/object_manager/object_buffer_pool.h"],
     deps = [
         ":memory_object_reader",
         "//src/ray/common:id",
@@ -2533,12 +2511,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "object_manager_common",
-    srcs = [
-        "src/ray/object_manager/common.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/common.h",
-    ],
+    srcs = ["src/ray/object_manager/common.cc"],
+    hdrs = ["src/ray/object_manager/common.h"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -2550,12 +2524,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "memory_object_reader",
-    srcs = [
-        "src/ray/object_manager/memory_object_reader.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/memory_object_reader.h",
-    ],
+    srcs = ["src/ray/object_manager/memory_object_reader.cc"],
+    hdrs = ["src/ray/object_manager/memory_object_reader.h"],
     deps = [
         ":object_reader",
         ":plasma_client",
@@ -2564,12 +2534,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "chunk_object_reader",
-    srcs = [
-        "src/ray/object_manager/chunk_object_reader.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/chunk_object_reader.h",
-    ],
+    srcs = ["src/ray/object_manager/chunk_object_reader.cc"],
+    hdrs = ["src/ray/object_manager/chunk_object_reader.h"],
     deps = [
         ":spilled_object_reader",
         "//src/ray/util:logging",
@@ -2578,12 +2544,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "spilled_object_reader",
-    srcs = [
-        "src/ray/object_manager/spilled_object_reader.cc",
-    ],
-    hdrs = [
-        "src/ray/object_manager/spilled_object_reader.h",
-    ],
+    srcs = ["src/ray/object_manager/spilled_object_reader.cc"],
+    hdrs = ["src/ray/object_manager/spilled_object_reader.h"],
     deps = [
         ":object_reader",
         "//src/ray/util:logging",
@@ -2594,12 +2556,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "object_reader",
-    hdrs = [
-        "src/ray/object_manager/object_reader.h",
-    ],
-    deps = [
-        "//src/ray/protobuf:common_cc_proto",
-    ],
+    hdrs = ["src/ray/object_manager/object_reader.h"],
+    deps = ["//src/ray/protobuf:common_cc_proto"],
 )
 
 ray_cc_library(
