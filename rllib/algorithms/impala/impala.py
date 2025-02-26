@@ -627,10 +627,6 @@ class IMPALA(Algorithm):
             )
 
             while data_packages_for_aggregators:
-
-                def _func(actor, p):
-                    return actor.get_batch(p)
-
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
@@ -639,7 +635,8 @@ class IMPALA(Algorithm):
                     data_packages_for_aggregators[num_agg:],
                 )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
-                    func=[functools.partial(_func, p=p) for p in packs],
+                    func="get_batch",
+                    kwargs=[dict(episode_refs=p) for p in packs],
                     tag="batches",
                 )
                 self.metrics.log_value(
@@ -1042,61 +1039,6 @@ class IMPALA(Algorithm):
 
             self._batch_being_built.append(batch)
             aggregate_into_larger_batch()
-
-    @OldAPIStack
-    def _learn_on_processed_samples(self) -> ResultDict:
-        """Update the learner group with the latest batch of processed samples.
-
-        Returns:
-            Aggregated results from the learner group after an update is completed.
-
-        """
-        # Nothing on the queue -> Don't send requests to learner group
-        # or no results ready (from previous `self.learner_group.update()` calls) for
-        # reducing.
-        if not self.data_to_place_on_learner:
-            return {}
-
-        # There are batches on the queue -> Send them all to the learner group.
-        batches = self.data_to_place_on_learner[:]
-        self.data_to_place_on_learner.clear()
-
-        # If there are no learner workers and learning is directly on the driver
-        # Then we can't do async updates, so we need to block.
-        async_update = self.config.num_learners > 0
-        results = []
-        for batch in batches:
-            results = self.learner_group.update_from_batch(
-                batch=batch,
-                timesteps={
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
-                    ),
-                },
-                async_update=async_update,
-                num_epochs=self.config.num_epochs,
-                minibatch_size=self.config.minibatch_size,
-            )
-            if not async_update:
-                results = [results]
-
-            for r in results:
-                self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
-                    NUM_ENV_STEPS_TRAINED
-                )
-                self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
-                    NUM_MODULE_STEPS_TRAINED
-                )
-
-        self._counters.update(self.learner_group.get_stats())
-        # If there are results, reduce-mean over each individual value and return.
-        if results:
-            return tree.map_structure(lambda *x: np.mean(x), *results)
-
-        # Nothing on the queue -> Don't send requests to learner group
-        # or no results ready (from previous `self.learner_group.update_from_batch()`
-        # calls) for reducing.
-        return {}
 
     @OldAPIStack
     def _place_processed_samples_on_learner_thread_queue(self) -> None:
