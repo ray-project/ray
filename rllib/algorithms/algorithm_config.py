@@ -39,7 +39,7 @@ from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import deep_update, merge_dicts
+from ray.rllib.utils import deep_update, force_list, merge_dicts
 from ray.rllib.utils.annotations import (
     OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -2518,9 +2518,10 @@ class AlgorithmConfig(_Config):
             # Check, whether given `callbacks` is a callable.
             # TODO (sven): Once the old API stack is deprecated, this can also be None
             #  (which should then become the default value for this attribute).
-            if not callable(callbacks_class):
+            to_check = force_list(callbacks_class)
+            if not all(callable(c) for c in to_check):
                 raise ValueError(
-                    "`config.callbacks_class` must be a callable method that "
+                    "`config.callbacks_class` must be a callable or list of callables that "
                     "returns a subclass of DefaultCallbacks, got "
                     f"{callbacks_class}!"
                 )
