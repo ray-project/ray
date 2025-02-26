@@ -209,7 +209,17 @@ ray_cc_library(
 
 ray_cc_library(
     name = "grpc_common_lib",
+    # TODO(core): Both two header files are not needed, keep them there because of circular dependency between raylet and node rpc.
+    hdrs = [
+        "src/ray/raylet_client/raylet_client.h",
+        "src/ray/raylet_client/raylet_connection.h",
+    ],
+    # TODO(core): These three dependencies come from raylet client, should be able to remove after we split node rpc and raylet client into smaller targets.
     deps = [
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
+        "//src/ray/common:network",
+    ] + [
         ":grpc_client",
         ":grpc_common_base",
         ":grpc_server",
