@@ -1417,6 +1417,7 @@ jsonschema==4.23.0 \
     #   -c python/requirements_compiled_ray_test_py311_cu124.txt
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/llm/llm-requirements.txt
     #   jupyter-events
     #   jupyterlab-server
     #   mistral-common
