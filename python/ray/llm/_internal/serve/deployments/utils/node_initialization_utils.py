@@ -12,8 +12,8 @@ from ray.llm._internal.utils import try_import
 from ray.llm._internal.serve.observability.logging import get_logger
 
 from ray.llm._internal.serve.deployments.utils.downloader_utils import (
-    GCSDownloader,
-    S3Downloader,
+    GCSModelDownloader,
+    S3ModelDownloader,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.configs.server_models import (
@@ -111,7 +111,7 @@ def download_model_files(
             download_model=download_model,
             download_extra_files=download_extra_files,
         )
-        downloader = S3Downloader(
+        downloader = S3ModelDownloader(
             model_id,
             s3_mirror_config,
         )
@@ -121,7 +121,7 @@ def download_model_files(
             download_model=download_model,
             download_extra_files=download_extra_files,
         )
-        downloader = GCSDownloader(
+        downloader = GCSModelDownloader(
             model_id,
             gcs_mirror_config,
         )
