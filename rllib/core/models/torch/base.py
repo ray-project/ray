@@ -2,8 +2,6 @@ import abc
 import logging
 from typing import Tuple, Union
 
-import numpy as np
-
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.utils.annotations import override
