@@ -28,7 +28,7 @@ class RefBundle:
     """
 
     # The size_bytes must be known in the metadata, num_rows is optional.
-    blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata]]
+    blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata], ...]
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
