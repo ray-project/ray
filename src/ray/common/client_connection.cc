@@ -14,20 +14,20 @@
 
 #include "ray/common/client_connection.h"
 
+#include <chrono>
+#include <memory>
+#include <string>
+#include <sstream>
+#include <thread>
+#include <utility>
+#include <vector>
+
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <boost/asio/placeholders.hpp>
 #include <boost/asio/read.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/bind/bind.hpp>
-#include <chrono>
-#include <memory>
-#include <poll.h>
-#include <string>
-#include <sstream>
-#include <thread>
-#include <utility>
-#include <vector>
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
@@ -37,6 +37,7 @@
 #include <Windows.h>
 #else
 #include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 #endif
 
@@ -607,22 +608,31 @@ std::string ServerConnection::DebugString() const {
   return result.str();
 }
 
-std::vector<bool> CheckForClientDisconnects(std::vector<std::shared_ptr<ClientConnection>> connections) {
-  std::vector<bool> result;
-  result.reserve(connections.size());
-  for (const auto &conn : connections) {
-    int fd = conn->GetNativeHandle();
+std::vector<bool> CheckForClientDisconnects(const std::vector<std::shared_ptr<ClientConnection>> &conns) {
+  std::vector<bool> result(conns.size(), false);
+#if defined(_WIN32)
+  return result;
+#else
+  // Poll for SIGHUP on all of the FDs in a single syscall.
+  std::vector<pollfd> poll_fds(conns.size());
+  for (size_t i = 0; i < conns.size(); ++i) {
+    poll_fds[i] = {conns[i]->GetNativeHandle(), POLLHUP, 0};
+  }
 
-    pollfd pfd = {fd, POLLHUP, 0};
-    int ret = poll(&pfd, 1, 0);
-    bool dc = false;
-    if (ret > 0 && pfd.revents & POLLHUP) {
-      dc = true;
-    }
-    result.push_back(dc);
+  int ret = poll(poll_fds.data(), poll_fds.size(), 0);
+	if (ret > 0) {
+			for (size_t i = 0; i < conns.size(); ++i) {
+					// Check if the POLLHUP event occurred.
+					if (poll_fds[i].revents & POLLHUP) {
+							result[i] = true;
+					}
+			}
+	} else if (ret < 0) {
+    RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << ret;
   }
 
   return result;
+#endif
 }
 
 }  // namespace ray

@@ -1370,7 +1370,6 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
     };
   }
 
-  Status status;
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {

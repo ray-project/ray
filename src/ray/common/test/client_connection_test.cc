@@ -14,10 +14,13 @@
 
 #include "ray/common/client_connection.h"
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 #include <list>
 #include <memory>
+#include <utility>
+#include <vector>
+
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -253,28 +256,40 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   ASSERT_EQ(num_messages, 0);
 }
 
-TEST_F(ClientConnectionTest, UnexpectedDisconnect) {
+TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
+#if !defined(_WIN32)
   ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler message_handler = [](
                                        std::shared_ptr<ClientConnection> client,
                                        int64_t message_type,
-                                       const std::vector<uint8_t> &message) {
-    return;
-  };
+                                       const std::vector<uint8_t> &message) {};
 
-  auto writer = ClientConnection::Create(
-      client_handler, message_handler, std::move(in_), "writer", {}, error_message_type_);
+  auto conn = ClientConnection::Create(
+      client_handler, message_handler, std::move(in_), "conn", {}, error_message_type_);
 
-  auto reader = ClientConnection::Create(client_handler,
-                                         message_handler,
-                                         std::move(out_),
-                                         "reader",
-                                         {},
-                                         error_message_type_);
+  // Connection should be open.
+  {
+    std::vector<bool> disconnects = CheckForClientDisconnects({conn});
+    ASSERT_EQ(disconnects.size(), 1);
+    ASSERT_FALSE(disconnects[0]);
+  }
 
-  std::vector<bool> disconnects = CheckForClientDisconnects({writer});
-  ASSERT_EQ(disconnects.size(), 1);
+  // Shut down the connection, check it returns disconnected.
+  shutdown(conn->GetNativeHandle(), SHUT_RDWR);
+  {
+    std::vector<bool> disconnects = CheckForClientDisconnects({conn});
+    ASSERT_EQ(disconnects.size(), 1);
+    ASSERT_TRUE(disconnects[0]);
+  }
+
+  // Check that multiple calls return the same output.
+  {
+    std::vector<bool> disconnects = CheckForClientDisconnects({conn});
+    ASSERT_EQ(disconnects.size(), 1);
+    ASSERT_TRUE(disconnects[0]);
+  }
+#endif
 }
 
 }  // namespace raylet
