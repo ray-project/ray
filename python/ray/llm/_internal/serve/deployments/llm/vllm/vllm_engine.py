@@ -1,26 +1,12 @@
 import asyncio
 import os
 import time
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
 from ray.util import metrics
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from vllm.config import ModelConfig, VllmConfig
-from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.engine.async_llm_engine import AsyncLLMEngine
-from vllm.engine.llm_engine import LLMEngine
-from vllm.engine.multiprocessing.client import MQLLMEngineClient
-from vllm.engine.multiprocessing.engine import MQLLMEngine
-from vllm.engine.protocol import EngineClient
-from vllm.executor.ray_distributed_executor import RayDistributedExecutor
-from vllm.inputs import TextPrompt
-from vllm.outputs import RequestOutput
-from vllm.plugins import load_general_plugins
-from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
-from vllm.usage.usage_lib import UsageContext
-from vllm.utils import get_open_zmq_ipc_path
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.utils import (
@@ -65,7 +51,16 @@ from ray.llm._internal.serve.configs.constants import (
     MIN_NUM_TOPLOGPROBS_ALLOWED,
     MAX_NUM_TOPLOGPROBS_ALLOWED,
 )
+from ray.llm._internal.utils import try_import
 
+if TYPE_CHECKING:
+    from vllm.config import ModelConfig, VllmConfig
+    from vllm.engine.arg_utils import AsyncEngineArgs
+    from vllm.engine.protocol import EngineClient
+    from vllm.outputs import RequestOutput
+    from vllm.sampling_params import SamplingParams as VLLMInternalSamplingParams
+
+vllm = try_import("vllm")
 logger = get_logger(__name__)
 
 
@@ -76,16 +71,16 @@ time_in_queue_histogram = metrics.Histogram(
 )
 
 
-def _get_async_engine_args(llm_config: LLMConfig) -> AsyncEngineArgs:
+def _get_async_engine_args(llm_config: LLMConfig) -> "AsyncEngineArgs":
     model = llm_config.model_id
     if isinstance(llm_config.model_loading_config.model_source, str):
         model = llm_config.model_loading_config.model_source
 
     engine_config = llm_config.get_engine_config()
-    return AsyncEngineArgs(
-        # This is the local path on disk, or the hf model id
-        # If it is the hf_model_id, vllm automatically downloads the correct model.
+    return vllm.engine.arg_utils.AsyncEngineArgs(
         **{
+            # This is the local path on disk, or the hf model id
+            # If it is the hf_model_id, vllm automatically downloads the correct model.
             "model": model,
             "distributed_executor_backend": "ray",
             "disable_log_stats": False,
@@ -96,8 +91,7 @@ def _get_async_engine_args(llm_config: LLMConfig) -> AsyncEngineArgs:
 
 def _get_vllm_engine_config(
     llm_config: LLMConfig,
-) -> Tuple[AsyncEngineArgs, VllmConfig]:
-    # Generate engine arguments and engine configs
+) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     async_engine_args = _get_async_engine_args(llm_config)
     vllm_config = async_engine_args.create_engine_config()
     return async_engine_args, vllm_config
@@ -192,21 +186,27 @@ class BatchLLMRawResponses:
 
 class _EngineBackgroundProcess:
     def __init__(self, ipc_path, engine_args, engine_config):
-        # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
-        load_general_plugins()
+        from vllm.engine.multiprocessing.engine import MQLLMEngine
 
-        executor_class = LLMEngine._get_executor_cls(engine_config)
+        # Adapted from vllm.engine.multiprocessing.engine.MQLLMEngine.from_engine_args
+        vllm.plugins.load_general_plugins()
+
+        # Note (genesu): There is a bug in vllm 0.7.2 forced the use of uni processing
+        # executor when world_size is 1. This is a bug in vllm 0.7.2 and
+        # is fixed by https://github.com/vllm-project/vllm/pull/12934 which is shipped
+        # with vllm 0.7.3. However, in Ray's llm package, we will enforce the use of
+        # ray distributed executor for all cases so it's always compatible with Ray.
+        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
             use_async_sockets=engine_config.model_config.use_async_output_proc,
             vllm_config=engine_config,
-            executor_class=executor_class,
+            executor_class=RayDistributedExecutor,
             log_requests=not engine_args.disable_log_requests,
             log_stats=not engine_args.disable_log_stats,
-            usage_context=UsageContext.API_SERVER,
+            usage_context=vllm.usage.usage_lib.UsageContext.API_SERVER,
         )
-
         self._error = None
 
     def start(self):
@@ -229,6 +229,11 @@ class VLLMEngine:
         Args:
             llm_config: The llm configuration for this engine
         """
+        if vllm is None:
+            raise ImportError(
+                "vLLM is not installed. Please install it with `pip install ray[llm]`."
+            )
+
         assert isinstance(
             llm_config, LLMConfig
         ), f"Got invalid config {llm_config} of type {type(llm_config)}"
@@ -237,7 +242,7 @@ class VLLMEngine:
 
         self._stats = VLLMEngineStatTracker()
         self.running = False
-        self.model_config: ModelConfig = None
+        self.model_config: "ModelConfig" = None
         self.engine = None
 
     @staticmethod
@@ -267,7 +272,9 @@ class VLLMEngine:
 
         logger.info("Started vLLM engine.")
 
-    async def _start_engine(self) -> EngineClient:
+    async def _start_engine(self) -> "EngineClient":
+        from vllm.engine.multiprocessing.client import MQLLMEngineClient
+
         args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
         engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
 
@@ -287,13 +294,15 @@ class VLLMEngine:
             engine_args, engine_config, args.placement_group
         )
 
-    @staticmethod
     async def _start_mq_engine(
-        engine_args: AsyncEngineArgs,
-        engine_config: VllmConfig,
+        self,
+        engine_args: "AsyncEngineArgs",
+        engine_config: "VllmConfig",
         placement_group: PlacementGroup,
-    ) -> EngineClient:
-        ipc_path = get_open_zmq_ipc_path()
+    ) -> "EngineClient":
+        from vllm.engine.multiprocessing.client import MQLLMEngineClient
+
+        ipc_path = vllm.utils.get_open_zmq_ipc_path()
 
         BackgroundCls = ray.remote(
             num_cpus=0,
@@ -344,19 +353,19 @@ class VLLMEngine:
 
         return engine_client
 
-    @staticmethod
     def _start_async_llm_engine(
-        engine_args: AsyncEngineArgs,
-        vllm_config: VllmConfig,
+        self,
+        engine_args: "AsyncEngineArgs",
+        vllm_config: "VllmConfig",
         placement_group: PlacementGroup,
-    ) -> EngineClient:
+    ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
 
         vllm_config.parallel_config.placement_group = placement_group
 
-        return AsyncLLMEngine(
+        return vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
-            executor_class=RayDistributedExecutor,
+            executor_class=vllm.executor.ray_distributed_executor.RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
         )
 
@@ -400,8 +409,8 @@ class VLLMEngine:
                 f"Prompt: {vllm_generation_request.prompt}"
             )
         # Construct a results generator from VLLM
-        results_generator: AsyncGenerator[RequestOutput, None] = self.engine.generate(
-            prompt=TextPrompt(
+        results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
+            prompt=vllm.inputs.TextPrompt(
                 prompt=vllm_generation_request.prompt,
                 multi_modal_data=vllm_generation_request.multi_modal_data,
             ),
@@ -492,7 +501,7 @@ class VLLMEngine:
             await self.engine.abort(vllm_generation_request.request_id)
 
     def _handle_input_too_long(
-        self, request_output: RequestOutput, finish_reason: Optional[FinishReason]
+        self, request_output: "RequestOutput", finish_reason: Optional[FinishReason]
     ):
         if (
             finish_reason
@@ -571,7 +580,7 @@ class VLLMEngine:
 
     def _parse_sampling_params(
         self, sampling_params: VLLMSamplingParams, **extra_fields
-    ) -> VLLMInternalSamplingParams:
+    ) -> "VLLMInternalSamplingParams":
         # Add vLLM-Anyscale specific fields
 
         extra_fields = {}
@@ -627,7 +636,7 @@ class VLLMEngine:
                     "VLLMEngine.model_config not set. Maybe VLLMEngine.start() was not called?"
                 )
 
-            return VLLMInternalSamplingParams(
+            return vllm.sampling_params.SamplingParams(
                 n=1,
                 best_of=sampling_params.best_of,
                 presence_penalty=sampling_params.presence_penalty
@@ -663,7 +672,7 @@ class VLLMEngine:
 
     @staticmethod
     def _extract_logprobs(
-        output: RequestOutput,
+        output: "RequestOutput",
         log_probs_idx: int,
         top_logprobs: Optional[int] = None,
     ) -> Tuple[List[LogProbs], int]:

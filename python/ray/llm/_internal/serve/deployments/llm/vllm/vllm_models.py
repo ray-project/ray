@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from pydantic import ConfigDict, Field
 from ray import serve
@@ -9,23 +9,28 @@ from ray.util.placement_group import (
     placement_group,
     placement_group_table,
 )
-from vllm.lora.request import LoRARequest
+from ray.llm._internal.utils import try_import
 
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.configs.base import BaseModelExtended
 from ray.llm._internal.serve.configs.server_models import (
-    BaseModelExtended,
     DiskMultiplexConfig,
-    GCSMirrorConfig,
+    CloudMirrorConfig,
     GenerationRequest,
     GPUType,
     LLMConfig,
-    S3MirrorConfig,
     SamplingParams,
 )
 from ray.llm._internal.serve.configs.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
     ENV_VARS_TO_PROPAGATE,
 )
+
+
+vllm = try_import("vllm")
+
+if TYPE_CHECKING:
+    from vllm.lora.request import LoRARequest
 
 logger = get_logger(__name__)
 
@@ -42,13 +47,9 @@ class VLLMEngineConfig(BaseModelExtended):
     hf_model_id: Optional[str] = Field(
         None, description="The Hugging Face model identifier."
     )
-    s3_mirror_config: Optional[S3MirrorConfig] = Field(
+    mirror_config: Optional[CloudMirrorConfig] = Field(
         None,
-        description="Configuration for S3 mirror. This is for where the weights are downloaded from.",
-    )
-    gcs_mirror_config: Optional[GCSMirrorConfig] = Field(
-        None,
-        description="Configuration for GCS mirror. This is for where the weights are downloaded from.",
+        description="Configuration for cloud storage mirror. This is for where the weights are downloaded from.",
     )
     accelerator_type: GPUType = Field(
         None,
@@ -90,24 +91,19 @@ class VLLMEngineConfig(BaseModelExtended):
     def from_llm_config(cls, llm_config: LLMConfig) -> "VLLMEngineConfig":
         """Converts the LLMConfig to a VLLMEngineConfig."""
         # Set up the model downloading configuration.
-        hf_model_id, s3_mirror_config, gcs_mirror_config = None, None, None
+        hf_model_id, mirror_config = None, None
         if llm_config.model_loading_config.model_source is None:
             hf_model_id = llm_config.model_id
         elif isinstance(llm_config.model_loading_config.model_source, str):
             hf_model_id = llm_config.model_loading_config.model_source
-        elif isinstance(llm_config.model_loading_config.model_source, S3MirrorConfig):
-            s3_mirror_config = llm_config.model_loading_config.model_source
         else:
-            assert isinstance(
-                llm_config.model_loading_config.model_source, GCSMirrorConfig
-            )
-            gcs_mirror_config = llm_config.model_loading_config.model_source
+            # If it's a CloudMirrorConfig (or subtype)
+            mirror_config = llm_config.model_loading_config.model_source
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
-            s3_mirror_config=s3_mirror_config,
-            gcs_mirror_config=gcs_mirror_config,
+            mirror_config=mirror_config,
             accelerator_type=llm_config.accelerator_type,
             engine_kwargs=llm_config.engine_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -198,12 +194,13 @@ class VLLMGenerationRequest(GenerationRequest):
     disk_multiplex_config: Optional[DiskMultiplexConfig] = None
 
     @property
-    def lora_request(self) -> LoRARequest:
+    def lora_request(self) -> "LoRARequest":
+
         disk_vllm_config = self.disk_multiplex_config
         if not disk_vllm_config:
             return None
         else:
-            return LoRARequest(
+            return vllm.lora.request.LoRARequest(
                 lora_name=disk_vllm_config.model_id,
                 lora_int_id=disk_vllm_config.lora_assigned_int_id,
                 lora_local_path=disk_vllm_config.local_path,

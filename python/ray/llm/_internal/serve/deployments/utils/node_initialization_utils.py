@@ -5,22 +5,24 @@ from typing import Any, Dict, NamedTuple, Optional
 
 import ray
 from ray.util.placement_group import PlacementGroup
-from torch.hub import _get_torch_home
-from transformers import AutoTokenizer
+
+from ray.llm._internal.utils import try_import
+
 
 from ray.llm._internal.serve.observability.logging import get_logger
 
 from ray.llm._internal.serve.deployments.utils.downloader_utils import (
-    GCSDownloader,
-    S3Downloader,
+    CloudModelDownloader,
 )
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.configs.server_models import (
-    GCSMirrorConfig,
+    CloudMirrorConfig,
     LLMConfig,
-    S3MirrorConfig,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
+
+torch = try_import("torch")
+transformers = try_import("transformers")
 
 logger = get_logger(__name__)
 
@@ -74,15 +76,20 @@ def _log_download_info(
 
 def download_model_files(
     model_id: Optional[str] = None,
-    s3_mirror_config: Optional[S3MirrorConfig] = None,
-    gcs_mirror_config: Optional[GCSMirrorConfig] = None,
+    mirror_config: Optional[CloudMirrorConfig] = None,
     download_model: NodeModelDownloadable = NodeModelDownloadable.MODEL_AND_TOKENIZER,
     download_extra_files: bool = True,
 ) -> Optional[str]:
     """
     Perform initialization for a node.
 
-    Currently, that means downloading the model from the S3 or GCS bucket.
+    Currently, that means downloading the model from cloud storage.
+
+    Args:
+        model_id: The model id.
+        mirror_config: Config for downloading model from cloud storage.
+        download_model: What parts of the model to download.
+        download_extra_files: Whether to download extra files specified in the mirror config.
 
     Returns path to downloaded model, if any.
     """
@@ -90,40 +97,29 @@ def download_model_files(
     # Create the torch cache kernels directory if it doesn't exist.
     # This is a workaround for a torch issue, where the kernels directory
     # cannot be created by torch if the parent directory doesn't exist.
-    torch_cache_home = _get_torch_home()
+    torch_cache_home = torch.hub._get_torch_home()
     os.makedirs(os.path.join(torch_cache_home, "kernels"), exist_ok=True)
     model_path_or_id = None
 
     if model_id is None:
         return model_path_or_id
 
-    if s3_mirror_config is not None and gcs_mirror_config is not None:
-        raise ValueError(
-            "Only one of s3_mirror_config or gcs_error_config is allowed but both were provided."
-        )
-    elif s3_mirror_config is not None:
-        _log_download_info(
-            source="AWS S3 mirror",
-            download_model=download_model,
-            download_extra_files=download_extra_files,
-        )
-        downloader = S3Downloader(
-            model_id,
-            s3_mirror_config,
-        )
-    elif gcs_mirror_config is not None:
-        _log_download_info(
-            source="Google Cloud Storage mirror",
-            download_model=download_model,
-            download_extra_files=download_extra_files,
-        )
-        downloader = GCSDownloader(
-            model_id,
-            gcs_mirror_config,
-        )
-    else:
+    if mirror_config is None:
         logger.info("No cloud storage mirror configured")
         return model_path_or_id
+
+    storage_type = mirror_config.storage_type
+    source = (
+        f"{storage_type.upper()} mirror" if storage_type else "Cloud storage mirror"
+    )
+
+    _log_download_info(
+        source=source,
+        download_model=download_model,
+        download_extra_files=download_extra_files,
+    )
+
+    downloader = CloudModelDownloader(model_id, mirror_config)
 
     if download_model != NodeModelDownloadable.NONE:
         model_path_or_id = downloader.get_model(
@@ -176,8 +172,7 @@ async def initialize_worker_nodes(
         *[
             download_task.remote(
                 engine_config.actual_hf_model_id,
-                engine_config.s3_mirror_config,
-                engine_config.gcs_mirror_config,
+                engine_config.mirror_config,
                 download_model=download_model,
                 download_extra_files=download_extra_files,
             )
@@ -252,8 +247,7 @@ def _initialize_local_node(
 ):
     local_path = download_model_files(
         model_id=engine_config.actual_hf_model_id,
-        s3_mirror_config=engine_config.s3_mirror_config,
-        gcs_mirror_config=engine_config.gcs_mirror_config,
+        mirror_config=engine_config.mirror_config,
         download_model=download_model,
         download_extra_files=download_extra_files,
     )
@@ -266,7 +260,7 @@ def _initialize_local_node(
     if not isinstance(local_path, str) or not os.path.exists(local_path):
         logger.info(f"Downloading the tokenizer for {engine_config.actual_hf_model_id}")
 
-    _ = AutoTokenizer.from_pretrained(
+    _ = transformers.AutoTokenizer.from_pretrained(
         engine_config.actual_hf_model_id,
         trust_remote_code=engine_config.trust_remote_code,
     )

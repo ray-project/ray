@@ -9,9 +9,8 @@ from ray.serve.handle import DeploymentHandle
 
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LoraConfig
-from ray.llm._internal.serve.deployments.routers.router import LLMModelRouterDeployment
-from ray.llm._internal.serve.builders.application_builders import (
-    get_serve_deployment_args,
+from ray.llm._internal.serve.deployments.routers.router import (
+    LLMRouter,
 )
 from ray.llm._internal.serve.configs.server_models import ModelData
 from ray.llm.tests.serve.deployments.fake_image_retriever import FakeImageRetriever
@@ -60,9 +59,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     llm_deployments = []
     for llm_config in llm_configs:
         model_id = llm_config.model_id
-        deployment_args = get_serve_deployment_args(
-            llm_config, name_prefix=f"{model_id}:"
-        )
+        deployment_args = llm_config.get_serve_options(name_prefix=f"{model_id}:")
         deployment = VLLMDeployment.options(**deployment_args)
         llm_deployments.append(
             deployment.bind(
@@ -79,7 +76,7 @@ async def test_lora_unavailable_base_model(shutdown_ray_and_serve):
     """Getting the handle for an unavailable model should return a 404."""
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     with pytest.raises(HTTPException) as e:
@@ -97,7 +94,7 @@ async def test_lora_get_model(shutdown_ray_and_serve):
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     # Case 1: model does not exist.
@@ -124,7 +121,7 @@ async def test_lora_get_model(shutdown_ray_and_serve):
             "max_request_context_length": 4096,
         }
 
-    router_deployment = LLMModelRouterDeployment.bind(
+    router_deployment = LLMRouter.as_deployment().bind(
         llm_deployments=llm_deployments,
         _get_lora_model_metadata_func=fake_get_lora_model_metadata,
     )
@@ -147,7 +144,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
     llm_config = VLLM_APP.model_copy(deep=True)
     llm_config.model_loading_config.model_id = base_model_id
     llm_deployments = get_mocked_llm_deployments([llm_config])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     models = (await router_handle.models.remote()).data
@@ -164,11 +161,12 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 1: test a path that exists in the cloud. The LoRA adapters
         # must be included.
         (
-            "s3://rayllm-ci/lora-checkpoints/",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-7b-chat-hf",
             "meta-llama/Llama-2-7b-chat-hf",
             [
                 "meta-llama/Llama-2-7b-chat-hf:gen-config-but-no-context-len:1234",
                 "meta-llama/Llama-2-7b-chat-hf:with-context-len-and-gen-config:1234",
+                "meta-llama/Llama-2-7b-chat-hf:long-context-model:1234",
                 "meta-llama/Llama-2-7b-chat-hf",
             ],
         ),
@@ -176,10 +174,9 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # case). But test a different model. Ensure that only this model's
         # LoRA adapters are returned.
         (
-            "s3://rayllm-ci/lora-checkpoints/",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-13b-chat-hf",
             "meta-llama/Llama-2-13b-chat-hf",
             [
-                "meta-llama/Llama-2-13b-chat-hf:long-context-model:1234",
                 "meta-llama/Llama-2-13b-chat-hf:pre-long-context-model:1234",
                 "meta-llama/Llama-2-13b-chat-hf",
             ],
@@ -187,7 +184,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 3: test a path that doesn't exist in the cloud. Only the
         # base model_id should be included.
         (
-            "s3://rayllm-ci/path-does-not-exist/",
+            "s3://anonymous@air-example-data/rayllm-ossci/path-does-not-exist/",
             "meta-llama/Llama-2-7b-chat-hf",
             ["meta-llama/Llama-2-7b-chat-hf"],
         ),
@@ -202,8 +199,8 @@ async def test_lora_include_adapters_in_list_models(
 ):
     """Check that LoRA adapters are included in the models list.
 
-    This test pulls real configs from an S3 bucket. It requires
-    `anyscale-dev-product` AWS credentials to run.
+    This test pulls real configs from an S3 bucket located in
+    `anyscale-legacy-work` account.
 
     This test is similar to test_lora_list_base_model. It checks that
     the LoRA adapters are included in the list of models.
@@ -213,7 +210,7 @@ async def test_lora_include_adapters_in_list_models(
     app.lora_config = LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path)
 
     llm_deployments = get_mocked_llm_deployments([app])
-    router_deployment = LLMModelRouterDeployment.bind(llm_deployments=llm_deployments)
+    router_deployment = LLMRouter.as_deployment().bind(llm_deployments=llm_deployments)
     router_handle = serve.run(router_deployment)
 
     models = (await router_handle.models.remote()).data

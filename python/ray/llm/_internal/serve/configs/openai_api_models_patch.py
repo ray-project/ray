@@ -1,6 +1,5 @@
 import json
 from abc import ABC, abstractmethod
-from vllm.sampling_params import GuidedDecodingParams
 
 from typing import (
     Any,
@@ -8,6 +7,7 @@ from typing import (
     Optional,
     Union,
     Literal,
+    TYPE_CHECKING,
 )
 from pydantic import (
     BaseModel,
@@ -16,6 +16,12 @@ from pydantic import (
     model_validator,
 )
 from typing_extensions import Annotated
+from ray.llm._internal.utils import try_import
+
+if TYPE_CHECKING:
+    from vllm.sampling_params import GuidedDecodingParams
+
+vllm = try_import("vllm")
 
 
 class ErrorResponse(BaseModel):
@@ -34,7 +40,9 @@ class ResponseFormat(BaseModel, ABC):
     model_config = ConfigDict(extra="forbid")
 
     @abstractmethod
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
         """Convert the response format to a vLLM guided decoding params.
 
         Args:
@@ -49,7 +57,9 @@ class ResponseFormat(BaseModel, ABC):
 class ResponseFormatText(ResponseFormat):
     type: Literal["text"]
 
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
         return None
 
 
@@ -78,17 +88,23 @@ class ResponseFormatJsonObject(JSONSchemaBase):
 
     @model_validator(mode="after")
     def read_and_validate_json_schema(self):
-        from ray.llm._internal.serve.configs.json_mode_utils import try_load_json_schema
+        from ray.llm._internal.serve.configs.json_mode_utils import JSONSchemaValidator
+
+        # JSONSchemaValidator is a singleton so the initialization cost is
+        # amortized over all the processes's lifetime.
+        validator = JSONSchemaValidator()
 
         # Make sure the json schema is valid and dereferenced.
-        self.json_schema = try_load_json_schema(self.json_schema)
+        self.json_schema = validator.try_load_json_schema(self.json_schema)
         return self
 
     @property
     def json_schema_str(self) -> str:
         return json.dumps(self.json_schema)
 
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
         kwargs = {}
 
         if self.json_schema:
@@ -96,7 +112,7 @@ class ResponseFormatJsonObject(JSONSchemaBase):
         else:
             kwargs["json_object"] = True
 
-        return GuidedDecodingParams.from_optional(
+        return vllm.sampling_params.GuidedDecodingParams.from_optional(
             backend=backend,
             **kwargs,
         )
@@ -115,8 +131,10 @@ class ResponseFormatGrammar(ResponseFormat):
     type: Literal["grammar", "grammar_gbnf"]
     grammar: str
 
-    def to_guided_decoding_params(self, backend: str) -> Optional[GuidedDecodingParams]:
-        return GuidedDecodingParams.from_optional(
+    def to_guided_decoding_params(
+        self, backend: str
+    ) -> Optional["GuidedDecodingParams"]:
+        return vllm.sampling_params.GuidedDecodingParams.from_optional(
             backend=backend,
             grammar=self.grammar,
         )

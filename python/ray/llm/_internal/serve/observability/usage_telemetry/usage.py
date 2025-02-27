@@ -1,16 +1,20 @@
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 import ray
 
-# TODO (genesu): remove dependency on botocore/ aiobotocore.
+# TODO (genesu): remove dependency on botocore
 from botocore.exceptions import ClientError
 from ray import serve
+
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
-from ray.llm._internal.serve.configs.server_models import LLMConfig, BaseModelExtended
+from ray.llm._internal.serve.configs.base import BaseModelExtended
+
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.configs.server_models import LLMConfig
 
 RAYLLM_TELEMETRY_NAMESPACE = "rayllm_telemetry"
 RAYLLM_TELEMETRY_ACTOR_NAME = "rayllm_telemetry"
@@ -201,7 +205,7 @@ def _push_telemetry_report(model: Optional[TelemetryModel] = None) -> None:
 
 
 def push_telemetry_report_for_all_models(
-    all_models: Optional[Sequence[LLMConfig]] = None,
+    all_models: Optional[Sequence["LLMConfig"]] = None,
     get_lora_model_func: Callable = get_lora_model_ids,
 ):
     """Push telemetry report for all models."""
@@ -228,12 +232,17 @@ def push_telemetry_report_for_all_models(
                 logger.error(
                     f"Failed to get Lora model IDs for model {model.model_id}: {e}"
                 )
-        use_autoscaling = model.deployment_config.autoscaling_config is not None
+        use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
-            num_replicas = model.deployment_config.autoscaling_config.initial_replicas
-            min_replicas = model.deployment_config.autoscaling_config.min_replicas
-            max_replicas = model.deployment_config.autoscaling_config.max_replicas
+            from ray.serve.config import AutoscalingConfig
+
+            autoscaling_config = AutoscalingConfig(
+                **model.deployment_config["autoscaling_config"]
+            )
+            num_replicas = autoscaling_config.initial_replicas
+            min_replicas = autoscaling_config.min_replicas
+            max_replicas = autoscaling_config.max_replicas
 
         engine_config = model.get_engine_config()
 

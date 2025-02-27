@@ -30,14 +30,17 @@ py_test_module_list(
 # Small tests
 py_test_module_list(
   files = [
+    "serve/configs/test_json_mode_utils.py",
     "serve/configs/test_models.py",
     "serve/configs/test_prompt_formats.py",
     "serve/deployments/llm/multiplex/test_lora_model_loader.py",
     "serve/deployments/llm/multiplex/test_multiplex_deployment.py",
+    "serve/deployments/llm/multiplex/test_multiplex_utils.py",
     "serve/deployments/llm/test_image_retriever.py",
     "serve/deployments/test_streaming_error_handler.py",
     "serve/observability/usage_telemetry/test_usage.py",
     "serve/deployments/llm/vllm/test_vllm_engine.py",
+    "serve/utils/test_cloud_utils.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "small",

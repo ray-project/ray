@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import sys
 from typing import (
     Any,
     AsyncGenerator,
@@ -13,8 +14,7 @@ from typing import (
     Union,
 )
 
-# TODO (genesu): remove dependency on async_timeout.
-import async_timeout
+
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from ray import serve
@@ -22,7 +22,14 @@ from ray._private.utils import get_or_create_event_loop
 from ray.serve.handle import DeploymentHandle
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from ray.llm._internal.serve.configs.constants import RAYLLM_ROUTER_HTTP_TIMEOUT
+from ray.llm._internal.serve.configs.constants import (
+    RAYLLM_ROUTER_HTTP_TIMEOUT,
+    ROUTER_TO_MODEL_REPLICA_RATIO,
+    RAYLLM_ROUTER_MIN_REPLICAS,
+    RAYLLM_ROUTER_INITIAL_REPLICAS,
+    RAYLLM_ROUTER_MAX_REPLICAS,
+    RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.metrics.fast_api_metrics import (
     add_http_metrics_middleware,
@@ -58,6 +65,13 @@ from ray.llm._internal.serve.deployments.routers.middleware import (
     add_exception_handling_middleware,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
+from ray.serve.config import AutoscalingConfig
+
+# Import asyncio timeout depends on python version
+if sys.version_info >= (3, 11):
+    from asyncio import timeout
+else:
+    from async_timeout import timeout
 
 logger = get_logger(__name__)
 
@@ -156,28 +170,7 @@ async def _peek_at_openai_json_generator(
     return first_response, _openai_json_wrapper(generator, first_response)
 
 
-@serve.deployment(
-    # TODO make this configurable
-    autoscaling_config={
-        "min_replicas": int(os.environ.get("RAYLLM_ROUTER_MIN_REPLICAS", 0)),
-        "initial_replicas": int(os.environ.get("RAYLLM_ROUTER_INITIAL_REPLICAS", 2)),
-        "max_replicas": int(os.environ.get("RAYLLM_ROUTER_MAX_REPLICAS", 16)),
-        "target_ongoing_requests": int(
-            os.environ.get(
-                "RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS",
-                os.environ.get(
-                    "RAYLLM_ROUTER_TARGET_NUM_ONGOING_REQUESTS_PER_REPLICA", 200
-                ),
-            )
-        ),
-    },
-    ray_actor_options=json.loads(
-        os.environ.get("RAYLLM_ROUTER_RAY_ACTOR_OPTIONS", "{}")
-    ),
-    max_ongoing_requests=1000,  # Maximum backlog for a single replica
-)
-@serve.ingress(fastapi_router_app)
-class LLMModelRouterDeployment:
+class LLMRouter:
     def __init__(
         self,
         llm_deployments: List[DeploymentHandle],
@@ -362,7 +355,7 @@ class LLMModelRouterDeployment:
         Returns:
             A response object with completions.
         """
-        async with async_timeout.timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="completions")
             if body.stream:
                 first_response, wrapper = await _peek_at_openai_json_generator(results)
@@ -394,7 +387,7 @@ class LLMModelRouterDeployment:
             A response object with completions.
         """
 
-        async with async_timeout.timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
+        async with timeout(RAYLLM_ROUTER_HTTP_TIMEOUT):
             results = self._get_response(body=body, call_method="chat")
             if body.stream:
                 first_response, wrapper = await _peek_at_openai_json_generator(results)
@@ -416,3 +409,65 @@ class LLMModelRouterDeployment:
 
             if isinstance(result, ChatCompletionResponse):
                 return JSONResponse(content=result.model_dump())
+
+    @classmethod
+    def as_deployment(
+        cls, llm_configs: Optional[List[LLMConfig]] = None
+    ) -> serve.Deployment:
+        """Converts this class to a Ray Serve deployment with ingress.
+
+        Returns:
+            A Ray Serve deployment.
+        """
+        min_replicas = RAYLLM_ROUTER_MIN_REPLICAS
+        initial_replicas = RAYLLM_ROUTER_INITIAL_REPLICAS
+        max_replicas = RAYLLM_ROUTER_MAX_REPLICAS
+
+        # Note (genesu): Based on our internal benchmark, we are currently bottleneck
+        # by the router replicas during high concurrency situation. We are setting the
+        # router replicas to be ~2x the total model replicas and making it scale faster.
+        if llm_configs:
+            model_min_replicas = 0
+            model_initial_replicas = 0
+            model_max_replicas = 0
+            for llm_config in llm_configs:
+                if "autoscaling_config" in llm_config.deployment_config:
+                    autoscaling_config = llm_config.deployment_config[
+                        "autoscaling_config"
+                    ]
+                    if isinstance(autoscaling_config, dict):
+                        autoscaling_config = AutoscalingConfig(
+                            **llm_config.deployment_config["autoscaling_config"]
+                        )
+                else:
+                    # When autoscaling config is not provided, we use the default.
+                    autoscaling_config = AutoscalingConfig()
+                model_min_replicas += autoscaling_config.min_replicas
+                model_initial_replicas += (
+                    autoscaling_config.initial_replicas
+                    or autoscaling_config.min_replicas
+                )
+                model_max_replicas += autoscaling_config.max_replicas
+            min_replicas = int(model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
+            initial_replicas = int(
+                model_initial_replicas * ROUTER_TO_MODEL_REPLICA_RATIO
+            )
+            max_replicas = int(model_max_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
+
+        ingress_cls = serve.ingress(fastapi_router_app)(cls)
+        deployment_decorator = serve.deployment(
+            autoscaling_config={
+                "min_replicas": min_replicas,
+                "initial_replicas": initial_replicas,
+                "max_replicas": max_replicas,
+                "target_ongoing_requests": RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
+            },
+            ray_actor_options=json.loads(
+                os.environ.get("RAYLLM_ROUTER_RAY_ACTOR_OPTIONS", "{}")
+            ),
+            max_ongoing_requests=1000,  # Maximum backlog for a single replica
+        )
+
+        deployment_cls = deployment_decorator(ingress_cls)
+
+        return deployment_cls

@@ -6,7 +6,9 @@ exclude: |
     python/ray/dashboard/client/public/|
     python/ray/tests/test_cli_patterns|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
+    python/ray/data/examples/data/|
     release/release_logs/|
+    rllib/tests/data|
     thirdparty/patches/|
     doc/external/|
     doc/source/
@@ -44,8 +46,16 @@ repos:
     rev: 2.0.0
     hooks:
       - id: cpplint
-        args: ["--filter=-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
-        files: ^src/ray/(util|raylet_client)/.*\.(h|cc)$
+        args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
+        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|rpc(?:/.*)?)/.*\.(h|cc)$
+
+  - repo: https://github.com/keith/pre-commit-buildifier
+    rev: 8.0.1
+    hooks:
+      - id: buildifier
+        files: ^(src|cpp)(/[^/]+)*/BUILD$
+      - id: buildifier-lint
+        files: ^(src|cpp)(/[^/]+)*/BUILD$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0

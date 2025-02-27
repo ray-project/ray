@@ -5,6 +5,7 @@ from typing import (
     Literal,
     Optional,
     Union,
+    TYPE_CHECKING,
 )
 
 from pydantic import (
@@ -14,7 +15,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from transformers import AutoProcessor
+from ray.llm._internal.utils import try_import
+
+if TYPE_CHECKING:
+    from transformers import AutoProcessor
+
+transformers = try_import("transformers")
 
 
 class Text(BaseModel):
@@ -122,25 +128,44 @@ class AbstractPromptFormat(BaseModel):
 
 
 class HuggingFacePromptFormat(AbstractPromptFormat):
-    _processor: AutoProcessor = PrivateAttr()
+    _processor: "AutoProcessor" = PrivateAttr()
 
     def set_processor(self, model_id_or_path: str, trust_remote_code: bool = False):
         if hasattr(self, "_processor"):
             return
 
-        self._processor = AutoProcessor.from_pretrained(
+        self._processor = transformers.AutoProcessor.from_pretrained(
             model_id_or_path,
             trust_remote_code=trust_remote_code,
         )
 
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
+    def generate_prompt(
+        self, messages: Union[Prompt, List[Message], dict, List[dict]]
+    ) -> EngineInput:
+        # Normalize to Prompt if the input is a dict
+        if isinstance(messages, dict):
+            messages = Prompt.model_validate(messages)
+
+        # Normalize to List[Message] if the input is a Prompt object
         if isinstance(messages, Prompt):
             if isinstance(messages.prompt, str):
                 if not messages.use_prompt_format:
                     return EngineInput(text=messages.prompt)
-
                 raise ValueError("String prompts are not supported.")
             messages = messages.prompt
+
+        # If messages is a list, ensure all elements are of the same type and convert List[dict]to List[Message]
+        elif isinstance(messages, list):
+            if messages == []:
+                raise ValueError("List cannot be empty.")
+            elif all(isinstance(msg, dict) for msg in messages):
+                messages = [Message.model_validate(msg) for msg in messages]
+            elif all(isinstance(msg, Message) for msg in messages):
+                pass
+            else:
+                raise ValueError(
+                    "List must contain either all dicts or all Message objects."
+                )
 
         assert hasattr(
             self, "_processor"

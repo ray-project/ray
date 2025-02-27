@@ -23,9 +23,16 @@ class TestModelConfig:
             model_loading_config=ModelLoadingConfig(
                 model_id="llm_model_id",
             ),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 3,
+                    "max_replicas": 7,
+                }
+            },
             accelerator_type="L4",
         )
-
+        assert llm_config.deployment_config["autoscaling_config"]["min_replicas"] == 3
+        assert llm_config.deployment_config["autoscaling_config"]["max_replicas"] == 7
         assert llm_config.model_loading_config.model_id == "llm_model_id"
         assert llm_config.accelerator_type == "L4"
 
@@ -58,6 +65,98 @@ class TestModelConfig:
                 accelerator_type="L4",
                 generation_config="invalid_config",  # Should be a dictionary, not a string
             )
+
+    def test_deployment_type_checking(self):
+        """Test that deployment config type checking works."""
+        with pytest.raises(
+            pydantic.ValidationError,
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                deployment_config={
+                    "max_ongoing_requests": -1,
+                },
+                accelerator_type="L4",
+            )
+
+    def test_autoscaling_type_checking(self):
+        """Test that autoscaling config type checking works."""
+        with pytest.raises(
+            pydantic.ValidationError,
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                deployment_config={
+                    "autoscaling_config": {
+                        "min_replicas": -1,
+                    },
+                },
+                accelerator_type="L4",
+            )
+
+    def test_deployment_unset_fields_are_not_included(self):
+        """Test that unset fields are not included in the deployment config."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+        )
+        assert "max_ongoing_requests" not in llm_config.deployment_config
+        assert "graceful_shutdown_timeout_s" not in llm_config.deployment_config
+
+    def test_autoscaling_unset_fields_are_not_included(self):
+        """Test that unset fields are not included in the autoscaling config."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 3,
+                    "max_replicas": 7,
+                },
+            },
+            accelerator_type="L4",
+        )
+        assert (
+            "metrics_interval_s"
+            not in llm_config.deployment_config["autoscaling_config"]
+        )
+        assert (
+            "upscaling_factor" not in llm_config.deployment_config["autoscaling_config"]
+        )
+
+    def test_get_serve_options(self):
+        """Test that get_serve_options returns the correct options."""
+        serve_options = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+            deployment_config={
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "initial_replicas": 1,
+                    "max_replicas": 10,
+                },
+            },
+            runtime_env={"env_vars": {"FOO": "bar"}},
+        ).get_serve_options(name_prefix="Test:")
+        expected_options = {
+            "autoscaling_config": {
+                "min_replicas": 0,
+                "initial_replicas": 1,
+                "max_replicas": 10,
+            },
+            "ray_actor_options": {
+                "runtime_env": {
+                    "env_vars": {"FOO": "bar"},
+                    "worker_process_setup_hook": "ray.llm._internal.serve._worker_process_setup_hook",
+                }
+            },
+            "placement_group_bundles": [
+                {"CPU": 1, "GPU": 0},
+                {"GPU": 1, "accelerator_type:L4": 0.001},
+            ],
+            "placement_group_strategy": "STRICT_PACK",
+            "name": "Test:test_model",
+        }
+        assert serve_options == expected_options
 
 
 if __name__ == "__main__":
