@@ -31,12 +31,6 @@ def report(
       in persistent storage.
       See :ref:`the distributed checkpointing guide <train-distributed-checkpointing>`.
 
-    .. note::
-
-        Each invocation of this method will automatically increment the underlying
-        ``training_iteration`` number. The physical meaning of this "iteration" is
-        defined by user depending on how often they call ``report``.
-        It does not necessarily map to one epoch.
 
     .. warning::
 
