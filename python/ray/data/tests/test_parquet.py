@@ -924,6 +924,7 @@ def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
     parquet_output_path = os.path.join(tmp_path, "parquet")
     ds.write_parquet(parquet_output_path, num_rows_per_file=6)
 
+
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
     table = pa.table({"food": ["spam", "ham", "eggs"]})
     pq.write_table(table, tmp_path / "table.parquet")
