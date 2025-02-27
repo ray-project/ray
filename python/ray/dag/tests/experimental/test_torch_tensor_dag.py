@@ -271,7 +271,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
 
     shape = (10,)
     dtype = torch.float16
-    device_policy = "default" if num_gpus[0] == 0 or num_gpus[1] == 0 else "auto"
+    device_policy = "default_device" if num_gpus[0] == 0 or num_gpus[1] == 0 else "auto"
 
     # Test normal execution.
     with InputNode() as inp:

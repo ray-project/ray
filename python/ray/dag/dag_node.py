@@ -25,6 +25,7 @@ import asyncio
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.util.types import DevicePolicy
 
 T = TypeVar("T")
 
@@ -142,7 +143,7 @@ class DAGNode(DAGNodeBase):
     def with_tensor_transport(
         self,
         transport: Optional[Union[str, Communicator]] = "auto",
-        device_policy: Optional[Literal["auto", "default"]] = "auto",
+        device_policy: Literal["auto", "default"] = "auto",
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
@@ -154,6 +155,9 @@ class DAGNode(DAGNodeBase):
                 "auto" (default) means that tensor transport will be
                 automatically determined based on the sender and receiver,
                 either through NCCL or host memory.
+            device_policy: The device policy to use for the tensor transport.
+                "auto" (default) means that device in the receiver will match the sender.
+                "default" means that device in the receiver will it's default device.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG. If this is True, the
@@ -163,6 +167,13 @@ class DAGNode(DAGNodeBase):
                 sender and receiver to eliminate performance overhead from
                 an additional data transfer.
         """
+        try:
+            device_policy = DevicePolicy(device_policy)
+        except ValueError:
+            raise ValueError(
+                f"Invalid device_policy '{device_policy}'. "
+                "Valid options are: 'auto', 'default'."
+            )
         if transport == "auto":
             self._type_hint = AutoTransportType(
                 device_policy=device_policy,

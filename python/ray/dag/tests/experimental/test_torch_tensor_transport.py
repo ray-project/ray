@@ -140,14 +140,14 @@ class TestTensorTransport:
 
         # Single output node
         for worker_name, worker in workers.items():
-            for device_policy in ["auto", "default"]:
+            for device_policy in ["auto", "default_device"]:
                 with InputNode() as inp:
                     dag = worker.echo_tensor_device.bind(
                         inp.with_tensor_transport(device_policy=device_policy)
                     )
                 compiled_dag = dag.experimental_compile()
                 ref = compiled_dag.execute(torch.tensor([1]))
-                if device_policy == "default":
+                if device_policy == "default_device":
                     assert ray.get(ref) == default_devices[worker_name], worker_name
                 else:
                     assert ray.get(ref) == "cpu", worker_name
@@ -266,18 +266,18 @@ class TestTensorTransport:
         execute_dag("gpu-1", "cpu-only", "cpu", "cpu")
 
         # cpu to gpu
-        execute_dag("cpu-only", "gpu-1", "cpu", "cuda:0", device_policy="default")
+        execute_dag("cpu-only", "gpu-1", "cpu", "cuda:0", device_policy="default_device")
         execute_dag("cpu-only", "gpu-2", "cpu", "cpu", device_policy="auto")
 
         # gpu to gpu
-        for device_policy in ["default", "auto"]:
+        for device_policy in ["default_device", "auto"]:
             for transport in ["auto", "nccl"]:
                 execute_dag(
                     "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, device_policy
                 )
 
         # gpu to cpu
-        execute_dag("gpu-1", "cpu-only", "cuda:0", "cpu", device_policy="default")
+        execute_dag("gpu-1", "cpu-only", "cuda:0", "cpu", device_policy="default_device")
         execute_dag(
             "gpu-2",
             "cpu-only",
@@ -314,9 +314,9 @@ class TestTensorTransport:
             ), "compiled graph serializer failed to deserialize tensors on default device!"
             compiled_dag.teardown()
 
-        execute_dict_dag("gpu-1", "cpu-only", "cpu", "cpu", device_policy="default")
+        execute_dict_dag("gpu-1", "cpu-only", "cpu", "cpu", device_policy="default_device")
         for transport in ["auto", "nccl"]:
-            execute_dict_dag("gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, "default")
+            execute_dict_dag("gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, "default_device")
             execute_dict_dag("gpu-1", "gpu-2", "cpu", "cuda:0", transport, "auto")
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -414,15 +414,15 @@ class TestTensorTransport:
 
         # transport cpu tensor
         execute_dag("cpu-only", "cpu", "cpu", "auto")
-        execute_dag("gpu-1", "cpu", "cpu", "default")
+        execute_dag("gpu-1", "cpu", "cpu", "default_device")
         # transport gpu tensor
-        execute_dag("gpu-1", "cuda:0", "cpu", "default")
+        execute_dag("gpu-1", "cuda:0", "cpu", "default_device")
 
         # Test dictionary of tensors
         def execute_dict_dag(src):
             with InputNode() as inp:
                 dag = workers[src].send_dict.bind(inp)
-                dag = dag.with_tensor_transport(device_policy="default")
+                dag = dag.with_tensor_transport(device_policy="default_device")
             compiled_dag = dag.experimental_compile()
             device_dict = {"cpu_tensor": "cpu", "gpu_tensor": "cuda:0"}
             result = ray.get(compiled_dag.execute(device_dict))

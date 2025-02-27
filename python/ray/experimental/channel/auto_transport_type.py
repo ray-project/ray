@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union, Literal
 import ray
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.util.types import DevicePolicy
 
 
 class AutoTransportType(ChannelOutputType):
@@ -16,7 +17,7 @@ class AutoTransportType(ChannelOutputType):
 
     def __init__(
         self,
-        device_policy: Literal["auto", "default"] = "auto",
+        device_policy: DevicePolicy = DevicePolicy.AUTO,
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
