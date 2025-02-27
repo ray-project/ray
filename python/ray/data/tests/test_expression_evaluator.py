@@ -318,6 +318,17 @@ def test_filter(sample_data, expression, expected_data):
     assert result_converted == expected_data
 
 
+def test_filter_equal_negative_number():
+    df = pd.DataFrame.from_dict(
+        {"A": [-1, -1, 1, 2, -1, 3, 4, 5], "B": [-1, -1, 1, 2, -1, 3, 4, 5]}
+    )
+    expression = ExpressionEvaluator.get_filters(expression="A == -1")
+    result = pa.table(df).filter(expression)
+    result_df = result.to_pandas().to_dict(orient="records")
+    expected = df[df["A"] == -1].to_dict(orient="records")
+    assert result_df == expected
+
+
 def test_filter_bad_expression(sample_data):
     with pytest.raises(ValueError, match="Invalid syntax in the expression"):
         ExpressionEvaluator.get_filters(expression="bad filter")
