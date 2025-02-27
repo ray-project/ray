@@ -98,18 +98,23 @@ class ActorPoolMapOperator(MapOperator):
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
-        data_context = self.data_context
-        if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
+
+        if (
+            "_generator_backpressure_num_objects"
+            not in self._ray_actor_task_remote_args
+            and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
+        ):
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
             # 2 objects for each block: the block and the block metadata.
             self._ray_actor_task_remote_args["_generator_backpressure_num_objects"] = (
-                2 * data_context._max_num_blocks_in_streaming_gen_buffer
+                2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
+
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args = self._apply_default_remote_args(
-            self._ray_remote_args, data_context
+            self._ray_remote_args, self.data_context
         )
 
         per_actor_resource_usage = ExecutionResources(
@@ -162,7 +167,9 @@ class ActorPoolMapOperator(MapOperator):
         ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
-        actor = self._cls.remote(
+        actor = self._cls.options(
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
+        ).remote(
             ctx,
             src_fn_name=self.name,
             map_transformer=self._map_transformer,

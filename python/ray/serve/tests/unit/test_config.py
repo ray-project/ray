@@ -216,7 +216,7 @@ class TestReplicaConfig:
         # Invalid: not in the range of [1, 100]
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -227,7 +227,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,
@@ -238,7 +238,7 @@ class TestReplicaConfig:
 
         with pytest.raises(
             ValueError,
-            match="Valid values are None or an integer in the range of \[1, 100\]",
+            match=r"Valid values are None or an integer in the range of \[1, 100\]",
         ):
             ReplicaConfig.create(
                 Class,

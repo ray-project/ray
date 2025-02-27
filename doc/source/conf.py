@@ -230,6 +230,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -329,9 +330,7 @@ html_theme_options = {
     "pygment_dark_style": "stata-dark",
     "switcher": {
         "json_url": "https://docs.ray.io/en/master/_static/versions.json",
-        "version_match": (
-            lambda v: v if v in ["master", "latest"] else f"releases/{v}"
-        )(os.getenv("READTHEDOCS_VERSION", "master")),
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
     },
 }
 
@@ -581,9 +580,13 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
     "cupy",
     "dask",
@@ -597,6 +600,7 @@ autodoc_mock_imports = [
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -619,11 +623,13 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",

@@ -1,6 +1,6 @@
 """Tokenize and detokenize stage"""
 
-from typing import Any, Dict, AsyncIterator, List
+from typing import Any, Dict, AsyncIterator, List, Type
 
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -25,7 +25,12 @@ class TokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+        self.tokenizer = get_cached_tokenizer(
+            AutoTokenizer.from_pretrained(
+                model,
+                trust_remote_code=True,
+            )
+        )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -41,7 +46,10 @@ class TokenizeUDF(StatefulStageUDF):
             batch,
             self.tokenizer([row["prompt"] for row in batch])["input_ids"],
         ):
-            yield {"tokenized_prompt": prompt_token_ids}
+            yield {
+                self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
+                "tokenized_prompt": prompt_token_ids,
+            }
 
     @property
     def expected_input_keys(self) -> List[str]:
@@ -54,11 +62,7 @@ class TokenizeStage(StatefulStage):
     A stage that tokenizes the input.
     """
 
-    fn: StatefulStageUDF = TokenizeUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
+    fn: Type[StatefulStageUDF] = TokenizeUDF
 
 
 class DetokenizeUDF(StatefulStageUDF):
@@ -77,7 +81,12 @@ class DetokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
-        self.tokenizer = get_cached_tokenizer(AutoTokenizer.from_pretrained(model))
+        self.tokenizer = get_cached_tokenizer(
+            AutoTokenizer.from_pretrained(
+                model,
+                trust_remote_code=True,
+            )
+        )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
@@ -96,7 +105,10 @@ class DetokenizeUDF(StatefulStageUDF):
                 skip_special_tokens=True,
             ),
         ):
-            yield {"generated_text": generated_text}
+            yield {
+                self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
+                "generated_text": generated_text,
+            }
 
     @property
     def expected_input_keys(self) -> List[str]:
@@ -109,8 +121,4 @@ class DetokenizeStage(StatefulStage):
     A stage that detokenizes the input.
     """
 
-    fn: StatefulStageUDF = DetokenizeUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
+    fn: Type[StatefulStageUDF] = DetokenizeUDF

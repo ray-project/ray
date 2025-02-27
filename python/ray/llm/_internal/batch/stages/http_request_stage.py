@@ -4,7 +4,7 @@ import aiohttp
 import asyncio
 import time
 import numpy as np
-from typing import Any, Dict, AsyncIterator, Optional, List
+from typing import Any, Dict, AsyncIterator, Optional, List, Type
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
 
@@ -62,7 +62,7 @@ class HttpRequestUDF(StatefulStageUDF):
 
                 # Normalize the row to a JSON body.
                 json_body = {}
-                for key, value in row.items():
+                for key, value in row["payload"].items():
                     if isinstance(value, np.ndarray):
                         json_body[key] = value.tolist()
                     else:
@@ -74,12 +74,25 @@ class HttpRequestUDF(StatefulStageUDF):
                     headers=headers,
                     json=json_body,
                 )
-                pending_requests.append(request)
+                pending_requests.append((row[self.IDX_IN_BATCH_COLUMN], request))
 
             # Now receive all responses
-            for request in pending_requests:
+            for idx_in_batch, request in pending_requests:
                 async with await request as response:
-                    yield await response.json()
+                    resp_json = await response.json()
+                    if self.IDX_IN_BATCH_COLUMN in resp_json:
+                        raise ValueError(
+                            "The response of the HTTP request must not contain "
+                            f"the column {self.IDX_IN_BATCH_COLUMN}."
+                        )
+                    yield {
+                        self.IDX_IN_BATCH_COLUMN: idx_in_batch,
+                        "http_response": resp_json,
+                    }
+
+    @property
+    def expected_input_keys(self) -> List[str]:
+        return ["payload"]
 
 
 class HttpRequestStage(StatefulStage):
@@ -87,8 +100,4 @@ class HttpRequestStage(StatefulStage):
     A stage that sends HTTP requests.
     """
 
-    fn: StatefulStageUDF = HttpRequestUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
+    fn: Type[StatefulStageUDF] = HttpRequestUDF

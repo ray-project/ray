@@ -6,7 +6,7 @@ import xgboost as xgb
 from sklearn.model_selection import train_test_split
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
@@ -44,7 +44,7 @@ def train_breast_cancer(config: dict):
     # Checkpointing needs to be set up in order for dynamic
     # resource allocation to work as intended
     xgb_model = None
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         xgb_model = TuneReportCheckpointCallback.get_model(
             checkpoint, filename=CHECKPOINT_FILENAME
@@ -52,7 +52,7 @@ def train_breast_cancer(config: dict):
 
     # Set `nthread` to the number of CPUs available to the trial,
     # which is assigned by the scheduler.
-    config["nthread"] = int(train.get_context().get_trial_resources().head_cpus)
+    config["nthread"] = int(tune.get_context().get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback
     xgb.train(

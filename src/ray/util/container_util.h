@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <deque>
 #include <map>
@@ -23,6 +24,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -109,6 +111,11 @@ std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::array<T, N>> 
 }
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::vector<Ts...>> c) {
+  return c.StringifyContainer(os);
+}
+template <typename T, std::size_t N>
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<absl::InlinedVector<T, N>> c) {
   return c.StringifyContainer(os);
 }
 template <typename... Ts>
