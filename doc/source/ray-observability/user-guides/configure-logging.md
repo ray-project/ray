@@ -411,7 +411,6 @@ import ray
 import logging
 
 ray.init(
-    log_to_driver=False,
     logging_config=ray.LoggingConfig(encoding="JSON", log_level="INFO", additional_log_standard_attrs=['name'])
 )
 
@@ -440,9 +439,9 @@ actor_instance = actor.remote()
 ray.get(actor_instance.print_message.remote())
 
 """
-{"asctime": "2024-07-15 19:06:06,469", "levelname": "INFO", "message": "Driver process", "filename": "test.py", "lineno": 12, "job_id": "03000000", "worker_id": "03000000ffffffffffffffffffffffffffffffffffffffffffffffff", "node_id": "824f9d7c6a82a0faf42b91f07b42667df0831034a713f04f28ba84b9"}
-(f pid=4871) {"asctime": "2024-07-15 19:06:07,435", "levelname": "INFO", "message": "A Ray task", "filename": "test.py", "lineno": 17, "job_id": "03000000", "worker_id": "f8f84d811683e5d9e03744a4386b26a5cd6f6ca09fc5cdc8e1dbe5a3", "node_id": "824f9d7c6a82a0faf42b91f07b42667df0831034a713f04f28ba84b9", "task_id": "fa31b89f94899135ffffffffffffffffffffffff03000000"}
-(actor pid=4939) {"asctime": "2024-07-15 19:06:08,700", "levelname": "INFO", "message": "A Ray actor", "filename": "test.py", "lineno": 23, "job_id": "03000000", "worker_id": "51d62f87e3867cdcad9aecd7b431068ea433b3104c8cc4ed1db6eef7", "node_id": "824f9d7c6a82a0faf42b91f07b42667df0831034a713f04f28ba84b9", "actor_id": "4a03b12afe5598a00eadcf9503000000", "task_id": "0ab01f2d6283d7194a03b12afe5598a00eadcf9503000000"}
+{"asctime": "2025-02-25 22:06:00,967", "levelname": "INFO", "message": "Driver process", "filename": "test-log-config-doc.py", "lineno": 13, "name": "root", "job_id": "01000000", "worker_id": "01000000ffffffffffffffffffffffffffffffffffffffffffffffff", "node_id": "543c939946ec1321c9c1a10899bfb72f59aa6eab7655719f2611da04", "timestamp_ns": 1740549960968002000}
+{"asctime": "2025-02-25 22:06:00,974", "levelname": "INFO", "message": "A Ray task", "filename": "test-log-config-doc.py", "lineno": 18, "name": "root", "job_id": "01000000", "worker_id": "162f2bd846e84685b4c07eb75f2c1881b9df1cdbf58ffbbcccbf2c82", "node_id": "543c939946ec1321c9c1a10899bfb72f59aa6eab7655719f2611da04", "task_id": "c8ef45ccd0112571ffffffffffffffffffffffff01000000", "task_name": "f", "task_func_name": "test-log-config-doc.f", "timestamp_ns": 1740549960974027000}
+{"asctime": "2025-02-25 22:06:01,314", "levelname": "INFO", "message": "A Ray actor", "filename": "test-log-config-doc.py", "lineno": 24, "name": "root", "job_id": "01000000", "worker_id": "b7fd965bb12b1046ddfa3d73ead5ed54eb7678d97e743d98dfab852b", "node_id": "543c939946ec1321c9c1a10899bfb72f59aa6eab7655719f2611da04", "actor_id": "43b5d1828ad0a003ca6ebcfc01000000", "task_id": "c2668a65bda616c143b5d1828ad0a003ca6ebcfc01000000", "task_name": "actor.print_message", "task_func_name": "test-log-config-doc.actor.print_message", "actor_name": "", "timestamp_ns": 1740549961314391000}
 """
 ```
 
