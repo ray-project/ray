@@ -66,41 +66,40 @@ class ExtraFiles(BaseModelExtended):
     destination_path: str
 
 
-class MirrorConfig(BaseModelExtended):
+class CloudMirrorConfig(BaseModelExtended):
+    """Unified mirror config for cloud storage (S3 or GCS).
+
+    Args:
+        bucket_uri: URI of the bucket (s3:// or gs://)
+        extra_files: Additional files to download
+    """
+
     bucket_uri: Optional[str] = None
     extra_files: List[ExtraFiles] = Field(default_factory=list)
 
-
-class S3AWSCredentials(BaseModelExtended):
-    create_aws_credentials_url: str
-    auth_token_env_variable: Optional[str] = None
-
-
-class GCSMirrorConfig(MirrorConfig):
     @field_validator("bucket_uri")
     @classmethod
     def check_uri_format(cls, value):
-        if not value.startswith("gs://"):
+        if value is None:
+            return value
+
+        if not (value.startswith("s3://") or value.startswith("gs://")):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "gs://".'
+                'Expected a URI that starts with "s3://" or "gs://".'
             )
         return value
 
-
-class S3MirrorConfig(MirrorConfig):
-    s3_sync_args: Optional[List[str]] = None
-    s3_aws_credentials: Optional[S3AWSCredentials] = None
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def check_uri_format(cls, value):
-        if value and not value.startswith("s3://"):
-            raise ValueError(
-                f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://".'
-            )
-        return value
+    @property
+    def storage_type(self) -> str:
+        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
+        if self.bucket_uri is None:
+            return None
+        elif self.bucket_uri.startswith("s3://"):
+            return "s3"
+        elif self.bucket_uri.startswith("gs://"):
+            return "gcs"
+        return None
 
 
 class ServeMultiplexConfig(BaseModelExtended):
@@ -176,7 +175,7 @@ class ModelLoadingConfig(BaseModelExtended):
     model_id: str = Field(
         description="The ID that should be used by end users to access this model.",
     )
-    model_source: Optional[Union[str, S3MirrorConfig, GCSMirrorConfig]] = Field(
+    model_source: Optional[Union[str, CloudMirrorConfig]] = Field(
         default=None,
         description=(
             "Where to obtain the model weights from. "
