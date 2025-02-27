@@ -139,14 +139,33 @@ class HuggingFacePromptFormat(AbstractPromptFormat):
             trust_remote_code=trust_remote_code,
         )
 
-    def generate_prompt(self, messages: Union[Prompt, List[Message]]) -> EngineInput:
+    def generate_prompt(
+        self, messages: Union[Prompt, List[Message], dict, List[dict]]
+    ) -> EngineInput:
+        # Normalize to Prompt if the input is a dict
+        if isinstance(messages, dict):
+            messages = Prompt.model_validate(messages)
+
+        # Normalize to List[Message] if the input is a Prompt object
         if isinstance(messages, Prompt):
             if isinstance(messages.prompt, str):
                 if not messages.use_prompt_format:
                     return EngineInput(text=messages.prompt)
-
                 raise ValueError("String prompts are not supported.")
             messages = messages.prompt
+
+        # If messages is a list, ensure all elements are of the same type and convert List[dict]to List[Message]
+        elif isinstance(messages, list):
+            if messages == []:
+                raise ValueError("List cannot be empty.")
+            elif all(isinstance(msg, dict) for msg in messages):
+                messages = [Message.model_validate(msg) for msg in messages]
+            elif all(isinstance(msg, Message) for msg in messages):
+                pass
+            else:
+                raise ValueError(
+                    "List must contain either all dicts or all Message objects."
+                )
 
         assert hasattr(
             self, "_processor"

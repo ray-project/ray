@@ -87,7 +87,7 @@ Deployment through ``LLMRouter``
     )
 
     # Deploy the application
-    deployment = VLLMService.as_deployment().bind(llm_config)
+    deployment = VLLMService.as_deployment(llm_config.get_serve_options(name_prefix="VLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
 
@@ -121,7 +121,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
             # Basic chat completion with streaming
             response = client.chat.completions.create(
                 model="qwen-0.5b",
-                messages=[{"role": "user", "content": "Hello!"}]
+                messages=[{"role": "user", "content": "Hello!"}],
                 stream=True
             )
 
@@ -165,8 +165,8 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
     )
 
     # Deploy the application
-    deployment1 = VLLMService.as_deployment().bind(llm_config1)
-    deployment2 = VLLMService.as_deployment().bind(llm_config2)
+    deployment1 = VLLMService.as_deployment(llm_config1.get_serve_options(name_prefix="VLLM:")).bind(llm_config1)
+    deployment2 = VLLMService.as_deployment(llm_config2.get_serve_options(name_prefix="VLLM:")).bind(llm_config2)
     llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
     serve.run(llm_app)
 
@@ -318,7 +318,8 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
             # Make a request to the desired lora checkpoint
             response = client.chat.completions.create(
                 model="qwen-0.5b:lora_model_1_ckpt",
-                messages=[{"role": "user", "content": "Hello!"}]
+                messages=[{"role": "user", "content": "Hello!"}],
+                stream=True,
             )
 
             for chunk in response:
@@ -430,7 +431,11 @@ For multimodal models that can process both text and images:
                         max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
+                accelerator_type="L40S",
+                engine_kwargs=dict(
+                    tensor_parallel_size=1,
+                    max_model_len=8192,
+                ),
             )
 
             # Build and deploy the model
@@ -466,7 +471,8 @@ For multimodal models that can process both text and images:
                             }
                         ]
                     }
-                ]
+                ],
+                stream=True,
             )
 
             for chunk in response:
