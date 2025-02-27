@@ -13,7 +13,6 @@ except ImportError as exc:
 # isort: on
 
 
-from ray._private.usage import usage_lib
 from ray.air.config import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.air.result import Result
 
@@ -43,8 +42,6 @@ if is_v2_enabled():
         report,
     )
 
-
-usage_lib.record_library_usage("train")
 
 Checkpoint.__module__ = "ray.train"
 
