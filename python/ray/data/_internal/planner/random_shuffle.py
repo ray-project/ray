@@ -30,7 +30,7 @@ def generate_random_shuffle_fn(
 
     # If no seed has been specified, pin timestamp based one
     # so that task could be safely retried (w/o changing their output)
-    seed = seed or (time.time_ns() % INT32_MAX)
+    seed = seed if seed is not None else (time.time_ns() % INT32_MAX)
 
     def fn(
         refs: List[RefBundle],
