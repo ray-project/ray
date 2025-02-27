@@ -30,44 +30,51 @@ namespace raylet {
 
 class ClientConnectionTest : public ::testing::Test {
  public:
-  ClientConnectionTest()
-      : io_service_() {}
+  ClientConnectionTest() : io_service_() {}
 
-std::pair<std::shared_ptr<ClientConnection>, std::shared_ptr<ClientConnection>> CreateConnectionPair(
-    std::optional<MessageHandler> client_message_handler, std::optional<MessageHandler> server_message_handler) {
+  std::pair<std::shared_ptr<ClientConnection>, std::shared_ptr<ClientConnection>>
+  CreateConnectionPair(std::optional<MessageHandler> client_message_handler,
+                       std::optional<MessageHandler> server_message_handler) {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
-  boost::asio::local::stream_protocol::socket in(io_service_), out(io_service_);
-  boost::asio::local::connect_pair(in, out);
+    boost::asio::local::stream_protocol::socket in(io_service_), out(io_service_);
+    boost::asio::local::connect_pair(in, out);
 #else
-  local_stream_socket in(io_service_);
-  local_stream_socket out(io_service_);
-  auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
-  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
-                                     endpoint);
-  out.connect(endpoint);
-  acceptor.accept(in);
+    local_stream_socket in(io_service_);
+    local_stream_socket out(io_service_);
+    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
+    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
+                                                                       endpoint);
+    out.connect(endpoint);
+    acceptor.accept(in);
 #endif
 
-  ClientHandler noop_client_handler = [](ClientConnection &client) {};
-  MessageHandler noop_message_handler = [](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {};
+    ClientHandler noop_client_handler = [](ClientConnection &client) {};
+    MessageHandler noop_message_handler = [](std::shared_ptr<ClientConnection> client,
+                                             int64_t message_type,
+                                             const std::vector<uint8_t> &message) {};
 
-  if (!client_message_handler) {
-    client_message_handler = noop_message_handler;
+    if (!client_message_handler) {
+      client_message_handler = noop_message_handler;
+    }
+    auto client = ClientConnection::Create(noop_client_handler,
+                                           client_message_handler.value(),
+                                           std::move(out),
+                                           "client",
+                                           {},
+                                           /*error_message_type=*/1);
+
+    if (!server_message_handler) {
+      server_message_handler = noop_message_handler;
+    }
+    auto server = ClientConnection::Create(noop_client_handler,
+                                           server_message_handler.value(),
+                                           std::move(in),
+                                           "server",
+                                           {},
+                                           /*error_message_type=*/1);
+
+    return std::make_pair(std::move(client), std::move(server));
   }
-  auto client = ClientConnection::Create(
-      noop_client_handler, client_message_handler.value(), std::move(out), "client", {}, /*error_message_type=*/1);
-
-  if (!server_message_handler) {
-    server_message_handler = noop_message_handler;
-  }
-  auto server = ClientConnection::Create(
-      noop_client_handler, server_message_handler.value(), std::move(in), "server", {}, /*error_message_type=*/1);
-
-  return std::make_pair(std::move(client), std::move(server));
-}
 
  protected:
   instrumented_io_context io_service_;
@@ -78,9 +85,9 @@ TEST_F(ClientConnectionTest, UnidirectionalWriteSync) {
   int server_num_messages = 0;
 
   MessageHandler server_message_handler = [&arr, &server_num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {
+                                              std::shared_ptr<ClientConnection> client,
+                                              int64_t message_type,
+                                              const std::vector<uint8_t> &message) {
     ASSERT_FALSE(std::memcmp(arr, message.data(), 5));
     server_num_messages += 1;
   };
@@ -110,28 +117,30 @@ TEST_F(ClientConnectionTest, BidirectionalWriteSync) {
   int server_num_messages = 0;
 
   MessageHandler client_message_handler = [&arr, &client_num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {
+                                              std::shared_ptr<ClientConnection> client,
+                                              int64_t message_type,
+                                              const std::vector<uint8_t> &message) {
     ASSERT_FALSE(std::memcmp(arr, message.data(), 5));
     client_num_messages += 1;
   };
 
   MessageHandler server_message_handler = [&arr, &server_num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {
+                                              std::shared_ptr<ClientConnection> client,
+                                              int64_t message_type,
+                                              const std::vector<uint8_t> &message) {
     ASSERT_FALSE(std::memcmp(arr, message.data(), 5));
     server_num_messages += 1;
     RAY_CHECK_OK(client->WriteMessage(0, 5, arr));
   };
 
-  auto [client, server] = CreateConnectionPair(client_message_handler, server_message_handler);
+  auto [client, server] =
+      CreateConnectionPair(client_message_handler, server_message_handler);
 
   ASSERT_EQ(client_num_messages, 0);
   ASSERT_EQ(server_num_messages, 0);
 
-  // Write a message from client->server, the server handler writes a message to the client.
+  // Write a message from client->server, the server handler writes a message to the
+  // client.
   RAY_CHECK_OK(client->WriteMessage(0, 5, arr));
   server->ProcessMessages();
   client->ProcessMessages();
@@ -147,9 +156,9 @@ TEST_F(ClientConnectionTest, UnidirectionalWriteAsync) {
   int server_num_messages = 0;
 
   MessageHandler server_message_handler = [&msg1, &msg2, &msg3, &server_num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {
+                                              std::shared_ptr<ClientConnection> client,
+                                              int64_t message_type,
+                                              const std::vector<uint8_t> &message) {
     if (server_num_messages == 0) {
       ASSERT_FALSE(std::memcmp(msg1, message.data(), 5));
     } else if (server_num_messages == 1) {
@@ -221,9 +230,9 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   int server_num_messages = 0;
 
   MessageHandler server_message_handler = [&arr, &server_num_messages](
-                                       std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {
+                                              std::shared_ptr<ClientConnection> client,
+                                              int64_t message_type,
+                                              const std::vector<uint8_t> &message) {
     ASSERT_FALSE(std::memcmp(arr, message.data(), 5));
     server_num_messages += 1;
   };
@@ -235,7 +244,8 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   // crash.
   // server->Register();
 
-  // Intentionally write a message with incorrect cookie and check the message isn't processed.
+  // Intentionally write a message with incorrect cookie and check the message isn't
+  // processed.
   int64_t type = 0;
   int64_t length = 5;
   int64_t write_cookie = 123456;  // incorrect version.
@@ -260,7 +270,8 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
 
   // No disconnects.
   {
-    std::vector<bool> disconnects = CheckForClientDisconnects({server0, server1, server2});
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
     ASSERT_EQ(disconnects.size(), 3);
     ASSERT_FALSE(disconnects[0]);
     ASSERT_FALSE(disconnects[1]);
@@ -270,7 +281,8 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
   // Close one client connection, check it is marked disconnected but not others.
   shutdown(client1->GetNativeHandle(), SHUT_RDWR);
   {
-    std::vector<bool> disconnects = CheckForClientDisconnects({server0, server1, server2});
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
     ASSERT_EQ(disconnects.size(), 3);
     ASSERT_FALSE(disconnects[0]);
     ASSERT_TRUE(disconnects[1]);
@@ -279,7 +291,8 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
 
   // Check that multiple calls return the same output.
   for (int i = 0; i < 10; i++) {
-    std::vector<bool> disconnects = CheckForClientDisconnects({server0, server1, server2});
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
     ASSERT_EQ(disconnects.size(), 3);
     ASSERT_FALSE(disconnects[0]);
     ASSERT_TRUE(disconnects[1]);
@@ -290,7 +303,8 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
   shutdown(client0->GetNativeHandle(), SHUT_RDWR);
   shutdown(client2->GetNativeHandle(), SHUT_RDWR);
   {
-    std::vector<bool> disconnects = CheckForClientDisconnects({server0, server1, server2});
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
     ASSERT_EQ(disconnects.size(), 3);
     ASSERT_TRUE(disconnects[0]);
     ASSERT_TRUE(disconnects[1]);
@@ -298,28 +312,28 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
   }
 }
 
-
 class ServerConnectionTest : public ::testing::Test {
  public:
-  ServerConnectionTest()
-      : io_service_() {}
+  ServerConnectionTest() : io_service_() {}
 
-std::pair<std::shared_ptr<ServerConnection>, std::shared_ptr<ServerConnection>> CreateConnectionPair() {
+  std::pair<std::shared_ptr<ServerConnection>, std::shared_ptr<ServerConnection>>
+  CreateConnectionPair() {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
-  boost::asio::local::stream_protocol::socket in(io_service_), out(io_service_);
-  boost::asio::local::connect_pair(in, out);
+    boost::asio::local::stream_protocol::socket in(io_service_), out(io_service_);
+    boost::asio::local::connect_pair(in, out);
 #else
-  local_stream_socket in(io_service_);
-  local_stream_socket out(io_service_);
-  auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
-  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
-                                     endpoint);
-  out.connect(endpoint);
-  acceptor.accept(in);
+    local_stream_socket in(io_service_);
+    local_stream_socket out(io_service_);
+    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
+    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
+                                                                       endpoint);
+    out.connect(endpoint);
+    acceptor.accept(in);
 #endif
 
-  return std::make_pair(ServerConnection::Create(std::move(out)), ServerConnection::Create(std::move(in)));
-}
+    return std::make_pair(ServerConnection::Create(std::move(out)),
+                          ServerConnection::Create(std::move(in)));
+  }
 
  protected:
   instrumented_io_context io_service_;
