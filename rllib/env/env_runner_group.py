@@ -583,18 +583,35 @@ class EnvRunnerGroup:
                 if policies is not None
                 else [COMPONENT_RL_MODULE]
             )
-            # LearnerGroup has-a Learner has-a RLModule.
+            # LearnerGroup has-a Learner, which has-a RLModule.
             if isinstance(weights_src, LearnerGroup):
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],
                     inference_only=inference_only,
                 )[COMPONENT_LEARNER]
-            # EnvRunner has-a RLModule.
+            # EnvRunner (new API stack).
             elif self._remote_config.enable_env_runner_and_connector_v2:
-                rl_module_state = weights_src.get_state(
-                    components=modules,
-                    inference_only=inference_only,
-                )
+                # EnvRunner (remote) has-a RLModule.
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult)
+                #  `weights_src` could be the ActorManager, then. Then RLlib would know
+                #   that it has to ping the manager to try all healthy actors until the
+                #   first returns something.
+                if isinstance(weights_src, ray.actor.ActorHandle):
+                    rl_module_state = ray.get(
+                        weights_src.get_state.remote(
+                            components=[m for m in modules],
+                            inference_only=inference_only,
+                        )
+                    )
+                # EnvRunner (local) has-a RLModule.
+                else:
+                    rl_module_state = weights_src.get_state(
+                        components=modules,
+                        inference_only=inference_only,
+                    )
+            # RolloutWorker (old API stack).
             else:
                 rl_module_state = weights_src.get_weights(
                     policies=policies,
@@ -615,8 +632,17 @@ class EnvRunnerGroup:
                 # copies of the weights dict for each worker.
                 rl_module_state_ref = ray.put(rl_module_state)
 
-                def _set_weights(env_runner):
-                    env_runner.set_state(ray.get(rl_module_state_ref))
+                # def _set_weights(env_runner):
+                #    env_runner.set_state(ray.get(rl_module_state_ref))
+
+                # Sync to specified remote workers in this EnvRunnerGroup.
+                self.foreach_env_runner(
+                    func="set_state",
+                    kwargs=dict(state=rl_module_state_ref),
+                    local_env_runner=False,  # Do not sync back to local worker.
+                    remote_worker_ids=to_worker_indices,
+                    timeout_seconds=timeout_seconds,
+                )
 
             else:
                 rl_module_state_ref = ray.put(rl_module_state)
@@ -624,13 +650,13 @@ class EnvRunnerGroup:
                 def _set_weights(env_runner):
                     env_runner.set_weights(ray.get(rl_module_state_ref), global_vars)
 
-            # Sync to specified remote workers in this EnvRunnerGroup.
-            self.foreach_env_runner(
-                func=_set_weights,
-                local_env_runner=False,  # Do not sync back to local worker.
-                remote_worker_ids=to_worker_indices,
-                timeout_seconds=timeout_seconds,
-            )
+                # Sync to specified remote workers in this EnvRunnerGroup.
+                self.foreach_env_runner(
+                    func=_set_weights,
+                    local_env_runner=False,  # Do not sync back to local worker.
+                    remote_worker_ids=to_worker_indices,
+                    timeout_seconds=timeout_seconds,
+                )
 
         # If `from_worker_or_learner_group` is provided, also sync to this
         # EnvRunnerGroup's local worker.
