@@ -36,7 +36,8 @@ def report(
 
         All workers must call `ray.train.report` the same number of times
         so that Ray Train can properly synchronize the training state across
-        workers. Otherwise, your training will hang.
+        workers. This method acts as a barrier across all workers, so be sure
+        that every worker reaches this method.
 
     Example:
 
