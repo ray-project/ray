@@ -28,7 +28,7 @@ class LinuxContainer(Container):
         self.tmp_filesystem = tmp_filesystem
 
     def install_ray(
-        self, build_type: Optional[str] = None, mask: Optional[str] = None
+        self, install_build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> List[str]:
         cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
 
@@ -44,7 +44,7 @@ class LinuxContainer(Container):
             "--build-arg",
             f"BASE_IMAGE={self._get_docker_image()}",
             "--build-arg",
-            f"BUILD_TYPE={build_type or ''}",
+            f"BUILD_TYPE={install_build_type or ''}",
             "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
         ]

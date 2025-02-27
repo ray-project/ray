@@ -27,6 +27,9 @@ fi
 if [[ "$BUILD_TYPE" == "skip" ]]; then
   echo "Skipping build"
   exit 0
+elif [[ "$BUILD_TYPE" == "clang-only" ]]; then
+  bash ci/env/install-llvm-binaries.sh
+  exit 0
 fi
 
 if [[ "$RAY_INSTALL_MASK" != "" ]]; then
@@ -52,10 +55,10 @@ elif [[ "$BUILD_TYPE" == "asan" ]]; then
   pip install -v -e python/
   bazel build $(./ci/run/bazel_export_options) --no//:jemalloc_flag //:ray_pkg
 elif [[ "$BUILD_TYPE" == "java" ]]; then
-  ./java/build-jar-multiplatform.sh linux
+  bash java/build-jar-multiplatform.sh linux
   RAY_INSTALL_JAVA=1 pip install -v -e python/
 elif [[ "$BUILD_TYPE" == "clang" || "$BUILD_TYPE" == "asan-clang" || "$BUILD_TYPE" == "tsan-clang" ]]; then
-  ./ci/env/install-llvm-binaries.sh
+  bash ci/env/install-llvm-binaries.sh
   pip install -v -e python/
 else
   pip install -v -e python/

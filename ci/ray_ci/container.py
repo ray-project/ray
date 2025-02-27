@@ -87,7 +87,7 @@ class Container(abc.ABC):
 
     @abc.abstractmethod
     def install_ray(
-        self, build_type: Optional[str] = None, mask: Optional[str] = None
+        self, install_build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> None:
         """
         Build and install ray in container

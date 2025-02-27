@@ -140,7 +140,9 @@ def test_run_script_in_docker() -> None:
 def test_skip_ray_installation() -> None:
     install_ray_called = []
 
-    def _mock_install_ray(build_type: Optional[str], mask: Optional[str]) -> None:
+    def _mock_install_ray(
+        install_build_type: Optional[str], mask: Optional[str]
+    ) -> None:
         install_ray_called.append(True)
 
     with mock.patch(
@@ -161,7 +163,7 @@ def test_ray_installation() -> None:
         install_ray_cmds.append(inputs)
 
     with mock.patch("subprocess.check_call", side_effect=_mock_subprocess):
-        LinuxTesterContainer("team", build_type="debug")
+        LinuxTesterContainer("team", install_build_type="debug")
         docker_image = f"{_DOCKER_ECR_REPO}:{_RAYCI_BUILD_ID}-team"
         assert install_ray_cmds[-1] == [
             "docker",

@@ -41,6 +41,25 @@ DEFAULT_EXCEPT_TAGS = {"manual"}
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
+_BUILD_TYPES = [
+    # python build types
+    "optimized",
+    "debug",
+    "asan",
+    "wheel",
+    "wheel-aarch64",
+    # cpp build types
+    "clang",
+    "asan-clang",
+    "ubsan",
+    "tsan-clang",
+    # java build types
+    "java",
+    # do not build ray
+    "skip",
+]
+
+
 @click.command()
 @click.argument("targets", required=True, type=str, nargs=-1)
 @click.argument("team", required=True, type=str, nargs=1)
@@ -146,26 +165,15 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 )
 @click.option(
     "--build-type",
-    type=click.Choice(
-        [
-            # python build types
-            "optimized",
-            "debug",
-            "asan",
-            "wheel",
-            "wheel-aarch64",
-            # cpp build types
-            "clang",
-            "asan-clang",
-            "ubsan",
-            "tsan-clang",
-            # java build types
-            "java",
-            # do not build ray
-            "skip",
-        ]
-    ),
+    type=click.Choice(_BUILD_TYPES),
     default="optimized",
+    help="Build type to compile ray and run tests with",
+)
+@click.option(
+    "--install-build-type",
+    type=click.Choice(_BUILD_TYPES + ["-", "clang-only"]),
+    default="-",
+    help="Build type to compile and install ray. '-' means use the same as --build-type",
 )
 @click.option(
     "--install-mask",
@@ -209,6 +217,7 @@ def main(
     python_version: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    install_build_type: Optional[str],
     install_mask: Optional[str],
     bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
@@ -226,6 +235,10 @@ def main(
     bisect_run_test_target = bisect_run_test_target or os.environ.get(
         "RAYCI_BISECT_TEST_TARGET"
     )
+
+    if install_build_type == "-":
+        install_build_type = build_type
+
     container = _get_container(
         team,
         operating_system,
@@ -239,6 +252,7 @@ def main(
         python_version=python_version,
         build_name=build_name,
         build_type=build_type,
+        install_build_type=install_build_type,
         skip_ray_installation=skip_ray_installation,
         install_mask=install_mask,
     )
@@ -289,6 +303,7 @@ def _get_container(
     python_version: Optional[str] = None,
     build_name: Optional[str] = None,
     build_type: Optional[str] = None,
+    install_build_type: Optional[str] = None,
     install_mask: Optional[str] = None,
     skip_ray_installation: bool = False,
 ) -> TesterContainer:
@@ -310,6 +325,7 @@ def _get_container(
             network=network,
             skip_ray_installation=skip_ray_installation,
             build_type=build_type,
+            install_build_type=install_build_type,
             tmp_filesystem=tmp_filesystem,
             install_mask=install_mask,
         )

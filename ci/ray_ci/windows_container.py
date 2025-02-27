@@ -11,9 +11,11 @@ WORKDIR = "C:\\rayci"
 
 class WindowsContainer(Container):
     def install_ray(
-        self, build_type: Optional[str] = None, mask: Optional[str] = None
+        self, install_build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> List[str]:
-        assert not build_type, f"Windows does not support build type: {build_type}"
+        assert (
+            not install_build_type
+        ), f"Windows does not support build type: {install_build_type}"
         assert not mask, f"Windows does not support install mask: {mask}"
 
         bazel_cache = os.environ.get("BUILDKITE_BAZEL_CACHE_URL", "")
