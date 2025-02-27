@@ -17,3 +17,12 @@ class ReduceOp(_CollectiveOp):
 
     def __str__(self):
         return f"{self.name.lower()}"
+
+
+@PublicAPI
+class DevicePolicy(Enum):
+    AUTO = "auto"
+    DEFAULT_DEVICE = "default_device"
+
+    def __str__(self):
+        return f"{self.name.lower()}"

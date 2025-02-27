@@ -1,7 +1,8 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Literal, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 
 from ray.exceptions import RayCgraphDeviceMismatchError
+from ray.experimental.util.types import DevicePolicy
 
 if TYPE_CHECKING:
     import numpy as np
@@ -147,8 +148,8 @@ class _SerializationContext:
             "cpu" if ctx.torch_device is None else ctx.torch_device.type
         )
 
-        # Use the default device type if policy is "default"
-        if ctx.target_device_policy == "default":
+        # Use the default device type if policy is DevicePolicy.DEFAULT_DEVICE
+        if ctx.target_device_policy == DevicePolicy.DEFAULT_DEVICE:
             target_device_type = default_device_type
         else:
             target_device_type = tensor_device_type

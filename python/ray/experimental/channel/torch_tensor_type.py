@@ -5,6 +5,7 @@ import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.util.types import DevicePolicy
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ class TorchTensorType(ChannelOutputType):
     def __init__(
         self,
         transport: Optional[Union[str, Communicator]] = AUTO,
-        device_policy: Literal["auto", "default"] = "auto",
+        device_policy: DevicePolicy = DevicePolicy.AUTO,
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
@@ -68,8 +69,7 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
-        self.device_policy = device_policy.lower()
-        assert self.device_policy in ["auto", "default"], self.device_policy
+        self.device_policy = device_policy
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
