@@ -110,40 +110,123 @@ refresh_compile_commands(
 # === Begin of rpc definitions ===
 # GRPC common lib.
 ray_cc_library(
-    name = "grpc_common_lib",
-    srcs = [
-        "src/ray/rpc/common.cc",
-        "src/ray/rpc/grpc_server.cc",
-        "src/ray/rpc/retryable_grpc_client.cc",
-        "src/ray/rpc/rpc_chaos.cc",
-        "src/ray/rpc/server_call.cc",
-    ],
-    hdrs = [
-        "src/ray/raylet_client/raylet_client.h",
-        "src/ray/raylet_client/raylet_connection.h",
-        "src/ray/rpc/client_call.h",
-        "src/ray/rpc/common.h",
-        "src/ray/rpc/grpc_client.h",
-        "src/ray/rpc/grpc_server.h",
-        "src/ray/rpc/metrics_agent_client.h",
-        "src/ray/rpc/retryable_grpc_client.h",
-        "src/ray/rpc/rpc_chaos.h",
-        "src/ray/rpc/server_call.h",
-    ],
+    name = "grpc_common_base",
+    srcs = ["src/ray/rpc/common.cc"],
+    hdrs = ["src/ray/rpc/common.h"],
+)
+
+ray_cc_library(
+    name = "rpc_chaos",
+    srcs = ["src/ray/rpc/rpc_chaos.cc"],
+    hdrs = ["src/ray/rpc/rpc_chaos.h"],
     deps = [
-        ":stats_metric",
+        "//src/ray/common:ray_config",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "rpc_client_call",
+    hdrs = ["src/ray/rpc/client_call.h"],
+    deps = [
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
-        "//src/ray/common:network",
-        "//src/ray/common:ray_config",
-        "//src/ray/common:ray_object",
         "//src/ray/common:status",
-        "//src/ray/common:task_common",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_client",
+    hdrs = ["src/ray/rpc/grpc_client.h"],
+    deps = [
+        ":grpc_common_base",
+        ":rpc_client_call",
+        ":rpc_chaos",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+    ],
+)
+
+ray_cc_library(
+    name = "rpc_server_call",
+    srcs = ["src/ray/rpc/server_call.cc"],
+    hdrs = ["src/ray/rpc/server_call.h"],
+    deps = [
+        ":stats_metric",
+        "//src/ray/common:asio",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "retryable_grpc_client",
+    srcs = ["src/ray/rpc/retryable_grpc_client.cc"],
+    hdrs = ["src/ray/rpc/retryable_grpc_client.h"],
+    deps = [
+        ":rpc_client_call",
+        ":grpc_client",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "metrics_agent_client",
+    hdrs = ["src/ray/rpc/metrics_agent_client.h"],
+    deps = [
+        ":grpc_client",
+        "//src/ray/common:status",
+        "//src/ray/util:logging",
+        "//src/ray/protobuf:reporter_cc_proto",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_server",
+    srcs = ["src/ray/rpc/grpc_server.cc"],
+    hdrs = ["src/ray/rpc/grpc_server.h"],
+    deps = [
+        ":grpc_common_base",
+        ":rpc_server_call",
+        "//src/ray/common:asio",
+        "//src/ray/common:status",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:thread_utils",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
         "@com_github_grpc_grpc//:grpcpp_admin",
-        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+ray_cc_library(
+    name = "grpc_common_lib",
+    # TODO(core): Both two header files are not needed, keep them there because of circular dependency between raylet and node rpc.
+    hdrs = [
+        "src/ray/raylet_client/raylet_client.h",
+        "src/ray/raylet_client/raylet_connection.h",
+    ],
+    # TODO(core): These three dependencies come from raylet client, should be able to remove after we split node rpc and raylet client into smaller targets.
+    deps = [
+        "//src/ray/common:ray_object",
+        "//src/ray/common:task_common",
+        "//src/ray/common:network",
+    ] + [
+        ":grpc_client",
+        ":grpc_common_base",
+        ":grpc_server",
+        ":metrics_agent_client",
+        ":retryable_grpc_client",
+        ":rpc_chaos",
+        ":rpc_server_call",
     ],
 )
 
