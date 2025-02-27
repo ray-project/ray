@@ -57,8 +57,7 @@ class ConcurrencyGroupManager final {
   ///
   /// \param executor The executor to be initialized.
   /// \return The function that can be used to release the executor.
-  std::optional<std::function<void()>> InitializeExecutor(
-      std::shared_ptr<ExecutorType> executor);
+  void InitializeExecutor(std::shared_ptr<ExecutorType> executor);
 
   /// Get the default executor.
   std::shared_ptr<ExecutorType> GetDefaultExecutor() const;
