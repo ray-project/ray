@@ -1077,7 +1077,7 @@ py_test(
 # Tag: callbacks
 # --------------------------------------------------------------------
 py_test(
-    name = "test_callbacks",
+    name = "test_multicallback",
     tags = ["team:rllib", "callbacks_dir"],
     size = "small",
     srcs = ["callbacks/tests/test_multicallback.py"]
