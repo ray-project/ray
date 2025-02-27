@@ -632,9 +632,6 @@ class EnvRunnerGroup:
                 # copies of the weights dict for each worker.
                 rl_module_state_ref = ray.put(rl_module_state)
 
-                # def _set_weights(env_runner):
-                #    env_runner.set_state(ray.get(rl_module_state_ref))
-
                 # Sync to specified remote workers in this EnvRunnerGroup.
                 self.foreach_env_runner(
                     func="set_state",
@@ -744,7 +741,9 @@ class EnvRunnerGroup:
 
     def foreach_env_runner(
         self,
-        func: Callable[[EnvRunner], T],
+        func: Union[
+            Callable[[EnvRunner], T], List[Callable[[EnvRunner], T]], str, List[str]
+        ],
         *,
         kwargs=None,
         local_env_runner: bool = True,
@@ -816,9 +815,17 @@ class EnvRunnerGroup:
 
         return local_result + remote_results
 
+    # TODO (sven): Deprecate this API. Users can lookup the "worker index" from the
+    #  EnvRunner object directly through `self.worker_index` (besides many other useful
+    #  properties, like `in_evaluation`, `num_env_runners`, etc..).
     def foreach_env_runner_with_id(
         self,
-        func: Callable[[int, EnvRunner], T],
+        func: Union[
+            Callable[[int, EnvRunner], T],
+            List[Callable[[int, EnvRunner], T]],
+            str,
+            List[str],
+        ],
         *,
         local_env_runner: bool = True,
         healthy_only: bool = True,
@@ -826,8 +833,6 @@ class EnvRunnerGroup:
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,
-        # Deprecated args.
-        local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner and its ID as its arguments.
 
@@ -884,7 +889,9 @@ class EnvRunnerGroup:
 
     def foreach_env_runner_async(
         self,
-        func: Union[Callable[[EnvRunner], T], str],
+        func: Union[
+            Callable[[EnvRunner], T], List[Callable[[EnvRunner], T]], str, List[str]
+        ],
         *,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
