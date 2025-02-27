@@ -71,7 +71,7 @@ std::string LRUCache::DebugString() const {
   std::stringstream result;
   result << "\n(" << name_ << ") capacity: " << Capacity();
   result << "\n(" << name_
-         << ") used: " << 100. * (1. - (RemainingCapacity() / (double)OriginalCapacity()))
+         << ") used: " << 100. * (1. - (RemainingCapacity() / static_cast<double>OriginalCapacity()))
          << "%";
   result << "\n(" << name_ << ") num objects: " << item_map_.size();
   result << "\n(" << name_ << ") num evictions: " << num_evictions_total_;

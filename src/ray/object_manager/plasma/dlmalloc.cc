@@ -121,12 +121,12 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
   *handle = CreateFileMapping(INVALID_HANDLE_VALUE,
                               NULL,
                               PAGE_READWRITE,
-                              (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
-                              (DWORD)(uint64_t)size,
+                              (DWORD)(static_cast<uint64_t>(size) >> (CHAR_BIT * sizeof(DWORD))),
+                              (DWORD)(static_cast<uint64_t>(size)),
                               NULL);
   RAY_CHECK(*handle != nullptr)
       << "CreateFileMapping() failed. GetLastError() = " << GetLastError();
-  *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, (size_t)size);
+  *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, static_cast<size_t>size);
   if (*pointer == nullptr) {
     RAY_LOG(ERROR) << "MapViewOfFile() failed. GetLastError() = " << GetLastError();
   }
