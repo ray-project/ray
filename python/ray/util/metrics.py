@@ -22,6 +22,21 @@ logger = logging.getLogger(__name__)
 _VALID_METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 
 
+def _is_invalid_metric_name(name: str) -> bool:
+    if len(name) == 0:
+        raise ValueError("Empty name is not allowed. Please provide a metric name.")
+    if not _VALID_METRIC_NAME_RE.match(name):
+        warnings.warn(
+            f"Invalid metric name: {name}. Metric will be discarded "
+            "and data will not be collected or published. "
+            "Metric names can only contain letters, numbers, _, and :. "
+            "Metric names cannot start with numbers.",
+            UserWarning,
+        )
+        return True
+    return False
+
+
 @DeveloperAPI
 class Metric:
     """The parent class of custom metrics.
@@ -38,7 +53,7 @@ class Metric:
     ):
         # Metrics with invalid names will be discarded and will not be collected
         # by Prometheus.
-        self._discard_metric = self._is_invalid_metric_name(name)
+        self._discard_metric = _is_invalid_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -56,20 +71,6 @@ class Metric:
         for key in self._tag_keys:
             if not isinstance(key, str):
                 raise TypeError(f"Tag keys must be str, got {type(key)}.")
-
-    def _is_invalid_metric_name(self, name: str) -> bool:
-        if len(name) == 0:
-            raise ValueError("Empty name is not allowed. Please provide a metric name.")
-        if not _VALID_METRIC_NAME_RE.match(name):
-            warnings.warn(
-                f"Invalid metric name: {name}. Metric will be discarded "
-                "and data will not be collected or published. "
-                "Metric names can only contain letters, numbers, _, and :. "
-                "Metric names cannot start with numbers.",
-                UserWarning,
-            )
-            return True
-        return False
 
     def set_default_tags(self, default_tags: Dict[str, str]):
         """Set default tags of metrics.
