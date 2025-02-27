@@ -447,7 +447,7 @@
   frequency: nightly
   python: "3.11"
   group: llm
-  working_dir: serve_tests
+  working_dir: llm_tests
 
   cluster:
     byod:
@@ -459,4 +459,4 @@
   run:
     timeout: 3600
     long_running: false
-    script: python workloads/llm_serving/llm_serving_release_tests.py
+    script: python llm_serving_release_tests.py
