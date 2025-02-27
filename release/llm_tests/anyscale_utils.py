@@ -37,6 +37,7 @@ def start_service(
     working_dir: Optional[str] = None,
     add_unique_suffix: bool = True,
     cloud: Optional[str] = None,
+    env_vars: Optional[Dict[str, str]] = None,
 ):
     """Starts an Anyscale Service with the specified configs.
 
@@ -68,6 +69,7 @@ def start_service(
         compute_config=compute_config,
         working_dir=working_dir,
         applications=applications,
+        env_vars=env_vars,
     )
     try:
         logger.info(f"Service config: {service_config}")

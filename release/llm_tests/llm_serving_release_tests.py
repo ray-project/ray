@@ -1,7 +1,9 @@
 import os
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
+import boto3
 import click
+import json
 import pytest
 import yaml
 
@@ -9,6 +11,8 @@ from anyscale_utils import start_service, get_current_compute_config_name
 
 CLOUD = "serve_release_tests_cloud"
 SERVE_CONFIG_FILE = "standalone_serve_config.yaml"
+SECRET_NAME = "llm_release_test_hf_token"
+REGION_NAME = "us-west-2"
 
 
 def get_applications() -> List[Any]:
@@ -21,6 +25,13 @@ def setup_envs(query_url: str):
     os.environ["OPENAI_API_BASE"] = query_url
 
 
+def get_env_vars() -> Dict[str, str]:
+    session = boto3.session.Session()
+    client = session.client(service_name="secretsmanager", region_name=REGION_NAME)
+    secret_string = client.get_secret_value(SecretId=SECRET_NAME)["SecretString"]
+    return json.loads(secret_string)
+
+
 @click.command()
 @click.option("--image-uri", type=str, default=None)
 def main(
@@ -28,6 +39,7 @@ def main(
 ):
     applications = get_applications()
     compute_config = get_current_compute_config_name()
+    env_vars = get_env_vars()
 
     with start_service(
         service_name="llm_serving_release_test",
@@ -36,6 +48,7 @@ def main(
         applications=applications,
         working_dir=".",
         cloud=CLOUD,
+        env_vars=env_vars,
     ) as query_url:
         print(f"Service started: {query_url=}")
         setup_envs(query_url=query_url)
