@@ -339,17 +339,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--logging-rotate-bytes",
-        required=False,
+        required=True,
         type=int,
-        default=sys.maxsize,
-        help=f"Specify the max bytes for rotating log file, default is {sys.maxsize} bytes.",
+        help="Specify the max bytes for rotating log file.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
-        required=False,
+        required=True,
         type=int,
-        default=1,
-        help="Specify the backup count of rotated log file, default is 1.",
+        help="Specify the backup count of rotated log file.",
     )
     parser.add_argument(
         "--log-dir",
@@ -428,17 +426,6 @@ if __name__ == "__main__":
         loop = ray._private.utils.get_or_create_event_loop()
 
         # Setup stdout/stderr redirect files
-        stdout_fileno = sys.stdout.fileno()
-        stderr_fileno = sys.stderr.fileno()
-        # We also manually set sys.stdout and sys.stderr because that seems to
-        # have an effect on the output buffering. Without doing this, stdout
-        # and stderr are heavily buffered resulting in seemingly lost logging
-        # statements. We never want to close the stdout file descriptor, dup2 will
-        # close it when necessary and we don't want python's GC to close it.
-        sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
-        sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
-
-        # Setup stdout/stderr redirect files
         out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
         StreamRedirector.redirect_stdout(
             out_filepath,
@@ -454,6 +441,17 @@ if __name__ == "__main__":
             False,
             False,
         )
+
+        # Setup stdout/stderr redirect files
+        stdout_fileno = sys.stdout.fileno()
+        stderr_fileno = sys.stderr.fileno()
+        # We also manually set sys.stdout and sys.stderr because that seems to
+        # have an effect on the output buffering. Without doing this, stdout
+        # and stderr are heavily buffered resulting in seemingly lost logging
+        # statements. We never want to close the stdout file descriptor, dup2 will
+        # close it when necessary and we don't want python's GC to close it.
+        sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
+        sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
 
         agent = DashboardAgent(
             args.node_ip_address,
