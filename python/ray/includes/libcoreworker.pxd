@@ -4,6 +4,7 @@
 
 from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
+from libcpp.functional cimport function
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
 from libcpp.string cimport string as c_string
@@ -403,6 +404,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool should_retry_exceptions,
             int64_t generator_backpressure_num_objects
         ) nogil) task_execution_callback
+        (function[void()]() nogil) initialize_thread_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect
