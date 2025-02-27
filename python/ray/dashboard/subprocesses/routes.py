@@ -2,7 +2,7 @@ import collections
 import functools
 import inspect
 import multiprocessing
-from typing import AsyncIterator, Awaitable, Callable
+from typing import AsyncIterator, Awaitable, Callable, Literal
 
 from ray.dashboard.optional_deps import aiohttp
 
@@ -16,7 +16,10 @@ from ray.dashboard.subprocesses.message import (
     StreamResponseEndMessage,
     StreamResponseStartMessage,
 )
-from ray.dashboard.subprocesses.module import SubprocessModule
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleRequest
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SubprocessRouteTable(BaseRouteTable):
@@ -31,11 +34,11 @@ class SubprocessRouteTable(BaseRouteTable):
     Before decoration:
 
         @SubprocessRouteTable.get("/get_logs")
-        async def get_logs_method(self, request_body: bytes) \
+        async def get_logs_method(self, request: SubprocessModuleRequest) \
             -> aiohttp.web.Response
 
         @SubprocessRouteTable.get("/tail_logs", streaming=True)
-        async def tail_logs_method(self, request_body: bytes) \
+        async def tail_logs_method(self, request: SubprocessModuleRequest) \
             -> AsyncIterator[bytes]
 
     After decoration:
@@ -85,7 +88,10 @@ class SubprocessRouteTable(BaseRouteTable):
 
     @staticmethod
     def _decorated_streaming_handler(
-        handler: Callable[[SubprocessModule, RequestMessage], AsyncIterator[bytes]]
+        handler: Callable[
+            [SubprocessModule, SubprocessModuleRequest], AsyncIterator[bytes]
+        ],
+        res_type: Literal["streaming", "websocket"],
     ) -> Callable[[RequestMessage, multiprocessing.Queue], Awaitable[None]]:
         """
         Requirements to and Behavior of the handler:
@@ -102,6 +108,11 @@ class SubprocessRouteTable(BaseRouteTable):
 
             After the AsyncIterator is exhausted, the server will close the connection.
         """
+        assert res_type in [
+            "streaming",
+            "websocket",
+        ], "Streaming response type can only be 'streaming' or 'websocket'."
+        is_websocket = res_type == "websocket"
 
         @functools.wraps(handler)
         async def _streaming_handler(
@@ -111,21 +122,43 @@ class SubprocessRouteTable(BaseRouteTable):
         ) -> None:
             start_message_sent = False
             try:
-                async_iter = handler(self, message.body)
+                request = SubprocessModuleRequest(
+                    method=message.http_method,
+                    path_qs=message.path_qs,
+                    query=message.query,
+                    headers=message.headers,
+                    body=message.body,
+                    match_info=message.match_info,
+                )
+                async_iter = handler(self, request)
+                first_chunk = None
+                try:
+                    first_chunk = await async_iter.__anext__()
+                except StopAsyncIteration:
+                    pass
+                parent_bound_queue.put(
+                    StreamResponseStartMessage(
+                        request_id=message.request_id,
+                        is_websocket=is_websocket,
+                    )
+                )
+                start_message_sent = True
+                if first_chunk is not None:
+                    if isinstance(first_chunk, str):
+                        first_chunk = first_chunk.encode()
+                    parent_bound_queue.put(
+                        StreamResponseDataMessage(
+                            request_id=message.request_id, body=first_chunk
+                        )
+                    )
                 async for chunk in async_iter:
-                    if not start_message_sent:
-                        parent_bound_queue.put(
-                            StreamResponseStartMessage(
-                                request_id=message.request_id, body=chunk
-                            )
+                    if isinstance(chunk, str):
+                        chunk = chunk.encode()
+                    parent_bound_queue.put(
+                        StreamResponseDataMessage(
+                            request_id=message.request_id, body=chunk
                         )
-                        start_message_sent = True
-                    else:
-                        parent_bound_queue.put(
-                            StreamResponseDataMessage(
-                                request_id=message.request_id, body=chunk
-                            )
-                        )
+                    )
                 parent_bound_queue.put(
                     StreamResponseEndMessage(request_id=message.request_id)
                 )
@@ -135,7 +168,7 @@ class SubprocessRouteTable(BaseRouteTable):
                         UnaryResponseMessage(
                             request_id=message.request_id,
                             status=e.status,
-                            body=e.text,
+                            body=e.text.encode() if e.text else b"",
                         )
                     )
                 else:
@@ -152,7 +185,9 @@ class SubprocessRouteTable(BaseRouteTable):
 
     @staticmethod
     def _decorated_non_streaming_handler(
-        handler: Callable[[SubprocessModule, RequestMessage], aiohttp.web.Response]
+        handler: Callable[
+            [SubprocessModule, SubprocessModuleRequest], aiohttp.web.Response
+        ]
     ) -> Callable[[RequestMessage, multiprocessing.Queue], Awaitable[None]]:
         @functools.wraps(handler)
         async def _non_streaming_handler(
@@ -161,7 +196,15 @@ class SubprocessRouteTable(BaseRouteTable):
             parent_bound_queue: multiprocessing.Queue,
         ) -> None:
             try:
-                response = await handler(self, message.body)
+                request = SubprocessModuleRequest(
+                    method=message.http_method,
+                    path_qs=message.path_qs,
+                    query=message.query,
+                    headers=message.headers,
+                    body=message.body,
+                    match_info=message.match_info,
+                )
+                response = await handler(self, request)
                 reply_message = UnaryResponseMessage(
                     request_id=message.request_id,
                     status=response.status,
@@ -214,7 +257,11 @@ class SubprocessRouteTable(BaseRouteTable):
             )
 
             if kwargs.get("streaming", False):
-                handler = cls._decorated_streaming_handler(handler)
+                is_websocket = kwargs.get("websocket", False)
+                res_type: Literal["streaming", "websocket"] = (
+                    "websocket" if is_websocket else "streaming"
+                )
+                handler = cls._decorated_streaming_handler(handler, res_type)
             else:
                 handler = cls._decorated_non_streaming_handler(handler)
 
