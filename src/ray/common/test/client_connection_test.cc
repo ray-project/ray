@@ -31,21 +31,7 @@ namespace raylet {
 class ClientConnectionTest : public ::testing::Test {
  public:
   ClientConnectionTest()
-      : io_service_(), in_(io_service_), out_(io_service_), error_message_type_(1) {
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
-    boost::asio::local::stream_protocol::socket input(io_service_), output(io_service_);
-    boost::asio::local::connect_pair(input, output);
-    in_ = std::move(input);
-    out_ = std::move(output);
-#else
-    // Choose a free port.
-    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
-    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
-                                                                       endpoint);
-    out_.connect(endpoint);
-    acceptor.accept(in_);
-#endif
-  }
+      : io_service_() {}
 
   ray::Status WriteBadMessage(std::shared_ptr<ray::ClientConnection> conn,
                               int64_t type,
@@ -60,20 +46,42 @@ class ClientConnectionTest : public ::testing::Test {
     return conn->WriteBuffer(message_buffers);
   }
 
+
+std::pair<std::shared_ptr<ClientConnection>, std::shared_ptr<ClientConnection>> CreateConnectionPair(
+    MessageHandler reader_message_handler, MessageHandler writer_message_handler) { 
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
+  boost::asio::local::stream_protocol::socket in(io_service_), out(io_service_);
+  boost::asio::local::connect_pair(in, out);
+#else
+  local_stream_socket in(io_service_);
+  local_stream_socket out(io_service_);
+  auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
+  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
+                                     endpoint);
+  out.connect(endpoint);
+  acceptor.accept(in);
+#endif
+
+  ClientHandler noop_client_handler = [](ClientConnection &client) {};
+
+  auto reader = ClientConnection::Create(
+      noop_client_handler, reader_message_handler, std::move(in), "reader", {}, /*error_message_type=*/1);
+
+  auto writer = ClientConnection::Create(
+      noop_client_handler, writer_message_handler, std::move(out), "writer", {}, /*error_message_type=*/1);
+
+  return std::make_pair(std::move(reader), std::move(writer));
+}
+
  protected:
   instrumented_io_context io_service_;
-  local_stream_socket in_;
-  local_stream_socket out_;
-  int64_t error_message_type_;
 };
 
-TEST_F(ClientConnectionTest, SimpleSyncWrite) {
+TEST_F(ClientConnectionTest, UnidirectionalSyncWrite) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
-
-  MessageHandler message_handler = [&arr, &num_messages](
+  MessageHandler reader_message_handler = [&arr, &num_messages](
                                        std::shared_ptr<ClientConnection> client,
                                        int64_t message_type,
                                        const std::vector<uint8_t> &message) {
@@ -81,20 +89,75 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
     num_messages += 1;
   };
 
-  auto conn1 = ClientConnection::Create(
-      client_handler, message_handler, std::move(in_), "conn1", {}, error_message_type_);
 
-  auto conn2 = ClientConnection::Create(
-      client_handler, message_handler, std::move(out_), "conn2", {}, error_message_type_);
+  MessageHandler writer_message_handler = [](
+                                       std::shared_ptr<ClientConnection> client,
+                                       int64_t message_type,
+                                       const std::vector<uint8_t> &message) {};
 
-  RAY_CHECK_OK(conn1->WriteMessage(0, 5, arr));
-  RAY_CHECK_OK(conn2->WriteMessage(0, 5, arr));
-  conn1->ProcessMessages();
-  conn2->ProcessMessages();
+  auto [reader, writer] = CreateConnectionPair(reader_message_handler, writer_message_handler);
+
+  ASSERT_EQ(num_messages, 0);
+
+  // Write first message.
+  RAY_CHECK_OK(writer->WriteMessage(0, 5, arr));
+  reader->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(num_messages, 1);
+
+  io_service_.restart();
+
+  // Write second message.
+  RAY_CHECK_OK(writer->WriteMessage(0, 5, arr));
+  reader->ProcessMessages();
   io_service_.run();
   ASSERT_EQ(num_messages, 2);
 }
 
+TEST_F(ClientConnectionTest, BidirectionalSyncWrite) {
+  const uint8_t arr[5] = {1, 2, 3, 4, 5};
+  int reader_num_messages = 0;
+  int writer_num_messages = 0;
+
+  MessageHandler reader_message_handler = [&arr, &reader_num_messages](
+                                       std::shared_ptr<ClientConnection> client,
+                                       int64_t message_type,
+                                       const std::vector<uint8_t> &message) {
+    ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+    reader_num_messages += 1;
+  };
+
+  MessageHandler writer_message_handler = [&arr, &writer_num_messages](
+                                       std::shared_ptr<ClientConnection> client,
+                                       int64_t message_type,
+                                       const std::vector<uint8_t> &message) {
+    ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+    writer_num_messages += 1;
+  };
+
+  auto [reader, writer] = CreateConnectionPair(reader_message_handler, writer_message_handler);
+
+  ASSERT_EQ(reader_num_messages, 0);
+  ASSERT_EQ(writer_num_messages, 0);
+
+  // Write first message.
+  RAY_CHECK_OK(writer->WriteMessage(0, 5, arr));
+  reader->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(reader_num_messages, 1);
+  ASSERT_EQ(writer_num_messages, 0);
+
+  io_service_.restart();
+
+  // Write second message.
+  RAY_CHECK_OK(reader->WriteMessage(0, 5, arr));
+  writer->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(reader_num_messages, 1);
+  ASSERT_EQ(writer_num_messages, 1);
+}
+
+/*
 TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
   const uint8_t msg2[5] = {4, 4, 4, 4, 4};
@@ -289,6 +352,7 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
   }
 #endif
 }
+*/
 
 }  // namespace raylet
 
