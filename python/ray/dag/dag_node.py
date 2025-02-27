@@ -17,6 +17,7 @@ from typing import (
     Any,
     TypeVar,
     Callable,
+    Literal,
 )
 import uuid
 import asyncio
@@ -141,6 +142,7 @@ class DAGNode(DAGNodeBase):
     def with_tensor_transport(
         self,
         transport: Optional[Union[str, Communicator]] = "auto",
+        device_policy: Optional[Literal["auto", "default"]] = "auto",
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
@@ -163,12 +165,14 @@ class DAGNode(DAGNodeBase):
         """
         if transport == "auto":
             self._type_hint = AutoTransportType(
+                device_policy=device_policy,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
                 transport=transport,
+                device_policy=device_policy,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
@@ -179,6 +183,7 @@ class DAGNode(DAGNodeBase):
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
+                device_policy=device_policy,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )

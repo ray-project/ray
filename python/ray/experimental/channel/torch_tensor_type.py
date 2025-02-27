@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union, Literal
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
@@ -22,6 +22,7 @@ class TorchTensorType(ChannelOutputType):
     def __init__(
         self,
         transport: Optional[Union[str, Communicator]] = AUTO,
+        device_policy: Literal["auto", "default"] = "auto",
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
@@ -40,6 +41,11 @@ class TorchTensorType(ChannelOutputType):
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
+            device_policy: Policy for defining the target device type of torch.Tensor.
+                If "auto" is set, it moves the tensor to the same device type
+                on a receiver side.
+                If "default" is set, it moves the tensor to the default device
+                type on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
@@ -62,6 +68,8 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
+        self.device_policy = device_policy.lower()
+        assert self.device_policy in ["auto", "default"], self.device_policy
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
@@ -105,10 +113,12 @@ class TorchTensorType(ChannelOutputType):
 
         def serialize(t):
             ctx = ChannelContext.get_current()
+            ctx.set_target_device_policy(self.device_policy)
             return ctx.serialization_context.serialize_tensor(t)
 
         def deserialize(b):
             ctx = ChannelContext.get_current()
+            ctx.set_target_device_policy(self.device_policy)
             return ctx.serialization_context.deserialize_tensor(b)
 
         ray.util.serialization.register_serializer(

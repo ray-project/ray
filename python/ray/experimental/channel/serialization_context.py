@@ -1,5 +1,7 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Literal, Tuple, Union
+
+from ray.exceptions import RayCgraphDeviceMismatchError
 
 if TYPE_CHECKING:
     import numpy as np
@@ -82,7 +84,9 @@ class _SerializationContext:
         self._deserialized_tensor_placeholders = set()
         return prev_tensors, deserialized_tensor_placeholders
 
-    def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
+    def serialize_tensor(
+        self, tensor: "torch.Tensor"
+    ) -> Union[int, Tuple["np.ndarray", "torch.dtype", str]]:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
@@ -99,8 +103,10 @@ class _SerializationContext:
 
     def serialize_to_numpy(
         self, tensor: "torch.Tensor"
-    ) -> Tuple["np.ndarray", "torch.dtype"]:
+    ) -> Tuple["np.ndarray", "torch.dtype", str]:
         import torch
+
+        tensor_device_type = tensor.device.type
 
         # Transfer through Ray's shared memory store for now.
         # TODO(swang): This requires two copies, one to transfer from GPU to
@@ -113,9 +119,11 @@ class _SerializationContext:
         # Numpy does not have an equivalent dtype for all torch dtypes, so
         # instead of casting directly to numpy, we first use a view with a
         # common dtype and then view as numpy array.
-        return (tensor.view(torch.uint8).numpy(), tensor.dtype)
+        return (tensor.view(torch.uint8).numpy(), tensor.dtype, tensor_device_type)
 
-    def deserialize_tensor(self, val: Union["np.ndarray", int]):
+    def deserialize_tensor(
+        self, val: Union[Tuple["np.ndarray", "torch.dtype", str], int]
+    ):
         # Found a placeholder for a tensor that was serialized via NCCL.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
@@ -124,22 +132,36 @@ class _SerializationContext:
             assert placeholder < len(self._out_of_band_tensors)
             return self._out_of_band_tensors[placeholder]
 
-        return self.deserialize_from_numpy(val)
+        np_array, dtype, tensor_device_type = val
+        return self.deserialize_from_numpy(np_array, dtype, tensor_device_type)
 
     def deserialize_from_numpy(
-        self, np_array_dtype: Tuple["np.ndarray", "torch.dtype"]
+        self, np_array: "np.ndarray", dtype: "torch.dtype", tensor_device_type: str
     ):
         import torch
 
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
+        default_device_type = (
+            "cpu" if ctx.torch_device is None else ctx.torch_device.type
+        )
 
-        np_array, dtype = np_array_dtype
+        # Use the default device type if policy is "default"
+        if ctx.target_device_policy == "default":
+            target_device_type = default_device_type
+        else:
+            target_device_type = tensor_device_type
 
+        # If target is CUDA, we must have CUDA device
+        if target_device_type == "cuda" and default_device_type != "cuda":
+            # TODO: Improve the error message to include the upstream task.
+            raise RayCgraphDeviceMismatchError(
+                f"The tensor should be created to a device type '{target_device_type}', "
+                f"but there's only '{default_device_type}' available."
+            )
         # TODO(swang): Support local P2P transfers if available.
-        # If there is a GPU assigned to this worker, move it there.
-        if ctx.torch_device is not None and ctx.torch_device.type == "cuda":
+        if target_device_type == "cuda":
 
             def convert_numpy_to_tensor(np_array, ctx):
                 # It does zero-copy convert np_array inside shared memroy to
@@ -171,4 +193,6 @@ class _SerializationContext:
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe to set when deserializing np_array if the
         # upstream task has num_readers=1.
-        return torch.tensor(np_array, device=ctx.torch_device).view(dtype)
+        # For CPU target, use CPU device regardless of default device
+        target_device = None if target_device_type == "cpu" else ctx.torch_device
+        return torch.tensor(np_array, device=target_device).view(dtype)

@@ -14,6 +14,7 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    Literal,
 )
 
 import ray
@@ -122,6 +123,7 @@ class ChannelContext:
     _torch_available: Optional[bool] = None
     _torch_device: Optional["torch.device"] = None
     _current_stream: Optional["torch.cuda.Stream"] = None
+    _target_device_policy: Optional[Literal["default", "auto"]] = "auto"
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
@@ -178,6 +180,13 @@ class ChannelContext:
 
     def set_torch_device(self, device: "torch.device"):
         self._torch_device = device
+
+    @property
+    def target_device_policy(self) -> Literal["default", "auto"]:
+        return self._target_device_policy
+
+    def set_target_device_policy(self, policy: Literal["default", "auto"]):
+        self._target_device_policy = policy
 
 
 @PublicAPI(stability="alpha")
