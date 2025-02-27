@@ -35,7 +35,6 @@ Exceptions
     ray.exceptions.RayChannelError
     ray.exceptions.RayChannelTimeoutError
     ray.exceptions.RayCgraphCapacityExceeded
-    ray.exceptions.RayCgraphDeviceMismatchError
     ray.exceptions.RuntimeEnvSetupError
     ray.exceptions.CrossLanguageError
     ray.exceptions.RaySystemError

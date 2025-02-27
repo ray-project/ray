@@ -14,7 +14,6 @@ from typing import (
     Optional,
     Tuple,
     Union,
-    Literal,
 )
 
 import ray
