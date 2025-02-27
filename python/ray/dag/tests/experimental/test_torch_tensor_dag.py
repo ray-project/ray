@@ -1749,7 +1749,6 @@ def test_torch_tensor_nccl_collective_ops_with_class_method_output_node(
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
-        # assert all(torch.equal(r, e) for r, e in zip(result, expected_result))
         for result, expected_result in zip(results, expected_results):
             assert torch.equal(result.to("cpu"), expected_result.to("cpu"))
 
