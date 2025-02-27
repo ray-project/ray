@@ -59,8 +59,8 @@ def _to_proto_worker(worker: TrainWorker) -> ProtoTrainRunAttempt.TrainWorker:
         world_rank=worker.world_rank,
         local_rank=worker.local_rank,
         node_rank=worker.node_rank,
-        actor_id=bytes.from_hex(worker.actor_id),
-        node_id=bytes.from_hex(worker.node_id),
+        actor_id=bytes.fromhex(worker.actor_id),
+        node_id=bytes.fromhex(worker.node_id),
         node_ip=worker.node_ip,
         pid=worker.pid,
         gpu_ids=worker.gpu_ids,
@@ -90,11 +90,12 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
 
 def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
+    print(run.job_id)
     proto_run = ProtoTrainRun(
         id=run.id,
         name=run.name,
-        job_id=bytes.from_hex(run.job_id),
-        controller_actor_id=bytes.from_hex(run.controller_actor_id),
+        job_id=bytes.fromhex(run.job_id),
+        controller_actor_id=bytes.fromhex(run.controller_actor_id),
         status=_RUN_STATUS_MAP[run.status],
         status_detail=run.status_detail,
         start_time=_ms_to_ns(run.start_time_ms),
