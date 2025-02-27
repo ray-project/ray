@@ -26,9 +26,8 @@ template <typename ExecutorType>
 ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     const std::vector<ConcurrencyGroup> &concurrency_groups,
     const int32_t max_concurrency_for_default_concurrency_group,
-    std::function<std::function<void()>()> initializer,
-    std::optional<Language> language)
-    : initializer_(std::move(initializer)), language_(language) {
+    std::function<std::function<void()>()> initializer)
+    : initializer_(std::move(initializer)) {
   for (auto &group : concurrency_groups) {
     const auto name = group.name;
     const auto max_concurrency = group.max_concurrency;
