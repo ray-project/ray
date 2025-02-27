@@ -39,15 +39,29 @@ class CloudFileSystem:
 
         Args:
             object_uri: URI of the file (s3:// or gs://)
+                If URI contains 'anonymous@', anonymous access is used.
+                Example: s3://anonymous@bucket/path
 
         Returns:
             Tuple of (filesystem, path)
         """
+        anonymous = False
+        # Check for anonymous access pattern
+        # e.g. s3://anonymous@bucket/path
+        if "@" in object_uri:
+            parts = object_uri.split("@", 1)
+            # Check if the first part ends with "anonymous"
+            if parts[0].endswith("anonymous"):
+                anonymous = True
+                # Remove the anonymous@ part, keeping the scheme
+                scheme = parts[0].split("://")[0]
+                object_uri = f"{scheme}://{parts[1]}"
+
         if object_uri.startswith("s3://"):
-            fs = pa_fs.S3FileSystem()
+            fs = pa_fs.S3FileSystem(anonymous=anonymous)
             path = object_uri[5:]  # Remove "s3://"
         elif object_uri.startswith("gs://"):
-            fs = pa_fs.GcsFileSystem()
+            fs = pa_fs.GcsFileSystem(anonymous=anonymous)
             path = object_uri[5:]  # Remove "gs://"
         else:
             raise ValueError(f"Unsupported URI scheme: {object_uri}")
