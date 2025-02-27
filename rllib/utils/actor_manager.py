@@ -478,7 +478,6 @@ class FaultTolerantActorManager:
         kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         healthy_only: bool = True,
         remote_actor_ids: Optional[List[int]] = None,
-        _print=False,
     ) -> int:
         """Calls given functions against each actors without waiting for results.
 
@@ -580,9 +579,6 @@ class FaultTolerantActorManager:
 
         if not limited_remote_actor_ids:
             return 0
-
-        if _print:
-            print(limited_remote_actor_ids)
 
         remote_calls = self._call_actors(
             func=limited_func,

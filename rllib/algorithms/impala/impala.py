@@ -1,11 +1,7 @@
 import copy
-import functools
 import logging
 import queue
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
-
-import numpy as np
-import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
@@ -42,7 +38,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,

@@ -4,7 +4,6 @@ from ray import serve
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     LLMConfig,
-    AutoscalingConfig,
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.builders.application_builders import (
@@ -14,6 +13,7 @@ from ray.llm._internal.serve.builders.application_builders import (
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
 )
+from ray.serve.config import AutoscalingConfig
 import subprocess
 import yaml
 import os
@@ -139,7 +139,7 @@ class TestBuildOpenaiApp:
         )
         assert router_autoscaling_config.min_replicas == 8  # (1 + 1 + 2) * 2
         assert router_autoscaling_config.initial_replicas == 10  # (1 + 1 + 3) * 2
-        assert router_autoscaling_config.max_replicas == 408  # (100 + 100 + 4) * 2
+        assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
         assert (
             router_autoscaling_config.target_ongoing_requests
             == RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS

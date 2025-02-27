@@ -260,7 +260,7 @@ class TorchLearner(Learner):
                     # Update the scaler.
                     scaler.update()
                 # `step` the optimizer (default), but only if all gradients are finite.
-                elif all(
+                elif self.config.torch_skip_nan_gradients or all(
                     param.grad is None or torch.isfinite(param.grad).all()
                     for group in optim.param_groups
                     for param in group["params"]

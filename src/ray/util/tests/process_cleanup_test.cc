@@ -17,6 +17,7 @@
 #if defined(__APPLE__) || defined(__linux__)
 
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -47,7 +48,7 @@ TEST(ProcessCleanerTest, BasicTest) {
   // For child process, call [SpawnSubprocessAndCleanup] and exit.
   if (pid == 0) {
     SpawnSubprocessAndCleanup(std::move(test_func));
-    return;
+    std::_Exit(0);  // No flush stdout/stderr.
   }
 
   // For parent process, first wait until child process exits.
