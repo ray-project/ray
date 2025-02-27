@@ -30,23 +30,9 @@ class TrainContext:
     @Deprecated
     def get_trial_dir(self) -> str:
         """Log directory corresponding to the trial directory for a Tune session.
-        If calling from a Train session, this will give the trial directory of its parent
-        Tune session.
-
-        .. testcode::
-
-            import ray.tune
-
-            def train_func(config):
-                print(ray.tune.get_context().get_trial_dir())
-
-            tuner = ray.tune.Tuner(train_func)
-            tuner.fit()
-
-        .. testoutput::
-            :options: +MOCK
-
-            /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
+        This is deprecated for Ray Train and should no longer be called in Ray Train workers.
+        
+        If this directory is needed, please pass it into the `train_loop_config` directly.
         """
         return get_internal_train_context().get_trial_dir()
 
