@@ -1,7 +1,6 @@
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 
-from ray.exceptions import RayCgraphDeviceMismatchError
 from ray.experimental.util.types import DevicePolicy
 
 if TYPE_CHECKING:
@@ -154,21 +153,14 @@ class _SerializationContext:
         else:
             target_device_type = tensor_device_type
 
-        # If target is CUDA, we must have CUDA device
-        if target_device_type == "cuda" and default_device_type != "cuda":
-            # TODO: Improve the error message to include the upstream task.
-            raise RayCgraphDeviceMismatchError(
-                f"Expected the tensor to be on device type '{target_device_type}', "
-                f"but only device type '{default_device_type}' is available."
-            )
         # TODO(swang): Support local P2P transfers if available.
         if target_device_type == "cuda":
 
-            def convert_numpy_to_tensor(np_array, ctx):
+            def convert_numpy_to_tensor(np_array):
                 # It does zero-copy convert np_array inside shared memroy to
                 # a tensor. Since we move data to GPU immediately, it is safe.
                 cpu_tensor = torch.from_numpy(np_array).view(dtype)
-                return cpu_tensor.to(device=ctx.torch_device)
+                return cpu_tensor.to(device=target_device_type)
 
             global _TORCH_WARNING_FILTER_ACTIVATE
             # filtering warning messages would be the bottleneck for
@@ -183,11 +175,10 @@ class _SerializationContext:
                         category=UserWarning,
                         message="The given NumPy array is not writable",
                     )
-                    # gpu_tensor = convert_numpy_to_tensor(np_array, ctx)
-                    gpu_tensor = convert_numpy_to_tensor(np_array, ctx)
+                    gpu_tensor = convert_numpy_to_tensor(np_array)
                 _TORCH_WARNING_FILTER_ACTIVATE = False
             else:
-                gpu_tensor = convert_numpy_to_tensor(np_array, ctx)
+                gpu_tensor = convert_numpy_to_tensor(np_array)
 
             return gpu_tensor
 

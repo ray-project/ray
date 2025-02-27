@@ -251,7 +251,6 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
-# TODO(anm): fix this
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])
 def test_torch_tensor_auto(ray_start_regular, num_gpus):
@@ -1492,7 +1491,6 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         assert result == [(reduced_val, shape, dtype) for _ in workers]
 
 
-# TODO(anmscale): fix this test
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     """
@@ -1543,8 +1541,8 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     result = ray.get(ref)
     reduced_value = value * 2
     expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_value
-    assert torch.equal(result[0], expected_tensor_val)
-    assert torch.equal(result[1], expected_tensor_val)
+    assert torch.equal(result[0].cpu(), expected_tensor_val)
+    assert torch.equal(result[1].cpu(), expected_tensor_val)
     assert result[2] == (value, shape, dtype)
 
 

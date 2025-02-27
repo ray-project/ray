@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union, Literal
+from typing import Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelOutputType
