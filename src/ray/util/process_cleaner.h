@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Util function on environment variables.
-
 #pragma once
 
-#include <string>
+#include <functional>
 
 namespace ray {
 
-// Set and override environment variable [name].
-void SetEnv(const std::string &name, const std::string &value);
-void UnsetEnv(const std::string &name);
-// Return whether the given env is set to true.
-bool IsEnvTrue(const std::string &name);
+// This util function implements such feature:
+// To perform certain cleanup work after main process dies (i.e. cleanup cgroup for main
+// process), it spawns a subprocess which keeps listens to pipe; child process keeps
+// listening to pipe and gets awaken when parent process exits.
+//
+// Notice it only works for unix platform, and it should be called AT MOST ONCE.
+// If there're multiple cleanup functions to register, callers should wrap them all into
+// one callback.
+void SpawnSubprocessAndCleanup(std::function<void()> cleanup);
 
 }  // namespace ray
