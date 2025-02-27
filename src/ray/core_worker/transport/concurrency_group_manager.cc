@@ -33,7 +33,7 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     const auto name = group.name;
     const auto max_concurrency = group.max_concurrency;
     auto executor = std::make_shared<ExecutorType>(max_concurrency);
-    executor_releasers_.push_back(InitializeExecutor(executor));
+    InitializeExecutor(executor);
     auto &fds = group.function_descriptors;
     for (auto fd : fds) {
       functions_to_executor_index_[fd->ToString()] = executor;
@@ -50,7 +50,7 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
        !concurrency_groups.empty())) {
     default_executor_ =
         std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
-    executor_releasers_.push_back(InitializeExecutor(default_executor_));
+    InitializeExecutor(default_executor_);
   }
 }
 
@@ -90,30 +90,22 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetDefaultE
 }
 
 template <typename ExecutorType>
-std::optional<std::function<void()>>
-ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
+void ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
     std::shared_ptr<ExecutorType> executor) {
-  if (language_ == Language::PYTHON) {
-    if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
-      // Create a promise/future pair to synchronize the initialization
-      std::promise<void> init_promise;
-      auto init_future = init_promise.get_future();
-      auto initializer = initializer_;
+  if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
+    // Create a promise/future pair to synchronize the initialization
+    std::promise<void> init_promise;
+    auto init_future = init_promise.get_future();
+    auto initializer = initializer_;
 
-      executor->Post([&initializer, &init_promise]() {
-        initializer();
-        init_promise.set_value();
-      });
+    executor->Post([&initializer, &init_promise]() {
+      initializer();
+      init_promise.set_value();
+    });
 
-      // Wait for Python initialization to complete
-      init_future.wait();
-
-      return std::nullopt;
-    }
-    // TODO: Consider whether we need to handle FiberState or using BoundedExecutor for
-    // both sync and async cases.
+    // Wait for Python initialization to complete
+    init_future.wait();
   }
-  return std::nullopt;
 }
 
 /// Stop and join the executors that the this manager owns.
