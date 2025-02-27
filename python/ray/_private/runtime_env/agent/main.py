@@ -141,16 +141,6 @@ if __name__ == "__main__":
         backup_count=logging_rotation_backup_count,
     )
 
-    stdout_fileno = sys.stdout.fileno()
-    stderr_fileno = sys.stderr.fileno()
-    # We also manually set sys.stdout and sys.stderr because that seems to
-    # have an effect on the output buffering. Without doing this, stdout
-    # and stderr are heavily buffered resulting in seemingly lost logging
-    # statements. We never want to close the stdout file descriptor, dup2 will
-    # close it when necessary and we don't want python's GC to close it.
-    sys.stdout = open_log(stdout_fileno, unbuffered=True, closefd=False)
-    sys.stderr = open_log(stderr_fileno, unbuffered=True, closefd=False)
-
     # Setup stdout/stderr redirect files
     out_filepath, err_filepath = get_capture_filepaths(args.log_dir)
     StreamRedirector.redirect_stdout(
