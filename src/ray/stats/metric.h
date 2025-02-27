@@ -18,6 +18,7 @@
 
 #include <functional>
 #include <memory>
+#include <regex>
 #include <tuple>
 #include <unordered_map>
 #include <utility>  // std::pair
@@ -111,6 +112,8 @@ class Metric {
 
   Metric &operator()() { return *this; }
 
+  static const std::regex &GetMetricNameRegex();
+
   /// Get the name of this metric.
   std::string GetName() const { return name_; }
 
@@ -142,6 +145,8 @@ class Metric {
   // For making sure thread-safe to all of metric registrations.
   static absl::Mutex registration_mutex_;
 
+ private:
+  const std::regex &name_regex_;
 };  // class Metric
 
 class Gauge : public Metric {
