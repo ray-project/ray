@@ -157,8 +157,8 @@ class _SerializationContext:
         if target_device_type == "cuda" and default_device_type != "cuda":
             # TODO: Improve the error message to include the upstream task.
             raise RayCgraphDeviceMismatchError(
-                f"The tensor should be created to a device type '{target_device_type}', "
-                f"but there's only '{default_device_type}' available."
+                f"Expected the tensor to be on device type '{target_device_type}', "
+                f"but only device type '{default_device_type}' is available."
             )
         # TODO(swang): Support local P2P transfers if available.
         if target_device_type == "cuda":
