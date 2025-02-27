@@ -33,7 +33,7 @@ To visualize the profiling results, follow the same instructions as described in
 
 Visualization
 -------------
-To visualize the graph structure, call the ``visualize`` method after calling ``experimental_compile``
+To visualize the graph structure, call the :func:`visualize <ray.dag.compiled_dag_node.CompiledDAG.visualize>` method after calling :func:`experimental_compile <ray.dag.DAGNode.experimental_compile>`
 on the graph.
 
 .. testcode::

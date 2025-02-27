@@ -200,6 +200,9 @@ class ActorMethod:
 
     @DeveloperAPI
     def bind(self, *args, **kwargs):
+        """
+        Bind arguments to the actor method for Ray DAG building.
+        """
         return self._bind(args, kwargs)
 
     def remote(self, *args, **kwargs):

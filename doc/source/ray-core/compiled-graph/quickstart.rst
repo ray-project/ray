@@ -53,9 +53,9 @@ Later, compile this graph, to apply optimizations and prevent further modificati
 First, create a :ref:`Ray DAG <ray-dag-guide>` (directed acyclic graph), which is a lazily executed graph of Ray tasks.
 Note 3 key differences with the classic Ray Core APIs:
 
-1. Use the ``InputNode()`` context manager to indicate which inputs to the DAG should be provided at run time.
-2. Use ``bind`` instead of ``remote`` to indicate lazily executed Ray tasks.
-3. Use ``execute`` to execute the DAG.
+1. Use the :class:`ray.dag.InputNode <ray.dag.input_node.InputNode>` context manager to indicate which inputs to the DAG should be provided at run time.
+2. Use :func:`bind() <ray.actor.ActorMethod.bind>` instead of :func:`remote() <ray.remote>` to indicate lazily executed Ray tasks.
+3. Use :func:`execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` to execute the DAG.
 
 Here, define a graph and execute it.
 Note that there is **no** compilation happening here. This uses the same execution backend as the preceding example:
@@ -81,7 +81,7 @@ Note that there is **no** compilation happening here. This uses the same executi
     print(f"Execution takes {(end - start) * 1000 * 1000} us")
 
 
-Next, compile the ``dag`` using the ``experimental_compile`` API.
+Next, compile the ``dag`` using the :func:`experimental_compile <ray.dag.DAGNode.experimental_compile>` API.
 The graph uses the same APIs for execution:
 
 .. testcode::
@@ -151,8 +151,8 @@ For example, the following uses the preceding example to create a DAG that passe
     hello
 
 Here is another example that passes the same message to both actors, which can then execute in parallel.
-It uses ``ray.dag.MultiOutputNode`` to indicate that this DAG returns multiple outputs.
-Then, ``dag.execute()`` returns multiple ``CompiledDAGRef`` objects, one per node:
+It uses :class:`ray.dag.MultiOutputNode <ray.dag.output_node.MultiOutputNode>` to indicate that this DAG returns multiple outputs.
+Then, :func:`dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` returns multiple :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>` objects, one per node:
 
 
 .. testcode::
@@ -251,12 +251,12 @@ Execution Timeouts
 Some errors, such as NCCL network errors, require additional handling to avoid hanging.
 In the future, Ray may attempt to detect such errors, but currently as a fallback, it allows 
 configurable timeouts for
-``compiled_dag.execute()`` and :func:`ray.get() <ray.get>`.
+:func:`compiled_dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` and :func:`ray.get() <ray.get>`.
 
 The default timeout is 10 seconds for both. Set the following environment variables
 to change the default timeout:
 
-- ``RAY_CGRAPH_submit_timeout``: Timeout for ``compiled_dag.execute()``.
+- ``RAY_CGRAPH_submit_timeout``: Timeout for :func:`compiled_dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>`.
 - ``RAY_CGRAPH_get_timeout``: Timeout for :func:`ray.get() <ray.get>`.
 
 :func:`ray.get() <ray.get>` also has a timeout parameter to set timeout on a per-call basis.
