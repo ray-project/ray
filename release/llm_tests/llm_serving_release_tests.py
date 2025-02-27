@@ -34,7 +34,7 @@ def main(
         image_uri=image_uri,
         compute_config=compute_config,
         applications=applications,
-        working_dir="workloads",
+        working_dir=".",
         cloud=CLOUD,
     ) as query_url:
         print(f"Service started: {query_url=}")
@@ -47,7 +47,6 @@ def main(
                 "-s",
                 "-vv",
                 "-rx",
-                "-k=not test_bad_token_handling and not test_rate_limiting",
             ]
         )
 
