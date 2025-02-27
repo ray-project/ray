@@ -601,7 +601,7 @@ class EnvRunnerGroup:
                 if isinstance(weights_src, ray.actor.ActorHandle):
                     rl_module_state = ray.get(
                         weights_src.get_state.remote(
-                            components=[m for m in modules],
+                            components=modules,
                             inference_only=inference_only,
                         )
                     )
