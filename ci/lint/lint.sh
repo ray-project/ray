@@ -16,6 +16,7 @@ pre_commit() {
   pip install -c python/requirements_compiled.txt pre-commit clang-format
 
   HOOKS=(
+    pretty-format-java
     ruff
     check-added-large-files
     check-ast
