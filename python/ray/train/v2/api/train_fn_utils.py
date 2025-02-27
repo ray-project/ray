@@ -38,13 +38,6 @@ def report(
         so that Ray Train can properly synchronize the training state across
         workers. Otherwise, your training will hang.
 
-    .. warning::
-
-        This method does NOT act as a barrier for distributed training workers.
-        Workers will upload their checkpoint, then continue training immediately.
-        If you need to synchronize workers, you can use a framework-native barrier
-        such as `torch.distributed.barrier()`.
-
     Example:
 
         .. testcode::
