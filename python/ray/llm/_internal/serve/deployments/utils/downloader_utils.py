@@ -129,6 +129,9 @@ class CloudModelDownloader:
         lock_path = self._get_lock_path(suffix="-extra_files")
         storage_type = self.mirror_config.storage_type
 
+        logger.info(
+            f"Downloading extra files for {self.model_id} from {storage_type} storage"
+        )
         try:
             # Timeout 0 means there will be only one attempt to acquire
             # the file lock. If it cannot be acquired, a TimeoutError
