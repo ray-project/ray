@@ -2263,6 +2263,7 @@ def _constructor_failure_loop_two_replica(
         replica_2._actor.set_failed_to_start()
         # Now the replica should be marked STOPPING after failure.
         dsm.update()
+        print(ds._replica_constructor_retry_counter)
         if (
             ds._replica_constructor_retry_counter >= replica_retry_multiplier * 2
             or not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
