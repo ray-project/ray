@@ -12,6 +12,8 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.utility cimport pair
 from libcpp.vector cimport vector as c_vector
 
+from cpython.pystate cimport PyGILState_STATE
+
 from ray.includes.unique_ids cimport (
     CActorID,
     CClusterID,
@@ -71,6 +73,8 @@ ctypedef void (*plasma_callback_function) \
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
+cdef extern from "ray/core_worker/lib/python/thread_utils.h" nogil:
+    cdef function[void()] GetThreadReleaser "ray::core::GetThreadReleaser"(PyGILState_STATE gstate)
 
 cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
