@@ -110,12 +110,7 @@ void ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
 /// Stop and join the executors that the this manager owns.
 template <typename ExecutorType>
 void ConcurrencyGroupManager<ExecutorType>::Stop() {
-  for (const auto &releaser : executor_releasers_) {
-    if (releaser) {
-      (*releaser)();
-    }
-  }
-
+  // TODO: Call releaser.
   if (default_executor_) {
     RAY_LOG(DEBUG) << "Default executor is stopping.";
     default_executor_->Stop();
