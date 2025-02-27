@@ -38,6 +38,7 @@ class ConcurrencyGroupManager final {
   explicit ConcurrencyGroupManager(
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const int32_t max_concurrency_for_default_concurrency_group = 1,
+      std::function<std::function<void()>()> initializer = nullptr,
       std::optional<Language> language = std::nullopt);
 
   /// Get the corresponding concurrency group executor by the give concurrency group or
@@ -80,6 +81,9 @@ class ConcurrencyGroupManager final {
 
   // The functions that can be used to release executors.
   std::vector<std::optional<std::function<void()>>> executor_releasers_;
+
+  // The function that can be used to initialize the executor.
+  std::function<std::function<void()>()> initializer_;
 
   // The programming language runtime (e.g. Python, Java) used by this concurrency group
   // manager.
