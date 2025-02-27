@@ -25,7 +25,7 @@
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/object_manager/common.h"
 
-using namespace testing;
+using testing::Test;
 
 namespace ray {
 namespace experimental {

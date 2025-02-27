@@ -25,8 +25,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-using namespace ray;
-using namespace testing;
+using ray::ObjectID;
+using testing::Test;
 
 namespace plasma {
 

@@ -21,9 +21,8 @@
 #include "absl/random/random.h"
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
-using namespace ray;
-using namespace testing;
-using namespace plasma::flatbuf;
+using ray::ObjectID;
+using testing::Test;
 
 namespace plasma {
 namespace {

@@ -20,8 +20,8 @@
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/object_store.h"
 
-using namespace ray;
-using namespace testing;
+using ray::ObjectID;
+using testing::Test;
 
 namespace plasma {
 TEST(LRUCacheTest, Test) {
