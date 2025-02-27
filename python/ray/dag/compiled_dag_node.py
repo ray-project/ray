@@ -3219,9 +3219,11 @@ class CompiledDAG:
         Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
         or compile a new DAG.
-        Note: This method is automatically called when the CompiledDAG is destructed or the script exits. However, this should be explicitly called before compiling another graph on the
-        same actors. Python may not garbage collect the CompiledDAG object immediately
-        when you may expect.
+
+        Note: This method is automatically called when the CompiledDAG is destructed
+        or the script exits. However, this should be explicitly called before compiling
+        another graph on the same actors. Python may not garbage collect the
+        CompiledDAG object immediately when you may expect.
         """
         if self._is_teardown:
             return
