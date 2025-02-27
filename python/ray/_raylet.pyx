@@ -61,6 +61,7 @@ from ray.includes.optional cimport (
     make_optional,
 )
 
+from libcpp.functional cimport function
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
@@ -2241,6 +2242,20 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
 
+cdef function[void()] initialize_thread_handler() nogil:
+    cdef function[void()]* callback;
+    # with gil:
+    #     gstate = PyGILState_Ensure()
+    #     tstate = PyEval_SaveThread()
+
+    callback = new function[void()]()
+
+    # TODO(kevin85421): update the calback
+    # PyGILState_Restore(gstate)
+    # PyEval_RestoreThread(tstate)
+
+    return callback[0]
+
 cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -2990,6 +3005,7 @@ cdef class CoreWorker:
         options.node_manager_port = node_manager_port
         options.raylet_ip_address = raylet_ip_address.encode("utf-8")
         options.driver_name = driver_name
+        options.initialize_thread_callback = initialize_thread_handler
         options.task_execution_callback = task_execution_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect
