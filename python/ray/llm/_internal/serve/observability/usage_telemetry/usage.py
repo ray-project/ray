@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 import ray
 
-# TODO (genesu): remove dependency on botocore/ aiobotocore.
+# TODO (genesu): remove dependency on botocore
 from botocore.exceptions import ClientError
 from ray import serve
 
@@ -20,6 +20,7 @@ RAYLLM_TELEMETRY_NAMESPACE = "rayllm_telemetry"
 RAYLLM_TELEMETRY_ACTOR_NAME = "rayllm_telemetry"
 
 logger = get_logger(__name__)
+DEFAULT_GPU_TYPE = "UNSPECIFIED"
 
 
 class TelemetryTags(str, Enum):
@@ -235,7 +236,7 @@ def push_telemetry_report_for_all_models(
         use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
-            from ray.llm._internal.serve.configs.server_models import AutoscalingConfig
+            from ray.serve.config import AutoscalingConfig
 
             autoscaling_config = AutoscalingConfig(
                 **model.deployment_config["autoscaling_config"]
@@ -256,7 +257,7 @@ def push_telemetry_report_for_all_models(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             tensor_parallel_degree=engine_config.tensor_parallel_degree,
-            gpu_type=engine_config.accelerator_type,
+            gpu_type=model.accelerator_type or DEFAULT_GPU_TYPE,
             num_gpus=engine_config.num_gpu_workers,
         )
         _push_telemetry_report(telemetry_model)

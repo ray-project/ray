@@ -211,7 +211,6 @@ table NotifyUnblocked {
 }
 
 table NotifyDirectCallTaskBlocked {
-  release_resources: bool;
 }
 
 table NotifyDirectCallTaskUnblocked {

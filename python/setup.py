@@ -365,11 +365,10 @@ if setup_spec.type == SetupType.RAY:
         set(
             [
                 "vllm>=0.7.2",
-                "asyncache>=0.3.1",
                 "jsonref>=1.1.0",
-                "aiobotocore",
-                "boto3",
-                "async_timeout",
+                "jsonschema",
+                # async-timeout is a backport of asyncio.timeout for python < 3.11
+                "async-timeout; python_version < '3.11'",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
