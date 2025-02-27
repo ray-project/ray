@@ -903,8 +903,7 @@ class RayCgraphCapacityExceeded(RaySystemError):
 
 @PublicAPI(stability="alpha")
 class RayCgraphDeviceMismatchError(RaySystemError):
-    """Raised when an output (e.g., tensor) doesn't match a device it is
-    supposed to be created."""
+    """Raised when a tensor doesn't match the device it is expected to be created on."""
 
     pass
 
