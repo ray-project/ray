@@ -91,8 +91,11 @@ template <typename ExecutorType>
 std::optional<std::function<void()>>
 ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
     std::shared_ptr<ExecutorType> executor) {
+  if (!initializer_) {
+    return std::nullopt;
+  }
+
   if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
-    // Create a promise/future pair to synchronize the initialization
     std::promise<void> init_promise;
     auto init_future = init_promise.get_future();
     auto initializer = initializer_;
@@ -103,7 +106,8 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
       init_promise.set_value();
     });
 
-    // Wait for Python initialization to complete
+    // Wait for thread initialization to complete before executing any tasks in the
+    // executor.
     init_future.wait();
 
     return [&executor, &releaser]() { executor->Post([&releaser]() { releaser(); }); };

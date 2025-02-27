@@ -79,7 +79,7 @@ class ConcurrencyGroupManager final {
   // The function that can be used to initialize the executor.
   std::function<std::function<void()>()> initializer_;
 
-  // The function that can be used to release the executor.
+  // A vector of optional functions that can be used to release the executors.
   std::vector<std::optional<std::function<void()>>> executor_releasers_;
 
   friend class ConcurrencyGroupManagerTest;
