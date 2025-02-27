@@ -75,11 +75,10 @@ class ConcurrencyGroupManager final {
   // The default concurrency group executor. It's nullptr if its max concurrency is 1.
   std::shared_ptr<ExecutorType> default_executor_ = nullptr;
 
-  // The functions that can be used to release executors.
-  std::vector<std::optional<std::function<void()>>> executor_releasers_;
-
   // The function that can be used to initialize the executor.
   std::function<std::function<void()>()> initializer_;
+
+  // TODO: thread releaser
 
   friend class ConcurrencyGroupManagerTest;
 };
