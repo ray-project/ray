@@ -677,6 +677,8 @@ void NodeManager::CheckForUnexpectedWorkerDisconnects() {
 
   RAY_CHECK(all_connections.size() == all_workers.size());
 
+  // Check if there are any unexpected disconnects on the worker socket connections.
+  // This will close the connection without processing remaining messages.
   std::vector<bool> disconnects = CheckForClientDisconnects(all_connections);
   for (size_t i = 0; i < disconnects.size(); i++) {
     if (disconnects[i]) {
