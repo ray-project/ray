@@ -19,3 +19,5 @@ steps:
         --test-env=ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
     depends_on: servebuild
     job_env: forge
+    tags:
+      - serve

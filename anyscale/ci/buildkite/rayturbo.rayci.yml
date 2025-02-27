@@ -14,3 +14,5 @@ steps:
         --build-name rayturbobuild
     depends_on: rayturbobuild
     job_env: forge
+    tags:
+      - safetensors

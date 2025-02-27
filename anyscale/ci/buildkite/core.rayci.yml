@@ -6,3 +6,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/tests/... core
     depends_on: corebuild
     job_env: forge
+    tags:
+      - python
+      - core-turbo
