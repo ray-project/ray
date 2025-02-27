@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 import logging
 import os
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from anyscale import service
 from anyscale.service.models import ServiceState
@@ -31,7 +31,7 @@ def check_service_state(
 @contextmanager
 def start_service(
     service_name: str,
-    compute_config: Union[ComputeConfig, str],
+    compute_config: ComputeConfig,
     applications: List[Dict],
     image_uri: Optional[str] = None,
     working_dir: Optional[str] = None,

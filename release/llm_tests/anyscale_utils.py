@@ -1,15 +1,15 @@
-from contextlib import contextmanager
 import logging
 import os
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Union
 
-from anyscale import service
-from anyscale.service.models import ServiceState
-from anyscale.compute_config.models import ComputeConfig
+import anyscale
 import ray
+from anyscale import service
+from anyscale.compute_config.models import ComputeConfig
+from anyscale.service.models import ServiceState
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
-
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -82,7 +82,7 @@ def start_service(
             cloud=cloud,
         )
 
-        yield service_name
+        yield service.status(name=service_name, cloud=cloud).query_url
 
     finally:
         logger.info(f"Terminating service {service_name}.")
@@ -96,3 +96,13 @@ def start_service(
             cloud=cloud,
         )
         logger.info(f"Service '{service_name}' terminated successfully.")
+
+
+def get_current_compute_config_name() -> str:
+    """Get the name of the current compute config."""
+    cluster_id = os.environ["ANYSCALE_CLUSTER_ID"]
+    sdk = anyscale.AnyscaleSDK()
+    cluster = sdk.get_cluster(cluster_id)
+    return anyscale.compute_config.get(
+        name="", _id=cluster.result.cluster_compute_id
+    ).name
