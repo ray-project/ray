@@ -48,7 +48,7 @@ class ClientConnectionTest : public ::testing::Test {
 
 
 std::pair<std::shared_ptr<ClientConnection>, std::shared_ptr<ClientConnection>> CreateConnectionPair(
-    MessageHandler reader_message_handler, MessageHandler writer_message_handler) { 
+    MessageHandler reader_message_handler, MessageHandler writer_message_handler) {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
   boost::asio::local::stream_protocol::socket in(io_service_), out(io_service_);
   boost::asio::local::connect_pair(in, out);
