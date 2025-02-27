@@ -289,7 +289,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
         --install-build-type clang-only
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results
 
   - label: ":ray: core: cpp asan tests"
     tags: core_cpp
@@ -297,7 +297,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
         --install-build-type clang-only
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results
 
   - label: ":ray: core: cpp ubsan tests"
     tags: core_cpp
@@ -305,7 +305,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
         --install-build-type skip --except-tags no_ubsan
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results
 
   - label: ":ray: core: cpp tsan tests"
     tags: core_cpp
@@ -313,7 +313,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type tsan-clang
         --install-build-type clang-only --except-tags no_tsan
-        --cache-test-results --parallelism-per-worker 2
+        --cache-test-results
 
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
