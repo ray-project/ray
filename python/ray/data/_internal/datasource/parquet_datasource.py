@@ -202,7 +202,8 @@ class ParquetDatasource(Datasource):
         self._unresolved_paths = paths
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
-            self._filesystem, context=DataContext.get_current()
+            self._filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
         )
 
         # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet

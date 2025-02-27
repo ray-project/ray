@@ -28,6 +28,7 @@ from ray.anyscale.data._internal.readers import (
     WebDatasetReader,
 )
 from ray.anyscale.data.datasource.snowflake_datasource import SnowflakeDatasource
+from ray.data import DataContext
 from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -701,7 +702,9 @@ def read_files(
     _validate_shuffle_arg(shuffle)
 
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-    filesystem = RetryingPyFileSystem.wrap(filesystem, context=reader._data_context)
+    filesystem = RetryingPyFileSystem.wrap(
+        filesystem, retryable_errors=DataContext.get_current().retried_io_errors
+    )
     list_files_op = ListFiles(
         paths=paths,
         filesystem=filesystem,

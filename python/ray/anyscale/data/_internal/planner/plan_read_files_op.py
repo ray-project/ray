@@ -1,7 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Iterable, List
-
-import pyarrow as pa
+from typing import TYPE_CHECKING, Iterable, List, Optional, Dict
 
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     PATH_COLUMN_NAME,
@@ -60,17 +58,30 @@ def plan_read_files_op(
     assert len(physical_children) == 1
     input_op = physical_children[0]
 
+    #
+    # NOTE: Avoid capturing operators in closures!
+    #
+    columns: Optional[List[str]] = op.columns
+    columns_rename_map: Optional[Dict[str, str]] = op.columns_rename
+
+    filter_expr = op.filter_expr
+
+    fs = op.filesystem
+    reader = op.reader
+
     def read_paths(blocks: Iterable[Block], _: TaskContext) -> Iterable[DataBatch]:
+        import pyarrow as pa
+
         for block in blocks:
             assert isinstance(block, pa.Table), type(block)
             paths = block[PATH_COLUMN_NAME].to_pylist()
             # For some readers, we need to filter the rows in-memory.
-            yield from op.reader.read_paths(
+            yield from reader.read_paths(
                 paths,
-                columns=op.columns,
-                columns_rename=op.columns_rename,
-                filter_expr=op.filter_expr,
-                filesystem=op.filesystem,
+                columns=columns,
+                columns_rename=columns_rename_map,
+                filter_expr=filter_expr,
+                filesystem=fs,
             )
 
     transform_fns: List[MapTransformFn] = [

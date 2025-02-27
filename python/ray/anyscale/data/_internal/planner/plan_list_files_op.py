@@ -43,9 +43,65 @@ def plan_list_files_op(
     data_context: DataContext,
 ) -> MapOperator:
     assert len(physical_children) == 0
-    input_data_buffer = create_input_data_buffer(op, data_context)
-    map_operator = create_map_operator(input_data_buffer, op, data_context)
-    return map_operator
+
+    #
+    # NOTE: Avoid capturing operators in closures!
+    #
+    ignore_missing_paths = op.ignore_missing_paths
+    file_extensions = op.file_extensions
+    partition_filter = op.partition_filter
+
+    fs = op.filesystem
+
+    def list_files(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+        for row in rows:
+            for file_path, file_size in _get_file_infos(
+                row[PATH_COLUMN_NAME],
+                fs,
+                ignore_missing_paths,
+            ):
+                if not _has_file_extension(file_path, file_extensions):
+                    logger.debug(
+                        f"Skipping file '{file_path}' because it does not have one "
+                        f"of the required extensions: {file_extensions}"
+                    )
+                    continue
+
+                if partition_filter is not None:
+                    if not partition_filter([file_path]):
+                        logger.debug(
+                            f"Skipping file '{file_path}' because it does not "
+                            "match the partition filter."
+                        )
+                        continue
+
+                yield {
+                    PATH_COLUMN_NAME: file_path,
+                    FILE_SIZE_COLUMN_NAME: file_size,
+                }
+
+    transform_fns = [
+        BlocksToRowsMapTransformFn.instance(),
+        RowMapTransformFn(list_files, is_udf=False),
+        BuildOutputBlocksMapTransformFn.for_rows(),
+    ]
+
+    map_transformer = MapTransformer(transform_fns)
+
+    return MapOperator.create(
+        map_transformer,
+        create_input_data_buffer(op, data_context),
+        data_context,
+        name="ListFiles",
+        # This will push the blocks to the next operator faster.
+        target_max_block_size=data_context.target_min_block_size,
+        ray_remote_args={
+            # This is operator is extremely fast. If we don't unblock backpressure, this
+            # operator gets bottlenecked by the Ray Data scheduler. This can prevent Ray
+            # Data from launching enough read tasks.
+            "_generator_backpressure_num_objects": -1,
+        },
+    )
 
 
 def create_input_data_buffer(
@@ -73,61 +129,6 @@ def create_input_data_buffer(
         )
         input_data.append(ref_bundle)
     return InputDataBuffer(data_context, input_data=input_data)
-
-
-def create_map_operator(
-    input_op: PhysicalOperator,
-    logical_op: ListFiles,
-    data_context: DataContext,
-) -> MapOperator:
-    def list_files(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            for file_path, file_size in _get_file_infos(
-                row[PATH_COLUMN_NAME],
-                logical_op.filesystem,
-                logical_op.ignore_missing_paths,
-            ):
-                if not _has_file_extension(file_path, logical_op.file_extensions):
-                    logger.debug(
-                        f"Skipping file '{file_path}' because it does not have one "
-                        f"of the required extensions: {logical_op.file_extensions}"
-                    )
-                    continue
-
-                if logical_op.partition_filter is not None:
-                    if not logical_op.partition_filter([file_path]):
-                        logger.debug(
-                            f"Skipping file '{file_path}' because it does not "
-                            "match the partition filter."
-                        )
-                        continue
-
-                yield {
-                    PATH_COLUMN_NAME: file_path,
-                    FILE_SIZE_COLUMN_NAME: file_size,
-                }
-
-    transform_fns = [
-        BlocksToRowsMapTransformFn.instance(),
-        RowMapTransformFn(list_files, is_udf=False),
-        BuildOutputBlocksMapTransformFn.for_rows(),
-    ]
-
-    map_transformer = MapTransformer(transform_fns)
-    return MapOperator.create(
-        map_transformer,
-        input_op,
-        data_context,
-        name="ListFiles",
-        # This will push the blocks to the next operator faster.
-        target_max_block_size=data_context.target_min_block_size,
-        ray_remote_args={
-            # This is operator is extremely fast. If we don't unblock backpressure, this
-            # operator gets bottlenecked by the Ray Data scheduler. This can prevent Ray
-            # Data from launching enough read tasks.
-            "_generator_backpressure_num_objects": -1,
-        },
-    )
 
 
 def _get_file_infos(
