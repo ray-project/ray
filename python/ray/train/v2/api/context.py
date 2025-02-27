@@ -10,31 +10,49 @@ class TrainContext:
     @Deprecated
     def get_metadata(self) -> Dict[str, Any]:
         """User metadata dict passed to the Trainer constructor."""
-        return get_internal_train_context().get_metadata()
+        from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
     @Deprecated
     def get_trial_name(self) -> str:
         """Trial name for the corresponding trial."""
-        return get_internal_train_context().get_trial_name()
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_name")
+        )
 
     @Deprecated
     def get_trial_id(self) -> str:
         """Trial id for the corresponding trial."""
-        return get_internal_train_context().get_trial_id()
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_id")
+        )
 
     @Deprecated
     def get_trial_resources(self):
         """Trial resources for the corresponding trial."""
-        return get_internal_train_context().get_trial_resources()
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_resources")
+        )
 
     @Deprecated
     def get_trial_dir(self) -> str:
         """Log directory corresponding to the trial directory for a Tune session.
         This is deprecated for Ray Train and should no longer be called in Ray Train workers.
-        
+
         If this directory is needed, please pass it into the `train_loop_config` directly.
         """
-        return get_internal_train_context().get_trial_dir()
+        from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
+
+        raise DeprecationWarning(
+            _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_dir")
+        )
 
     def get_experiment_name(self) -> str:
         """Experiment name for the corresponding trial."""
