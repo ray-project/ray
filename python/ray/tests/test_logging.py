@@ -269,8 +269,7 @@ def test_log_rotation(shutdown_only, monkeypatch):
         parts = filename.split(".")
         if len(parts) == 3:
             filename_without_suffix = parts[0]
-            file_type = parts[1]  # eg. err, log, out
-            file_cnts[f"{filename_without_suffix}.{file_type}"] += 1
+            file_cnts[filename_without_suffix] += 1
     for filename, file_cnt in file_cnts.items():
         assert file_cnt <= backup_count, (
             f"{filename} has files that are more than "
