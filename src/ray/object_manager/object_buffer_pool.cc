@@ -17,7 +17,6 @@
 #include <optional>
 
 #include "absl/time/time.h"
-#include "ray/common/status.h"
 #include "ray/util/logging.h"
 
 namespace ray {
