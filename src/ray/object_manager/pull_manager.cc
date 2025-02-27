@@ -16,7 +16,6 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/container_util.h"
 
 namespace ray {
 

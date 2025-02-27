@@ -315,8 +315,11 @@ ray_cc_test(
     srcs = ["spdlog_newliner_sink_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util:filesystem",
         "//src/ray/util:spdlog_fd_sink",
         "//src/ray/util:spdlog_newliner_sink",
+        "//src/ray/util:temporary_directory",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -340,6 +343,19 @@ ray_cc_test(
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:filesystem",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "process_cleanup_test",
+    srcs = ["process_cleanup_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:process_cleaner",
         "@com_google_googletest//:gtest_main",
     ],
 )

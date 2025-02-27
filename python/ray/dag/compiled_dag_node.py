@@ -2046,7 +2046,7 @@ class CompiledDAG:
         return False
 
     def _monitor_failures(self):
-        outer = weakref.proxy(self)
+        get_outer = weakref.ref(self)
 
         class Monitor(threading.Thread):
             def __init__(self):
@@ -2057,7 +2057,22 @@ class CompiledDAG:
                 self._in_teardown_lock = threading.Lock()
                 self._teardown_done = False
 
+            def _outer_ref_alive(self) -> bool:
+                if get_outer() is None:
+                    logger.error(
+                        "CompiledDAG has been destructed before teardown. "
+                        "This should not occur please report an issue at "
+                        "https://github.com/ray-project/ray/issues/new/.",
+                        stack_info=True,
+                    )
+                    return False
+                return True
+
             def wait_teardown(self, kill_actors: bool = False):
+                outer = get_outer()
+                if not self._outer_ref_alive():
+                    return
+
                 from ray.dag import DAGContext
 
                 ctx = DAGContext.get_current()
@@ -2106,45 +2121,48 @@ class CompiledDAG:
                     if self._teardown_done:
                         return
 
+                    outer = get_outer()
+                    if not self._outer_ref_alive():
+                        return
+
                     logger.info("Tearing down compiled DAG")
-                    try:
-                        outer._dag_submitter.close()
-                        outer._dag_output_fetcher.close()
+                    outer._dag_submitter.close()
+                    outer._dag_output_fetcher.close()
 
-                        for actor in outer.actor_refs:
-                            logger.info(f"Cancelling compiled worker on actor: {actor}")
-                        # Cancel all actor loops in parallel.
-                        cancel_refs = [
-                            actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                            for actor, tasks in outer.actor_to_executable_tasks.items()
-                        ]
-                        for cancel_ref in cancel_refs:
-                            try:
-                                ray.get(cancel_ref, timeout=30)
-                            except RayChannelError:
-                                # Channel error happens when a channel is closed
-                                # or timed out. In this case, do not log.
-                                pass
-                            except Exception:
-                                logger.exception("Error cancelling worker task")
-                                pass
+                    for actor in outer.actor_refs:
+                        logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    # Cancel all actor loops in parallel.
+                    cancel_refs = [
+                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                        for actor, tasks in outer.actor_to_executable_tasks.items()
+                    ]
+                    for cancel_ref in cancel_refs:
+                        try:
+                            ray.get(cancel_ref, timeout=30)
+                        except RayChannelError:
+                            # Channel error happens when a channel is closed
+                            # or timed out. In this case, do not log.
+                            pass
+                        except Exception:
+                            logger.exception("Error cancelling worker task")
+                            pass
 
-                        for (
-                            communicator_id
-                        ) in outer._actors_to_created_communicator_id.values():
-                            _destroy_communicator(communicator_id)
+                    for (
+                        communicator_id
+                    ) in outer._actors_to_created_communicator_id.values():
+                        _destroy_communicator(communicator_id)
 
-                        logger.info("Waiting for worker tasks to exit")
-                        self.wait_teardown(kill_actors=kill_actors)
-                    except ReferenceError:
-                        # Python destruction order is not guaranteed, so we may
-                        # access attributes of `outer` which are already destroyed.
-                        logger.info("Compiled DAG is already destroyed")
+                    logger.info("Waiting for worker tasks to exit")
+                    self.wait_teardown(kill_actors=kill_actors)
+
                     logger.info("Teardown complete")
                     self._teardown_done = True
 
             def run(self):
                 try:
+                    outer = get_outer()
+                    if not self._outer_ref_alive():
+                        return
                     ray.get(list(outer.worker_task_refs.values()))
                 except KeyboardInterrupt:
                     logger.info(
@@ -2993,29 +3011,25 @@ class CompiledDAG:
         channel_details=False,
     ) -> str:
         """
-        Visualize the compiled graph using Graphviz.
-
-        For non-ASCII formats, the visualization will be saved to a file specified
-        by the `filename` argument.
-
-        This method generates a graphical representation of the compiled graph,
-        showing tasks and their dependencies.This method should be called
-        **after** the graph has been compiled using `experimental_compile()`.
+        Visualize the compiled graph by showing tasks and their dependencies.
+        This method should be called **after** the graph has been compiled using
+        `experimental_compile()`.
 
         Args:
-            filename: The name of the output file (without extension).
+            filename: For non-ASCII formats, the output file name (without extension).
+                For ASCII format, the visualization will be printed to the console,
+                and this argument is ignored.
             format: The format of the output file (e.g., 'png', 'pdf', 'ascii').
-            view: For non-ascii: Whether to open the file with the default viewer.
-                For ascii: Whether to print the visualization and return None
-                    or return the ascii visualization string directly.
+            view: For non-ASCII formats: Whether to open the file with the default
+                viewer. For ASCII format: Whether to print the visualization and return
+                None or return the ascii visualization string directly.
             channel_details: If True, adds channel details to edges.
 
         Returns:
-            str:
-                - For Graphviz-based formats (e.g., 'png', 'pdf', 'jpeg'), returns
-                the Graphviz DOT string representation of the compiled graph.
-                - For ASCII format, returns the ASCII string representation of the
-                compiled graph.
+            The string representation of the compiled graph. For Graphviz-based formats
+            (e.g., 'png', 'pdf', 'jpeg'), returns the Graphviz DOT string representation
+            of the compiled graph. For ASCII format, returns the ASCII string
+            representation of the compiled graph.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
@@ -3197,9 +3211,16 @@ class CompiledDAG:
             output.type_hint.register_custom_serializer()
 
     def teardown(self, kill_actors: bool = False):
-        """Teardown and cancel all actor tasks for this DAG. After this
+        """
+        Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
-        or compile a new DAG."""
+        or compile a new DAG.
+
+        Note: This method is automatically called when the CompiledDAG is destructed
+        or the script exits. However, this should be explicitly called before compiling
+        another graph on the same actors. Python may not garbage collect the
+        CompiledDAG object immediately when you may expect.
+        """
         if self._is_teardown:
             return
 
