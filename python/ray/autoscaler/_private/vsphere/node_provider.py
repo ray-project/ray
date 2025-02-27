@@ -1,4 +1,5 @@
 from ray.autoscaler.node_provider import NodeProvider
+from typing import Any, Dict, List
 
 
 class VsphereWcpNodeProvider(NodeProvider):
