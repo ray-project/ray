@@ -637,8 +637,9 @@ class IMPALA(Algorithm):
                 )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
                     func="get_batch",
-                    kwargs=[{"episode_refs": p} for p in packs],
+                    kwargs=[dict(episode_refs=p) for p in packs],
                     tag="batches",
+                    _print=True,
                 )
                 self.metrics.log_value(
                     (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),

@@ -446,7 +446,7 @@ class FaultTolerantActorManager:
         """
         remote_actor_ids = remote_actor_ids or self.actor_ids()
         if healthy_only:
-            func, kwargs, remote_actor_ids = self._filter_by_state(
+            func, kwargs, remote_actor_ids = self._filter_by_healthy_state(
                 func=func, kwargs=kwargs, remote_actor_ids=remote_actor_ids
             )
 
@@ -478,6 +478,7 @@ class FaultTolerantActorManager:
         kwargs: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         healthy_only: bool = True,
         remote_actor_ids: Optional[List[int]] = None,
+        _print=False,
     ) -> int:
         """Calls given functions against each actors without waiting for results.
 
@@ -538,7 +539,7 @@ class FaultTolerantActorManager:
             self._current_actor_id %= self.num_actors()
 
         if healthy_only:
-            func, kwargs, remote_actor_ids = self._filter_by_state(
+            func, kwargs, remote_actor_ids = self._filter_by_healthy_state(
                 func=func, kwargs=kwargs, remote_actor_ids=remote_actor_ids
             )
 
@@ -549,7 +550,7 @@ class FaultTolerantActorManager:
             limited_func = []
             limited_kwargs = []
             limited_remote_actor_ids = []
-            for i, f, raid in enumerate(zip(func, remote_actor_ids)):
+            for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
                 num_outstanding_reqs = self._remote_actor_states[
                     raid
                 ].num_in_flight_async_requests
@@ -576,6 +577,12 @@ class FaultTolerantActorManager:
                 ):
                     num_calls_to_make[raid] += 1
                     limited_remote_actor_ids.append(raid)
+
+        if not limited_remote_actor_ids:
+            return 0
+
+        if _print:
+            print(limited_remote_actor_ids)
 
         remote_calls = self._call_actors(
             func=limited_func,
@@ -779,7 +786,7 @@ class FaultTolerantActorManager:
                         )
                     )
                 else:
-                    calls.append(self._actors[i].apply.remote(f))
+                    calls.append(self._actors[raid].apply.remote(f))
         elif isinstance(func, str):
             for i, raid in enumerate(remote_actor_ids):
                 calls.append(
@@ -892,7 +899,7 @@ class FaultTolerantActorManager:
 
         return readies, remote_results
 
-    def _filter_by_state(
+    def _filter_by_healthy_state(
         self,
         *,
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
@@ -922,11 +929,11 @@ class FaultTolerantActorManager:
             temp_remote_actor_ids = []
             temp_kwargs = []
             for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
-                if self.is_actor_healthy(i):
+                if self.is_actor_healthy(raid):
                     k = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
                     temp_func.append(f)
                     temp_kwargs.append(k)
-                    temp_remote_actor_ids.append(i)
+                    temp_remote_actor_ids.append(raid)
             func = temp_func
             kwargs = temp_kwargs
             remote_actor_ids = temp_remote_actor_ids
