@@ -5,7 +5,7 @@ Experimental: Overlapping communication and computation
 
 Compiled Graph currently provides experimental support for GPU communication and computation overlap. When you turn this feature on, it automatically overlaps the GPU communication with computation operations, thereby hiding the communication overhead and improving performance.
 
-To enable this feature, specify ``_overlap_gpu_communication=True`` when calling ``dag.experimental_compile()``.
+To enable this feature, specify ``_overlap_gpu_communication=True`` when calling :func:`dag.experimental_compile() <ray.dag.DAGNode.experimental_compile>`.
 
 The following code has GPU communication and computation operations that benefit
 from overlapping.
