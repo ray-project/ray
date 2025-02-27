@@ -241,19 +241,6 @@ blake3==1.0.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   vllm
-boto3==1.26.76 \
-    --hash=sha256:30c7d967ed1c6b5a05643e42cae9d4d36c3f1cb6782637ddc7007a104cfd9027 \
-    --hash=sha256:b4c2969b7677762914394b8273cc1905dfe5b71f250741c1a575487ae357e729
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   -r python/requirements/llm/llm-requirements.txt
-botocore==1.29.76 \
-    --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
-    --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   boto3
-    #   s3transfer
 cachetools==5.3.2 \
     --hash=sha256:086ee420196f7b2ab9ca2db2520aca326318b68fe5ba8bc4d49cca91add450f2 \
     --hash=sha256:861f35a13a451f94e301ce2bec7cac63e881232ccce7ed67fab9b5df4d3beaa1
@@ -1070,13 +1057,6 @@ jiter==0.8.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   openai
-jmespath==1.0.1 \
-    --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
-    --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   boto3
-    #   botocore
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
     --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
@@ -2091,7 +2071,6 @@ python-dateutil==2.8.2 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   botocore
     #   pandas
 python-dotenv==1.0.1 \
     --hash=sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca \
@@ -2502,12 +2481,6 @@ rsa==4.7.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
     #   google-auth
-s3transfer==0.6.2 \
-    --hash=sha256:b014be3a8a2aab98cfe1abc7229cc5a9a0cf05eb9c1f2b86b230fd8df3f78084 \
-    --hash=sha256:cab66d3380cca3e70939ef2255d01cd8aece6a4907a9528740f668c4b0611861
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   boto3
 safetensors==0.5.2 \
     --hash=sha256:03c937100f38c9ff4c1507abea9928a6a9b02c9c1c9c3609ed4fb2bf413d4975 \
     --hash=sha256:1506e4c2eda1431099cebe9abf6c76853e95d0b7a95addceaa74c6019c65d8cf \
@@ -2840,7 +2813,6 @@ urllib3==1.26.19 \
     --hash=sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cpu.txt
-    #   botocore
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
