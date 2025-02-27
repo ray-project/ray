@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <Python.h>
-
 #include <memory>
 
 #include "ray/common/task/task_spec.h"

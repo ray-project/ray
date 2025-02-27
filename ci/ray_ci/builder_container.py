@@ -39,12 +39,6 @@ class BuilderContainer(LinuxContainer):
         super().__init__(
             "manylinux" if architecture == "x86_64" else f"manylinux-{architecture}",
             volumes=[f"{os.environ.get('RAYCI_CHECKOUT_DIR')}:/rayci"],
-            envs=[
-                # `PYTHON3_BIN_PATH` is used to determine the Python version
-                # used for <Python.h>. If this is not set correctly,
-                # "@local_config_python//:python_headers" will fail.
-                f"PYTHON3_BIN_PATH=/usr/local/bin/python{python_version}",
-            ],
         )
         python_version_info = PYTHON_VERSIONS.get(python_version)
         assert build_type in BUILD_TYPES, f"build_type must be one of {BUILD_TYPES}"
