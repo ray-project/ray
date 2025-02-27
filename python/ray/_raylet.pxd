@@ -76,14 +76,6 @@ cdef extern from "Python.h":
     int Py_GetRecursionLimit()
     void Py_SetRecursionLimit(int)
 
-    ctypedef struct PyThreadState
-    PyThreadState *PyEval_SaveThread()
-    void PyEval_RestoreThread(PyThreadState *thread)
-
-    ctypedef int PyGILState_STATE
-    PyGILState_STATE PyGILState_Ensure()
-    void PyGILState_Release(PyGILState_STATE gstate)
-
 cdef class Buffer:
     cdef:
         shared_ptr[CBuffer] buffer

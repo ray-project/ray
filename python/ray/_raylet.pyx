@@ -69,6 +69,11 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
 from cython.operator import dereference, postincrement
+from cpython.pystate cimport (
+    PyGILState_STATE,
+    PyGILState_Ensure,
+    PyGILState_Release,
+)
 
 from ray.includes.common cimport (
     CBuffer,
@@ -158,6 +163,7 @@ from ray.includes.libcoreworker cimport (
     CActorHandle,
     CGeneratorBackpressureWaiter,
     CReaderRefInfo,
+    GetThreadReleaser,
 )
 
 from ray.includes.ray_config cimport RayConfig
@@ -2243,17 +2249,11 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
         <uint8_t*>py_bytes, len(py_bytes), True)
 
 cdef function[void()] initialize_thread_handler() nogil:
-    cdef function[void()]* callback;
+    cdef function[void()] callback;
     with gil:
         gstate = PyGILState_Ensure()
-
-    callback = new function[void()]()
-
-    # TODO(kevin85421): update the calback
-    # PyGILState_Restore(gstate)
-    # PyEval_RestoreThread(tstate)
-
-    return callback[0]
+        callback = GetThreadReleaser(gstate)
+    return callback
 
 cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
