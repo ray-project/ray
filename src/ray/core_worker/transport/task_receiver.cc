@@ -176,11 +176,13 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
             task_spec.ConcurrencyGroups(),
             default_max_concurrency,
+            initializer_,
             task_spec.GetLanguage());
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
               task_spec.ConcurrencyGroups(),
               fiber_max_concurrency_,
+              initializer_,
               task_spec.GetLanguage());
         }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =

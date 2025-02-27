@@ -2244,9 +2244,8 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
 
 cdef function[void()] initialize_thread_handler() nogil:
     cdef function[void()]* callback;
-    # with gil:
-    #     gstate = PyGILState_Ensure()
-    #     tstate = PyEval_SaveThread()
+    with gil:
+        gstate = PyGILState_Ensure()
 
     callback = new function[void()]()
 
