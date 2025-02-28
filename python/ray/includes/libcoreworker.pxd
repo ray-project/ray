@@ -93,7 +93,7 @@ cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
         void SetCurrentActorShouldExit()
-        c_bool CurrentActorShouldExit()
+        c_bool GetCurrentActorShouldExit()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
         const CActorID &GetRootDetachedActorID()

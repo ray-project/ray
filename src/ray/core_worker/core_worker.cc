@@ -583,7 +583,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       GetWorkerID());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
-      /*subscriber_id=*/GetWorkerID(),
+      /*subscriber_id=*/
+      GetWorkerID(),
       /*channels=*/
       std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                     rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
@@ -3157,7 +3158,7 @@ void CoreWorker::RunTaskExecutionLoop() {
     signal_checker->RunFnPeriodically(
         [this] {
           /// The overhead of this is only a single digit microsecond.
-          if (worker_context_.CurrentActorShouldExit()) {
+          if (worker_context_.GetCurrentActorShouldExit()) {
             Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
                  "User requested to exit the actor.",
                  nullptr);

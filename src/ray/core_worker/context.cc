@@ -401,7 +401,7 @@ void WorkerContext::SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_) {
   current_actor_should_exit_ = true;
 }
 
-bool WorkerContext::CurrentActorShouldExit() const {
+bool WorkerContext::GetCurrentActorShouldExit() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_should_exit_;
 }

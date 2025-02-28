@@ -1990,7 +1990,7 @@ cdef void execute_task(
                     worker.record_task_log_end(task_id, attempt_number)
                     if task_exception_instance is not None:
                         raise task_exception_instance
-                    if core_worker.current_actor_should_exit():
+                    if core_worker.get_current_actor_should_exit():
                         raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
                 if (returns[0].size() == 1
@@ -4677,9 +4677,9 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .SetCurrentActorShouldExit())
 
-    def current_actor_should_exit(self):
+    def get_current_actor_should_exit(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
-                .CurrentActorShouldExit())
+                .GetCurrentActorShouldExit())
 
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
