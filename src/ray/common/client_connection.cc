@@ -616,13 +616,14 @@ std::vector<bool> CheckForClientDisconnects(
   // Poll for POLLHUP on all of the FDs in a single syscall.
   std::vector<pollfd> poll_fds(conns.size());
   for (size_t i = 0; i < conns.size(); ++i) {
-    poll_fds[i] = {conns[i]->GetNativeHandle(), POLLHUP, 0};
+    // POLLHUP is populated in revents, no need to specify it.
+    poll_fds[i] = {conns[i]->GetNativeHandle(), /*events=*/0, /*revents=*/0};
   }
 
-  int errno = poll(poll_fds.data(), poll_fds.size(), 0);
+  int errno = poll(poll_fds.data(), poll_fds.size(), /*timeout=*/ 0);
   if (errno > 0) {
     for (size_t i = 0; i < conns.size(); ++i) {
-      // Check if the POLLHUP event occurred.
+      // Check if a POLLHUP event occurred on the FD.
       if (poll_fds[i].revents & POLLHUP) {
         result[i] = true;
       }
