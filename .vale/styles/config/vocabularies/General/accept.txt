@@ -27,3 +27,4 @@ Pythonic
 [Gg]rafana
 CLI
 Anyscale
+[Cc]omposable
