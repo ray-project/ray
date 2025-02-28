@@ -110,7 +110,15 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
     // executor.
     init_future.wait();
 
-    return [&executor, &releaser]() { executor->Post([&releaser]() { releaser(); }); };
+    return [executor, releaser]() {
+      std::promise<void> release_promise;
+      auto release_future = release_promise.get_future();
+      executor->Post([releaser, &release_promise]() {
+        releaser();
+        release_promise.set_value();
+      });
+      release_future.wait();
+    };
   }
   return std::nullopt;
 }
@@ -119,8 +127,8 @@ ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
 template <typename ExecutorType>
 void ConcurrencyGroupManager<ExecutorType>::Stop() {
   for (const auto &releaser : executor_releasers_) {
-    if (releaser) {
-      (*releaser)();
+    if (releaser.has_value()) {
+      releaser.value()();
     }
   }
   if (default_executor_) {
