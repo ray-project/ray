@@ -23,7 +23,7 @@ class TorchTensorType(ChannelOutputType):
     def __init__(
         self,
         transport: Optional[Union[str, Communicator]] = AUTO,
-        device: Device = Device.AUTO,
+        device: Device = Device.RETAIN,
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):

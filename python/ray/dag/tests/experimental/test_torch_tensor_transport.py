@@ -191,6 +191,7 @@ class TestTensorTransport:
         # cpu tensor to gpu worker
         execute_dag("cpu-only", "gpu-1", "cpu", "cpu")
 
+
         # gpu tensor to gpu worker
         execute_dag("gpu-1", "gpu-2", "cuda:0", "cuda:0")
         execute_dag("gpu-2", "gpu-1", "cuda:0", "cuda:0")
@@ -222,9 +223,8 @@ class TestTensorTransport:
         execute_dict_dag("gpu-1", "cpu-only", raises_exception=True)
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_compiled_graph_transport_worker_to_worker(self, ray_start_regular):
-        """Transport tensors from one worker to another via compiled graph serializer.
-        Tests both individual tensors and dictionaries of tensors with mixed CPU/GPU devices.
+    def test_compiled_graph_transport_worker_to_worker_single_tensor(self, ray_start_regular):
+        """Transport single tensor from one worker to another via compiled graph serializer.
         """
         if not USE_GPU:
             pytest.skip("Test requires GPU")
@@ -239,7 +239,6 @@ class TestTensorTransport:
             "gpu-2": MyWorker.options(num_gpus=1).remote(),
         }
 
-        ### Test transfer of individual tensors
         def execute_dag(
             src,
             dst,
@@ -271,18 +270,19 @@ class TestTensorTransport:
             "cpu-only", "gpu-1", "cpu", "cuda:0", device="auto"
         )
         execute_dag("cpu-only", "gpu-2", "cpu", "cpu", device="retain")
-
+        
         # gpu tensor to gpu worker
         for device in ["retain", "auto"]:
             for transport in ["auto", "nccl"]:
                 execute_dag(
                     "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, device
                 )
-
+        
         # gpu tensor to cpu worker
         execute_dag(
             "gpu-1", "cpu-only", "cuda:0", "cpu", device="auto"
         )
+        
 
         execute_dag(
             "gpu-2",
@@ -292,8 +292,24 @@ class TestTensorTransport:
             device="retain",
             raises_exception=True,
         )
+    
+    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+    def test_compiled_graph_transport_worker_to_worker_dict_of_tensors(self, ray_start_regular):
+        """Transport dictionary of tensors from one worker to another via compiled graph serializer.
+        """
+        if not USE_GPU:
+            pytest.skip("Test requires GPU")
 
-        ### Test transfer of dictionaries of tensors
+        assert (
+            sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+        ), "This test requires at least 2 GPUs"
+
+        workers = {
+            "cpu-only": MyWorker.remote(),
+            "gpu-1": MyWorker.options(num_gpus=1).remote(),
+            "gpu-2": MyWorker.options(num_gpus=1).remote(),
+        }
+
         def execute_dict_dag(
             src,
             dst,
@@ -325,10 +341,10 @@ class TestTensorTransport:
         # to GPU worker
         for transport in ["auto", "nccl"]:
             execute_dict_dag(
-                "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, "retain"
+                "gpu-1", "gpu-2", "cpu", "cuda:0", transport, "retain"
             )
-            execute_dict_dag("gpu-1", "gpu-2", "cpu", "cuda:0", transport, "auto")
-
+            execute_dict_dag("gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, "auto")
+        
         # to CPU worker
         execute_dict_dag(
             "gpu-1", "cpu-only", "cpu", "cpu", device="auto"
