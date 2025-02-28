@@ -12,8 +12,6 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.utility cimport pair
 from libcpp.vector cimport vector as c_vector
 
-from cpython.pystate cimport PyGILState_STATE
-
 from ray.includes.unique_ids cimport (
     CActorID,
     CClusterID,
