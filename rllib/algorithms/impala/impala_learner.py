@@ -133,7 +133,9 @@ class IMPALALearner(Learner):
         global _CURRENT_GLOBAL_TIMESTEPS
         _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
+        # Get the train batch from the object store.
         training_data.solve_refs()
+        assert training_data.batch is not None
 
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_in_queue.put(training_data.batch)

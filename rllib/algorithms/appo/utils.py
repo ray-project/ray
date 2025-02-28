@@ -44,7 +44,6 @@ class CircularBuffer:
         self._rng = np.random.default_rng()
 
     def add(self, batch):
-        assert batch is not None
         # Add buffer and k=0 information to the deque.
         with self._lock:
             dropped_entry = self._buffer[0]
