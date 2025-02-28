@@ -26,7 +26,7 @@ void test_metric(const std::string &exec_type, int total_time) {
   ray::Gauge gauge("ray_test_gauge", "test gauge", "unit", {"tag1", "tag2"});
   ray::Counter counter("ray_test_counter", "test counter", "unit", {"tag1", "tag2"});
   ray::Histogram histogram(
-      "ray_test_histogram", "test hitogram", "unit", {1, 10}, {"tag1", "tag2"});
+      "ray_test_histogram", "test histogram", "unit", {1, 10}, {"tag1", "tag2"});
   ray::Sum sum("ray_test_sum", "test sum", "unit", {"tag1", "tag2"});
 
   std::unordered_map<std::string, std::string> tag_1 = {{"tag1", "increasing"},
