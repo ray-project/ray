@@ -10,6 +10,8 @@ from functools import partial
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
+import numpy as np
+
 import ray
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -81,10 +83,14 @@ class vLLMOutputData(BaseModel):
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
         """Create a vLLMOutputData from a vLLM engine output."""
 
+        prompt_token_ids = output.prompt_token_ids
+        if isinstance(prompt_token_ids, np.ndarray):
+            prompt_token_ids = prompt_token_ids.tolist()
+
         data = cls(
             prompt=output.prompt,
-            prompt_token_ids=output.prompt_token_ids,
-            num_input_tokens=len(output.prompt_token_ids),
+            prompt_token_ids=prompt_token_ids,
+            num_input_tokens=len(prompt_token_ids),
         )
 
         if isinstance(output, vllm.outputs.RequestOutput):
@@ -169,6 +175,27 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
+    def _maybe_convert_ndarray_to_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert all ndarray to list in the params. This is because Ray Data
+        by default converts all lists to ndarrays when passing data around, but
+        vLLM expects lists.
+
+        Args:
+            params: The parameters to convert.
+
+        Returns:
+            The converted parameters.
+        """
+        if isinstance(params, dict):
+            return {
+                k: self._maybe_convert_ndarray_to_list(v) for k, v in params.items()
+            }
+        elif isinstance(params, list):
+            return [self._maybe_convert_ndarray_to_list(v) for v in params]
+        elif isinstance(params, np.ndarray):
+            return params.tolist()
+        return params
+
     async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         """Prepare the inputs for LLM inference.
 
@@ -181,7 +208,7 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt")
+            tokenized_prompt = row.pop("tokenized_prompt").tolist()
         else:
             tokenized_prompt = None
 
@@ -211,8 +238,24 @@ class vLLMEngineWrapper:
                         self.lora_name_to_request[lora_name] = lora_request
             lora_request = self.lora_name_to_request[lora_name]
 
+        # Prepare sampling parameters.
         if self.task_type == vLLMTaskType.GENERATE:
-            params = vllm.SamplingParams(**row.pop("sampling_params"))
+            sampling_params = row.pop("sampling_params")
+            if "guided_decoding" in sampling_params:
+                if self.vllm_use_v1:
+                    raise ValueError("Guided decoding is only supported with vLLM v0")
+
+                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
+                    **self._maybe_convert_ndarray_to_list(
+                        sampling_params.pop("guided_decoding")
+                    )
+                )
+            else:
+                guided_decoding = None
+            params = vllm.SamplingParams(
+                **sampling_params,
+                guided_decoding=guided_decoding,
+            )
         elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams()
         else:
