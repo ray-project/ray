@@ -20,7 +20,7 @@
 /src/ray/protobuf/gcs_service.proto @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @ray-project/ray-core @hongchaodeng
+/python/ray/autoscaler/ @ray-project/ray-core
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
