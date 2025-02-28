@@ -4,6 +4,11 @@ orphan: true
 
 # Distributed Data Processing in Data-Juicer
 
+<a id="try-anyscale-quickstart-data_juicer_distributed_data_processing" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=data_juicer_distributed_data_processing">
+    <img src="../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale">
+</a>
+<br></br>
+
 Data-Juicer supports large-scale distributed data processing based on [Ray](https://github.com/ray-project/ray) and [Platform for AI](https://www.alibabacloud.com/en/product/machine-learning) of Alibaba Cloud.
 
 With a dedicated design, you can seamlessly execute almost all operators that Data-Juicer implements in standalone mode, in Ray distributed mode. The Data-Juicer team continuously conducts engine-specific optimizations for large-scale scenarios, such as data subset splitting strategies that balance the number of files and workers, and streaming I/O patches for JSON files to Ray and Apache Arrow.
