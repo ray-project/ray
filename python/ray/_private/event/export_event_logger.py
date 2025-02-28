@@ -13,8 +13,8 @@ from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
 from ray.core.generated.export_train_state_pb2 import (
-    ExportTrainRun,
-    ExportTrainRunAttempt,
+    ExportTrainRunEventData,
+    ExportTrainRunAttemptEventData,
 )
 from ray._private.protobuf_compat import message_to_dict
 
@@ -60,11 +60,11 @@ class ExportEventLoggerAdapter:
         if isinstance(event_data, ExportSubmissionJobEventData):
             event.submission_job_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
-        elif isinstance(event_data, ExportTrainRun):
-            event.train_run.CopyFrom(event_data)
+        elif isinstance(event_data, ExportTrainRunEventData):
+            event.train_run_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN
-        elif isinstance(event_data, ExportTrainRunAttempt):
-            event.train_run_attempt.CopyFrom(event_data)
+        elif isinstance(event_data, ExportTrainRunAttemptEventData):
+            event.train_run_attempt_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")

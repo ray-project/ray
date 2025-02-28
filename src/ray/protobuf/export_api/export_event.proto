@@ -51,7 +51,7 @@ message ExportEvent {
     ExportActorData actor_event_data = 6;
     ExportDriverJobEventData driver_job_event_data = 7;
     ExportSubmissionJobEventData submission_job_event_data = 8;
-    ExportTrainRun train_run = 9;
-    ExportTrainRunAttempt train_run_attempt = 10;
+    ExportTrainRunEventData train_run_event_data = 9;
+    ExportTrainRunAttemptEventData train_run_attempt_event_data = 10;
   }
 }

@@ -19,7 +19,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 // Metadata for a Ray Train run, including its details and status
-message ExportTrainRun {
+message ExportTrainRunEventData {
   // Enumeration of the possible statuses for a Train run
   enum RunStatus {
     // Default value required by proto3
@@ -58,7 +58,7 @@ message ExportTrainRun {
 }
 
 // Metadata for an individual attempt to execute a Train run
-message ExportTrainRunAttempt {
+message ExportTrainRunAttemptEventData {
   // Enumeration of the possible statuses for a Train run attempt
   enum RunAttemptStatus {
     // Default value required by proto3
