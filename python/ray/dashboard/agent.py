@@ -249,7 +249,7 @@ def get_capture_filepaths(log_dir):
     log_dir:
         Logging directory to place output and error logs.
     """
-    filename = "dashboard-agent"
+    filename = f"agent-{args.agent_id}"
     return (
         f"{log_dir}/{filename}.out",
         f"{log_dir}/{filename}.err",
