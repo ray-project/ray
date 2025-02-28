@@ -591,7 +591,7 @@ class ResourceDemandScheduler:
                 new_node_resources, unfulfilled, strict_spread=True
             )
             if unfulfilled:
-                logger.debug("Unfulfilled strict placement group: {}".format(bundles))
+                logger.debug("Unfulfilled strict spread placement group: {}".format(bundles))
                 continue
             _inplace_add(node_type_counts, to_launch)
             _inplace_add(to_add, to_launch)
