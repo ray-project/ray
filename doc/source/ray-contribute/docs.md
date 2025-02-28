@@ -73,7 +73,7 @@ To use this option, you can run:
 make local
 ```
 
-This option is recommended if you need to make frequent uncomplicated changes.
+This option is recommended if you need to make frequent uncomplicated and small changes like editing text, adding things within existing files, etc. 
 
 In this approach, Sphinx only builds the changes you made in your branch compared to your last pull from upstream master. The rest of doc is cached with pre-built doc pages from your last commit from upstream (for every new commit pushed to Ray, CI builds all the documentation pages from that commit and store them on S3 as cache).
 
@@ -84,6 +84,7 @@ Sphinx then rebuilds only the pages that your changes affect, leaving the rest u
 
 When build finishes, the doc page would automatically pop up on your browser. If any change is made in the `doc/` directory, Sphinx would automatically rebuild and reload your doc page. You can stop it by interrupting with `Ctrl+C`.
 
+For more complicated changes that involve adding or removing files, always use `make develop` first, then you can start using `make local` afterwards to iterate on the cache that `make develop` produces.
 
 #### 2. Full build from scratch
 In the full build option, Sphinx rebuilds all files in `doc/` directory, ignoring all cache and saved environment.
@@ -161,8 +162,7 @@ comes down to _two types_ of documents:
   [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.rst) or
   [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in
-  the browser like `.md` or `.rst` files, but have the added benefit of adding launch buttons to the top of the
-  document, so that users can run the code themselves in either Binder or Google Colab.
+  the browser like `.md` or `.rst` files, but have the added benefit that users can easily run the code themselves.
 
 ## Fixing typos and improving explanations
 

@@ -361,7 +361,19 @@ if setup_spec.type == SetupType.RAY:
     #
     # Keep this in sync with python/requirements/llm/llm-requirements.txt
     #
-    setup_spec.extras["llm"] = list(set(["vllm>=0.7.2"] + setup_spec.extras["data"]))
+    setup_spec.extras["llm"] = list(
+        set(
+            [
+                "vllm>=0.7.2",
+                "jsonref>=1.1.0",
+                "jsonschema",
+                # async-timeout is a backport of asyncio.timeout for python < 3.11
+                "async-timeout; python_version < '3.11'",
+            ]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
