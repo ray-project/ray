@@ -171,7 +171,7 @@ ray_cc_library(
     hdrs = ["string_utils.h"],
     deps = [
         "@com_google_absl//absl/strings",
-    ]
+    ],
 )
 
 ray_cc_library(
