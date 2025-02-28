@@ -32,16 +32,17 @@ env:
   RAYCI_DISABLE_JAVA: "true"
   RAYCI_GLOBAL_CONFIG: "ci/ray_ci/runtime_config.yaml"
 tag_filter_command:
-  - ./anyscale/ci/ci_all_tags.sh
+  - ./anyscale/ci/ci_tags_from_change.sh
 hook_env_keys:
   - RAYCI_CHECKOUT_DIR
 skip_tags:
   - disabled
+  - skip-on-premerge
   - java
   - arm64
   - oss
   - gpu
-  # RLlib tests are too flaky; and not much activity on runtime.
+  # RLlib tests are too flaky; and not much activity on rayturbo.
   # The efforts are also deprioritized.
   - rllib
   - rllib_directly

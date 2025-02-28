@@ -5,14 +5,14 @@ ci_temp: s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/
 ci_work_repo: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/ci-temp
 forge_prefix: cr.ray.io/rayproject/
 builder_queues:
-  builder: medium
+  builder: rayturbo_builder_queue
   builder-arm64: "~"
   builder-windows: "~"
 runner_queues:
-  default: small
-  small: small
-  medium: medium
-  large: large
+  default: rayturbo_small_queue
+  small: rayturbo_small_queue
+  medium: rayturbo_medium_queue
+  large: rayturbo_large_queue
   gpu: "~"
   gpu-large: "~"
   trainium: "~"
@@ -20,7 +20,7 @@ runner_queues:
   windows: "~"
   macos: "~"
   macos-arm64: "~"
-  release: "~"  # TODO(can-anyscale): maybe also enable release tests on postmerge?
+  release: "~"
   release-medium: "~"
 buildkite_dirs:
   - .buildkite
@@ -32,7 +32,7 @@ env:
   RAYCI_DISABLE_JAVA: "true"
   RAYCI_GLOBAL_CONFIG: "ci/ray_ci/runtime_config.yaml"
 tag_filter_command:
-  - ./anyscale/ci/ci_all_tags.sh
+  - ./anyscale/ci/ci_tags_from_change.sh
 hook_env_keys:
   - RAYCI_CHECKOUT_DIR
 skip_tags:
@@ -41,7 +41,7 @@ skip_tags:
   - arm64
   - oss
   - gpu
-  # RLlib tests are too flaky; and not much activity on runtime.
+  # RLlib tests are too flaky; and not much activity on rayturbo.
   # The efforts are also deprioritized.
   - rllib
   - rllib_directly

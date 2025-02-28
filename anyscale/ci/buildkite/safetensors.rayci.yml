@@ -1,5 +1,5 @@
-group: rayturbo-only tests
-sort_key: "~rayturbo-only"
+group: safetensors tests
+sort_key: "~safetensors"
 depends_on:
   - forge
   - oss-ci-base_build
