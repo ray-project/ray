@@ -9,7 +9,8 @@ engine_kwargs:
   tokenizer_pool_extra_config:
     runtime_env:
       pip: null
-  # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+    # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+  max_model_len: 8192
   max_num_batched_tokens: 8192
   enable_chunked_prefill: false
   tensor_parallel_size: 1
