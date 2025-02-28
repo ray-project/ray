@@ -260,8 +260,8 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   ASSERT_EQ(server_num_messages, 0);
 }
 
-TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
 #if defined(_WIN32)
+TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
   auto [client0, server0] = CreateConnectionPair(std::nullopt, std::nullopt);
   auto [client1, server1] = CreateConnectionPair(std::nullopt, std::nullopt);
   auto [client2, server2] = CreateConnectionPair(std::nullopt, std::nullopt);
@@ -308,8 +308,8 @@ TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
     ASSERT_TRUE(disconnects[1]);
     ASSERT_TRUE(disconnects[2]);
   }
-#endif
 }
+#endif
 
 class ServerConnectionTest : public ::testing::Test {
  public:
