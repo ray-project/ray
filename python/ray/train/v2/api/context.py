@@ -1,4 +1,4 @@
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI, Deprecated, DeveloperAPI
 from ray.train.v2._internal.execution.context import (
     get_train_context as get_internal_train_context,
 )
@@ -73,11 +73,9 @@ class TrainContext:
             def train_loop_per_worker(config):
                 assert train.get_context().get_world_size() == NUM_WORKERS
 
-            train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
             trainer = TensorflowTrainer(
                 train_loop_per_worker,
                 scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
-                datasets={"train": train_dataset}
             )
             trainer.fit()
 
@@ -207,6 +205,7 @@ class TrainContext:
         """
         return get_internal_train_context().get_node_rank()
 
+    @DeveloperAPI
     def get_storage(self):
         """Returns the :class:`~ray.train._internal.storage.StorageContext` storage
         context which gives advanced access to the filesystem and paths
