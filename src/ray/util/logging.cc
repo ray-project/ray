@@ -319,12 +319,12 @@ void RayLog::InitLogFormat() {
   if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
-    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
+    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size)) {
       return max_size;
     }
   }
 #endif
-  return std::numeric_limits<size_t>::max();
+  return 0;
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
@@ -408,10 +408,16 @@ void RayLog::InitLogFormat() {
       spdlog::drop(RayLog::GetLoggerName());
     }
 
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_filepath, log_rotation_max_size_, log_rotation_file_num_);
-    file_sink->set_level(level);
-    sinks[0] = std::move(file_sink);
+    if (log_rotation_max_size_ == 0) {
+      auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(log_filepath);
+      file_sink->set_level(level);
+      sinks[0] = std::move(file_sink);
+    } else {
+      auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+      file_sink->set_level(level);
+      sinks[0] = std::move(file_sink);
+    }
   } else {
     component_name_ = app_name_without_path;
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();

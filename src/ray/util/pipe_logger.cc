@@ -138,7 +138,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 
   // Setup file sink.
   spdlog::sink_ptr file_sink = nullptr;
-  if (stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max()) {
+  if (stream_redirect_opt.rotation_max_size != 0) {
     file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         stream_redirect_opt.file_path,
         stream_redirect_opt.rotation_max_size,
