@@ -144,6 +144,7 @@ async def test_json_mode(
     stream: bool,
     openai_async_client,
 ):
+    assert False, "test failure case"
     print(
         f"Sending json mode request to {model} ({test_id}) with {n_concurrent_requests} concurrent requests"
     )
