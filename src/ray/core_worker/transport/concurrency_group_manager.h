@@ -55,7 +55,8 @@ class ConcurrencyGroupManager final {
   /// Initialize the executor for specific language runtime.
   ///
   /// \param executor The executor to be initialized.
-  /// \return The function that can be used to release the executor.
+
+  /// \return A function that will be called when destructing the executor.
   std::optional<std::function<void()>> InitializeExecutor(
       std::shared_ptr<ExecutorType> executor);
 

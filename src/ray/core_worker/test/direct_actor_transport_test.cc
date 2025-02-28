@@ -847,8 +847,8 @@ class TaskReceiverTest : public ::testing::Test {
         main_io_service_,
         task_event_buffer_,
         execute_task,
-        []() { return []() { return; }; },
-        []() { return Status::OK(); });
+        /* intiialize_thread_callback= */ []() { return []() { return; }; },
+        /* actor_creation_task_done= */ []() { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_,
