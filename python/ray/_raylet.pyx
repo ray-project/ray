@@ -2808,6 +2808,11 @@ cdef class _GcsSubscriber:
         """
         return self.inner.get().last_batch_size()
 
+    @property
+    def is_empty(self):
+        """Whether the subscriber has no messages in the queue."""
+        return self.inner.get().IsEmpty()
+
     def close(self):
         """Closes the subscriber and its active subscription."""
         with nogil:
