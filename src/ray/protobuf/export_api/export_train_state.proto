@@ -51,10 +51,10 @@ message ExportTrainRun {
   // Additional details about the current status, including error messages if applicable
   optional string status_detail = 6;
   // The timestamp when the Train run started in ns.
-  uint64 start_time = 7;
+  uint64 start_time_ns = 7;
   // The timestamp when the Train run ended in ns. If not set, the run is still
   // in progress
-  optional uint64 end_time = 8;
+  optional uint64 end_time_ns = 8;
 }
 
 // Metadata for an individual attempt to execute a Train run
@@ -125,10 +125,10 @@ message ExportTrainRunAttempt {
   // Additional details about the status, including error messages if applicable
   optional string status_detail = 4;
   // The timestamp when the Train run attempt started in ns.
-  uint64 start_time = 5;
+  uint64 start_time_ns = 5;
   // The timestamp when the Train run attempt ended in ns. If null, the attempt
   // is still ongoing
-  optional uint64 end_time = 6;
+  optional uint64 end_time_ns = 6;
   // The resources (e.g., CPU, GPU) allocated to the Train run attempt
   repeated TrainResources resources = 7;
   // List of Train workers participating in this attempt, sorted by global ranks
