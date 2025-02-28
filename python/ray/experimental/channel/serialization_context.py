@@ -146,12 +146,16 @@ class _SerializationContext:
         default_device_type = (
             "cpu" if ctx.torch_device is None else ctx.torch_device.type
         )
-
-        # Use the default device type when Device.RETAIN
+        
         if ctx.target_device == Device.RETAIN:
+            target_device_type =  tensor_device_type 
+        elif ctx.target_device == Device.AUTO:
+            # 'auto' uses the receiver's default device
             target_device_type = default_device_type
+        elif ctx.target_device == Device.GPU:
+            target_device_type = "cuda"
         else:
-            target_device_type = tensor_device_type
+            target_device_type = "cpu"
 
         # TODO(swang): Support local P2P transfers if available.
         if target_device_type == "cuda":
