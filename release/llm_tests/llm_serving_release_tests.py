@@ -22,7 +22,7 @@ def get_applications() -> List[Any]:
 
 
 def setup_envs(query_url: str):
-    os.environ["OPENAI_API_BASE"] = query_url
+    os.environ["OPENAI_API_BASE"] = f"{query_url}v1"
 
 
 def get_env_vars() -> Dict[str, str]:
