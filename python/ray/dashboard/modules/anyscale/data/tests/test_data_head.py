@@ -6,6 +6,7 @@ import requests
 import ray
 from ray.tests.conftest import *  # noqa
 from ray.dashboard.modules.anyscale.data.data_schema import (
+    OperatorState,
     DatasetMetrics,
     DatasetResponse,
 )
@@ -17,17 +18,17 @@ def test_get_datasets(ray_start_regular_shared):
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds.materialize()
 
-    job_response = requests.get(f"{DATA_HEAD_URLS}/jobs/").json()
+    job_response = requests.get(f"{DATA_HEAD_URLS}/jobs").json()
     assert len(job_response) == 1, job_response
     job_id = job_response[0]["job_id"]
 
     dataset_response = DatasetResponse(
-        **requests.get(f"{DATA_HEAD_URLS}/datasets/{job_id}").json()
+        **requests.get(f"{DATA_HEAD_URLS}/datasets").json()
     )
     assert len(dataset_response.datasets) == 1
     assert {
         "job_id": job_id,
-        "state": "FINISHED",
+        "state": OperatorState.FINISHED,
         "progress": 20,
         "total": 20,
     }.items() <= dataset_response.datasets[0].items()
@@ -38,7 +39,7 @@ def test_get_datasets(ray_start_regular_shared):
     op0, op1 = operators[0], operators[1]
     assert {
         "name": "Input",
-        "state": "FINISHED",
+        "state": OperatorState.FINISHED,
         "progress": 20,
         "total": 20,
     }.items() <= op0.items()

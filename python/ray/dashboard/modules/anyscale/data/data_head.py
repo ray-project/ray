@@ -113,7 +113,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
         return f"{operator_id}@{dataset_id}"
 
     async def _async_get_dataset_metrics(
-        self, job_id: str
+        self,
     ) -> Tuple[Dict[str, DatasetMetrics], Dict[str, OperatorMetrics]]:
         """
         Computes the dataset and operator state for a given job_id. It
@@ -123,7 +123,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
         """
         dataset_metrics, operator_metrics = {}, {}
         stats_actor = self._get_stats_actor()
-        datasets = await stats_actor.get_datasets.remote(job_id)
+        datasets = await stats_actor.get_datasets.remote()
         for dataset_id, dataset_metadata in datasets.items():
             dataset_metric = DatasetMetrics(
                 **{
@@ -148,7 +148,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         },
                         **{
                             "id": self._get_operator_id(dataset_id, operator_id),
-                            "metrics": [],
+                            "metrics": {},
                         },
                     }
                 )
@@ -195,19 +195,15 @@ class DataHead(dashboard_utils.DashboardHeadModule):
         """
         return metric.replace("ray_data_", "").replace("_", " ").title()
 
-    @optional_utils.DashboardHeadRouteTable.get("/api/anyscale/data/datasets/{job_id}")
+    @optional_utils.DashboardHeadRouteTable.get("/api/anyscale/data/datasets")
     @optional_utils.init_ray_and_catch_exceptions()
     async def async_get_datasets(self, req: Request) -> Response:
         """
-        This function is a route handler that returns the dataset metrics for a given
-        job_id. It queries Prometheus for the metrics and returns the dataset metrics.
+        This function is a route handler that returns the dataset metrics.
+        It queries Prometheus for the metrics and returns the dataset metrics.
         """
-        job_id = req.match_info["job_id"]
-
         try:
-            dataset_metrics, operator_metrics = await self._async_get_dataset_metrics(
-                job_id
-            )
+            dataset_metrics, operator_metrics = await self._async_get_dataset_metrics()
 
             try:
                 for metric in PROMETHEUS_METRICS:
@@ -218,13 +214,14 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         PROMETHEUS_MAX_OVER_TIME_QUERY.format(metric, self.session_name)
                     )
                     for operator_id, operator_metric in operator_metrics.items():
-                        operator_metric.metrics.append(
-                            Metric(
-                                id=metric,
-                                name=self._get_metric_column_name(metric),
-                                current_value=current_value_metrics.get(operator_id),
-                                max_over_time=max_over_time_metrics.get(operator_id),
-                            )
+                        operator_metric.metrics[id] = Metric(
+                            name=self._get_metric_column_name(metric),
+                            current_value=float(
+                                current_value_metrics.get(operator_id, "0.0")
+                            ),
+                            max_over_time=float(
+                                max_over_time_metrics.get(operator_id, "0.0")
+                            ),
                         )
             except aiohttp.client_exceptions.ClientConnectorError:
                 # Prometheus server may not be running,
@@ -247,7 +244,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 text=str(e),
             )
 
-    @optional_utils.DashboardHeadRouteTable.get("/api/anyscale/data/jobs/")
+    @optional_utils.DashboardHeadRouteTable.get("/api/anyscale/data/jobs")
     @optional_utils.init_ray_and_catch_exceptions()
     async def async_get_jobs(self, req: Request) -> Response:
         _stats_actor = self._get_stats_actor()

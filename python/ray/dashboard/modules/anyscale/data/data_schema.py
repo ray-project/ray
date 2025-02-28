@@ -1,23 +1,30 @@
-from typing import List, Optional
+from typing import List, Dict, Optional
+from enum import Enum
 from dataclasses import dataclass
+
+
+class OperatorState(str, Enum):
+    UNKNOWN = "UNKNOWN"
+    RUNNING = "RUNNING"
+    FAILED = "FAILED"
+    FINISHED = "FINISHED"
 
 
 @dataclass
 class Metric:
-    id: str
     name: str
-    current_value: Optional[float]
-    max_over_time: Optional[float]
+    current_value: float
+    max_over_time: float
 
 
 @dataclass
 class OperatorMetrics:
     id: str
     name: str
-    state: str
+    state: OperatorState
     progress: int
     total: int
-    metrics: List[Metric]
+    metrics: Dict[str, Metric]
 
 
 @dataclass
