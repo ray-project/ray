@@ -1365,7 +1365,7 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
-        num_blocks: int,
+        num_blocks: Union[int, None],
         target_num_rows_per_block: Optional[int] = None,
         *,
         shuffle: bool = False,
@@ -1407,9 +1407,11 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            num_blocks: The number of blocks.
+            num_blocks: Number of blocks after repartitioning. 
+            Set this argument to None if using target_num_rows_per_block
             target_num_rows_per_block: The target number of rows per block to
-                repartition.
+                repartition. Note that either `num_blocks` or
+                `target_num_rows_per_block` must be set, but not both.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
