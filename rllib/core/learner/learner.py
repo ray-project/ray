@@ -982,7 +982,6 @@ class Learner(Checkpointable):
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
-        return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
         """Run `num_epochs` epochs over the given train batch.

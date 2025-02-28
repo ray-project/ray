@@ -861,7 +861,6 @@ class Algorithm(Checkpointable, Trainable):
                 )
             )
             self._aggregator_actor_to_learner = {}
-            _validate_agg_per_learner = defaultdict(int)
             for agg_idx, aggregator_location in aggregator_locations:
                 aggregator_location = aggregator_location.get()
                 for learner_idx, learner_location in learner_locations:
@@ -873,7 +872,6 @@ class Algorithm(Checkpointable, Trainable):
                             learner_locations[0]
                         ]
                         self._aggregator_actor_to_learner[agg_idx] = learner_idx
-                        _validate_agg_per_learner[learner_idx] += 1
                         break
                 if agg_idx not in self._aggregator_actor_to_learner:
                     raise RuntimeError(
@@ -882,10 +880,6 @@ class Algorithm(Checkpointable, Trainable):
                         f"({aggregator_location[1]})! The Learner workers' locations "
                         f"are {learner_locations}."
                     )
-                elif len(set(_validate_agg_per_learner.values())) != 1:
-                    raise RuntimeError(
-                        "Aggregator actors are not equally "
-                    )TODO
 
             # Make sure, each Learner index is mapped to from at least one
             # AggregatorActor.

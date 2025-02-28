@@ -634,7 +634,6 @@ class IMPALA(Algorithm):
                     func="get_batch",
                     kwargs=[dict(episode_refs=p) for p in packs],
                     tag="batches",
-                    _print=True,
                 )
                 self.metrics.log_value(
                     (AGGREGATOR_ACTOR_RESULTS, "num_env_steps_dropped_lifetime"),
