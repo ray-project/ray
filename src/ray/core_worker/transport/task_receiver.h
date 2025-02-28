@@ -131,6 +131,7 @@ class TaskReceiver {
   /// The IO event loop for running tasks on.
   instrumented_io_context &task_main_io_service_;
   worker::TaskEventBuffer &task_event_buffer_;
+  /// The language-specific callback function that initializes threads.
   std::function<std::function<void()>()> initialize_thread_callback_;
   /// The callback function to be invoked when finishing a task.
   OnActorCreationTaskDone actor_creation_task_done_;
