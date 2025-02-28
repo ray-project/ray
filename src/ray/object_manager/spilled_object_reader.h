@@ -20,7 +20,6 @@
 
 #include "absl/types/optional.h"
 #include "ray/object_manager/object_reader.h"
-#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 /// Reader for a local object spilled in the object_url.
