@@ -1099,7 +1099,7 @@ void CoreWorker::Disconnect(
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
-    RAY_LOG(INFO) << "Disconnecting to the raylet.";
+    RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     connected_ = false;
     if (local_raylet_client_) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(
