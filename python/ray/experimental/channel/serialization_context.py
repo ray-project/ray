@@ -1,7 +1,7 @@
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 
-from ray.experimental.util.types import DevicePolicy
+from ray.experimental.util.types import Device
 
 if TYPE_CHECKING:
     import numpy as np
@@ -147,8 +147,8 @@ class _SerializationContext:
             "cpu" if ctx.torch_device is None else ctx.torch_device.type
         )
 
-        # Use the default device type if policy is DevicePolicy.DEFAULT_DEVICE
-        if ctx.target_device_policy == DevicePolicy.DEFAULT_DEVICE:
+        # Use the default device type when Device.RETAIN
+        if ctx.target_device == Device.RETAIN:
             target_device_type = default_device_type
         else:
             target_device_type = tensor_device_type

@@ -5,7 +5,7 @@ import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
-from ray.experimental.util.types import DevicePolicy
+from ray.experimental.util.types import Device
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ class TorchTensorType(ChannelOutputType):
     def __init__(
         self,
         transport: Optional[Union[str, Communicator]] = AUTO,
-        device_policy: DevicePolicy = DevicePolicy.AUTO,
+        device: Device = Device.AUTO,
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
@@ -42,11 +42,12 @@ class TorchTensorType(ChannelOutputType):
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
-            device_policy: Policy for defining the target device type of torch.Tensor.
-                If "auto" is set, it moves the tensor to the same device type
-                on a receiver side.
-                If "default" is set, it moves the tensor to the default device
-                type on the receiver.
+            device: Defines the target device for transporting a torch.Tensor.
+                If "retain" is set, it retains the same device type as in the sender.
+                If "auto" is set, it moves the tensor to the default device
+                on the receiver.
+                If "cpu" is set, it moves the tensor to the CPU on the receiver.
+                If "gpu" is set, it moves the tensor to the GPU on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
@@ -69,7 +70,7 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
-        self.device_policy = device_policy
+        self.device = device
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
@@ -113,12 +114,12 @@ class TorchTensorType(ChannelOutputType):
 
         def serialize(t):
             ctx = ChannelContext.get_current()
-            ctx.set_target_device_policy(self.device_policy)
+            ctx.set_target_device(self.device)
             return ctx.serialization_context.serialize_tensor(t)
 
         def deserialize(b):
             ctx = ChannelContext.get_current()
-            ctx.set_target_device_policy(self.device_policy)
+            ctx.set_target_device(self.device)
             return ctx.serialization_context.deserialize_tensor(b)
 
         ray.util.serialization.register_serializer(

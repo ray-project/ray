@@ -1205,7 +1205,7 @@ class CompiledDAG:
                     # Currently driver on GPU is not supported, so we always
                     # use shared memory to transfer tensors.
                     dag_node.type_hint = TorchTensorType(
-                        device_policy=dag_node.type_hint.device_policy
+                        device=dag_node.type_hint.device
                     )
 
             if type(dag_node.type_hint) is ChannelOutputType:
