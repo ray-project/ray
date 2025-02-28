@@ -277,7 +277,7 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
     g.allreduce([tensor], opts)
@@ -299,7 +299,7 @@ def allreduce_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
     g.allreduce(tensor_list, opts)
@@ -314,7 +314,7 @@ def barrier(group_name: str = "default"):
     Returns:
         None
     """
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     g.barrier()
 
 
@@ -333,7 +333,7 @@ def reduce(
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check dst rank
     _check_rank_valid(g, dst_rank)
@@ -368,7 +368,7 @@ def reduce_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check dst rank
     _check_rank_valid(g, dst_rank)
@@ -392,7 +392,7 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check src rank
     _check_rank_valid(g, src_rank)
@@ -419,7 +419,7 @@ def broadcast_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check src rank
     _check_rank_valid(g, src_rank)
@@ -443,7 +443,7 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     """
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     if len(tensor_list) != g.world_size:
         # Typically CLL lib requires len(tensor_list) >= world_size;
         # Here we make it more strict: len(tensor_list) == world_size.
@@ -474,7 +474,7 @@ def allgather_multigpu(
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(output_tensor_lists)
     _check_tensor_list_input(input_tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.AllGatherOptions()
     g.allgather(output_tensor_lists, input_tensor_list, opts)
 
@@ -498,7 +498,7 @@ def reducescatter(
     """
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
@@ -532,7 +532,7 @@ def reducescatter_multigpu(
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(input_tensor_lists)
     _check_tensor_list_input(output_tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
     g.reducescatter(output_tensor_list, input_tensor_lists, opts)
@@ -550,7 +550,7 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
@@ -585,7 +585,7 @@ def send_multigpu(
     if not types.cupy_available():
         raise RuntimeError("send_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError(
@@ -613,7 +613,7 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
@@ -646,7 +646,7 @@ def recv_multigpu(
     if not types.cupy_available():
         raise RuntimeError("recv_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError(
@@ -678,8 +678,15 @@ def synchronize(gpu_id: int):
     cp.cuda.Device(gpu_id).synchronize()
 
 
-def _check_and_get_group(group_name):
-    """Check the existence and return the group handle."""
+def get_group_handle(group_name: str = "default"):
+    """Check if the group is initialized and return the group handle.
+
+    Args:
+        group_name: the name of the collective group.
+
+    Returns:
+        The collective group handle.
+    """
     _check_inside_actor()
     global _group_mgr
     if not is_group_initialized(group_name):
