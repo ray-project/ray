@@ -629,7 +629,7 @@ std::vector<bool> CheckForClientDisconnects(
       }
     }
   } else if (ret < 0) {
-    RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << strerr(ret);
+    RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << strerror(ret);
   }
 
   return result;
