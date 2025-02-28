@@ -16,6 +16,8 @@
 #include <io.h>     // For _open_osfhandle
 #include <windows.h>
 
+#include <memory>
+
 #include "ray/util/scoped_dup2_wrapper.h"
 
 namespace ray {

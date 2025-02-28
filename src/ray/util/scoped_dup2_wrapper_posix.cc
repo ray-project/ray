@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include <cstring>
+#include <memory>
 
 #include "ray/util/logging.h"
 #include "ray/util/scoped_dup2_wrapper.h"
