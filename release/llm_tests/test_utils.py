@@ -1,10 +1,13 @@
+import json
 import logging
 import os
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import anyscale
+import boto3
 import ray
+import yaml
 from anyscale import service
 from anyscale.compute_config.models import ComputeConfig
 from anyscale.service.models import ServiceState
@@ -13,11 +16,14 @@ from ray.serve._private.utils import get_random_string
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
+REGION_NAME = "us-west-2"
+SECRET_NAME = "llm_release_test_hf_token"
 
 
 def check_service_state(
     service_name: str, expected_state: ServiceState, cloud: Optional[str] = None
 ):
+    """Check if the service is in the expected state."""
     state = service.status(name=service_name, cloud=cloud).state
     logger.info(
         f"Waiting for service {service_name} to be {expected_state}, currently {state}"
@@ -48,8 +54,13 @@ def start_service(
             that the cluster will utilize.
         applications: The list of Ray Serve applications to run in the
             service.
+        image_uri: The URI of the Docker image to use for the service.
+            If None, the image URI is fetched and constructed from the env var.
+        working_dir: The working directory for the service.
         add_unique_suffix: Whether to append a unique suffix to the
             service name.
+        cloud: The cloud to deploy the service to.
+        env_vars: The environment variables to set in the service.
     """
 
     if add_unique_suffix:
@@ -109,3 +120,23 @@ def get_current_compute_config_name() -> str:
     return anyscale.compute_config.get(
         name="", _id=cluster.result.cluster_compute_id
     ).name
+
+
+def get_applications(serve_config_file: str) -> List[Any]:
+    """Get the applications from the serve config file."""
+    with open(serve_config_file, "r") as f:
+        loaded_llm_config = yaml.safe_load(f)
+    return loaded_llm_config["applications"]
+
+
+def setup_url_base_envs(query_url: str):
+    """Set up the environment variables for the tests."""
+    os.environ["OPENAI_API_BASE"] = f"{query_url.rstrip('/')}/v1"
+
+
+def get_hf_token_env_var() -> Dict[str, str]:
+    """Get the environment variables for the service."""
+    session = boto3.session.Session()
+    client = session.client(service_name="secretsmanager", region_name=REGION_NAME)
+    secret_string = client.get_secret_value(SecretId=SECRET_NAME)["SecretString"]
+    return json.loads(secret_string)

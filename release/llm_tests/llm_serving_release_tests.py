@@ -1,45 +1,30 @@
-import os
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-import boto3
 import click
-import json
 import pytest
-import yaml
 
-from anyscale_utils import start_service, get_current_compute_config_name
+from test_utils import (
+    start_service,
+    get_current_compute_config_name,
+    get_applications,
+    get_hf_token_env_var,
+    setup_url_base_envs,
+)
 
 CLOUD = "serve_release_tests_cloud"
 SERVE_CONFIG_FILE = "serve_llama_3dot1_8b_tp1.yaml"
-SECRET_NAME = "llm_release_test_hf_token"
-REGION_NAME = "us-west-2"
-
-
-def get_applications() -> List[Any]:
-    with open(SERVE_CONFIG_FILE, "r") as f:
-        loaded_llm_config = yaml.safe_load(f)
-    return loaded_llm_config["applications"]
-
-
-def setup_envs(query_url: str):
-    os.environ["OPENAI_API_BASE"] = f"{query_url.rstrip('/')}/v1"
-
-
-def get_env_vars() -> Dict[str, str]:
-    session = boto3.session.Session()
-    client = session.client(service_name="secretsmanager", region_name=REGION_NAME)
-    secret_string = client.get_secret_value(SecretId=SECRET_NAME)["SecretString"]
-    return json.loads(secret_string)
 
 
 @click.command()
 @click.option("--image-uri", type=str, default=None)
+@click.option("--serve-config-file", type=str)
 def main(
     image_uri: Optional[str],
+    serve_config_file: str,
 ):
-    applications = get_applications()
+    applications = get_applications(serve_config_file)
     compute_config = get_current_compute_config_name()
-    env_vars = get_env_vars()
+    env_vars = get_hf_token_env_var()
 
     with start_service(
         service_name="llm_serving_release_test",
@@ -51,8 +36,8 @@ def main(
         env_vars=env_vars,
     ) as query_url:
         print(f"Service started: {query_url=}")
-        setup_envs(query_url=query_url)
-        pytest.main(
+        setup_url_base_envs(query_url=query_url)
+        exit_code = pytest.main(
             [
                 "./probes",
                 "--timeout=30",
@@ -62,6 +47,8 @@ def main(
                 "-rx",
             ]
         )
+        if exit_code != 0:
+            raise RuntimeError(f"Tests failed! {exit_code=}")
 
 
 if __name__ == "__main__":
