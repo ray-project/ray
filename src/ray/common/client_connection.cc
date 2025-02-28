@@ -562,7 +562,7 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
         "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
         "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
         "unexpected errors."));
-    protocol::DisconnectClientBuilder builder(fbb);
+    protocol::DisconnectClientRequestBuilder builder(fbb);
     builder.add_disconnect_type(static_cast<int>(ray::rpc::WorkerExitType::SYSTEM_ERROR));
     builder.add_disconnect_detail(disconnect_detail);
     fbb.Finish(builder.Finish());
