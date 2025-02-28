@@ -15,6 +15,9 @@ engine_kwargs:
   max_num_batched_tokens: 8192
   enable_chunked_prefill: false
   tensor_parallel_size: 1
+  enable_lora: true
+  max_lora_rank: 32
+  max_loras: 2
 
 lora_config:
   dynamic_lora_loading_path: "s3://anyscale-production-data-cld-wy5a6nhazplvu32526ams61d98/org_7c1Kalm9WcX2bNIjW53GUT/cld_wy5a6nhazplvu32526ams61d98/artifact_storage/rayllm_release_test/lora_fine_tuning"
