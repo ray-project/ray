@@ -498,10 +498,6 @@ Look for issues with "[tune]" in the title.
 
     If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
 
-For project organization, Tune maintains a relatively up-to-date organization of
-issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
-Here, you can track and identify how issues are organized.
-
 
 .. _tune-reproducible:
 
