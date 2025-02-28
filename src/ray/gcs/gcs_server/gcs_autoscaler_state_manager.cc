@@ -495,22 +495,14 @@ GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
         time_resource_data_pair.second.resource_load_by_shape();
 
     for (int i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
-      bool is_infeasible_shape = false;
-      google::protobuf::Map<std::string, double> const *infeasible_resource_shape;
-
       // Check with each infeasible resource shapes from the autoscaler state
       for (const auto &shape : autoscaler_infeasible_resource_shapes) {
         const auto &resource_demand = resource_load_by_shape.resource_demands(i);
         if (resource_demand.num_infeasible_requests_queued() > 0 &&
             MapEqual(shape, resource_demand.shape())) {
-          is_infeasible_shape = true;
-          infeasible_resource_shape = &shape;
+          per_node_infeasible_requests[node_id].emplace_back(std::move(shape));
           break;
         }
-      }
-
-      if (is_infeasible_shape) {
-        per_node_infeasible_requests[node_id].emplace_back(*infeasible_resource_shape);
       }
     }
   }
@@ -533,27 +525,16 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
     const auto raylet_client = raylet_client_pool_.GetOrConnectByID(node_id);
 
     if (raylet_client.has_value()) {
-      std::stringstream resource_shape_str;
-      resource_shape_str << "[";
-      bool first = true;
-      for (const auto &shape : infeasible_shapes) {
-        if (!first) {
-          resource_shape_str << ", ";
-        }
-        resource_shape_str << ray::DebugString(shape);
-        first = false;
-      }
-      resource_shape_str << "]";
+      std::string resource_shapes_str =
+          ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);
 
-      RAY_LOG(INFO) << "Canceling infeasible requests on node " << node_id
-                    << " with infeasible_shapes=" << resource_shape_str.str();
+      RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
+                       << " with infeasible_shapes=" << resource_shapes_str;
 
       (*raylet_client)
           ->CancelTasksWithResourceShapes(
               infeasible_shapes,
-              [node_id](
-                  const Status &status /*unused*/,
-                  const rpc::CancelTasksWithResourceShapesReply &&reply /*unused*/) {
+              [node_id](const Status, const rpc::CancelTasksWithResourceShapesReply) {
                 RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
               });
     } else {

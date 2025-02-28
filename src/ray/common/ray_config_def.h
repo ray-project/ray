@@ -948,4 +948,4 @@ RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 // be cancelled with SCHEDULING_CANCELLED_UNSCHEDULABLE state. If set to false, the task
 // will be waiting for the required resources to become available achieved mainly by
 // updating the cluster config to add new nodes.
-RAY_CONFIG(bool, enable_infeasible_task_early_exit, true);
+RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
