@@ -52,12 +52,12 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask serve
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
         --install-mask serve
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags use_all_core --skip-ray-installation
 
@@ -68,12 +68,12 @@ steps:
       - dashboard
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask serve
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask serve
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
@@ -92,12 +92,12 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --install-mask serve
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags use_all_core --skip-ray-installation
 
@@ -313,6 +313,17 @@ steps:
         --except-tags no_tsan
         --cache-test-results --parallelism-per-worker 2
 
+  - label: ":ray: core: flaky cpp tests"
+    key: core_flaky_cpp_tests
+    tags:
+      - python
+      - skip-on-premerge
+    instance_type: large
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
+        --run-flaky-tests --build-type clang
+
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
     tags:
@@ -321,9 +332,9 @@ steps:
     instance_type: large
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
         --install-mask serve
-        --run-flaky-tests  --build-type clang
+        --run-flaky-tests
         --except-tags multi_gpu
 
   - label: ":ray: core: flaky gpu tests"
@@ -335,9 +346,9 @@ steps:
     instance_type: gpu-large
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
         --install-mask serve
-        --run-flaky-tests  --build-type clang
+        --run-flaky-tests
         --gpus 4
         --build-name coregpubuild
         --only-tags multi_gpu
