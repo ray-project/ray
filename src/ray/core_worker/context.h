@@ -119,7 +119,7 @@ class WorkerContext {
 
   void SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool CurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
+  bool GetCurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
 
