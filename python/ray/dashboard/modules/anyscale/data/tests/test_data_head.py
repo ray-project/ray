@@ -31,6 +31,7 @@ def test_get_datasets(ray_start_regular_shared):
         "progress": 20,
         "total": 20,
     }.items() <= dataset_response.datasets[0].items()
+    assert dataset_response.datasets[0].get("session_name")
 
     operators = DatasetMetrics(**dataset_response.datasets[0]).operator_metrics
     assert len(operators) == 2

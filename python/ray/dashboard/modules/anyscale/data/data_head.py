@@ -131,7 +131,12 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         key: dataset_metadata.get(key)
                         for key in DatasetMetrics.__dataclass_fields__
                     },
-                    **{"id": dataset_id, "name": dataset_id, "operator_metrics": []},
+                    **{
+                        "id": dataset_id,
+                        "name": dataset_id,
+                        "session_name": self.session_name,
+                        "operator_metrics": [],
+                    },
                 }
             )
             for operator_id, operator_metadata in dataset_metadata["operators"].items():

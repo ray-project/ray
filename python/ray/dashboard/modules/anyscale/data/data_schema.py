@@ -26,6 +26,7 @@ class DatasetMetrics:
     name: str
     state: str
     job_id: str
+    session_name: str
     progress: int
     total: int
     start_time: int
