@@ -16,6 +16,7 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.util.common import INT32_MAX
 
 
 def generate_random_shuffle_fn(
