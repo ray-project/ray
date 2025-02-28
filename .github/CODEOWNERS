@@ -125,6 +125,6 @@
 
 /release/ray_release @ray-project/ray-ci
 
-/.github/ISSUE_TEMPLATE/ @anyscalesam @aslonnie
+/.github/ISSUE_TEMPLATE/ @aslonnie
 
 /.github/workflows/ @ray-project/ray-ci
