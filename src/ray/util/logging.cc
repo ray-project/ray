@@ -408,16 +408,15 @@ void RayLog::InitLogFormat() {
       spdlog::drop(RayLog::GetLoggerName());
     }
 
+    spdlog::sink_ptr file_sink;
     if (log_rotation_max_size_ == 0) {
-      auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(log_filepath);
-      file_sink->set_level(level);
-      sinks[0] = std::move(file_sink);
+      file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(log_filepath);
     } else {
-      auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+      file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
           log_filepath, log_rotation_max_size_, log_rotation_file_num_);
-      file_sink->set_level(level);
-      sinks[0] = std::move(file_sink);
     }
+    file_sink->set_level(level);
+    sinks[0] = std::move(file_sink);
   } else {
     component_name_ = app_name_without_path;
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
@@ -427,8 +426,13 @@ void RayLog::InitLogFormat() {
 
   // Set sink for stderr.
   if (!err_log_filepath.empty()) {
-    auto err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    spdlog::sink_ptr err_sink;
+    if (log_rotation_max_size_ == 0) {
+      err_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(err_log_filepath);
+    } else {
+      err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    }
     err_sink->set_level(spdlog::level::err);
     sinks[1] = std::move(err_sink);
   } else {

@@ -186,12 +186,10 @@ def test_log_file_exists(shutdown_only):
             return suffix in appplication_log_suffixes
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Log rotation is disable on windows platform."
-)
-def test_log_rotation_invalid_rotation_params(shutdown_only, monkeypatch):
-    max_bytes = 0  # Invalid value, should sanitize to sys.maxsize
-    backup_count = 0  # Invalid value, should sanitize to 1
+# Rotation is disable in the unit test.
+def test_log_rotation_disable_rotation_params(shutdown_only, monkeypatch):
+    max_bytes = 0
+    backup_count = 1
     set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
