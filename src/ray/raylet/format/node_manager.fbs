@@ -104,9 +104,9 @@ table ResourceIdSetInfo {
 table DisconnectClient {
   disconnect_type: int;
   disconnect_detail: string;
-  // Creation task exception serialized by protobuf.
-  // Contains a RayException defined in common.pb
-  creation_task_exception_pb: [ubyte];
+  // If this disconnect was caused by an error in an actor creation task, the
+  // formatted error message will be populated here.
+  creation_task_error: string;
 }
 
 table ResourceIdSetInfos {

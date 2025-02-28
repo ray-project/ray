@@ -1546,10 +1546,10 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
-                                   const rpc::RayException *creation_task_exception) {
+                                   const std::optional<std::string> &creation_task_error) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = " << std::boolalpha
-                << bool(creation_task_exception != nullptr);
+                << bool(creation_task_error.has_value());
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1575,10 +1575,10 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // Erase any lease metadata.
   ReleaseWorker(worker->WorkerId());
 
-  if (creation_task_exception != nullptr) {
+  if (creation_task_error.has_value()) {
     RAY_LOG(INFO).WithField(worker->WorkerId())
-        << "Formatted creation task exception: "
-        << creation_task_exception->formatted_exception_string();
+        << "Worker disconnected due to creation task error: "
+        << creation_task_error.value();
   }
   // Publish the worker failure.
   auto worker_failure_data_ptr =
