@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 import boto3
 import click
 import json
+import pathlib
 import pytest
 import yaml
 
@@ -22,7 +23,7 @@ def get_applications() -> List[Any]:
 
 
 def setup_envs(query_url: str):
-    os.environ["OPENAI_API_BASE"] = f"{query_url}v1"
+    os.environ["OPENAI_API_BASE"] = str(pathlib.Path(query_url) / "v1")
 
 
 def get_env_vars() -> Dict[str, str]:
