@@ -14,6 +14,7 @@ This guide shows you how to:
 
 * :ref:`Transform rows <transforming_rows>`
 * :ref:`Transform batches <transforming_batches>`
+* :ref:`Ordering of rows <ordering_of_rows>`
 * :ref:`Stateful transforms <stateful_transforms>`
 * :ref:`Groupby and transform groups <transforming_groupby>`
 
@@ -217,6 +218,15 @@ Increasing ``batch_size`` improves the performance of vectorized transformations
 NumPy functions and model inference. However, if your batch size is too large, your
 program might run out of memory. If you encounter an out-of-memory error, decrease your
 ``batch_size``.
+
+.. _ordering_of_rows:
+
+Ordering of rows
+================
+When applying operations on data such as :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.map_batches`,
+the order of :ref:`blocks <dataset_concept>` is not preserved by default. If the order of blocks needs to be preserved,
+you can use :meth:`~ray.data.Dataset.sort` method, or set :attr:`ray.data.ExecutionOptions.preserve_order` to `True`.
+Note that this may impact performance.
 
 .. _stateful_transforms:
 
