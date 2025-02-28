@@ -1,6 +1,7 @@
 import importlib
 
 import pytest
+import sys
 
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
