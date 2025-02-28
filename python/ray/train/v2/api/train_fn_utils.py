@@ -22,8 +22,7 @@ def report(
 
     If this is called in multiple distributed training workers:
 
-    - Only the metrics reported by the rank 0 worker will be tracked by Ray Train.
-      See :ref:`the metrics logging guide <train-monitoring-and-logging>`.
+    - Only the metrics reported by the rank 0 worker will be attached to the checkpoint.
     - A checkpoint will be registered as long as one or more workers reports
       checkpoint that is not None.
       See the :ref:`checkpointing guide <train-dl-saving-checkpoints>`.
