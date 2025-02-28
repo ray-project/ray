@@ -100,11 +100,9 @@ class TrainContext:
                 if train.get_context().get_world_rank() == 0:
                     print("Worker 0")
 
-            train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
             trainer = TensorflowTrainer(
                 train_loop_per_worker,
                 scaling_config=ScalingConfig(num_workers=2),
-                datasets={"train": train_dataset}
             )
             trainer.fit()
 
@@ -132,11 +130,9 @@ class TrainContext:
                     torch.cuda.set_device(train.get_context().get_local_rank())
                 ...
 
-            train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
             trainer = TorchTrainer(
                 train_loop_per_worker,
                 scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
-                datasets={"train": train_dataset}
             )
             trainer.fit()
 
@@ -162,11 +158,10 @@ class TrainContext:
                 def train_loop_per_worker():
                     print(train.get_context().get_local_world_size())
 
-                train_dataset = ray.data.from_items(
-                    [{"x": x, "y": x + 1} for x in range(32)])
-                trainer = TorchTrainer(train_loop_per_worker,
+                trainer = TorchTrainer(
+                    train_loop_per_worker,
                     scaling_config=ScalingConfig(num_workers=1),
-                    datasets={"train": train_dataset})
+                )
                 trainer.fit()
 
             .. testoutput::
@@ -191,11 +186,10 @@ class TrainContext:
                 def train_loop_per_worker():
                     print(train.get_context().get_node_rank())
 
-                train_dataset = ray.data.from_items(
-                    [{"x": x, "y": x + 1} for x in range(32)])
-                trainer = TorchTrainer(train_loop_per_worker,
+                trainer = TorchTrainer(
+                    train_loop_per_worker,
                     scaling_config=ScalingConfig(num_workers=1),
-                    datasets={"train": train_dataset})
+                )
                 trainer.fit()
 
             .. testoutput::
