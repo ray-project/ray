@@ -1,4 +1,3 @@
-from typing import Optional
 from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunEventData as ProtoTrainRun,
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
@@ -40,13 +39,6 @@ _RUN_STATUS_MAP = {
 
 
 # Helper conversion functions
-def _ms_to_ns(time_ms: Optional[int]) -> Optional[int]:
-    """Convert millisecond timestamp to ns."""
-    if time_ms is None:
-        return None
-    return time_ms * int(1e6)
-
-
 def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
     """Convert resources dictionary to protobuf TrainResources."""
     return ProtoTrainRunAttempt.TrainResources(resources=resources)
@@ -80,8 +72,8 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
         attempt_id=attempt.attempt_id,
         status=_RUN_ATTEMPT_STATUS_MAP[attempt.status],
         status_detail=attempt.status_detail,
-        start_time_ns=_ms_to_ns(attempt.start_time_ms),
-        end_time_ns=_ms_to_ns(attempt.end_time_ms),
+        start_time_ns=attempt.start_time_ns,
+        end_time_ns=attempt.end_time_ns,
         resources=[_to_proto_resources(r.resources) for r in attempt.resources],
         workers=[_to_proto_worker(w) for w in attempt.workers],
     )
@@ -99,8 +91,8 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         controller_actor_id=bytes.fromhex(run.controller_actor_id),
         status=_RUN_STATUS_MAP[run.status],
         status_detail=run.status_detail,
-        start_time_ns=_ms_to_ns(run.start_time_ms),
-        end_time_ns=_ms_to_ns(run.end_time_ms),
+        start_time_ns=run.start_time_ns,
+        end_time_ns=run.end_time_ns,
     )
 
     return proto_run

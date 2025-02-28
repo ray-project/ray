@@ -35,7 +35,7 @@ def _create_mock_train_run(status: RunStatus = RunStatus.RUNNING):
         controller_actor_id=uuid.uuid4().hex,
         status=status,
         status_detail=None,
-        start_time_ms=int(time.time() * 1000),
+        start_time_ns=time.time_ns(),
     )
 
 
@@ -61,7 +61,7 @@ def _create_mock_train_run_attempt(
         attempt_id=attempt_id,
         status=status,
         status_detail=None,
-        start_time_ms=int(time.time() * 1000),
+        start_time_ns=time.time_ns(),
         resources=[TrainResources(resources={"CPU": 1})],
         workers=[worker],
     )
