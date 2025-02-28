@@ -479,7 +479,7 @@
     long_running: false
     script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_tp2.yaml
 
-- name: llm_serving_llama_3dot1_8B_tp_lora
+- name: llm_serving_llama_3dot1_8B_lora
   frequency: nightly
   python: "3.11"
   group: llm
