@@ -620,16 +620,16 @@ std::vector<bool> CheckForClientDisconnects(
     poll_fds[i] = {conns[i]->GetNativeHandle(), /*events=*/0, /*revents=*/0};
   }
 
-  int errno = poll(poll_fds.data(), poll_fds.size(), /*timeout=*/0);
-  if (errno > 0) {
+  int ret = poll(poll_fds.data(), poll_fds.size(), /*timeout=*/0);
+  if (ret > 0) {
     for (size_t i = 0; i < conns.size(); ++i) {
       // Check if a POLLHUP event occurred on the FD.
       if (poll_fds[i].revents & POLLHUP) {
         result[i] = true;
       }
     }
-  } else if (errno < 0) {
-    RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << strerr(errno);
+  } else if (ret < 0) {
+    RAY_LOG(WARNING) << "Failed to poll client connection FDs: " << strerr(ret);
   }
 
   return result;
