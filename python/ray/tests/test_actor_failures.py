@@ -918,6 +918,10 @@ def test_exit_actor(shutdown_only, tmp_path):
     class Actor:
         def exit(self):
             exit_actor()
+            raise AssertionError(
+                "This line should not be reached because non-async actor"
+                "should exit immediately after exit_actor is called."
+            )
 
     @ray.remote
     class AsyncActor:
@@ -934,7 +938,12 @@ def test_exit_actor(shutdown_only, tmp_path):
     ray.get(b.__ray_ready__.remote())
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(b.exit.remote())
-    assert "exit_actor()" in str(exc_info.value)
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
 
     """
     Verify atexit handler is called correctly.
@@ -1013,7 +1022,12 @@ def test_exit_actor_async_actor_nested_task(shutdown_only, tmp_path):
     ray.get(a.__ray_ready__.remote())
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(a.start_exit_task.remote())
-    assert "exit_actor()" in str(exc_info.value)
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
 
     def verify():
         with open(async_temp_file) as f:
