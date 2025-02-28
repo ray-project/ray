@@ -70,8 +70,7 @@ def test_filter_with_udfs(parquet_ds):
     assert all(record["sepal.length"] > 5.0 for record in filtered_udf_data)
     _check_valid_plan_and_result(
         filtered_udf_ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-        "ReadFiles[ReadFiles] -> Filter[Filter(<lambda>)]",
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles] -> Filter[Filter(<lambda>)]",
         filtered_udf_data,
     )
 
@@ -82,8 +81,7 @@ def test_filter_with_expressions(parquet_ds):
     filtered_expr_ds = parquet_ds.filter(expr="sepal.length > 5.0")
     _check_valid_plan_and_result(
         filtered_expr_ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-        "ReadFiles[ReadFiles]",
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles]",
         filtered_udf_data,
     )
 
@@ -125,8 +123,7 @@ def test_filter_pushdown_source_and_op(
     assert all(check(k) for k in result)
     _check_valid_plan_and_result(
         ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-        "ReadFiles[ReadFiles]",
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles]",
         result,
     )
 
@@ -143,8 +140,7 @@ def test_chained_filter_with_expressions(parquet_ds):
     filtered_udf_data = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0).take_all()
     _check_valid_plan_and_result(
         filtered_expr_chained_ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-        "ReadFiles[ReadFiles]",
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles]",
         filtered_udf_data,
     )
 
@@ -154,13 +150,11 @@ def test_chained_filter_with_expressions(parquet_ds):
     [
         (
             lambda ds: ds.filter(lambda r: r["sepal.length"] > 5.0),
-            "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-            "ReadFiles[ReadFiles] -> Filter[Filter(<lambda>)]",
+            "ListFiles[ListFiles] -> ReadFiles[ReadFiles] -> Filter[Filter(<lambda>)]",
         ),
         (
             lambda ds: ds.filter(expr="sepal.length > 5.0"),
-            "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-            "ReadFiles[ReadFiles]",
+            "ListFiles[ListFiles] -> ReadFiles[ReadFiles]",
         ),
     ],
 )
@@ -191,8 +185,8 @@ def test_filter_mixed(csv_ds):
     assert all(record["sepal.length"] > 4.0 for record in filtered_expr_data)
     _check_valid_plan_and_result(
         csv_ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-        "ReadFiles[ReadFiles] -> Filter[Filter(<lambda>)] -> "
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles] -> "
+        "Filter[Filter(<lambda>)] -> "
         "Filter[Filter(<expression>)] -> MapRows[Map(<lambda>)] -> "
         "Filter[Filter(<expression>)]",
         filtered_expr_data,
@@ -218,8 +212,7 @@ def test_filter_mixed_expression_first(ds_creator):
     assert all(record["sepal.length"] > 4.0 for record in filtered_expr_data)
     _check_valid_plan_and_result(
         ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] -> "
-        "ReadFiles[ReadFiles] -> Filter[Filter(<lambda>)]",
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles] -> Filter[Filter(<lambda>)]",
         filtered_expr_data,
     )
 
@@ -265,12 +258,9 @@ def test_multiple_union_with_filter_pushdown(ray_start_regular_shared):
     assert all(record["sepal.length"] > 5.0 for record in result)
     _check_valid_plan_and_result(
         ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] "
-        "-> ReadFiles[ReadFiles], "
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] "
-        "-> ReadFiles[ReadFiles] -> Union[Union], "
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] "
-        "-> ReadFiles[ReadFiles] -> Union[Union]",
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles], "
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles] -> Union[Union], "
+        "ListFiles[ListFiles] -> ReadFiles[ReadFiles] -> Union[Union]",
         result,
     )
 
@@ -288,9 +278,9 @@ def test_multiple_filter_with_union_pushdown_parquet(ray_start_regular_shared):
     assert ds.count() == 44
     _check_valid_plan_and_result(
         ds,
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] "
+        "ListFiles[ListFiles] "
         "-> ReadFiles[ReadFiles], "
-        "ListFiles[ListFiles] -> PartitionFiles[PartitionFiles] "
+        "ListFiles[ListFiles] "
         "-> ReadFiles[ReadFiles] -> Union[Union]",
         result,
     )

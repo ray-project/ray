@@ -96,13 +96,14 @@ def plan_read_files_op(
         transform_fns.append(FilterMapTransformFn(op.filter_expr))
 
     map_transformer = MapTransformer(transform_fns)
+
     return MapOperator.create(
         map_transformer,
         input_op,
         data_context,
         name="ReadFiles",
         target_max_block_size=None,
-        ray_remote_args=op.ray_remote_args,
         compute_strategy=TaskPoolStrategy(op.concurrency),
         supports_fusion=False,
+        ray_remote_args=op.ray_remote_args,
     )
