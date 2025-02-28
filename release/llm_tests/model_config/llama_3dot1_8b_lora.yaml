@@ -1,0 +1,21 @@
+model_loading_config:
+  model_id: meta-llama/Meta-Llama-3.1-8B-Instruct-Fine-Tuned
+  model_source: meta-llama/Llama-3.1-8B-Instruct
+
+accelerator_type: A10G
+
+engine_kwargs:
+  trust_remote_code: true
+  tokenizer_pool_size: 2
+  tokenizer_pool_extra_config:
+    runtime_env:
+      pip: null
+    # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+  max_model_len: 8192
+  max_num_batched_tokens: 8192
+  enable_chunked_prefill: false
+  tensor_parallel_size: 1
+
+lora_config:
+  dynamic_lora_loading_path: "s3://anyscale-production-data-cld-wy5a6nhazplvu32526ams61d98/org_7c1Kalm9WcX2bNIjW53GUT/cld_wy5a6nhazplvu32526ams61d98/artifact_storage/rayllm_release_test/lora_fine_tuning"
+  max_num_adapters_per_replica: 2
