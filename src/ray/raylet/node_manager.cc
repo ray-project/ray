@@ -665,6 +665,9 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   worker_pool_.HandleJobFinished(job_id);
 }
 
+// TODO(edoakes): the connection management and logic to destroy a worker should live
+// inside of the WorkerPool. We also need to unify the destruction paths between
+// DestroyWorker, DisconnectWorker, and KillWorker.
 void NodeManager::CheckForUnexpectedWorkerDisconnects() {
   std::vector<std::shared_ptr<ClientConnection>> all_connections;
   std::vector<std::shared_ptr<WorkerInterface>> all_workers =
