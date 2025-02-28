@@ -6,9 +6,11 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
-from ray._private.utils import open_log
 from ray._private.utils import (
+    open_log,
     get_or_create_event_loop,
+    get_logging_rotation_bytes,
+    get_logging_rotation_backup_count,
 )
 from ray._private.process_watcher import create_check_raylet_task
 from ray._raylet import StreamRedirector
@@ -125,11 +127,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Disable log rotation for windows platform.
-    logging_rotation_bytes = (
-        args.logging_rotate_bytes if sys.platform != "win32" else sys.maxsize
-    )
-    logging_rotation_backup_count = (
-        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    logging_rotation_bytes = get_logging_rotation_bytes(args.logging_rotate_bytes)
+    logging_rotation_backup_count = get_logging_rotation_backup_count(
+        args.logging_rotate_backup_count
     )
 
     logging_params = dict(

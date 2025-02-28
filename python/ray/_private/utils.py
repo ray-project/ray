@@ -434,6 +434,30 @@ class Unbuffered(object):
         return getattr(self.stream, attr)
 
 
+def get_logging_rotation_bytes(logging_rotation_bytes: int):
+    """Sanitize logging rotation bytes based on platform and value."""
+    # Disable log rotation for windows platform, which is hard to perform because windows doesn't allow deletion when file used by two processes.
+    if sys.platform == "win32":
+        return sys.maxsize
+    # Invalid input, ignore and emit max value of uint64 (which is the value to skip rotation in C++ stream redirection).
+    if logging_rotation_bytes <= 0:
+        return (1 << 64) - 1
+
+    return logging_rotation_bytes
+
+
+def get_logging_rotation_backup_count(logging_rotation_backup_count: int):
+    """Sanitize logging rotation backup cout based on platform and value."""
+    # Disable log rotation for windows platform, which is hard to perform because windows doesn't allow deletion when file used by two processes.
+    if sys.platform == "win32":
+        return 1
+    # Invalid input, ignore and emit 1.
+    if logging_rotation_backup_count <= 0:
+        return 1
+
+    return logging_rotation_backup_count
+
+
 def open_log(path, unbuffered=False, **kwargs):
     """
     Opens the log file at `path`, with the provided kwargs being given to
