@@ -54,17 +54,31 @@ def test_trainer_restore():
         DataParallelTrainer.can_restore("dummy")
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not supported in python 3.12+"
+)
+def test_serialized_imports_tensorflow(ray_start_4_cpus):
+    """Check that captured TensorflowTrainer imports are deserialized properly without circular imports."""
+
+    from ray.train.tensorflow import TensorflowTrainer
+
+    @ray.remote
+    def dummy_task():
+        _ = TensorflowTrainer
+
+    ray.get(dummy_task.remote())
+
+
 def test_serialized_imports(ray_start_4_cpus):
     """Check that captured imports are deserialized properly without circular imports."""
 
     from ray.train.torch import TorchTrainer
-    from ray.train.tensorflow import TensorflowTrainer
     from ray.train.xgboost import XGBoostTrainer
     from ray.train.lightgbm import LightGBMTrainer
 
     @ray.remote
     def dummy_task():
-        _ = (TorchTrainer, TensorflowTrainer, XGBoostTrainer, LightGBMTrainer)
+        _ = (TorchTrainer, XGBoostTrainer, LightGBMTrainer)
 
     ray.get(dummy_task.remote())
 
