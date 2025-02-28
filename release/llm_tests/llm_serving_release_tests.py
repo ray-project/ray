@@ -10,7 +10,7 @@ import yaml
 from anyscale_utils import start_service, get_current_compute_config_name
 
 CLOUD = "serve_release_tests_cloud"
-SERVE_CONFIG_FILE = "standalone_serve_config.yaml"
+SERVE_CONFIG_FILE = "serve_llama_3dot1_8b_tp1.yaml"
 SECRET_NAME = "llm_release_test_hf_token"
 REGION_NAME = "us-west-2"
 

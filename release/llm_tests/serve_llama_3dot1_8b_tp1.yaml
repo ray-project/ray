@@ -1,7 +1,7 @@
 applications:
   - args:
       llm_configs:
-        - ./model_config/llm_config.yaml
+        - ./model_config/llama_3dot1_8b_tp1.yaml
     import_path: ray.llm._internal.serve.builders.application_builders:build_openai_app
     name: llm-endpoint
     route_prefix: /
