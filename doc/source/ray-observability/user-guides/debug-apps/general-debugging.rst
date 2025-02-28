@@ -85,7 +85,7 @@ Placement Groups aren't composable
   from ray.util.placement_group import PlacementGroupSchedulingStrategy
 
   def create_task_that_uses_resources():
-      @ray.remote(num_cpus=10, scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None))
+      @ray.remote(num_cpus=10)
       def sample_task():
           print("Hello")
           return
