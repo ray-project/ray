@@ -78,12 +78,12 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
         status=_RUN_ATTEMPT_STATUS_MAP[attempt.status],
         status_detail=attempt.status_detail,
         start_time=_ms_to_ns(attempt.start_time_ms),
+        end_time=_ms_to_ns(attempt.end_time_ms)
+        if attempt.end_time_ms is not None
+        else None,
         resources=[_to_proto_resources(r.resources) for r in attempt.resources],
         workers=[_to_proto_worker(w) for w in attempt.workers],
     )
-
-    if attempt.end_time_ms is not None:
-        proto_attempt.end_time.CopyFrom(_ms_to_ns(attempt.end_time_ms))
 
     return proto_attempt
 
@@ -99,9 +99,7 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         status=_RUN_STATUS_MAP[run.status],
         status_detail=run.status_detail,
         start_time=_ms_to_ns(run.start_time_ms),
+        end_time=_ms_to_ns(run.end_time_ms) if run.end_time_ms is not None else None,
     )
-
-    if run.end_time_ms is not None:
-        proto_run.end_time.CopyFrom(_ms_to_ns(run.end_time_ms))
 
     return proto_run
