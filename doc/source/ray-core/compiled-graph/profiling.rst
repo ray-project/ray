@@ -93,35 +93,10 @@ Visualization
 To visualize the graph structure, call the :func:`visualize <ray.dag.compiled_dag_node.CompiledDAG.visualize>` method after calling :func:`experimental_compile <ray.dag.DAGNode.experimental_compile>`
 on the graph.
 
-.. testcode::
-
-    import ray
-    from ray.dag import InputNode, MultiOutputNode
-
-    @ray.remote
-    class Worker:
-        def inc(self, x):
-            return x + 1
-
-        def double(self, x):
-            return x * 2
-
-        def echo(self, x):
-            return x
-
-    sender1 = Worker.remote()
-    sender2 = Worker.remote()
-    receiver = Worker.remote()
-
-    with InputNode() as inp:
-        w1 = sender1.inc.bind(inp)
-        w1 = receiver.echo.bind(w1)
-        w2 = sender2.double.bind(inp)
-        w2 = receiver.echo.bind(w2)
-        dag = MultiOutputNode([w1, w2])
-
-    compiled_dag = dag.experimental_compile()
-    compiled_dag.visualize()
+.. literalinclude:: doc_code/cgraph_visualize.py
+    :language: python
+    :start-after: __cgraph_visualize_start__
+    :end-before: __cgraph_visualize_end__
 
 By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
 Note that this requires ``graphviz``.
