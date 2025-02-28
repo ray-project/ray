@@ -70,6 +70,7 @@ def start_service(
         working_dir=working_dir,
         applications=applications,
         env_vars=env_vars,
+        query_auth_token_enabled=False,
     )
     try:
         logger.info(f"Service config: {service_config}")
