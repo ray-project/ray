@@ -73,9 +73,6 @@ ctypedef void (*plasma_callback_function) \
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
-cdef extern from "ray/core_worker/lib/python/thread_utils.h" nogil:
-    cdef function[void()] GetThreadReleaser "ray::core::GetThreadReleaser"(PyGILState_STATE gstate)
-
 cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)

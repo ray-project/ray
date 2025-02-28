@@ -76,6 +76,12 @@ cdef extern from "Python.h":
     int Py_GetRecursionLimit()
     void Py_SetRecursionLimit(int)
 
+cdef extern from "<functional>" namespace "std" nogil:
+    T bind[T, Args](T callable, Args args)
+    cdef cppclass reference_wrapper[T]:
+        pass
+    cdef reference_wrapper[T] ref[T](T&)
+
 cdef class Buffer:
     cdef:
         shared_ptr[CBuffer] buffer

@@ -3013,13 +3013,6 @@ ray_cc_library(
     ],
 )
 
-ray_cc_library(
-    name = "python_thread_utils",
-    hdrs = [
-        "src/ray/core_worker/lib/python/thread_utils.h",
-    ],
-)
-
 pyx_library(
     name = "_raylet",
     srcs = glob([
@@ -3049,7 +3042,6 @@ pyx_library(
     ),
     deps = [
         ":python_callbacks",
-        ":python_thread_utils",
         "//:core_worker_lib",
         "//:exported_internal",
         "//:gcs_server_lib",
