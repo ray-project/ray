@@ -758,20 +758,29 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "stats_metric_core",
-    srcs = [
-        "src/ray/stats/metric.cc",
-    ],
+    name = "stats_metric_base",
+    srcs = [],
     hdrs = [
-        "src/ray/stats/metric.h",
         "src/ray/stats/tag_defs.h",
     ],
     deps = [
         "//src/ray/util:logging",
         "//src/ray/util:size_literals",
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_metric_opencensus_core",
+    srcs = [
+        "src/ray/stats/metric.cc",
+    ],
+    hdrs = [
+        "src/ray/stats/metric.h",
+    ],
+    deps = [
+        ":stats_metric_base",
         "@io_opencensus_cpp//opencensus/stats:stats",
-        "@com_google_googletest//:gtest_prod",
     ],
 )
 
@@ -785,28 +794,50 @@ ray_cc_library(
         "src/ray/stats/metric_defs.h",
     ],
     deps = [
-        ":stats_metric_core",
-        "//src/ray/util:size_literals",
+        ":stats_metric_base",
+        ":stats_metric_opencensus_core",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_metric_exporter_opencensus",
+    deps = [
+        ":stats_metric_defs",
         "@io_opencensus_cpp//opencensus/stats:stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_metric_exporter_prometheus",
+    deps = [
+        ":stats_metric_exporter_opencensus",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_metric_exporter_stdout",
+    deps = [
+        ":stats_metric_exporter_opencensus",
+        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
     ],
 )
 
 ray_cc_library(
     name = "stats_metric_exporter",
     deps = [
-        ":stats_metric_defs",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
-        "@com_github_jupp0r_prometheus_cpp//pull",
+        ":stats_metric_exporter_opencensus",
+        ":stats_metric_exporter_prometheus",
+        ":stats_metric_exporter_stdout",
     ],
 )
 
 ray_cc_library(
     name = "stats_metric",
     deps = [
-        ":stats_metric_core",
+        ":stats_metric_base",
         ":stats_metric_defs",
         ":stats_metric_exporter",
     ],
@@ -818,24 +849,23 @@ ray_cc_library(
         "src/ray/stats/metric_exporter.cc",
     ],
     hdrs = [
+        "src/ray/stats/metric.h",
         "src/ray/stats/metric_exporter.h",
         "src/ray/stats/stats.h",
         "src/ray/stats/tag_defs.h",
     ],
     linkopts = select({
-        "@platforms//os:windows": [],
-        "@platforms//os:macos": [],
-        "@platforms//os:linux": [
+        "@platforms//os:windows": [
+        ],
+        "//conditions:default": [
             "-lpthread",
         ],
-        "//conditions:default": [],
     }),
     deps = [
-        ":stats_metric",
         ":reporter_rpc",
+        ":stats_metric",
+        "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
     ],
 )
 
