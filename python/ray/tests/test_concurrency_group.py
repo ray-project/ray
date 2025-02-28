@@ -198,6 +198,7 @@ class TestThreadingLocalData:
     This test verifies that synchronous tasks can access thread local data
     that was set by previous synchronous tasks.
     """
+
     def test_tasks_on_default_executor(self, ray_start_regular_shared):
         a = Actor.remote()
         tid_1 = ray.get(a.set_thread_local.remote("f1"))

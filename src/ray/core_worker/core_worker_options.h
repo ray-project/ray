@@ -137,7 +137,7 @@ struct CoreWorkerOptions {
   std::string raylet_ip_address;
   /// The name of the driver.
   std::string driver_name;
-  /// Language worker callback to execute tasks.
+  /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
   /// The callback to be called when shutting down a `CoreWorker` instance.
   std::function<void(const WorkerID &)> on_worker_shutdown;
@@ -147,8 +147,8 @@ struct CoreWorkerOptions {
   /// any long-running operations in the core worker will short circuit and return that
   /// status.
   std::function<Status()> check_signals;
-  /// Language callback that initializes a thread and returns a function to be called
-  /// when the thread is destroyed.
+  /// Application-language callback that initializes a thread and returns a function to
+  /// be called when the thread is destroyed.
   std::function<std::function<void()>()> initialize_thread_callback;
   /// Application-language callback to trigger garbage collection in the language
   /// runtime. This is required to free distributed references that may otherwise
