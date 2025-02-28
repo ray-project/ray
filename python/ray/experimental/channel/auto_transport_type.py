@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import ray
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.util.types import DevicePolicy
+from ray.experimental.util.types import Device
 
 
 class AutoTransportType(ChannelOutputType):
@@ -17,11 +17,11 @@ class AutoTransportType(ChannelOutputType):
 
     def __init__(
         self,
-        device_policy: DevicePolicy = DevicePolicy.AUTO,
+        device: Device = Device.AUTO,
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
-        self.device_policy = device_policy
+        self.device = device
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
@@ -145,7 +145,7 @@ class TypeHintResolver:
             # is not supported, so we always use shared memory to transfer
             # tensors.
             return TorchTensorType(
-                device_policy=auto_transport_type.device_policy,
+                device=auto_transport_type.device,
                 _static_shape=auto_transport_type._static_shape,
                 _direct_return=auto_transport_type._direct_return,
             )
@@ -154,7 +154,7 @@ class TypeHintResolver:
         # to transport the tensors
         if not (self._use_gpu(writer) and self._use_gpu(readers)):
             return TorchTensorType(
-                device_policy=auto_transport_type.device_policy,
+                device=auto_transport_type.device,
                 _static_shape=auto_transport_type._static_shape,
                 _direct_return=auto_transport_type._direct_return,
             )
@@ -163,7 +163,7 @@ class TypeHintResolver:
         # use shared memory to transport the tensors
         if self._use_same_gpu(writer_and_node, reader_and_node_list):
             return TorchTensorType(
-                device_policy=auto_transport_type.device_policy,
+                device=auto_transport_type.device,
                 _static_shape=auto_transport_type._static_shape,
                 _direct_return=auto_transport_type._direct_return,
             )
@@ -172,7 +172,7 @@ class TypeHintResolver:
         # the tensors
         return TorchTensorType(
             transport="nccl",
-            device_policy=auto_transport_type.device_policy,
+            device=auto_transport_type.device,
             _static_shape=auto_transport_type._static_shape,
             _direct_return=auto_transport_type._direct_return,
         )

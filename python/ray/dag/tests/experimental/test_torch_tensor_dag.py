@@ -270,13 +270,13 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
 
     shape = (10,)
     dtype = torch.float16
-    device_policy = "default_device" if num_gpus[0] == 0 or num_gpus[1] == 0 else "auto"
+    device = "auto" if num_gpus[0] == 0 or num_gpus[1] == 0 else "retain"
 
     # Test normal execution.
     with InputNode() as inp:
         data = sender.send.bind(inp.shape, inp.dtype, inp[0])
         data_annotated = data.with_tensor_transport(
-            transport="auto", device_policy=device_policy
+            transport="auto", device=device
         )
         dag = receiver.recv.bind(data_annotated)
 
@@ -298,7 +298,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
     # Test that actors can be reused for a new DAG.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_tensor_transport(transport="auto", device_policy=device_policy)
+        dag = dag.with_tensor_transport(transport="auto", device=device)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()

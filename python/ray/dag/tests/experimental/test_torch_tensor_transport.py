@@ -139,14 +139,14 @@ class TestTensorTransport:
         default_devices = {"cpu-only": "cpu", "gpu-1": "cuda:0", "gpu-2": "cuda:0"}
 
         for worker_name, worker in workers.items():
-            for device_policy in ["auto", "default_device"]:
+            for device in ["retain", "auto"]:
                 with InputNode() as inp:
                     dag = worker.echo_tensor_device.bind(
-                        inp.with_tensor_transport(device_policy=device_policy)
+                        inp.with_tensor_transport(device=device)
                     )
                 compiled_dag = dag.experimental_compile()
                 ref = compiled_dag.execute(torch.tensor([1]))
-                if device_policy == "default_device":
+                if device == "auto":
                     assert ray.get(ref) == default_devices[worker_name], worker_name
                 else:
                     assert ray.get(ref) == "cpu", worker_name
@@ -246,12 +246,12 @@ class TestTensorTransport:
             src_device,
             dst_device,
             transport="auto",
-            device_policy="auto",
+            device="retain",
             raises_exception=False,
         ):
             with InputNode() as inp:
                 dag = workers[src].send.bind(inp[0], inp[1])
-                dag = dag.with_tensor_transport(transport, device_policy)
+                dag = dag.with_tensor_transport(transport, device)
                 dag = workers[dst].echo_tensor_device.bind(dag)
             compiled_dag = dag.experimental_compile()
 
@@ -268,20 +268,20 @@ class TestTensorTransport:
 
         # cpu tensor to gpu worker
         execute_dag(
-            "cpu-only", "gpu-1", "cpu", "cuda:0", device_policy="default_device"
+            "cpu-only", "gpu-1", "cpu", "cuda:0", device="auto"
         )
-        execute_dag("cpu-only", "gpu-2", "cpu", "cpu", device_policy="auto")
+        execute_dag("cpu-only", "gpu-2", "cpu", "cpu", device="retain")
 
         # gpu tensor to gpu worker
-        for device_policy in ["default_device", "auto"]:
+        for device in ["retain", "auto"]:
             for transport in ["auto", "nccl"]:
                 execute_dag(
-                    "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, device_policy
+                    "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, device
                 )
 
         # gpu tensor to cpu worker
         execute_dag(
-            "gpu-1", "cpu-only", "cuda:0", "cpu", device_policy="default_device"
+            "gpu-1", "cpu-only", "cuda:0", "cpu", device="auto"
         )
 
         execute_dag(
@@ -289,7 +289,7 @@ class TestTensorTransport:
             "cpu-only",
             "cuda:0",
             "cpu",
-            device_policy="auto",
+            device="retain",
             raises_exception=True,
         )
 
@@ -300,12 +300,12 @@ class TestTensorTransport:
             cpu_dst_device,
             gpu_dst_device,
             transport="auto",
-            device_policy="auto",
+            device="retain",
             raises_exception=False,
         ):
             with InputNode() as inp:
                 dag = workers[src].send_dict.bind(inp)
-                dag = dag.with_tensor_transport(transport, device_policy)
+                dag = dag.with_tensor_transport(transport, device)
                 dag = workers[dst].echo_dict_device.bind(dag)
             compiled_dag = dag.experimental_compile()
 
@@ -325,20 +325,20 @@ class TestTensorTransport:
         # to GPU worker
         for transport in ["auto", "nccl"]:
             execute_dict_dag(
-                "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, "default_device"
+                "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, "retain"
             )
             execute_dict_dag("gpu-1", "gpu-2", "cpu", "cuda:0", transport, "auto")
 
         # to CPU worker
         execute_dict_dag(
-            "gpu-1", "cpu-only", "cpu", "cpu", device_policy="default_device"
+            "gpu-1", "cpu-only", "cpu", "cpu", device="auto"
         )
         execute_dict_dag(
             "gpu-1",
             "cpu-only",
             "cuda:0",
             "cpu",
-            device_policy="auto",
+            device="retain",
             raises_exception=True,
         )
 
@@ -426,28 +426,28 @@ class TestTensorTransport:
             "gpu-1": MyWorker.options(num_gpus=1).remote(),
         }
 
-        def execute_dag(src, src_device, dst_device, device_policy):
+        def execute_dag(src, src_device, dst_device, device):
             with InputNode() as inp:
                 dag = workers[src].send.bind(inp[0], inp[1])
-                dag = dag.with_tensor_transport(device_policy=device_policy)
+                dag = dag.with_tensor_transport(device=device)
             compiled_dag = dag.experimental_compile()
             tensor = ray.get(compiled_dag.execute(1, src_device))
             assert str(tensor.device) == dst_device
             compiled_dag.teardown()
 
         # transport cpu tensor
-        execute_dag("cpu-only", "cpu", "cpu", "auto")
-        execute_dag("gpu-1", "cpu", "cpu", "default_device")
+        execute_dag("cpu-only", "cpu", "cpu", "retain")
+        execute_dag("gpu-1", "cpu", "cpu", "auto")
 
         # transport gpu tensor, assuming driver has access to GPUs
-        execute_dag("gpu-1", "cuda:0", "cpu", "default_device")
-        execute_dag("gpu-1", "cuda:0", "cuda:0", "auto")
+        execute_dag("gpu-1", "cuda:0", "cpu", "auto")
+        execute_dag("gpu-1", "cuda:0", "cuda:0", "retain")
 
         # Test dictionary of tensors, assuming driver has access to GPUs
-        def execute_dict_dag(src, gpu_dst_device, device_policy):
+        def execute_dict_dag(src, gpu_dst_device, device):
             with InputNode() as inp:
                 dag = workers[src].send_dict.bind(inp)
-                dag = dag.with_tensor_transport(device_policy=device_policy)
+                dag = dag.with_tensor_transport(device=device)
             compiled_dag = dag.experimental_compile()
             device_dict = {"cpu_tensor": "cpu", "gpu_tensor": "cuda:0"}
             result = ray.get(compiled_dag.execute(device_dict))
@@ -456,8 +456,8 @@ class TestTensorTransport:
             assert str(result["gpu_tensor"].device) == gpu_dst_device
             compiled_dag.teardown()
 
-        execute_dict_dag("gpu-1", "cpu", "default_device")
-        execute_dict_dag("gpu-1", "cuda:0", "auto")
+        execute_dict_dag("gpu-1", "cpu", "auto")
+        execute_dict_dag("gpu-1", "cuda:0", "retain")
 
 
 if __name__ == "__main__":

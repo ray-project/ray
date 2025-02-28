@@ -20,9 +20,11 @@ class ReduceOp(_CollectiveOp):
 
 
 @PublicAPI
-class DevicePolicy(Enum):
+class Device(Enum):
+    RETAIN = "retain"
     AUTO = "auto"
-    DEFAULT_DEVICE = "default_device"
+    CPU = "cpu"
+    GPU = "gpu"
 
     def __str__(self):
         return f"{self.name.lower()}"

@@ -25,7 +25,7 @@ import asyncio
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
-from ray.experimental.util.types import DevicePolicy
+from ray.experimental.util.types import Device
 
 T = TypeVar("T")
 
@@ -143,7 +143,7 @@ class DAGNode(DAGNodeBase):
     def with_tensor_transport(
         self,
         transport: Optional[Union[str, Communicator]] = "auto",
-        device_policy: Literal["auto", "default"] = "auto",
+        device: Literal["retain", "auto", "cpu", "gpu"] = "retain",
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
@@ -155,9 +155,11 @@ class DAGNode(DAGNodeBase):
                 "auto" (default) means that tensor transport will be
                 automatically determined based on the sender and receiver,
                 either through NCCL or host memory.
-            device_policy: The device policy to use for the tensor transport.
-                "auto" (default) means that device in the receiver will match the sender.
-                "default" means that device in the receiver will it's default device.
+            device: The target device to use for the tensor transport.
+                "retain" (default) means that device in the receiver will match the sender.
+                "auto" means that device in the receiver will be it's default torch_device.
+                "cpu" means that device in the receiver will be cpu.
+                "gpu" means that device in the receiver will be gpu.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG. If this is True, the
@@ -168,22 +170,22 @@ class DAGNode(DAGNodeBase):
                 an additional data transfer.
         """
         try:
-            device_policy = DevicePolicy(device_policy)
+            device = Device(device)
         except ValueError:
             raise ValueError(
-                f"Invalid device_policy '{device_policy}'. "
-                "Valid options are: 'auto', 'default'."
+                f"Invalid device '{device}'. "
+                "Valid options are: 'retain', 'auto', 'cpu', 'gpu'."
             )
         if transport == "auto":
             self._type_hint = AutoTransportType(
-                device_policy=device_policy,
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
                 transport=transport,
-                device_policy=device_policy,
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
@@ -194,7 +196,7 @@ class DAGNode(DAGNodeBase):
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
-                device_policy=device_policy,
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
