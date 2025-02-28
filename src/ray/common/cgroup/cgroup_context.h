@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include <cstdint>
 #include <string>
 
