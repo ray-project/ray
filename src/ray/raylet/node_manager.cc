@@ -678,7 +678,7 @@ void NodeManager::CheckForUnexpectedWorkerDisconnects() {
     all_connections.push_back(driver->Connection());
   }
 
-  RAY_CHECK(all_connections.size() == all_workers.size());
+  RAY_CHECK_EQ(all_connections.size(), all_workers.size());
 
   // Check if there are any unexpected disconnects on the worker socket connections.
   // This will close the connection without processing remaining messages.
