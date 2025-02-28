@@ -26,8 +26,8 @@ template <typename ExecutorType>
 ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     const std::vector<ConcurrencyGroup> &concurrency_groups,
     const int32_t max_concurrency_for_default_concurrency_group,
-    std::function<std::function<void()>()> initializer)
-    : initializer_(std::move(initializer)) {
+    std::function<std::function<void()>()> initialize_thread_callback)
+    : initialize_thread_callback_(std::move(initialize_thread_callback)) {
   for (auto &group : concurrency_groups) {
     const auto name = group.name;
     const auto max_concurrency = group.max_concurrency;
@@ -91,14 +91,14 @@ template <typename ExecutorType>
 std::optional<std::function<void()>>
 ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
     std::shared_ptr<ExecutorType> executor) {
-  if (!initializer_) {
+  if (!initialize_thread_callback_) {
     return std::nullopt;
   }
 
   if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
     std::promise<void> init_promise;
     auto init_future = init_promise.get_future();
-    auto initializer = initializer_;
+    auto initializer = initialize_thread_callback_;
     std::function<void()> releaser;
 
     executor->Post([&initializer, &init_promise, &releaser]() {

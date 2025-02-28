@@ -36,7 +36,7 @@ class ConcurrencyGroupManager final {
   explicit ConcurrencyGroupManager(
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const int32_t max_concurrency_for_default_concurrency_group = 1,
-      std::function<std::function<void()>()> initializer = nullptr);
+      std::function<std::function<void()>()> initialize_thread_callback = nullptr);
 
   /// Get the corresponding concurrency group executor by the give concurrency group or
   /// function descriptor.
@@ -77,7 +77,7 @@ class ConcurrencyGroupManager final {
   std::shared_ptr<ExecutorType> default_executor_ = nullptr;
 
   // The function that can be used to initialize the executor.
-  std::function<std::function<void()>()> initializer_;
+  std::function<std::function<void()>()> initialize_thread_callback_;
 
   // A vector of optional functions that can be used to release the executors.
   std::vector<std::optional<std::function<void()>>> executor_releasers_;
