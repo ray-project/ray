@@ -362,7 +362,9 @@ ray_cc_test(
 
 ray_cc_test(
     name = "scoped_dup2_wrapper_test",
+    size = "small",
     srcs = ["scoped_dup2_wrapper_test.cc"],
+    tags = ["team:core"],
     deps = [
         "//src/ray/common/test:testing",
         "//src/ray/util:compat",
@@ -372,6 +374,4 @@ ray_cc_test(
         "@boost//:iostreams",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
