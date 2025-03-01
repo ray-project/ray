@@ -17,7 +17,10 @@
 
 #include "ray/object_manager/plasma/protocol.h"
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "flatbuffers/flatbuffers.h"
 #include "ray/object_manager/plasma/common.h"

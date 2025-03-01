@@ -17,11 +17,19 @@
 
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/time/clock.h"
 #include "ray/common/ray_config.h"
 
 namespace plasma {
-using namespace flatbuf;
+
+using flatbuf::PlasmaError;
+using plasma::ObjectState;
+using ray::ObjectID;
 
 ObjectLifecycleManager::ObjectLifecycleManager(
     IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
