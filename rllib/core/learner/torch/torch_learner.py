@@ -9,6 +9,7 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    TYPE_CHECKING,
 )
 
 from ray.rllib.algorithms.algorithm_config import (
@@ -55,6 +56,9 @@ from ray.rllib.utils.typing import (
     StateDict,
     TensorType,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
@@ -156,7 +160,9 @@ class TorchLearner(Learner):
         with contextlib.ExitStack() as stack:
             if self.config.num_learners > 1:
                 for mod in self.module.values():
-                    stack.enter_context(mod.no_sync())
+                    # Skip non-torch modules, b/c they may not have the `no_sync` API.
+                    if isinstance(mod, torch.nn.Module):
+                        stack.enter_context(mod.no_sync())
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
@@ -180,6 +186,11 @@ class TorchLearner(Learner):
         else:
             total_loss = sum(loss_per_module.values())
 
+        # If we don't have any loss computations, `sum` returns 0.
+        if isinstance(total_loss, int):
+            assert total_loss == 0
+            return {}
+
         total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
@@ -191,8 +202,8 @@ class TorchLearner(Learner):
         for pid, grad in gradients_dict.items():
             # If updates should not be skipped turn `nan` and `inf` gradients to zero.
             if (
-                not torch.isfinite(grad).all()
-                and not self.config.torch_skip_nan_gradients
+                not self.config.torch_skip_nan_gradients
+                and not torch.isfinite(grad).all()
             ):
                 # Warn the user about `nan` gradients.
                 logger.warning(f"Gradients {pid} contain `nan/inf` values.")
@@ -249,7 +260,7 @@ class TorchLearner(Learner):
                     # Update the scaler.
                     scaler.update()
                 # `step` the optimizer (default), but only if all gradients are finite.
-                elif all(
+                elif self.config.torch_skip_nan_gradients or all(
                     param.grad is None or torch.isfinite(param.grad).all()
                     for group in optim.param_groups
                     for param in group["params"]
