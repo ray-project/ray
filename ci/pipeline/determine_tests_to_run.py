@@ -18,9 +18,6 @@ _ALL_TAGS = set(
     """.split()
 )
 
-_TAG_RULE = """
-"""
-
 
 def _list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
