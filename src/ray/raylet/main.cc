@@ -163,15 +163,14 @@ int main(int argc, char *argv[]) {
 
   // For compatibility, by default GCS server dumps logging into a single file with no
   // rotation.
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      /*app_name=*/argv[0],
-      ray::RayLogLevel::INFO,
-      /*ray_log_filepath=*/"",
-      /*ray_err_log_filepath=*/"",
-      /*log_rotation_max_size=*/std::numeric_limits<size_t>::max(),
-      /*log_rotation_file_num=*/1);
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog,
+                                         /*app_name=*/argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*ray_log_filepath=*/"",
+                                         /*ray_err_log_filepath=*/"",
+                                         /*log_rotation_max_size=*/0,
+                                         /*log_rotation_file_num=*/1);
 
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
