@@ -84,9 +84,9 @@ DEFAULT_LATENCY_BUCKET_MS = [
 ]
 
 
-def _parse_latency_buckets(bucket_str: str) -> list:
-    if not bucket_str.strip():
-        return DEFAULT_LATENCY_BUCKET_MS
+def parse_latency_buckets(bucket_str: str, default_buckets: list) -> list:
+    if bucket_str.strip() == "":
+        return default_buckets
     try:
         # Convert string to list of floats
         buckets = [float(x.strip()) for x in bucket_str.split(",")]
@@ -108,12 +108,12 @@ def _parse_latency_buckets(bucket_str: str) -> list:
 # RAY_SERVE_REQUEST_LATENCY_BUCKET_MS="1,2,3,4"
 # RAY_SERVE_MODEL_LOAD_LATENCY_BUCKET_MS="1,2,3,4"
 #: Histogram buckets for request latency.
-REQUEST_LATENCY_BUCKET_MS = _parse_latency_buckets(
-    os.getenv("REQUEST_LATENCY_BUCKET_MS", "")
+REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    os.getenv("REQUEST_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
 )
 #: Histogram buckets for model load/unload latency.
-MODEL_LOAD_LATENCY_BUCKET_MS = _parse_latency_buckets(
-    os.getenv("MODEL_LOAD_LATENCY_BUCKET_MS", "")
+MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    os.getenv("MODEL_LOAD_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
 )
 
 #: Name of deployment health check method implemented by user.
