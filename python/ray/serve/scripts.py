@@ -739,9 +739,9 @@ def shutdown(address: str, yes: bool):
                 f"Cannot shutdown Serve applications on {address} because there are no applications deployed."
             )
             return
-    except Exception:
+    except Exception as e:
         cli_logger.warning(
-            f"Cannot shutdown Serve applications on {address} because it is not a valid Ray address."
+            f"Cannot shutdown Serve applications on {address} because {str(e)}"
         )
         return
 

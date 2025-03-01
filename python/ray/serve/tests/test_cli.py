@@ -63,7 +63,7 @@ def test_start_shutdown_without_serve_running(ray_start_stop):
 
 def test_start_shutdown_without_ray_running():
     ret = subprocess.check_output(["serve", "shutdown", "-y"])
-    assert "because it is not a valid Ray address" in ret.decode("utf-8")
+    assert "Cannot shutdown Serve applications" in ret.decode("utf-8")
     assert "Sent shutdown request" not in ret.decode("utf-8")
 
 
