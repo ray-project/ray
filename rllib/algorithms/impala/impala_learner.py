@@ -9,7 +9,9 @@ import tree  # pip install dm_tree
 import ray
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -54,8 +56,6 @@ class IMPALALearner(Learner):
         #  We will have to fix this offline RL logic first, then can remove this hack
         #  here and return to always using the RLock.
         self.metrics._threading_lock = threading.RLock()
-        self._num_updates = 0
-        self._num_updates_lock = threading.Lock()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -79,6 +79,8 @@ class IMPALALearner(Learner):
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
+        # Results queue for reduced Learner metrics.
+        self._learner_thread_out_queue = deque(maxlen=1)
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
@@ -96,35 +98,52 @@ class IMPALALearner(Learner):
 
         # Create and start the Learner thread.
         self._learner_thread = _LearnerThread(
-            update_method=self._update_from_batch_or_episodes,
+            update_method=Learner.update,
             in_queue=self._learner_thread_in_queue,
+            out_queue=self._learner_thread_out_queue,
             learner=self,
         )
         self._learner_thread.start()
 
     @override(Learner)
-    def update_from_batch(
+    def update(
         self,
-        batch: Any,
+        training_data: TrainingData,
         *,
         timesteps: Dict[str, Any],
+        return_state: bool = False,
         **kwargs,
     ) -> ResultDict:
+        """
+
+        Args:
+            batch:
+            timesteps:
+            return_state: Whether to include one of the Learner worker's state from
+                after the update step in the returned results dict (under the
+                `_rl_module_state_after_update` key). Note that after an update, all
+                Learner workers' states should be identical, so we use the first
+                Learner's state here. Useful for avoiding an extra `get_weights()` call,
+                e.g. for synchronizing EnvRunner weights.
+            **kwargs:
+
+        Returns:
+
+        """
         global _CURRENT_GLOBAL_TIMESTEPS
         _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
 
-        if isinstance(batch, ray.ObjectRef):
-            batch = ray.get(batch)
+        training_data.solve_refs()
 
         if self.config.num_gpus_per_learner > 0:
-            self._gpu_loader_in_queue.put(batch)
+            self._gpu_loader_in_queue.put(training_data.batch)
             self.metrics.log_value(
                 (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
                 self._gpu_loader_in_queue.qsize(),
             )
         else:
             if isinstance(self._learner_thread_in_queue, CircularBuffer):
-                ts_dropped = self._learner_thread_in_queue.add(batch)
+                ts_dropped = self._learner_thread_in_queue.add(training_data.batch)
                 self.metrics.log_value(
                     (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
                     ts_dropped,
@@ -133,30 +152,38 @@ class IMPALALearner(Learner):
             else:
                 # Enqueue to Learner thread's in-queue.
                 _LearnerThread.enqueue(
-                    self._learner_thread_in_queue, batch, self.metrics
+                    self._learner_thread_in_queue, training_data.batch, self.metrics
                 )
 
-        # TODO (sven): Find a better way to limit the number of (mostly) unnecessary
-        #  metrics reduces.
-        with self._num_updates_lock:
-            count = self._num_updates
-        if count >= 20:
-            with self._num_updates_lock:
-                self._num_updates = 0
-            return self.metrics.reduce()
-        return {}
+        try:
+            result = self._learner_thread_out_queue.popleft()
+        except IndexError:
+            result = {}
+
+        if return_state:
+            learner_state = self.get_state(
+                # Only return the state of those RLModules that are trainable.
+                components=[
+                    COMPONENT_RL_MODULE + "/" + mid
+                    for mid in self.module.keys()
+                    if self.should_module_be_updated(mid)
+                ],
+                inference_only=True,
+            )
+            learner_state[COMPONENT_RL_MODULE] = ray.put(
+                learner_state[COMPONENT_RL_MODULE]
+            )
+            result["_rl_module_state_after_update"] = learner_state
+
+        return result
 
     @override(Learner)
     def update_from_episodes(
         self,
         episodes: Any,
-        *,
-        timesteps: Dict[str, Any],
         **kwargs,
     ) -> ResultDict:
-        global _CURRENT_GLOBAL_TIMESTEPS
-        _CURRENT_GLOBAL_TIMESTEPS = timesteps or {}
-
+        raise NotImplementedError
         if isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
             try:
                 episodes = tree.flatten(ray.get(episodes))
@@ -194,7 +221,6 @@ class IMPALALearner(Learner):
 
         return self.update_from_batch(
             batch=batch,
-            timesteps=timesteps,
             **kwargs,
         )
 
@@ -277,7 +303,8 @@ class _LearnerThread(threading.Thread):
         self,
         *,
         update_method,
-        in_queue: deque,
+        in_queue: Union[deque, CircularBuffer],
+        out_queue: deque,
         learner,
     ):
         super().__init__(name="_LearnerThread")
@@ -287,6 +314,7 @@ class _LearnerThread(threading.Thread):
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
+        self._out_queue: deque = out_queue
 
     def run(self) -> None:
         while not self.stopped:
@@ -318,12 +346,12 @@ class _LearnerThread(threading.Thread):
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
-            self._update_method(
+            results = self._update_method(
+                self=self.learner,
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
-            with self.learner._num_updates_lock:
-                self.learner._num_updates += 1
+            self._out_queue.append(results)
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):
