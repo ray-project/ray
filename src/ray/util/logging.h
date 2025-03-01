@@ -424,7 +424,7 @@ class RayLog {
   // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
-  inline static size_t log_rotation_max_size_ = std::numeric_limits<size_t>::max();
+  inline static size_t log_rotation_max_size_ = 0;
   // Log rotation file number.
   inline static size_t log_rotation_file_num_ = 1;
   // Ray default logger name.

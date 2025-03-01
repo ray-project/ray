@@ -216,8 +216,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 // 1. Log roration is requested;
 // 2. Multiple sinks are involved.
 bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
-  const bool need_rotation =
-      stream_redirect_opt.rotation_max_size != std::numeric_limits<size_t>::max();
+  const bool need_rotation = stream_redirect_opt.rotation_max_size != 0;
   return need_rotation || stream_redirect_opt.tee_to_stdout ||
          stream_redirect_opt.tee_to_stderr;
 }
