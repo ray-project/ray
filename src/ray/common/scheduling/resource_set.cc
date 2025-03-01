@@ -191,7 +191,12 @@ NodeResourceSet::NodeResourceSet(
 
 NodeResourceSet &NodeResourceSet::Set(ResourceID resource_id, FixedPoint value) {
   if (value == ResourceDefaultValue(resource_id)) {
-    resources_.erase(resource_id);
+    // We should still store object_store_memory even if it is 0.
+    if (resource_id == ResourceID::ObjectStoreMemory()) {
+      resources_[resource_id] = value;
+    } else {
+      resources_.erase(resource_id);
+    }
   } else {
     resources_[resource_id] = value;
   }
@@ -239,6 +244,7 @@ FixedPoint NodeResourceSet::ResourceDefaultValue(ResourceID resource_id) const {
 
 absl::flat_hash_map<std::string, double> NodeResourceSet::GetResourceMap() const {
   absl::flat_hash_map<std::string, double> result;
+  result.reserve(resources_.size());
   for (const auto &[id, quantity] : resources_) {
     result[id.Binary()] = quantity.Double();
   }
