@@ -21,7 +21,7 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-# Hermetic python envionment, currently only used for CI infra and scripts.
+# Hermetic python environment, currently only used for CI infra and scripts.
 
 py_runtime(
     name = "python3_runtime",
