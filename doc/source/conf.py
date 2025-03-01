@@ -121,7 +121,7 @@ nitpicky = True
 nitpick_ignore_regex = [
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
-    ("py:obj", "ray\.data\.datasource\.datasink\.WriteReturnType"),
+    ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
