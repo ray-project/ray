@@ -26,6 +26,9 @@
 #include "gtest/gtest.h"
 
 using ray::ObjectID;
+using testing::_;
+using testing::Invoke;
+using testing::Return;
 using testing::Test;
 
 namespace plasma {

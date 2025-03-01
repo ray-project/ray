@@ -27,6 +27,8 @@ using ray::NodeID;
 using ray::ObjectID;
 using ray::ObjectInfo;
 using ray::WorkerID;
+using testing::_;
+using testing::Invoke;
 using testing::Test;
 
 namespace plasma {

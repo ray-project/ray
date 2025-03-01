@@ -21,6 +21,8 @@
 #include "ray/object_manager/plasma/object_store.h"
 
 using ray::ObjectID;
+using testing::_;
+using testing::Return;
 using testing::Test;
 
 namespace plasma {

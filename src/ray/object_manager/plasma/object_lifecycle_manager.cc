@@ -27,10 +27,9 @@
 
 namespace plasma {
 
-// Using declarations instead of the using-directive
-using flatbuf::ObjectID;
-using flatbuf::ObjectState;
 using flatbuf::PlasmaError;
+using plasma::ObjectState;
+using ray::ObjectID;
 
 ObjectLifecycleManager::ObjectLifecycleManager(
     IAllocator &allocator, ray::DeleteObjectCallback delete_object_callback)
