@@ -169,6 +169,9 @@ ray_cc_library(
     name = "string_utils",
     srcs = ["string_utils.cc"],
     hdrs = ["string_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 ray_cc_library(
