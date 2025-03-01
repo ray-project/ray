@@ -443,7 +443,7 @@
     timeout: 3600
     script: python llm_hello_world.py
 
-- name: llm_serving_llama_3dot1_8B_tp_1
+- name: llm_serving_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
   python: "3.11"
   group: llm
@@ -459,7 +459,7 @@
   run:
     timeout: 3600
     long_running: false
-    script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_tp1.yaml
+    script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_quantized_tp1.yaml
 
 - name: llm_serving_llama_3dot1_8B_tp_2
   frequency: nightly

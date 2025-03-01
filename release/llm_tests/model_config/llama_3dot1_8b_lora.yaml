@@ -5,18 +5,8 @@ model_loading_config:
 accelerator_type: A10G
 
 engine_kwargs:
-  trust_remote_code: true
-  tokenizer_pool_size: 2
-  tokenizer_pool_extra_config:
-    runtime_env:
-      pip: null
   max_model_len: 2048
-  max_num_batched_tokens: 2048
-  enable_chunked_prefill: false
-  tensor_parallel_size: 1
   enable_lora: true
-  max_lora_rank: 32
-  max_loras: 2
 
 lora_config:
   dynamic_lora_loading_path: "s3://anyscale-production-data-cld-wy5a6nhazplvu32526ams61d98/org_7c1Kalm9WcX2bNIjW53GUT/cld_wy5a6nhazplvu32526ams61d98/artifact_storage/rayllm_release_test/lora_fine_tuning"
