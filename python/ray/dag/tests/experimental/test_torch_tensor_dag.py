@@ -275,9 +275,7 @@ def test_torch_tensor_auto(ray_start_regular, num_gpus):
     # Test normal execution.
     with InputNode() as inp:
         data = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        data_annotated = data.with_tensor_transport(
-            transport="auto", device=device
-        )
+        data_annotated = data.with_tensor_transport(transport="auto", device=device)
         dag = receiver.recv.bind(data_annotated)
 
     compiled_dag = dag.experimental_compile()

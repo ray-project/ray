@@ -124,13 +124,19 @@ class _SerializationContext:
     def deserialize_tensor(
         self, val: Union[Tuple["np.ndarray", "torch.dtype", str], int]
     ):
+        from ray.experimental.channel import ChannelContext
+
         # Found a placeholder for a tensor that was serialized via NCCL.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
             placeholder = val
             self._deserialized_tensor_placeholders.add(placeholder)
             assert placeholder < len(self._out_of_band_tensors)
-            return self._out_of_band_tensors[placeholder]
+            tensor = self._out_of_band_tensors[placeholder]
+            ctx = ChannelContext.get_current()
+            if ctx.target_device == Device.CPU:
+                tensor = tensor.to("cpu")
+            return tensor
 
         np_array, dtype, tensor_device_type = val
         return self.deserialize_from_numpy(np_array, dtype, tensor_device_type)
@@ -146,9 +152,9 @@ class _SerializationContext:
         default_device_type = (
             "cpu" if ctx.torch_device is None else ctx.torch_device.type
         )
-        
+
         if ctx.target_device == Device.RETAIN:
-            target_device_type =  tensor_device_type 
+            target_device_type = tensor_device_type
         elif ctx.target_device == Device.AUTO:
             # 'auto' uses the receiver's default device
             target_device_type = default_device_type
