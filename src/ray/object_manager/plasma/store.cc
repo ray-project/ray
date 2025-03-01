@@ -154,7 +154,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
                                                    PlasmaObject *object) {
-  uint8_t *input = static_cast<uint8_t *>(message.data());
+  uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   ray::ObjectInfo object_info;
   fb::ObjectSource source;
@@ -360,7 +360,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
-  uint8_t *input = static_cast<uint8_t *>(message.data());
+  uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   ObjectID object_id;
 
