@@ -14,10 +14,10 @@
 
 #pragma once
 
-#include <unistd.h>
-
 #include <cstdint>
 #include <string>
+
+#include "ray/util/compat.h"
 
 namespace ray {
 
