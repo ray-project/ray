@@ -180,7 +180,6 @@ from ray.exceptions import (
     OutOfDiskError,
     GetTimeoutError,
     TaskCancelledError,
-    AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
@@ -1876,6 +1875,7 @@ cdef void execute_task(
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
+                task_exception_instance = None
                 try:
                     if debugger_breakpoint != b"":
                         ray.util.pdb.set_trace(
@@ -1957,8 +1957,6 @@ cdef void execute_task(
                         (ray._private.worker.global_worker
                          .debugger_breakpoint) = b""
                     task_exception = False
-                except AsyncioActorExit as e:
-                    exit_current_actor_if_asyncio()
                 except Exception as e:
                     is_retryable_error[0] = determine_if_retryable(
                                     should_retry_exceptions,
@@ -1976,10 +1974,14 @@ cdef void execute_task(
                                      " {}.".format(
                                         core_worker.get_current_task_id()),
                                      exc_info=True)
-                    raise e
+                    task_exception_instance = e
                 finally:
                     # Record the end of the task log.
                     worker.record_task_log_end(task_id, attempt_number)
+                    if task_exception_instance is not None:
+                        raise task_exception_instance
+                    if core_worker.get_current_actor_should_exit():
+                        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
@@ -4620,6 +4622,14 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
+
+    def set_current_actor_should_exit(self):
+        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .SetCurrentActorShouldExit())
+
+    def get_current_actor_should_exit(self):
+        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .GetCurrentActorShouldExit())
 
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
