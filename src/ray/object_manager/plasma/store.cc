@@ -62,7 +62,7 @@ namespace plasma {
 namespace {
 
 ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
-  uint8_t *input = static_cast<uint8_t *> message.data();
+  uint8_t *input = static_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   auto request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
   RAY_DCHECK(plasma::VerifyFlatbuffer(request, input, input_size));
@@ -360,7 +360,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
-  uint8_t *input = static_cast<uint8_t *> message.data();
+  uint8_t *input = static_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   ObjectID object_id;
 

@@ -127,7 +127,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
       NULL);
   RAY_CHECK(*handle != nullptr)
       << "CreateFileMapping() failed. GetLastError() = " << GetLastError();
-  *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, static_cast<size_t> size);
+  *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, static_cast<size_t>(size));
   if (*pointer == nullptr) {
     RAY_LOG(ERROR) << "MapViewOfFile() failed. GetLastError() = " << GetLastError();
   }
