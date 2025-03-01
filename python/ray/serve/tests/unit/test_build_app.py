@@ -130,13 +130,14 @@ def test_single_deployment_custom_name():
         ],
     )
 
-    with pytest.raises(ValueError):
+    # Change to `with pytest.raises(ValueError)` when the warning is removed.
+    with pytest.warns(UserWarning):
 
         @serve.deployment(name="test#deployment")
         def my_deployment():
             return "Hello!"
 
-    with pytest.raises(ValueError):
+    with pytest.warns(UserWarning):
 
         @serve.deployment()
         def my_deployment():

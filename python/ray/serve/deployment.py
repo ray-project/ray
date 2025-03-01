@@ -2,6 +2,7 @@ import inspect
 import logging
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+import warnings
 
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -125,7 +126,10 @@ class Deployment:
 
         # name does not contain #
         if "#" in name:
-            raise ValueError("name cannot contain #")
+            warnings.warn(
+                f"Name cannot contain '#' character, it will be removed in future releases. "
+                f"Current name: {name}."
+            )
 
     @property
     def name(self) -> str:
