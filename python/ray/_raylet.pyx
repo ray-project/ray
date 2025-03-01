@@ -2252,9 +2252,11 @@ cdef function[void()] initialize_pygilstate_for_thread() nogil:
     Python thread from the Python interpreter's perspective, regardless of whether
     it is executing Python code or not. This function must be called in a thread
     before executing any Ray tasks on that thread.
+
     Returns:
         A function that calls `PyGILState_Release` to release the GIL state.
         This function should be called in a thread before the thread exits.
+
     Reference: https://docs.python.org/3/c-api/init.html#non-python-created-threads
     """
     cdef function[void()] callback
