@@ -62,7 +62,7 @@ namespace plasma {
 namespace {
 
 ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
-  uint8_t *input = static_cast<uint8_t *>(message.data());
+  const uint8_t *input = static_cast<const uint8_t *>(message.data());
   size_t input_size = message.size();
   auto request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
   RAY_DCHECK(plasma::VerifyFlatbuffer(request, input, input_size));
