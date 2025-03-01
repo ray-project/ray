@@ -55,10 +55,10 @@ TEST(FakeCgroupSetupTest, AddAndRemoveTest) {
     auto system_handler = fake_cgroup_setup.AddSystemProcess(0);
     for (int idx = 0; idx < kThdNum; ++idx) {
       thds.emplace_back([pid = idx, &fake_cgroup_setup]() {
-        fake_cgroup_setup.ApplyCgroupContext(AppProcCgroupMetadata{
-            .pid = pid,
-            .max_memory = 10,
-        });
+        AppProcCgroupMetadata meta;
+        meta.pid = pid;
+        meta.max_memory = 10;
+        fake_cgroup_setup.ApplyCgroupContext(meta);
       });
     }
     for (auto &cur_thd : thds) {
