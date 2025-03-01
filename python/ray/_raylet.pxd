@@ -76,6 +76,16 @@ cdef extern from "Python.h":
     int Py_GetRecursionLimit()
     void Py_SetRecursionLimit(int)
 
+# Note that `functional.pxd` in the Cython repository supports only a limited subset of
+# <functional>. Therefore, `from libcpp.functional cimport function` is not enough, and we
+# still need to expose some functions here.
+cdef extern from "<functional>" namespace "std" nogil:
+    T bind[T, Args](T callable, Args args)
+    # Reference: https://github.com/scipy/scipy/blob/6b56162fa6880b0182faea44af88d6a1587f35a8/scipy/stats/_qmc_cy.pyx#L31-L34
+    cdef cppclass reference_wrapper[T]:
+        pass
+    cdef reference_wrapper[T] ref[T](T&)
+
 cdef class Buffer:
     cdef:
         shared_ptr[CBuffer] buffer
