@@ -33,7 +33,38 @@ def assert_deployments_live(ids: List[DeploymentID]):
 
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
-    subprocess.check_output(["serve", "shutdown", "-y"])
+    # deploy a simple app
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
+    subprocess.check_output(["serve", "deploy", import_path])
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
+    )
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert "Sent shutdown request" in ret.decode("utf-8")
+
+    def check_no_apps():
+        status = subprocess.check_output(["serve", "status"])
+        return "applications: {}" in status.decode("utf-8")
+
+    wait_for_condition(check_no_apps, timeout=15)
+
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert "there are no applications deployed" in ret.decode("utf-8")
+    assert "Sent shutdown request" not in ret.decode("utf-8")
+
+
+def test_start_shutdown_without_serve_running(ray_start_stop):
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert "there are no applications deployed" in ret.decode("utf-8")
+    assert "Sent shutdown request" not in ret.decode("utf-8")
+
+
+def test_start_shutdown_without_ray_running():
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert "because it is not a valid Ray address" in ret.decode("utf-8")
+    assert "Sent shutdown request" not in ret.decode("utf-8")
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
