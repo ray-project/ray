@@ -72,6 +72,12 @@ class TorchTensorWorker:
         assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
+    def recv_tuple(self, tup):
+        assert tup[0].device == self.device
+        assert tup[1].device == self.device
+        return ((tup[0][0].item(), tup[0].shape, tup[0].dtype),
+                (tup[1][0].item(), tup[1].shape, tup[1].dtype))
+
     def recv_and_matmul(self, two_d_tensor):
         """
         Receive the tensor and do some expensive computation (matmul).
@@ -109,6 +115,11 @@ class TorchTensorWorker:
         self, t1: torch.Tensor, t2: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return t1, t2
+    
+    def return_tensors_tuple(self, args, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        tup = (torch.ones(args[2*i][0], dtype=args[2*i][1], device=self.device) * args[2*i][2],
+                torch.ones(args[2*i+1][0], dtype=args[2*i+1][1], device=self.device) * args[2*i+1][2])
+        return tup
 
 
 @ray.remote(num_cpus=1)
@@ -1279,6 +1290,50 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
         result = ray.get(ref)
         reduced_val = sum(i + idx for idx in range(num_workers))
         assert result == [(reduced_val, shape, dtype) for _ in workers]
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_all_reduce_two_tensors(ray_start_regular):
+    """
+    Test basic all-reduce with tuple of tensors.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        computes = [
+            worker.return_tensors_tuple.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+        recvs = [
+            worker.recv_tuple.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (i * 10,)
+        dtype = torch.float16
+        ref = compiled_dag.execute(
+            [(shape, dtype, i + idx) for idx in range(2*num_workers)]
+        )
+        result = ray.get(ref)
+        reduced_val_1 = sum(i + idx for idx in range(0, 2*num_workers, 2))
+        reduced_val_2 = sum(i + idx for idx in range(1, 2*num_workers, 2))
+        assert result == [((reduced_val_1, shape, dtype), (reduced_val_2, shape, dtype)) for _ in workers]
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
