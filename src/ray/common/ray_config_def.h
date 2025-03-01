@@ -942,3 +942,7 @@ RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
 
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
+
+// Frequency at which to check all local worker & driver sockets for unexpected
+// disconnects.
+RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)
