@@ -97,7 +97,7 @@ def _get_vllm_engine_config(
     return async_engine_args, vllm_config
 
 
-def clear_current_platform_cache():
+def _clear_current_platform_cache():
     """Clear the cache of the current platform.
 
     vllm current has an lru cache for getting device compatibility
@@ -221,7 +221,7 @@ class _EngineBackgroundProcess:
         from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         # Clear the cache of the current platform.
-        clear_current_platform_cache()
+        _clear_current_platform_cache()
 
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
@@ -389,7 +389,7 @@ class VLLMEngine:
 
         vllm_config.parallel_config.placement_group = placement_group
 
-        clear_current_platform_cache()
+        _clear_current_platform_cache()
 
         return vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
