@@ -428,21 +428,6 @@
 # LLM
 ##############
 
-- name: llm_hello
-  frequency: manual
-  python: "3.11"
-  group: llm
-  working_dir: llm_tests
-
-  cluster:
-    byod:
-      type: llm-cu124
-    cluster_compute: llm_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python llm_hello_world.py
-
 - name: llm_serving_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
   python: "3.11"
