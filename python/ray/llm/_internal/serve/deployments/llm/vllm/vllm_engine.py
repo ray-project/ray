@@ -115,7 +115,7 @@ def clear_current_platform_cache():
     """
     from vllm.platforms import current_platform
 
-    # This check is just to future proof this implementation 
+    # This check is just to future proof this implementation
     # in case vllm removes their lru_cache decorator
     if hasattr(current_platform.get_device_capability, "cache_clear"):
         logger.info("Clearing the current platform cache ...")
