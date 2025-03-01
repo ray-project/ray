@@ -1,6 +1,7 @@
 import copy
 import logging
 import queue
+import tree
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
@@ -620,18 +621,19 @@ class IMPALA(Algorithm):
                 (AGGREGATOR_ACTOR_RESULTS, "mean_num_output_batches"),
                 len(ma_batches_refs),
             )
-
+            
+            data_packages_for_aggregators = tree.flatten(data_packages_for_aggregators)
             while data_packages_for_aggregators:
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
-                )
+                )                
                 packs, data_packages_for_aggregators = (
                     data_packages_for_aggregators[:num_agg],
                     data_packages_for_aggregators[num_agg:],
                 )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
                     func="get_batch",
-                    kwargs=[dict(episode_refs=p) for p in packs],
+                    kwargs=[dict(episode_refs=[p]) for p in packs],
                     tag="batches",
                 )
                 self.metrics.log_value(
