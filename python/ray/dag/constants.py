@@ -23,8 +23,15 @@ RAY_CGRAPH_ENABLE_PROFILING = os.environ.get("RAY_CGRAPH_ENABLE_PROFILING", "0")
 # Feature flag to turn on NVTX (NVIDIA Tools Extension Library) profiling.
 # With this flag, Compiled Graph uses nvtx to automatically annotate and profile
 # function calls during each actor's execution loop.
+# This cannot be used together with RAY_CGRAPH_ENABLE_TORCH_PROFILING.
 RAY_CGRAPH_ENABLE_NVTX_PROFILING = (
     os.environ.get("RAY_CGRAPH_ENABLE_NVTX_PROFILING", "0") == "1"
+)
+
+# Feature flag to turn on torch profiling.
+# This cannot be used together with RAY_CGRAPH_ENABLE_NVTX_PROFILING.
+RAY_CGRAPH_ENABLE_TORCH_PROFILING = (
+    os.environ.get("RAY_CGRAPH_ENABLE_TORCH_PROFILING", "0") == "1"
 )
 
 # Feature flag to turn on visualization of the execution schedule.
