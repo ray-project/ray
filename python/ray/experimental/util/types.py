@@ -17,3 +17,14 @@ class ReduceOp(_CollectiveOp):
 
     def __str__(self):
         return f"{self.name.lower()}"
+
+
+@PublicAPI
+class Device(Enum):
+    RETAIN = "retain"
+    AUTO = "auto"
+    CPU = "cpu"
+    GPU = "gpu"
+
+    def __str__(self):
+        return f"{self.name.lower()}"
