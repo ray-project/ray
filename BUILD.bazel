@@ -526,7 +526,13 @@ ray_cc_library(
     name = "ray_mock",
     hdrs = glob(
         ["src/mock/**/*.h"],
+        exclude = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
     ),
+)
+
+ray_cc_library(
+    name = "ray_mock_syncer",
+    hdrs = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
 )
 
 cc_grpc_library(
