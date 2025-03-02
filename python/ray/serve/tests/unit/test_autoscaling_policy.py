@@ -1,8 +1,12 @@
+import itertools
 import sys
 
 import pytest
 
-from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    MAX_SCALING_HISTORY_LENGTH,
+)
 from ray.serve.autoscaling_policy import (
     _calculate_desired_num_replicas,
     replica_queue_length_autoscaling_policy,
@@ -634,6 +638,92 @@ class TestReplicaQueueLengthPolicy:
             policy_state=policy_state,
         )
         assert new_num_replicas == ongoing_requests / target_requests
+
+    @pytest.mark.parametrize("scaling_function", ["min", "max", "mean", "last"])
+    @pytest.mark.parametrize("scaling_delay", [0, 1, 10])
+    def test_scaling_decision_functions(self, scaling_function, scaling_delay):
+        policy_state = {}
+        min_replicas, max_replicas = 1, 10000
+        config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            target_ongoing_requests=1,
+            upscale_delay_s=scaling_delay,
+            downscale_delay_s=scaling_delay,
+            scaling_function=scaling_function,
+        )
+
+        current_replicas = 1
+        request_history = []
+        # Scaling from 0-1 does not utilize policy_state, start at 2
+        for i in itertools.chain(range(2, max_replicas), range(max_replicas, 2, -1)):
+            request_history.append(i)
+            new_num_replicas = replica_queue_length_autoscaling_policy(
+                config=config,
+                total_num_requests=i,
+                num_running_replicas=current_replicas,
+                curr_target_num_replicas=current_replicas,
+                capacity_adjusted_min_replicas=min_replicas,
+                capacity_adjusted_max_replicas=max_replicas,
+                policy_state=policy_state,
+            )
+
+            # Verify scaling decisions
+            if current_replicas != new_num_replicas:
+                if scaling_function == "min":
+                    assert new_num_replicas == min(request_history)
+                elif scaling_function == "max":
+                    assert new_num_replicas == max(request_history)
+                elif scaling_function == "mean":
+                    assert new_num_replicas == round(
+                        sum(request_history) / len(request_history)
+                    )
+                elif scaling_function == "last":
+                    assert new_num_replicas == request_history[-1]
+                request_history = []
+            # Reset expected scaling decision on direction reversal
+            elif current_replicas == i:
+                request_history = []
+
+            current_replicas = new_num_replicas
+
+            # Verify scaling decisions align with expected policy_state
+            assert policy_state["decision_history"] == request_history
+            assert abs(policy_state["decision_counter"]) == len(
+                policy_state["decision_history"]
+            )
+
+    def test_decision_history_bounds(self):
+        min_replicas, max_replicas = 0, 2
+        iterations = 100
+        config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            target_ongoing_requests=1,
+            upscale_delay_s=MAX_SCALING_HISTORY_LENGTH / CONTROL_LOOP_INTERVAL_S
+            + iterations,
+            downscale_delay_s=MAX_SCALING_HISTORY_LENGTH / CONTROL_LOOP_INTERVAL_S
+            + iterations,
+        )
+
+        policy_state = {
+            "decision_history": [2] * MAX_SCALING_HISTORY_LENGTH,
+            "decision_counter": MAX_SCALING_HISTORY_LENGTH,
+        }
+
+        for i in itertools.repeat(2, iterations):
+            _ = replica_queue_length_autoscaling_policy(
+                config=config,
+                total_num_requests=i,
+                num_running_replicas=1,
+                curr_target_num_replicas=1,
+                capacity_adjusted_min_replicas=min_replicas,
+                capacity_adjusted_max_replicas=max_replicas,
+                policy_state=policy_state,
+            )
+            # Decision history should be bounded, while decision counter increases
+            assert len(policy_state["decision_history"]) <= MAX_SCALING_HISTORY_LENGTH
+            assert policy_state["decision_counter"] > MAX_SCALING_HISTORY_LENGTH
 
 
 if __name__ == "__main__":
