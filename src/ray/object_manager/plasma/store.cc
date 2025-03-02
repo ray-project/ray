@@ -62,7 +62,7 @@ namespace plasma {
 namespace {
 
 ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
-  uint8_t *input = (uint8_t *)message.data();
+  const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   auto request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
   RAY_DCHECK(plasma::VerifyFlatbuffer(request, input, input_size));
@@ -154,7 +154,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
                                                    PlasmaObject *object) {
-  uint8_t *input = (uint8_t *)message.data();
+  const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   ray::ObjectInfo object_info;
   fb::ObjectSource source;
@@ -360,7 +360,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
-  uint8_t *input = (uint8_t *)message.data();
+  const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   ObjectID object_id;
 
@@ -438,7 +438,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
       RAY_RETURN_NOT_OK(
           SendReleaseReply(client, object_id, should_unmap, PlasmaError::OK));
     }
-
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
     std::vector<ObjectID> object_ids;

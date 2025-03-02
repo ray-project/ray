@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 #include "absl/types/optional.h"
 #include "ray/object_manager/plasma/allocator.h"
