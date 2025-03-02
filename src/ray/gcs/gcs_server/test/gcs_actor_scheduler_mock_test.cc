@@ -61,7 +61,11 @@ class GcsActorSchedulerMockTest : public Test {
         /*get_node_info=*/
         [this](const NodeID &node_id) {
           auto node = gcs_node_manager->GetAliveNode(node_id);
-          return node.has_value() ? node.value().get() : nullptr;
+          std::shared_ptr<const rpc::GcsNodeInfo> node_ptr;
+          if (node.has_value()) {
+            node_ptr = node.value();
+          }
+          return node_ptr;
         },
         /*announce_infeasible_task=*/nullptr,
         /*local_task_manager=*/*local_task_manager_);

@@ -75,26 +75,29 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         [](const std::string &, std::function<void(bool)>) {});
     gcs_actor_manager_ =
         std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
-    gcs_resource_manager_ =
-        std::make_shared<GcsResourceManager>(io_service_,
-                                             *cluster_resource_manager_,
-                                             *gcs_node_manager_,
-                                             NodeID::FromRandom());
+    auto postable = UpdateNodeResourceUsagePostable{
+        [](NodeID, int64_t, google::protobuf::RepeatedPtrField<std::string>, bool) {},
+        io_service_};
+    gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
+        io_service_, *cluster_resource_manager_, postable, NodeID::FromRandom());
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-    gcs_autoscaler_state_manager_.reset(
-        new GcsAutoscalerStateManager("fake_cluster",
-                                      *gcs_node_manager_,
-                                      *gcs_actor_manager_,
-                                      *gcs_placement_group_manager_,
-                                      *client_pool_,
-                                      kv_manager_->GetInstance(),
-                                      io_service_));
+    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
+        "fake_cluster",
+        *gcs_node_manager_,
+        *gcs_actor_manager_,
+        *gcs_placement_group_manager_,
+        *client_pool_,
+        kv_manager_->GetInstance(),
+        io_service_,
+        {[](const NodeID &, std::shared_ptr<rpc::autoscaler::DrainNodeRequest>) {},
+         io_service_}));
   }
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    absl::MutexLock lock(&gcs_node_manager_->alive_nodes_mutex_);
     gcs_node_manager_->alive_nodes_[NodeID::FromBinary(node->node_id())] = node;
     gcs_autoscaler_state_manager_->OnNodeAdd(*node);
   }
@@ -102,7 +105,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     const auto node_id = NodeID::FromBinary(node->node_id());
     node->set_state(rpc::GcsNodeInfo::DEAD);
+    absl::MutexLock alive_lock(&gcs_node_manager_->alive_nodes_mutex_);
     gcs_node_manager_->alive_nodes_.erase(node_id);
+    absl::MutexLock dead_lock(&gcs_node_manager_->dead_nodes_mutex_);
     gcs_node_manager_->dead_nodes_[node_id] = node;
     gcs_autoscaler_state_manager_->OnNodeDead(node_id);
   }

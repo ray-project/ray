@@ -28,7 +28,7 @@ namespace ray::gcs {
 
 /*static*/ std::shared_ptr<GcsHealthCheckManager> GcsHealthCheckManager::Create(
     instrumented_io_context &io_service,
-    std::function<void(const NodeID &)> on_node_death_callback,
+    Postable<void(const NodeID &)> on_node_death_callback,
     int64_t initial_delay_ms,
     int64_t timeout_ms,
     int64_t period_ms,
@@ -44,18 +44,17 @@ namespace ray::gcs {
 
 GcsHealthCheckManager::GcsHealthCheckManager(
     instrumented_io_context &io_service,
-    std::function<void(const NodeID &)> on_node_death_callback,
+    Postable<void(const NodeID &)> on_node_death_callback,
     int64_t initial_delay_ms,
     int64_t timeout_ms,
     int64_t period_ms,
     int64_t failure_threshold)
     : io_service_(io_service),
-      on_node_death_callback_(on_node_death_callback),
+      on_node_death_callback_(std::move(on_node_death_callback)),
       initial_delay_ms_(initial_delay_ms),
       timeout_ms_(timeout_ms),
       period_ms_(period_ms),
       failure_threshold_(failure_threshold) {
-  RAY_CHECK(on_node_death_callback != nullptr);
   RAY_CHECK_GE(initial_delay_ms, 0);
   RAY_CHECK_GE(timeout_ms, 0);
   RAY_CHECK_GE(period_ms, 0);
@@ -83,7 +82,7 @@ void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   auto iter = health_check_contexts_.find(node_id);
   if (iter != health_check_contexts_.end()) {
-    on_node_death_callback_(node_id);
+    on_node_death_callback_.Post("GcsServer.NodeDeathCallback", node_id);
     health_check_contexts_.erase(iter);
   }
 }

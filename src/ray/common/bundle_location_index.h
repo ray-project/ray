@@ -82,7 +82,8 @@ class BundleLocationIndex {
   ///
   /// \param alive_nodes map of alive nodes.
   void AddNodes(
-      const absl::flat_hash_map<NodeID, std::shared_ptr<ray::rpc::GcsNodeInfo>> &nodes);
+      const absl::flat_hash_map<NodeID, std::shared_ptr<const ray::rpc::GcsNodeInfo>>
+          &nodes);
 
   /// get bundle_locations debug string info
   std::string GetBundleLocationDebugString(const BundleLocations &bundle_locations) const;

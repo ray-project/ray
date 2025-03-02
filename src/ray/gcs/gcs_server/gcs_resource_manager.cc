@@ -20,14 +20,16 @@
 namespace ray {
 namespace gcs {
 
-GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
-                                       ClusterResourceManager &cluster_resource_manager,
-                                       GcsNodeManager &gcs_node_manager,
-                                       NodeID local_node_id,
-                                       ClusterTaskManager *cluster_task_manager)
+GcsResourceManager::GcsResourceManager(
+    instrumented_io_context &io_context,
+    ClusterResourceManager &cluster_resource_manager,
+    UpdateNodeResourceUsagePostable update_node_resource_usage_postable,
+    NodeID local_node_id,
+    ClusterTaskManager *cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
-      gcs_node_manager_(gcs_node_manager),
+      update_node_resource_usage_postable_(
+          std::move(update_node_resource_usage_postable)),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(cluster_task_manager) {}
 
@@ -254,22 +256,12 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // Note: This may be inconsistent with autoscaler state, which is
   // not reported as often as a Ray Syncer message.
-  if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
-      maybe_node_info != absl::nullopt) {
-    auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
 
-    if (resource_view_sync_message.idle_duration_ms() > 0) {
-      snapshot->set_state(rpc::NodeSnapshot::IDLE);
-      snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
-    } else {
-      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
-      snapshot->mutable_node_activity()->CopyFrom(
-          resource_view_sync_message.node_activity());
-    }
-    if (resource_view_sync_message.is_draining()) {
-      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
-    }
-  }
+  update_node_resource_usage_postable_.Post("GcsNodeManager.UpdateNodeResourceUsage",
+                                            node_id,
+                                            resource_view_sync_message.idle_duration_ms(),
+                                            resource_view_sync_message.node_activity(),
+                                            resource_view_sync_message.is_draining());
 
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
