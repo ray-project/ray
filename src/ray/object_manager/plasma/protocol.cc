@@ -466,7 +466,9 @@ Status SendDeleteRequest(const std::shared_ptr<StoreConn> &store_conn,
   return PlasmaSend(store_conn, MessageType::PlasmaDeleteRequest, &fbb, message);
 }
 
-Status ReadDeleteRequest(const uint8_t *data, size_t size, std::vector<ObjectID> *object_ids) {
+Status ReadDeleteRequest(const uint8_t *data,
+                         size_t size,
+                         std::vector<ObjectID> *object_ids) {
   using fb::PlasmaDeleteRequest;
 
   RAY_DCHECK(data);

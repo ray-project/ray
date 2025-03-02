@@ -197,7 +197,9 @@ Status ReadReleaseReply(uint8_t *data,
 Status SendDeleteRequest(const std::shared_ptr<StoreConn> &store_conn,
                          const std::vector<ObjectID> &object_ids);
 
-Status ReadDeleteRequest(const uint8_t *data, size_t size, std::vector<ObjectID> *object_ids);
+Status ReadDeleteRequest(const uint8_t *data,
+                         size_t size,
+                         std::vector<ObjectID> *object_ids);
 
 Status SendDeleteReply(const std::shared_ptr<Client> &client,
                        const std::vector<ObjectID> &object_ids,
