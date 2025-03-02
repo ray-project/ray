@@ -1,4 +1,4 @@
-import { Box } from "@mui/material";
+import { Box, Button } from "@mui/material";
 import React, { useRef, useState } from "react";
 import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -11,7 +11,8 @@ import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { getDataDatasets } from "../../service/data";
-import { NestedJobProgressLink } from "../../type/job";
+import { deleteRequest, post } from "../../service/requestHandlers";
+import { JobStatus, NestedJobProgressLink } from "../../type/job";
 import ActorList from "../actor/ActorList";
 import DataOverview from "../data/DataOverview";
 import { NodeCountCard } from "../overview/cards/NodeCountCard";
@@ -96,10 +97,43 @@ export const JobDetailChartsPage = () => {
     setActorListFilter(undefined);
   };
 
+  const stopJob = (submission_id: string | null) => {
+    post(`/api/jobs/${submission_id}/stop`, { submission_id });
+  };
+
+  const deleteJob = (submission_id: string | null) => {
+    deleteRequest(`/api/jobs/${submission_id}`, { submission_id });
+    window.location.href = "/jobs";
+  };
+
   return (
     <Box sx={{ padding: 2, backgroundColor: "white" }}>
       <JobMetadataSection job={job} />
-
+      <Box display="flex" justifyContent="flex-end" gap={2}>
+        {job.status === JobStatus.RUNNING ? (
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => {
+              console.log("stop job", job);
+              stopJob(job.job_id);
+            }}
+          >
+            Stop Job
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => {
+              console.log("delete job", job);
+              deleteJob(job.job_id);
+            }}
+          >
+            Delete Job
+          </Button>
+        )}
+      </Box>
       {data?.datasets && data.datasets.length > 0 && (
         <CollapsibleSection title="Ray Data Overview" sx={{ marginBottom: 4 }}>
           <Section>
