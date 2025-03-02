@@ -40,6 +40,8 @@ enum MessageType:int {
   // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
   DisconnectClientRequest,
+  // Notify the client that the raylet has deregistered this client.
+  DisconnectClientReply,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -102,6 +104,11 @@ table ResourceIdSetInfo {
 
 // This message is sent from a worker to the node manager.
 table DisconnectClientRequest {
+  // Indicates if this is a graceful disconnect initiated by the worker or caused by a
+  // problem with the connection. In the graceful disconnect case, the worker blocks
+  // until it receives a DisconnectClientReply.
+  graceful: bool;
+  // Populated with a WorkerExitType enum.
   disconnect_type: int;
   disconnect_detail: string;
   // Creation task exception serialized by protobuf.
