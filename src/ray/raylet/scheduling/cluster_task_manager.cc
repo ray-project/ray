@@ -22,6 +22,7 @@
 #include <string>
 #include <utility>
 
+#include "cluster_task_manager.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
@@ -135,23 +136,24 @@ bool ClusterTaskManager::CancelTasksWithResourceShapes(
     return this->IsWorkWithResourceShape(work, target_resource_shapes);
   };
 
-  std::stringstream resource_shapes_str;
-  resource_shapes_str << "[";
-  bool first = true;
-  for (const auto &resource_shape : target_resource_shapes) {
-    if (!first) {
-      resource_shapes_str << ",";
-    }
-    resource_shapes_str << resource_shape.DebugString();
-    first = false;
-  }
-  resource_shapes_str << "]";
+  const std::string resource_shapes_str =
+      ray::VectorToString(target_resource_shapes, &ResourceSet::DebugString);
+  RAY_LOG(WARNING) << "Cancelling infeasible tasks with resource shapes "
+                   << resource_shapes_str;
 
-  return CancelTasks(
+  bool task_cancelled = CancelTasks(
       predicate,
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-      "Canceling tasks with resource shapes " + resource_shapes_str.str() +
-          " because there are not enough resources for the tasks on the whole cluster.");
+      absl::StrCat(
+          "Tasks or actors with resource shapes ",
+          resource_shapes_str,
+          " failed to schedule because there are not enough resources for the tasks "
+          "or actors on the whole cluster."));
+
+  RAY_LOG(INFO) << "Infeasible tasks cancellation complete with result=" << task_cancelled
+                << ",resource shapes=" << resource_shapes_str;
+
+  return task_cancelled;
 }
 
 bool ClusterTaskManager::IsWorkWithResourceShape(
