@@ -21,7 +21,7 @@
 #include "absl/random/random.h"
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
-using flatbuf::ObjectSource;
+using plasma::flatbuf::ObjectSource;
 using ray::ObjectID;
 using testing::Test;
 
