@@ -3,8 +3,8 @@ from collections import deque
 from typing import AsyncIterator, List, Tuple
 
 import ray
+from ray._private.utils import async_file_tail_iterator
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
-from ray.dashboard.modules.job.utils import file_tail_iterator
 
 
 class JobLogStorageClient:
@@ -26,7 +26,7 @@ class JobLogStorageClient:
             return ""
 
     def tail_logs(self, job_id: str) -> AsyncIterator[List[str]]:
-        return file_tail_iterator(self.get_log_file_path(job_id))
+        return async_file_tail_iterator(self.get_log_file_path(job_id))
 
     async def get_last_n_log_lines(
         self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
