@@ -275,6 +275,44 @@ class _StatsActor:
             tag_keys=iter_tag_keys,
         )
 
+        # === Dataset and Operator Metadata Metrics ===
+        dataset_tags = ("dataset",)
+        self.dataset_progress = Gauge(
+            "ray_data_dataset_progress",
+            description="Progress of dataset execution",
+            tag_keys=dataset_tags,
+        )
+        self.dataset_total = Gauge(
+            "ray_data_dataset_total",
+            description="Total work units for dataset",
+            tag_keys=dataset_tags,
+        )
+
+        operator_tags = ("dataset", "operator")
+        self.operator_progress = Gauge(
+            "ray_data_operator_progress",
+            description="Progress of operator execution",
+            tag_keys=operator_tags,
+        )
+        self.operator_total = Gauge(
+            "ray_data_operator_total",
+            description="Total work units for operator",
+            tag_keys=operator_tags,
+        )
+        self.operator_state = Gauge(
+            "ray_data_operator_state",
+            description="State of operator (0=UNKNOWN, 1=RUNNING, 2=DONE, 3=FAILED)",
+            tag_keys=("dataset", "operator"),
+        )
+
+        # Define state mapping as a class constant
+        self.OPERATOR_STATE_MAP = {
+            "UNKNOWN": 0,
+            "RUNNING": 1,
+            "DONE": 2,
+            "FAILED": 3,
+        }
+
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
     ) -> Dict[str, Gauge]:
@@ -446,6 +484,27 @@ class _StatsActor:
 
     def update_dataset(self, dataset_tag, state):
         self.datasets[dataset_tag].update(state)
+
+        # Update dataset-level metrics
+        dataset_tags = {"dataset": dataset_tag}
+        self.dataset_progress.set(state.get("progress", 0), dataset_tags)
+        self.dataset_total.set(state.get("total", 0), dataset_tags)
+
+        # Update operator-level metrics
+        for operator, op_state in state.get("operators", {}).items():
+            operator_tags = {
+                "dataset": dataset_tag,
+                "operator": operator,
+            }
+            self.operator_progress.set(op_state.get("progress", 0), operator_tags)
+            self.operator_total.set(op_state.get("total", 0), operator_tags)
+
+            # Map state string to numeric value
+            state_value = self.OPERATOR_STATE_MAP.get(
+                op_state.get("state", "UNKNOWN"),
+                self.OPERATOR_STATE_MAP["UNKNOWN"]
+            )
+            self.operator_state.set(state_value, operator_tags)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
@@ -1410,12 +1469,8 @@ class OperatorStatsSummary:
         wall_time_stats = {k: fmt(v) for k, v in (self.wall_time or {}).items()}
         cpu_stats = {k: fmt(v) for k, v in (self.cpu_time or {}).items()}
         memory_stats = {k: fmt(v) for k, v in (self.memory or {}).items()}
-        output_num_rows_stats = {
-            k: fmt(v) for k, v in (self.output_num_rows or {}).items()
-        }
-        output_size_bytes_stats = {
-            k: fmt(v) for k, v in (self.output_size_bytes or {}).items()
-        }
+        output_num_rows_stats = {k: fmt(v) for k, v in (self.output_num_rows or {}).items()}
+        output_size_bytes_stats = {k: fmt(v) for k, v in (self.output_size_bytes or {}).items()}
         node_conut_stats = {k: fmt(v) for k, v in (self.node_count or {}).items()}
         out = (
             f"{indent}OperatorStatsSummary(\n"
