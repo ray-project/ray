@@ -11,21 +11,19 @@ Generator tasks stream outputs back to the caller before the task finishes.
 
 .. code-block:: diff
 
-    +import ray
-     import time
+    import ray
+    import time
 
-     # Takes 25 seconds to finish.
-    +@ray.remote
-     def f():
-         for i in range(5):
-             time.sleep(5)
-             yield i
+    # Takes 25 seconds to finish.
+    @ray.remote
+    def f():
+        for i in range(5):
+            time.sleep(5)
+            yield i
 
-    -for obj in f():
-    +for obj_ref in f.remote():
-         # Prints every 5 seconds and stops after 25 seconds.
-    -    print(obj)
-    +    print(ray.get(obj_ref))
+    for obj_ref in f.remote():
+        # Prints every 5 seconds and stops after 25 seconds.
+        print(ray.get(obj_ref))
 
 
 The above Ray generator yields the output every 5 seconds 5 times.
