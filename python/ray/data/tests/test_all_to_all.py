@@ -1790,8 +1790,16 @@ def test_random_block_order(ray_start_regular_shared_2_cpus, restore_data_contex
 
 
 def test_random_shuffle(shutdown_only, configure_shuffle_method):
+    # Assert random 2 distinct random-shuffle pipelines yield different orders
     r1 = ray.data.range(100).random_shuffle().take(999)
     r2 = ray.data.range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    # Assert same random-shuffle pipeline yielding 2 different orders,
+    # when executed
+    ds = ray.data.range(100).random_shuffle()
+    r1 = ds.take(999)
+    r2 = ds.take(999)
     assert r1 != r2, (r1, r2)
 
     r1 = ray.data.range(100, override_num_blocks=1).random_shuffle().take(999)
