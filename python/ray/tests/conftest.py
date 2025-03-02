@@ -18,6 +18,7 @@ from typing import List, Optional
 from unittest import mock
 import psutil
 import pytest
+import copy
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -40,6 +41,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
     find_free_port,
+    reset_autoscaler_v2_enabled_cache,
     RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
@@ -443,6 +445,25 @@ def external_redis(request):
 def external_redis_with_sentinel(request):
     with _setup_redis(request, True):
         yield
+
+
+@pytest.fixture
+def local_autoscaling_cluster(request, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
+
+    # Start a mock multi-node autoscaling cluster.
+    head_resources, worker_node_types, system_config = copy.deepcopy(request.param)
+    cluster = AutoscalingCluster(
+        head_resources=head_resources,
+        worker_node_types=worker_node_types,
+        autoscaler_v2=enable_v2,
+    )
+    cluster.start(_system_config=system_config)
+
+    yield None
+
+    # Shutdown the cluster
+    cluster.shutdown()
 
 
 @pytest.fixture

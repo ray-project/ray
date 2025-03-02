@@ -851,7 +851,67 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGcsKvManagerInternalConfig) {
   EXPECT_EQ(reply.config(), kRayletConfig);
 }
 
-TEST_F(GcsAutoscalerStateManagerTest, TestGetPerNodeInfeasibleResourceRequests) {
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests) {
+  // Prepare
+  auto node_1 = Mocker::GenNodeInfo();
+  auto node_2 = Mocker::GenNodeInfo();
+
+  // Add nodes
+  {
+    node_1->mutable_resources_total()->insert({"CPU", 2});
+    node_1->set_instance_id("instance_1");
+    AddNode(node_1);
+    node_2->mutable_resources_total()->insert({"CPU", 1});
+    node_2->set_instance_id("instance_2");
+    AddNode(node_2);
+  }
+
+  // Update resource usages
+  {
+    UpdateResourceLoads(node_1->node_id(),
+                        {Mocker::GenResourceDemand({{"GPU", 1}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 1,
+                                                   /* num_backlog */ 0),
+                         Mocker::GenResourceDemand({{"CPU", 1}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 0,
+                                                   /* num_backlog */ 1),
+                         Mocker::GenResourceDemand({{"CPU", 3}},
+                                                   /* num_ready_queued */ 0,
+                                                   /* num_infeasible */ 1,
+                                                   /* num_backlog */ 1)});
+    UpdateResourceLoads(node_2->node_id(),
+                        {Mocker::GenResourceDemand({{"CPU", 2}},
+                                                   /* nun_ready_queued */ 1,
+                                                   /* nun_infeasible */ 0,
+                                                   /* num_backlog */ 1)});
+  }
+
+  // Update autoscaling state
+  {
+    rpc::autoscaler::AutoscalingState actual_state;
+    actual_state.set_autoscaler_state_version(1);
+    ReportAutoscalingState(actual_state);
+  }
+
+  // Execute
+  const auto per_node_infeasible_requests =
+      gcs_autoscaler_state_manager_->GetPerNodeInfeasibleResourceRequests();
+
+  // Verify
+  { ASSERT_TRUE(per_node_infeasible_requests.empty()); }
+
+  // Reset
+  {
+    RemoveNode(node_1);
+    RemoveNode(node_2);
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests) {
   // Prepare
   auto node_1 = Mocker::GenNodeInfo();
   auto node_2 = Mocker::GenNodeInfo();
