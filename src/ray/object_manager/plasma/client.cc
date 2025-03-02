@@ -243,7 +243,12 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::recursive_mutex client_mutex_;
 };
 
-PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
+PlasmaBuffer::~PlasmaBuffer() {
+  RAY_LOG(INFO) << "[myan] PlasmaBuffer::~PlasmaBuffer(). object_id="
+                << (object_id_.IsNil() ? "Nil" : object_id_.Hex()) << ", pid=" << getpid()
+                << ", tid=" << std::this_thread::get_id();
+  RAY_UNUSED(client_->Release(object_id_));
+}
 
 PlasmaClient::Impl::Impl() : store_capacity_(0) {}
 
@@ -781,7 +786,7 @@ Status PlasmaClient::Impl::Contains(const ObjectID &object_id, bool *has_object)
 
 Status PlasmaClient::Impl::Seal(const ObjectID &object_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  RAY_LOG(DEBUG) << "Seal " << object_id;
+  RAY_LOG(INFO) << "[myan] Seal " << object_id.Hex();
 
   // Make sure this client has a reference to the object before sending the
   // request to Plasma.
