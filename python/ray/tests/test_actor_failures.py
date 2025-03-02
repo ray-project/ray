@@ -918,6 +918,10 @@ def test_exit_actor(shutdown_only, tmp_path):
     class Actor:
         def exit(self):
             exit_actor()
+            raise AssertionError(
+                "This line should not be reached because non-async actor"
+                "should exit immediately after exit_actor is called."
+            )
 
     @ray.remote
     class AsyncActor:
@@ -934,7 +938,12 @@ def test_exit_actor(shutdown_only, tmp_path):
     ray.get(b.__ray_ready__.remote())
     with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(b.exit.remote())
-    assert "exit_actor()" in str(exc_info.value)
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
 
     """
     Verify atexit handler is called correctly.
@@ -984,6 +993,45 @@ def test_exit_actor(shutdown_only, tmp_path):
             assert f.readlines() == ["Async Actor\n"]
         with open(sync_temp_file) as f:
             assert f.readlines() == ["Actor\n"]
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_exit_actor_async_actor_nested_task(shutdown_only, tmp_path):
+    async_temp_file = tmp_path / "async_actor.log"
+    async_temp_file.touch()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                print("atexit handler")
+                with open(async_temp_file, "w") as f:
+                    f.write("Async Actor\n")
+
+            atexit.register(f)
+
+        async def start_exit_task(self):
+            asyncio.create_task(self.exit())
+
+        async def exit(self):
+            exit_actor()
+
+    a = AsyncActor.remote()
+    ray.get(a.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(a.start_exit_task.remote())
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
+
+    def verify():
+        with open(async_temp_file) as f:
+            assert f.readlines() == ["Async Actor\n"]
         return True
 
     wait_for_condition(verify)
