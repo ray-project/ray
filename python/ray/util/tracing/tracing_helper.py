@@ -305,11 +305,11 @@ def _tracing_task_invocation(method):
         # If tracing feature flag is not on, perform a no-op.
         # Tracing doesn't work for cross lang yet.
         if not _is_tracing_enabled() or self._is_cross_language:
-            if kwargs is not None:
-                assert "_ray_trace_ctx" not in kwargs
+            if _kwargs is not None:
+                assert "_ray_trace_ctx" not in _kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
-        assert "_ray_trace_ctx" not in kwargs
+        assert "_ray_trace_ctx" not in _kwargs
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
             _function_span_producer_name(self._function_name),
@@ -317,7 +317,7 @@ def _tracing_task_invocation(method):
             attributes=_function_hydrate_span_args(self._function_name),
         ):
             # Inject a _ray_trace_ctx as a dictionary
-            kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
+            _kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
             return method(self, args, kwargs, *_args, **_kwargs)
 
     return _invocation_remote_span
