@@ -83,15 +83,17 @@ Status RayletClient::Disconnect(
                          creation_task_exception_pb_bytes->Size());
   }
   const auto &fb_exit_detail = fbb.CreateString(exit_detail);
-  protocol::DisconnectClientBuilder builder(fbb);
+  protocol::DisconnectClientRequestBuilder builder(fbb);
+  builder.add_graceful(true);
+  builder.add_disconnect_type(static_cast<int>(exit_type));
+  builder.add_disconnect_detail(fb_exit_detail);
   // Add to table builder here to avoid nested construction of flatbuffers
   if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
-  builder.add_disconnect_type(static_cast<int>(exit_type));
-  builder.add_disconnect_detail(fb_exit_detail);
   fbb.Finish(builder.Finish());
-  auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
+  // XXX: AtomicRequestReply.
+  auto status = conn_->WriteMessage(MessageType::DisconnectClientRequest, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   // TODO(myan): In the current implementation, if raylet is already terminated in the

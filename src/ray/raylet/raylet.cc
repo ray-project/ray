@@ -170,7 +170,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
         std::move(socket_),
         "worker",
         node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
+        static_cast<int64_t>(protocol::MessageType::DisconnectClientRequest));
   } else {
     RAY_LOG(ERROR) << "Raylet failed to accept new connection: " << error.message();
     if (error == boost::asio::error::operation_aborted) {
