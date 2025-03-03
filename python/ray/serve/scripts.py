@@ -729,6 +729,22 @@ def status(address: str, name: Optional[str]):
 def shutdown(address: str, yes: bool):
     warn_if_agent_address_set()
 
+    # check if the address is a valid Ray address
+    try:
+        # see what applications are deployed on the cluster
+        details = ServeSubmissionClient(address).get_serve_details()
+        apps = details.get("applications", {})
+        if len(apps) == 0:
+            cli_logger.warning(
+                f"Cannot shutdown Serve applications on {address} because there are no applications currently deployed."
+            )
+            return
+    except Exception as e:
+        cli_logger.abort(
+            "Cannot shutdown Serve applications. See error below for more details.",
+            exc=e,
+        )
+
     if not yes:
         click.confirm(
             f"This will shut down Serve on the cluster at address "
