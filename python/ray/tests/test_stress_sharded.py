@@ -6,15 +6,10 @@ import ray
 
 @pytest.fixture(params=[1])
 def ray_start_sharded(request):
-    # TODO(ekl) enable this again once GCS supports sharding.
-    # num_redis_shards = request.param
-
     # Start the Ray processes.
     ray.init(
         object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
-        # _num_redis_shards=num_redis_shards,
-        _redis_max_memory=10**8,
     )
 
     yield None
