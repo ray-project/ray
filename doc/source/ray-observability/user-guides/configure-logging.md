@@ -115,7 +115,7 @@ ray.init(log_to_driver=False)
 
 ## Log deduplication
 
-By default, Ray deduplicates logs that appear redundantly across multiple processes. The first instance of each log message is always immediately printed. However, Ray buffers subsequent log messages of the same pattern-ignoring words with numeric components-for up to five seconds and printed in batch. For example, for the following code snippet:
+By default, Ray deduplicates logs that appear redundantly across multiple processes. The first instance of each log message is always immediately printed. However, Ray buffers subsequent log messages of the same pattern for up to five seconds and prints them in batch. Note that Ray also ignores words with numeric components. For example, for the following code snippet:
 
 ```python
 import ray
