@@ -736,14 +736,14 @@ def shutdown(address: str, yes: bool):
         apps = details.get("applications", {})
         if len(apps) == 0:
             cli_logger.warning(
-                f"Cannot shutdown Serve applications on {address} because there are no applications deployed."
+                f"Cannot shutdown Serve applications on {address} because there are no applications currently deployed."
             )
             return
     except Exception as e:
-        cli_logger.warning(
-            f"Cannot shutdown Serve applications on {address} because {str(e)}"
+        cli_logger.abort(
+            "Cannot shutdown Serve applications. See error below for more details.",
+            exc=e,
         )
-        return
 
     if not yes:
         click.confirm(
