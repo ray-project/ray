@@ -95,7 +95,7 @@ def parse_latency_buckets(bucket_str: str, default_buckets: list) -> list:
         if any(x <= 0 for x in buckets):
             raise ValueError("Bucket values must be positive")
         if sorted(set(buckets)) != buckets:
-            raise ValueError("Bucket values must be in ascending order and unique")
+            raise ValueError("Bucket values must be in strictly ascending order")
         return buckets
     except Exception as e:
         raise ValueError(

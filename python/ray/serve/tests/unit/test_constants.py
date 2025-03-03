@@ -35,11 +35,11 @@ def test_parse_latency_buckets_invalid():
         parse_latency_buckets("-1,1,2,3,4", [])
 
     # Test non-ascending order
-    with pytest.raises(ValueError, match=".*must be in ascending order.*"):
+    with pytest.raises(ValueError, match=".*be in strictly ascending order*"):
         parse_latency_buckets("4,3,2,1", [])
 
     # Test duplicate values
-    with pytest.raises(ValueError, match=".*must be in ascending order.*"):
+    with pytest.raises(ValueError, match=".*be in strictly ascending order.*"):
         parse_latency_buckets("1,2,2,3,4", [])
 
     # Test invalid number format
