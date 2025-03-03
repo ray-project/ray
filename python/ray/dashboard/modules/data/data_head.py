@@ -5,10 +5,9 @@ from enum import Enum
 from urllib.parse import quote
 
 import aiohttp
-from aiohttp.web import Request, Response
+from aiohttp.web import Response
 
 import ray.dashboard.optional_utils as optional_utils
-import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.metrics.metrics_head import (
     DEFAULT_PROMETHEUS_HEADERS,
     DEFAULT_PROMETHEUS_HOST,
@@ -17,6 +16,9 @@ from ray.dashboard.modules.metrics.metrics_head import (
     PrometheusQueryError,
     parse_prom_headers,
 )
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
+from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleRequest
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -48,9 +50,9 @@ DATASET_METRICS = {
 }
 
 
-class DataHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
-        super().__init__(config)
+class DataHead(SubprocessModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -61,9 +63,9 @@ class DataHead(dashboard_utils.DashboardHeadModule):
             )
         )
 
-    @optional_utils.DashboardHeadRouteTable.get("/api/data/datasets/{job_id}")
+    @SubprocessRouteTable.get("/api/data/datasets/{job_id}")
     @optional_utils.init_ray_and_catch_exceptions()
-    async def get_datasets(self, req: Request) -> Response:
+    async def get_datasets(self, req: SubprocessModuleRequest) -> Response:
         job_id = req.match_info["job_id"]
 
         try:
@@ -147,12 +149,8 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                 text=str(e),
             )
 
-    async def run(self, server):
+    async def init(self):
         pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(
