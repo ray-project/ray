@@ -87,6 +87,7 @@ class ClusterConfigToReport:
 class ClusterStatusToReport:
     total_num_cpus: Optional[int] = None
     total_num_gpus: Optional[int] = None
+    total_num_npus: Optional[int] = None
     total_memory_gb: Optional[float] = None
     total_object_store_memory_gb: Optional[float] = None
 
@@ -133,6 +134,8 @@ class UsageStatsToReport:
     total_num_cpus: Optional[int] = None
     #: The total num of gpus in the cluster.
     total_num_gpus: Optional[int] = None
+    #: The total num of npus in the cluster.
+    total_num_npus: Optional[int] = None
     #: The total size of memory in the cluster.
     total_memory_gb: Optional[float] = None
     #: The total size of object store memory in the cluster.
@@ -636,6 +639,7 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
         total_resources = cluster_status.total_resources()
         result.total_num_cpus = int(total_resources.get("CPU", 0))
         result.total_num_gpus = int(total_resources.get("GPU", 0))
+        result.total_num_npus = int(total_resources.get("NPU", 0))
 
         to_GiB = 1 / 2**30
         result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
@@ -688,6 +692,8 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
             result.total_num_cpus = int(usage["CPU"][1])
         if "GPU" in usage:
             result.total_num_gpus = int(usage["GPU"][1])
+        if "NPU" in usage:
+            result.total_num_npus = int(usage["NPU"][1])
         if "memory" in usage:
             result.total_memory_gb = usage["memory"][1] * to_GiB
         if "object_store_memory" in usage:
@@ -884,6 +890,7 @@ def generate_report_data(
         worker_node_instance_types=cluster_config_to_report.worker_node_instance_types,
         total_num_cpus=cluster_status_to_report.total_num_cpus,
         total_num_gpus=cluster_status_to_report.total_num_gpus,
+        total_num_npus=cluster_status_to_report.total_num_npus,
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
         library_usages=get_library_usages_to_report(gcs_client),
