@@ -138,18 +138,6 @@ astor==0.8.1 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   depyf
-async-timeout==5.0.1 \
-    --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
-    --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   -r python/requirements/llm/llm-requirements.txt
-asyncache==0.3.1 \
-    --hash=sha256:9a1e60a75668e794657489bdea6540ee7e3259c483517b934670db7600bf5035 \
-    --hash=sha256:ef20a1024d265090dd1e0785c961cf98b9c32cc7d9478973dcf25ac1b80011f5
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   -r python/requirements/llm/llm-requirements.txt
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -253,25 +241,11 @@ blake3==1.0.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   vllm
-boto3==1.36.3 \
-    --hash=sha256:53a5307f6a3526ee2f8590e3c45efa504a3ea4532c1bfe4926c0c19bf188d141 \
-    --hash=sha256:f9843a5d06f501d66ada06f5a5417f671823af2cf319e36ceefa1bafaaaaa953
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   -r python/requirements/llm/llm-requirements.txt
-botocore==1.36.3 \
-    --hash=sha256:536ab828e6f90dbb000e3702ac45fd76642113ae2db1b7b1373ad24104e89255 \
-    --hash=sha256:775b835e979da5c96548ed1a0b798101a145aec3cd46541d62e27dda5a94d7f8
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   boto3
-    #   s3transfer
 cachetools==5.3.2 \
     --hash=sha256:086ee420196f7b2ab9ca2db2520aca326318b68fe5ba8bc4d49cca91add450f2 \
     --hash=sha256:861f35a13a451f94e301ce2bec7cac63e881232ccce7ed67fab9b5df4d3beaa1
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   asyncache
     #   google-auth
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
@@ -1084,13 +1058,6 @@ jiter==0.8.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   openai
-jmespath==1.0.1 \
-    --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
-    --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   boto3
-    #   botocore
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
     --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
@@ -1103,6 +1070,7 @@ jsonschema==4.23.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   -r python/requirements.txt
+    #   -r python/requirements/llm/llm-requirements.txt
     #   mistral-common
     #   outlines
     #   outlines-core
@@ -2190,7 +2158,6 @@ python-dateutil==2.8.2 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   botocore
     #   pandas
 python-dotenv==1.0.1 \
     --hash=sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca \
@@ -2601,12 +2568,6 @@ rsa==4.7.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   google-auth
-s3transfer==0.11.2 \
-    --hash=sha256:3b39185cb72f5acc77db1a58b6e25b977f28d20496b6e58d6813d75f464d632f \
-    --hash=sha256:be6ecb39fadd986ef1701097771f87e4d2f821f27f6071c872143884d2950fbc
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   boto3
 safetensors==0.5.2 \
     --hash=sha256:03c937100f38c9ff4c1507abea9928a6a9b02c9c1c9c3609ed4fb2bf413d4975 \
     --hash=sha256:1506e4c2eda1431099cebe9abf6c76853e95d0b7a95addceaa74c6019c65d8cf \
@@ -2892,9 +2853,9 @@ torchvision==0.20.1+cu124 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   vllm
-tqdm==4.67.1 \
-    --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
-    --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
+tqdm==4.64.1 \
+    --hash=sha256:5f4f682a004951c1b450bc753c710e9280c5746ce6ffedee253ddbcbf54cf1e4 \
+    --hash=sha256:6fee160d6ffcd1b1c68c65f14c829c22832bc401726335ce92c52d395944a6a1
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   gguf
@@ -2948,7 +2909,6 @@ urllib3==1.26.19 \
     --hash=sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
-    #   botocore
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
