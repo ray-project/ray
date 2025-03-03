@@ -1041,10 +1041,23 @@ class Algorithm(Checkpointable, Trainable):
 
         # Sync weights to the evaluation EnvRunners.
         if self.eval_env_runner_group is not None:
+            if self.config.enable_env_runner_and_connector_v2:
+                if (
+                    self.env_runner_group is not None
+                    and self.env_runner_group.healthy_env_runner_ids()
+                ):
+                    # TODO (sven): Replace this with a new ActorManager API:
+                    #  try_remote_request_till_success("get_state") -> tuple(int,
+                    #  remoteresult)
+                    weights_src = self.env_runner_group._worker_manager._actors[
+                        self.env_runner_group.healthy_env_runner_ids()[0]
+                    ]
+                else:
+                    weights_src = self.learner_group
+            else:
+                weights_src = self.env_runner_group.local_env_runner
             self.eval_env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.learner_group
-                if self.config.enable_env_runner_and_connector_v2
-                else self.env_runner_group.local_env_runner,
+                from_worker_or_learner_group=weights_src,
                 inference_only=True,
             )
 
@@ -1444,7 +1457,7 @@ class Algorithm(Checkpointable, Trainable):
 
         # Remote function used on healthy EnvRunners to sample, get metrics, and
         # step counts.
-        def _env_runner_remote(worker, num, round, iter):
+        def _env_runner_remote(worker, num, round, iter, _force_reset):
             # Sample AND get_metrics, but only return metrics (and steps actually taken)
             # to save time. Also return the iteration to check, whether we should
             # discard and outdated result (from a slow worker).
@@ -1453,7 +1466,7 @@ class Algorithm(Checkpointable, Trainable):
                     num[worker.worker_index] if unit == "timesteps" else None
                 ),
                 num_episodes=(num[worker.worker_index] if unit == "episodes" else None),
-                force_reset=force_reset and round == 0,
+                force_reset=_force_reset and round == 0,
             )
             metrics = worker.get_metrics()
             env_steps = sum(e.env_steps() for e in episodes)
@@ -1491,7 +1504,11 @@ class Algorithm(Checkpointable, Trainable):
                 ]
                 self.eval_env_runner_group.foreach_env_runner_async(
                     func=functools.partial(
-                        _env_runner_remote, num=_num, round=_round, iter=algo_iteration
+                        _env_runner_remote,
+                        num=_num,
+                        round=_round,
+                        iter=algo_iteration,
+                        _force_reset=force_reset,
                     ),
                 )
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
