@@ -396,3 +396,12 @@ Content-Type: application/json
    metrics.Gauge
    schema.LoggingConfig
 ```
+
+(serve-llm-api)=
+
+## LLM API
+
+```{eval-rst}
+.. include:: ../llm/api.rst
+   :start-after: Ray Serve LLM API
+```

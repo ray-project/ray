@@ -1,5 +1,7 @@
-Overview
-========
+.. _serving_llms:
+
+Serving LLMs
+============
 
 Ray Serve LLM APIs allow users to deploy multiple LLM models together with a familiar Ray Serve API, while providing compatibility with the OpenAI API.
 
