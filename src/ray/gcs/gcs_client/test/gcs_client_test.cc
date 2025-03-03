@@ -412,7 +412,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       auto node_info = Mocker::GenNodeInfo();
       auto node_id = NodeID::FromBinary(node_info->node_id());
       EXPECT_TRUE(RegisterNode(*node_info));
-      EXPECT_TRUE(DrainNode(node_id));
       node_ids.insert(node_id);
     }
     return node_ids;
@@ -586,8 +585,6 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
 
   // Cancel registration of both nodes to GCS.
-  ASSERT_TRUE(DrainNode(node1_id));
-  ASSERT_TRUE(DrainNode(node2_id));
   WaitForExpectedCount(unregister_count, 2);
 
   // Get information of all nodes from GCS.
