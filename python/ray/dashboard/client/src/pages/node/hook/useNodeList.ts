@@ -50,7 +50,7 @@ export const useNodeList = () => {
   const nodeListWithAdditionalInfo = nodeList.map((e) => ({
     ...e,
     state: e.raylet.state,
-    logicalResources: nodeLogicalResources[e.raylet.nodeId],
+    logicalResources: nodeLogicalResources[e.ip],
   }));
 
   const sortedList = _.sortBy(nodeListWithAdditionalInfo, (node) => {
