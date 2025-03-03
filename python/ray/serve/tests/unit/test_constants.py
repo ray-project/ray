@@ -53,3 +53,9 @@ def test_parse_latency_buckets_invalid():
     # Test invalid separators
     with pytest.raises(ValueError, match=".*could not convert.*"):
         parse_latency_buckets("1;2;3;4", [])
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
