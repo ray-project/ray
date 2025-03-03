@@ -1289,10 +1289,6 @@ class Node:
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
-    def start_worker(self):
-        """Start a worker process."""
-        raise NotImplementedError
-
     def start_monitor(self):
         """Start the monitor.
 
