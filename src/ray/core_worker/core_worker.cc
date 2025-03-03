@@ -422,6 +422,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         task_execution_service_,
         *task_event_buffer_,
         execute_task,
+        options_.initialize_thread_callback,
         [this] { return local_raylet_client_->ActorCreationTaskDone(); });
   }
 
