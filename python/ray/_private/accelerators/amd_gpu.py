@@ -3,11 +3,12 @@ import logging
 from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import (
+    ROCR_VISIBLE_DEVICES_ENV_VAR,
+    NOSET_ROCR_VISIBLE_DEVICES_ENV_VAR,
+)
 
 logger = logging.getLogger(__name__)
-
-ROCR_VISIBLE_DEVICES_ENV_VAR = "ROCR_VISIBLE_DEVICES"
-NOSET_ROCR_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES"
 
 amd_product_dict = {
     "0x738c": "AMD-Instinct-MI100",

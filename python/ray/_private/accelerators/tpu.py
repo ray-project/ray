@@ -7,6 +7,10 @@ from functools import lru_cache
 from typing import Dict, Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import (
+    TPU_VISIBLE_CHIPS_ENV_VAR,
+    NOSET_TPU_VISIBLE_CHIPS_ENV_VAR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +31,6 @@ GCE_TPU_HEADERS = {"Metadata-Flavor": "Google"}
 GCE_TPU_ACCELERATOR_KEY = "accelerator-type"
 GCE_TPU_INSTANCE_ID_KEY = "instance-id"
 GCE_TPU_WORKER_ID_KEY = "agent-worker-number"
-
-TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
-
-NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
 # The following defines environment variables that allow
 # us to access a subset of TPU visible chips.

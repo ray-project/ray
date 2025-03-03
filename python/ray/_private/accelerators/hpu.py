@@ -8,9 +8,6 @@ from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
-HABANA_VISIBLE_DEVICES_ENV_VAR = "HABANA_VISIBLE_MODULES"
-NOSET_HABANA_VISIBLE_MODULES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES"
-
 
 @lru_cache()
 def is_package_present(package_name: str) -> bool:

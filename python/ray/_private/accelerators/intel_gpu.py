@@ -3,11 +3,13 @@ import logging
 from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import (
+    ONEAPI_DEVICE_SELECTOR_ENV_VAR,
+    NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR,
+)
 
 logger = logging.getLogger(__name__)
 
-ONEAPI_DEVICE_SELECTOR_ENV_VAR = "ONEAPI_DEVICE_SELECTOR"
-NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR"
 ONEAPI_DEVICE_BACKEND_TYPE = "level_zero"
 ONEAPI_DEVICE_TYPE = "gpu"
 
