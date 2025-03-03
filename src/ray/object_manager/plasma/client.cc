@@ -206,12 +206,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val) const;
 
-  ray::PlasmaObjectHeader *GetPlasmaObjectHeader(const PlasmaObject &object) const {
-    auto base_ptr = LookupMmappedFile(object.store_fd);
-    auto header_ptr = base_ptr + object.header_offset;
-    return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
-  }
-
   void InsertObjectInUse(const ObjectID &object_id,
                          std::unique_ptr<PlasmaObject> object,
                          bool is_sealed);
