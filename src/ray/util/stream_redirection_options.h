@@ -25,10 +25,13 @@ namespace ray {
 // For example, if redirection file set and `tee_to_stdout` both set to true, the stream
 // content is written to both sinks.
 struct StreamRedirectionOption {
+  StreamRedirectionOption() = default;
+
   // Redirected file path on local filesystem.
   std::string file_path;
   // Max number of bytes in a rotated file.
-  size_t rotation_max_size = std::numeric_limits<size_t>::max();
+  // 0 means rotation not enabled, by default 0.
+  size_t rotation_max_size = 0;
   // Max number of files for all rotated files.
   size_t rotation_max_file_count = 1;
   // Whether to tee to stdout.
