@@ -136,19 +136,45 @@ class JSONDatasource(FileBasedDatasource):
                     dct[k].append(v)
             yield pyarrow_table_from_pydict(dct)
 
-    # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         import pyarrow as pa
 
-        buffer: pa.lib.Buffer = f.read_buffer()
+        def _try_read_json(buffer):
+            try:
+                yield from self._read_with_pyarrow_read_json(buffer)
+            except pa.ArrowInvalid as e:
+                # If read with PyArrow fails, try falling back to native json.load().
+                logger.warning(
+                    f"Error reading with pyarrow.json.read_json(). "
+                    f"Falling back to native json.load(), which may be slower. "
+                    f"PyArrow error was:\n{e}"
+                )
+                yield from self._read_with_python_json(buffer)
 
-        try:
-            yield from self._read_with_pyarrow_read_json(buffer)
-        except pa.ArrowInvalid as e:
-            # If read with PyArrow fails, try falling back to native json.load().
-            logger.warning(
-                f"Error reading with pyarrow.json.read_json(). "
-                f"Falling back to native json.load(), which may be slower. "
-                f"PyArrow error was:\n{e}"
-            )
-            yield from self._read_with_python_json(buffer)
+        is_jsonl = path.endswith(".jsonl")
+        if is_jsonl:
+            buffer_size = DataContext.get_current().target_max_block_size
+            buffer = bytearray()
+            partial_line = ""
+
+            while True:
+                chunk = f.read(buffer_size)
+                if not chunk:
+                    if partial_line:
+                        buffer.extend(partial_line.encode("utf-8"))
+                        yield from _try_read_json(pa.py_buffer(buffer))
+                    break
+
+                lines = chunk.decode("utf-8").split("\n")
+                lines[0] = partial_line + lines[0]
+                partial_line = lines.pop()
+
+                for line in lines:
+                    buffer.extend((line + "\n").encode("utf-8"))
+
+                if buffer:
+                    yield from _try_read_json(pa.py_buffer(buffer))
+                    buffer.clear()
+        else:
+            buffer: pa.lib.Buffer = f.read_buffer()
+            yield from _try_read_json(buffer)
