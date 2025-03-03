@@ -590,9 +590,11 @@ class TorchLearner(Learner):
                 for p in rlm.parameters():
                     n = p.numel()
                     if p.requires_grad:
-                        num_trainable_params[mid] += n
+                        num_trainable_params[(mid, NUM_TRAINABLE_PARAMETERS)] += n
                     else:
-                        num_non_trainable_params[mid] += n
+                        num_non_trainable_params[
+                            (mid, NUM_NON_TRAINABLE_PARAMETERS)
+                        ] += n
 
         self.metrics.log_dict(
             {
