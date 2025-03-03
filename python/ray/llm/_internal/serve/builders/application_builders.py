@@ -4,7 +4,7 @@ from ray.serve.deployment import Application
 from ray.serve.handle import DeploymentHandle
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMServingArgs,
@@ -25,10 +25,10 @@ def build_vllm_deployment(
         deployment_kwargs = {}
 
     deployment_options = llm_config.get_serve_options(
-        name_prefix="VLLMDeployment:",
+        name_prefix="LLMDeployment:",
     )
 
-    return VLLMDeployment.options(**deployment_options).bind(
+    return LLMDeployment.options(**deployment_options).bind(
         llm_config=llm_config, **deployment_kwargs
     )
 

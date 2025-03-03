@@ -1,4 +1,4 @@
-from ray.serve.llm.deployments import VLLMServer, LLMRouter
+from ray.serve.llm.deployments import LLMServer, LLMRouter
 from ray.serve.llm.configs import (
     LLMConfig,
     LLMServingArgs,
@@ -20,6 +20,6 @@ __all__ = [
     "build_vllm_deployment",
     "build_openai_app",
     # Deployments
-    "VLLMServer",
+    "LLMServer",
     "LLMRouter",
 ]
