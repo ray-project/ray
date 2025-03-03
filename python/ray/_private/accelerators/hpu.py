@@ -5,6 +5,10 @@ from functools import lru_cache
 from importlib.util import find_spec
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import (
+    HABANA_VISIBLE_DEVICES_ENV_VAR,
+    NOSET_HABANA_VISIBLE_MODULES_ENV_VAR,
+)
 
 logger = logging.getLogger(__name__)
 
