@@ -77,10 +77,16 @@ class HangingExecutionIssueDetector(IssueDetector):
             else:
                 active_tasks_idx = set()
                 for task in operator.get_active_tasks():
+                    task_info = op_metrics._running_tasks.get(task.task_index(), None)
+                    if task_info is None:
+                        # if the task is not in the running tasks map, it has finished
+                        # remove it from the state map and hanging op tasks, if present
+                        self._state_map[operator.name].pop(task.task_index(), None)
+                        self._hanging_op_tasks[operator.name].discard(task.task_index())
+                        continue
+
                     active_tasks_idx.add(task.task_index())
-                    bytes_output = op_metrics._running_tasks[
-                        task.task_index()
-                    ].bytes_outputs
+                    bytes_output = task_info.bytes_outputs
 
                     prev_state_value = self._state_map[operator.name].get(
                         task.task_index(), None

@@ -41,9 +41,18 @@ export PATH
 gcloud auth login --cred-file=release/aws2gce_runtime_iam.json --quiet
 gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
 
+PATH="$HOME/.local/bin:$PATH"
+export PATH
 pip3 install --user -U pip
-pip3 install --user -r release/requirements_buildkite.txt
-pip3 install --user --no-deps -e release/
+
+# Strip the hashes from the constraint file
+# TODO(aslonnie): use bazel run..
+grep '==' release/requirements_buildkite.txt > /tmp/requirements_buildkite_nohash.txt
+sed -i 's/ \\//' /tmp/requirements_buildkite_nohash.txt  # Remove ending slashes.
+sed -i 's/\[.*\]//g' /tmp/requirements_buildkite_nohash.txt  # Remove extras.
+
+pip3 install --user -e release/ -c /tmp/requirements_buildkite_nohash.txt
+
 if [[ "${BUILDKITE_PIPELINE_ID}" == "0194d305-a31d-40b8-9ffd-122388f1f14e" ]]; then
     export RELEASE_QUEUE_DEFAULT="rayturbo_small_queue"
 else

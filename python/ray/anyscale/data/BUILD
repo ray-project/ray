@@ -2,7 +2,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
     files = glob(
-        ["tests/test_*.py"],
+        ["tests/test_*.py", "tests/*/test_*.py"],
         exclude=["tests/test_checkpoint.py", "tests/test_snowflake.py", "tests/test_delta.py"]
     ),
     size = "medium",

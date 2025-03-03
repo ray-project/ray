@@ -18,6 +18,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     try_combine_chunked_columns,
     unify_schemas,
+    shuffle,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -100,6 +101,20 @@ def test_hash_partitioning():
 
     assert len(_structs_partition_dict) == 34
     assert t == _concat_and_sort_partitions(_structs_partition_dict.values())
+
+
+def test_shuffle():
+    t = pa.Table.from_pydict(
+        {
+            "index": pa.array(list(range(10))),
+        }
+    )
+
+    shuffled = shuffle(t, seed=0xDEED)
+
+    assert shuffled == pa.Table.from_pydict(
+        {"index": pa.array([4, 3, 6, 8, 7, 1, 5, 2, 9, 0])}
+    )
 
 
 def test_arrow_concat_empty():

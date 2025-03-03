@@ -18,7 +18,7 @@ class ReadFiles(LogicalOperator):
         columns: Optional[List[str]],
         columns_rename: Optional[Dict[str, str]] = None,
         ray_remote_args: Dict[str, Any],
-        concurrency: int,
+        concurrency: Optional[int],
     ):
         super().__init__(name="ReadFiles", input_dependencies=[input_dependency])
 

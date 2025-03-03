@@ -15,7 +15,7 @@ py_library(
 
 # Test without compact scheduling
 py_test_module_list(
-    name_suffix="_with_compact_scheduling",
+    name_suffix="_without_compact_scheduling",
     env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "tests/test_deployment_scheduler.py",

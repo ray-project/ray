@@ -5,11 +5,15 @@ steps:
   - label: release run_release_test
     if: build.branch == "master"
     commands:
-      - ./anyscale/ci/release_run_release_test.sh
+      - bash anyscale/ci/release_run_release_test.sh
     instance_type: small
+    tags:
+      - skip-on-premerge
 
   - label: release ci_pipeline_scheduler
     if: build.branch == "master"
     commands:
-      - ./anyscale/ci/release_rayci_tool.sh ci_pipeline_scheduler //ci/ray_ci/pipeline:scheduler
+      - bash anyscale/ci/release_rayci_tool.sh ci_pipeline_scheduler //ci/ray_ci/pipeline:scheduler
     instance_type: small
+    tags:
+      - skip-on-premerge

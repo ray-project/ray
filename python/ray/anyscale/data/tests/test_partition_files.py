@@ -7,8 +7,9 @@ from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )
-from ray.anyscale.data._internal.planner.plan_partition_files_op import partition_files
+from ray.anyscale.data._internal.planner.plan_list_files_op import partition_files
 from ray.anyscale.data._internal.readers import FileReader
+from ray.data.block import BlockAccessor
 
 
 @pytest.mark.parametrize(
@@ -45,17 +46,16 @@ def test_partition_files_produces_correct_partitions(num_paths, expected_partiti
     num_buckets = 2
     min_bucket_size = 1
     max_bucket_size = 3
-    inputs = [
-        pa.Table.from_pydict(
-            {
-                PATH_COLUMN_NAME: [str(i) for i in range(1, num_paths + 1)],
-                FILE_SIZE_COLUMN_NAME: [1] * num_paths,
-            }
-        )
-    ]
+
+    input_table = pa.Table.from_pydict(
+        {
+            PATH_COLUMN_NAME: [str(i) for i in range(1, num_paths + 1)],
+            FILE_SIZE_COLUMN_NAME: [1] * num_paths,
+        }
+    )
 
     outputs = partition_files(
-        inputs,
+        BlockAccessor.for_block(input_table).iter_rows(public_row_format=True),
         MagicMock(),
         num_buckets=num_buckets,
         min_bucket_size=min_bucket_size,
@@ -64,6 +64,7 @@ def test_partition_files_produces_correct_partitions(num_paths, expected_partiti
             spec=FileReader, estimate_in_memory_size=MagicMock(return_value=1)
         ),
         filesystem=MagicMock(),
+        shuffle_config=None,
     )
 
     partitions = [output[PATH_COLUMN_NAME].to_pylist() for output in outputs]
@@ -73,17 +74,15 @@ def test_partition_files_produces_correct_partitions(num_paths, expected_partiti
 def test_partition_files_with_no_file_sizes():
     # This tests the case where we don't have file sizes. This can happen if you use
     # HTTPFileSystem.
-    inputs = [
-        pa.Table.from_pydict(
-            {
-                PATH_COLUMN_NAME: ["path0", "path1", "path2"],
-                FILE_SIZE_COLUMN_NAME: [None, None, None],
-            }
-        )
-    ]
+    input_table = pa.Table.from_pydict(
+        {
+            PATH_COLUMN_NAME: ["path0", "path1", "path2"],
+            FILE_SIZE_COLUMN_NAME: [None, None, None],
+        }
+    )
 
     outputs = partition_files(
-        inputs,
+        BlockAccessor.for_block(input_table).iter_rows(public_row_format=False),
         MagicMock(),
         num_buckets=1,
         min_bucket_size=1,
@@ -92,6 +91,7 @@ def test_partition_files_with_no_file_sizes():
             spec=FileReader, estimate_in_memory_size=MagicMock(return_value=None)
         ),
         filesystem=MagicMock(),
+        shuffle_config=None,
     )
     partitions = [output[PATH_COLUMN_NAME].to_pylist() for output in outputs]
 

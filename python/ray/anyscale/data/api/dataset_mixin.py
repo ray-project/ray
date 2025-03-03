@@ -4,9 +4,7 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple
 from ray.anyscale.data._internal.logical.operators.join_operator import Join
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     PATH_COLUMN_NAME,
-)
-from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
-    PartitionFiles,
+    ListFiles,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data._internal.logical.operators.streaming_aggregate import (
@@ -217,10 +215,10 @@ class DatasetMixin:
         if isinstance(self._logical_plan.dag, ReadFiles):
             input_dependencies = self._logical_plan.dag.input_dependencies
             assert len(input_dependencies) == 1
-            partition_files_op = input_dependencies[0]
-            assert isinstance(partition_files_op, PartitionFiles)
+            list_files_op = input_dependencies[0]
+            assert isinstance(list_files_op, ListFiles)
             execution_plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-            logical_plan = LogicalPlan(partition_files_op, self.context)
+            logical_plan = LogicalPlan(list_files_op, self.context)
             dataset = Dataset(execution_plan, logical_plan)
             return list({row[PATH_COLUMN_NAME] for row in dataset.take_all()})
         else:

@@ -68,10 +68,9 @@ class RedundantMapTransformPruning(ZeroCopyMapFusionRule):
 
             elif fn.category == MapTransformFnCategory.PostProcess:
                 # If the function is of category PostProcess, end the current group:
-                if current_group:
-                    # Add the current function to the group and finalize the group
-                    current_group.append(fn)
-                    groups.append(current_group)
+                # Add the current function to the group and finalize the group
+                current_group.append(fn)
+                groups.append(current_group)
                 # Reset the current group as the PostProcess marks the end of a group
                 current_group = []
 

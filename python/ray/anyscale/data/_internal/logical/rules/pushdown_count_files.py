@@ -1,8 +1,6 @@
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     PATH_COLUMN_NAME,
-)
-from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
-    PartitionFiles,
+    ListFiles,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.data._internal.logical.interfaces import LogicalPlan, Rule
@@ -19,6 +17,10 @@ class PushdownCountFiles(Rule):
     rule replaces the `ReadFiles` with an operator that calls `count_rows` and outputs
     the number of rows. This avoids reading any actual data.
     """
+
+    # NOTE: Default CPU allocation is 1, so we're lowering this to allow
+    #       at least 10 tasks to run per CPU core
+    _PER_TASK_NUM_CPUS_ALLOCATION = 0.1
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         count = plan.dag
@@ -40,8 +42,9 @@ class PushdownCountFiles(Rule):
         assert len(read_files.input_dependencies) == 1, len(
             read_files.input_dependencies
         )
-        partition_files = read_files.input_dependencies[0]
-        assert isinstance(partition_files, PartitionFiles), partition_files
+        list_files = read_files.input_dependencies[0]
+
+        assert isinstance(list_files, ListFiles), list_files
 
         def count_rows(batch: DataBatch) -> DataBatch:
             assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
@@ -52,11 +55,12 @@ class PushdownCountFiles(Rule):
             return {Count.COLUMN_NAME: [num_rows]}
 
         count_rows_op = MapBatches(
-            partition_files,
+            list_files,
             count_rows,
             batch_format="pyarrow",
             batch_size=None,
             zero_copy_batch=True,
+            ray_remote_args={"num_cpus": self._PER_TASK_NUM_CPUS_ALLOCATION},
         )
 
         return LogicalPlan(count_rows_op, plan._context)

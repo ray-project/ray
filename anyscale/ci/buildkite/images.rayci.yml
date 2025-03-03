@@ -46,6 +46,8 @@ steps:
     depends_on:
       - forge
     job_env: forge
+    tags:
+      - gotools
 
   - label: ":tapioca: rayturbo py{{matrix}} wheel"
     key: rayturbo-wheels

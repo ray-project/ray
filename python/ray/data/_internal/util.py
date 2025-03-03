@@ -1143,8 +1143,8 @@ class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
         super().__init__(handler)
 
     @property
-    def data_context(self):
-        return self.handler.data_context
+    def retryable_errors(self) -> List[str]:
+        return self.handler._retryable_errors
 
     def unwrap(self):
         return self.handler.unwrap()
@@ -1153,13 +1153,15 @@ class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
     def wrap(
         cls,
         fs: "pyarrow.fs.FileSystem",
-        context: DataContext,
+        retryable_errors: List[str],
         max_attempts: int = 10,
         max_backoff_s: int = 32,
     ):
         if isinstance(fs, RetryingPyFileSystem):
             return fs
-        handler = RetryingPyFileSystemHandler(fs, context, max_attempts, max_backoff_s)
+        handler = RetryingPyFileSystemHandler(
+            fs, retryable_errors, max_attempts, max_backoff_s
+        )
         return cls(handler)
 
     def __reduce__(self):
@@ -1182,7 +1184,7 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
     def __init__(
         self,
         fs: "pyarrow.fs.FileSystem",
-        context: DataContext,
+        retryable_errors: List[str] = tuple(),
         max_attempts: int = 10,
         max_backoff_s: int = 32,
     ):
@@ -1198,20 +1200,16 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
             fs, RetryingPyFileSystem
         ), "Cannot wrap a RetryingPyFileSystem"
         self._fs = fs
-        self._data_context = context
+        self._retryable_errors = retryable_errors
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
-
-    @property
-    def data_context(self):
-        return self._data_context
 
     def _retry_operation(self, operation: Callable, description: str):
         """Execute an operation with retries."""
         return call_with_retry(
             operation,
             description=description,
-            match=self._data_context.retried_io_errors,
+            match=self._retryable_errors,
             max_attempts=self._max_attempts,
             max_backoff_s=self._max_backoff_s,
         )

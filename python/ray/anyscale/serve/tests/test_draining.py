@@ -17,6 +17,7 @@ from ray.serve._private.test_utils import (
     check_num_replicas_gte,
     get_node_id,
 )
+from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeInstanceDetails
 from ray.tests.conftest import *  # noqa
@@ -33,6 +34,7 @@ def test_draining_with_traffic(monkeypatch, ray_start_cluster):
     cluster.add_node(num_cpus=1, resources={"worker1": 1})
     cluster.add_node(num_cpus=1, resources={"worker2": 1})
     cluster.wait_for_nodes()
+    serve.start(proxy_location=ProxyLocation.HeadOnly)
 
     worker_node_ids = {
         ray.get(get_node_id.options(resources={"worker1": 1}).remote()),
@@ -252,7 +254,7 @@ def test_start_then_stop_replicas(ray_start_cluster):
             )
 
     h = serve.run(A.bind())
-    tags, node_ids = zip(*[h.remote().result() for _ in range(10)])
+    tags, node_ids = zip(*[h.remote().result() for _ in range(20)])
 
     # Block initialization of new replicas to prepare for draining
     signal.send.remote(clear=True)
@@ -271,7 +273,7 @@ def test_start_then_stop_replicas(ray_start_cluster):
     # one new replacement replica should be started.
     wait_for_condition(check_num_replicas_gte, name="A", target=4)
 
-    new_tags, _ = zip(*[h.remote().result() for _ in range(10)])
+    new_tags, _ = zip(*[h.remote().result() for _ in range(20)])
     assert set(tags) == set(new_tags)
 
     # Unblock initialization of new replicas.

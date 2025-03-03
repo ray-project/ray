@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <utility>
+
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/task/task.h"

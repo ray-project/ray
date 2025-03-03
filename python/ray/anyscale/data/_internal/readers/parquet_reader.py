@@ -49,7 +49,7 @@ class ParquetReader(FileReader):
     def __init__(
         self,
         *,
-        schema: "pyarrow.Schema",
+        schema: Optional["pyarrow.Schema"],
         dataset_kwargs: Dict[str, Any],
         batch_size: Optional[int],
         use_threads: bool,
@@ -96,7 +96,10 @@ class ParquetReader(FileReader):
         # adding partitions, we set the 'partitioning' to 'None'.
         self._dataset_kwargs["partitioning"] = None
 
-        self._data_context = DataContext.get_current()
+        ctx = DataContext.get_current()
+
+        self._should_preserve_order = ctx.execution_options.preserve_order
+        self._retried_io_errors = ctx.retried_io_errors
 
     def read_paths(
         self,
@@ -177,7 +180,7 @@ class ParquetReader(FileReader):
         parquet_dataset = call_with_retry(
             lambda: get_parquet_dataset(paths, filesystem, self._dataset_kwargs),
             "create ParquetDataset",
-            match=self._data_context.retried_io_errors,
+            match=self._retried_io_errors,
         )
         check_for_legacy_tensor_type(parquet_dataset.schema)
         return parquet_dataset.fragments
@@ -189,7 +192,7 @@ class ParquetReader(FileReader):
 
         # TODO: We should refactor the code so that we can get the results in order even
         # when using multiple threads.
-        if self._data_context.execution_options.preserve_order:
+        if self._should_preserve_order:
             num_threads = 0
 
         return num_threads
@@ -273,7 +276,7 @@ class ParquetReader(FileReader):
         for batch in iterate_with_retry(
             get_batch_iterable,
             "ParquetReader load batch",
-            match=self._data_context.retried_io_errors,
+            match=self._retried_io_errors,
         ):
             # TODO: If the table is much larger than the target block size, emit a
             # warning instructing the user to decrease the batch size.
@@ -303,14 +306,14 @@ class ParquetReader(FileReader):
             file = call_with_retry(
                 lambda: open_file(path),
                 description="open Parquet file",
-                match=self._data_context.retried_io_errors,
+                match=self._retried_io_errors,
             )
             # Getting the metadata requires network calls, so it might fail with
             # transient errors.
             num_rows += call_with_retry(
                 lambda: file.metadata.num_rows,
                 description="get count from Parquet metadata",
-                match=self._data_context.retried_io_errors,
+                match=self._retried_io_errors,
             )
         return num_rows
 

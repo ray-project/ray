@@ -340,7 +340,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         table = self._table.select(sort_key.get_columns())
         return transform_pyarrow.take_table(table, indices)
 
-    def count(self, on: str) -> Optional[U]:
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
         """Count the number of non-null values in the provided column."""
         import pyarrow.compute as pac
 
@@ -353,8 +353,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if self.num_rows() == 0:
             return None
 
+        mode = "only_valid" if ignore_nulls else "all"
+
         col = self._table[on]
-        return pac.count(col).as_py()
+        return pac.count(col, mode=mode).as_py()
 
     def _apply_arrow_compute(
         self, compute_fn: Callable, on: str, ignore_nulls: bool

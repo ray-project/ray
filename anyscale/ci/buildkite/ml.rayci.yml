@@ -5,3 +5,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/train/... ml
     depends_on: [ "mlbuild", "forge" ]
+    tags:
+      - ml
+      - ml-turbo

@@ -9,6 +9,9 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
     depends_on: data9build
     job_env: forge
+    tags:
+      - data
+      - data-turbo
 
   - label: ":database: data: runtime arrow 17 (latest) tests"
     instance_type: large
@@ -19,6 +22,9 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
     depends_on: datalbuild
     job_env: forge
+    tags:
+      - data
+      - data-turbo
 
   - label: ":database: data: runtime arrow nightly tests"
     soft_fail: true
@@ -30,3 +36,7 @@ steps:
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
     depends_on: datanbuild
     job_env: forge
+    tags:
+      - data
+      - data-turbo
+      - skip-on-premerge

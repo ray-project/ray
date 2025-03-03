@@ -131,16 +131,16 @@ class AnyscaleAutoscaler(Autoscaler):
     DEFAULT_ACTOR_POOL_SCALING_UP_FACTOR: float = 2.0
 
     # Default cluster utilization threshold to trigger scaling up.
-    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = 0.85
+    DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: float = 0.75
     # Default interval in seconds to check cluster utilization.
-    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = 0.5
+    DEFAULT_CLUSTER_UTIL_CHECK_INTERVAL_S: float = 0.25
     # Default time window in seconds to calculate the average of cluster utilization.
     DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S: int = 10
     # Default scaling up factor for cluster autoscaling.
     DEFAULT_CLUSTER_SCALING_UP_FACTOR: float = 2.0
 
     # Min number of seconds between two autoscaling requests.
-    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
+    MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 10
     # The time in seconds after which an autoscaling request will expire.
     AUTOSCALING_REQUEST_EXPIRE_TIME_S = 180
     # Timeout in seconds for getting the result of a call to the AutoscalingCoordinator.
@@ -413,31 +413,28 @@ class AnyscaleAutoscaler(Autoscaler):
         now = time.time()
         if (
             now - self._last_cluster_util_check_time
-            < self._cluster_util_check_interval_s
+            >= self._cluster_util_check_interval_s
         ):
-            return (
-                self._cluster_cpu_util_calculator.get_average(),
-                self._cluster_mem_util_calculator.get_average(),
-            )
-        self._last_cluster_util_check_time = now
+            # Update observed resource utilization
+            self._last_cluster_util_check_time = now
 
-        cur_resource_usage = self._resource_manager.get_global_usage()
-        global_limits = self._resource_manager.get_global_limits()
+            cur_resource_usage = self._resource_manager.get_global_usage()
+            global_limits = self._resource_manager.get_global_limits()
 
-        if global_limits.cpu:
-            cpu_util = cur_resource_usage.cpu / global_limits.cpu
-        else:
-            cpu_util = 0
-        if global_limits.object_store_memory:
-            mem_util = (
-                cur_resource_usage.object_store_memory
-                / global_limits.object_store_memory
-            )
-        else:
-            mem_util = 0
+            if global_limits.cpu:
+                cpu_util = cur_resource_usage.cpu / global_limits.cpu
+            else:
+                cpu_util = 0
+            if global_limits.object_store_memory:
+                mem_util = (
+                    cur_resource_usage.object_store_memory
+                    / global_limits.object_store_memory
+                )
+            else:
+                mem_util = 0
 
-        self._cluster_cpu_util_calculator.report(cpu_util)
-        self._cluster_mem_util_calculator.report(mem_util)
+            self._cluster_cpu_util_calculator.report(cpu_util)
+            self._cluster_mem_util_calculator.report(mem_util)
 
         avg_cpu_util = self._cluster_cpu_util_calculator.get_average()
         avg_mem_util = self._cluster_mem_util_calculator.get_average()
