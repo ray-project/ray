@@ -1701,6 +1701,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   cluster_task_manager_->CancelAllTaskOwnedBy(worker->WorkerId());
 
   if (graceful) {
+    // Graceful disconnects are initiated by a request from the worker and
+    // it blocks waiting for this reply.
     SendDisconnectClientReply(worker->WorkerId(), client);
   }
   client->Close();
