@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class XGBoostCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with XGBoost-specific functionality."""
 
-    MODEL_FILENAME = "model.json"
+    MODEL_FILENAME = "model.ubj"
 
     @classmethod
     def from_model(
