@@ -171,9 +171,9 @@ class DAGNode(DAGNodeBase):
         try:
             device = Device(device)
         except ValueError:
+            valid_devices = ", ".join(f"'{d.value}'" for d in Device)
             raise ValueError(
-                f"Invalid device '{device}'. "
-                "Valid options are: 'default', 'cpu', 'gpu', 'cuda'."
+                f"Invalid device '{device}'. Valid options are: {valid_devices}."
             )
         if transport == "auto":
             self._type_hint = AutoTransportType(
@@ -181,7 +181,7 @@ class DAGNode(DAGNodeBase):
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
-        elif transport == "nccl":
+        elif transport in ["nccl", "cpu"]:
             self._type_hint = TorchTensorType(
                 transport=transport,
                 device=device,
@@ -191,7 +191,7 @@ class DAGNode(DAGNodeBase):
         else:
             if not isinstance(transport, Communicator):
                 raise ValueError(
-                    "transport must be 'auto', 'nccl' or a Communicator type"
+                    "transport must be 'auto', 'nccl', 'cpu' or a Communicator type"
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
