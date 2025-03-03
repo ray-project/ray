@@ -47,7 +47,7 @@ class TorchTensorType(ChannelOutputType):
                 If "auto" is set, it moves the tensor to the default device
                 on the receiver.
                 If "cpu" is set, it moves the tensor to the CPU on the receiver.
-                If "gpu" is set, it moves the tensor to the GPU on the receiver.
+                If "gpu" or "cuda" is set, it moves the tensor to the GPU on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.

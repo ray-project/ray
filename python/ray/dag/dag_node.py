@@ -143,7 +143,7 @@ class DAGNode(DAGNodeBase):
     def with_tensor_transport(
         self,
         transport: Optional[Union[str, Communicator]] = "auto",
-        device: Literal["retain", "auto", "cpu", "gpu"] = "retain",
+        device: Literal["retain", "auto", "cpu", "gpu", "cuda"] = "retain",
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
@@ -159,7 +159,7 @@ class DAGNode(DAGNodeBase):
                 "retain" (default) means that device in the receiver will match the sender.
                 "auto" means that device in the receiver will be it's default torch_device.
                 "cpu" means that device in the receiver will be cpu.
-                "gpu" means that device in the receiver will be gpu.
+                "gpu" and "cuda" means that device in the receiver will be gpu.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG. If this is True, the
@@ -174,7 +174,7 @@ class DAGNode(DAGNodeBase):
         except ValueError:
             raise ValueError(
                 f"Invalid device '{device}'. "
-                "Valid options are: 'retain', 'auto', 'cpu', 'gpu'."
+                "Valid options are: 'retain', 'auto', 'cpu', 'gpu', 'cuda'."
             )
         if transport == "auto":
             self._type_hint = AutoTransportType(
