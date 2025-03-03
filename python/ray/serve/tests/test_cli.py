@@ -38,7 +38,7 @@ def runner():
 
 
 def test_start_shutdown(ray_start_stop, runner):
-    subprocess.check_output(["serve", "start"])
+    runner.invoke(cli, ["start"])
     # deploy a simple app
     import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
 
