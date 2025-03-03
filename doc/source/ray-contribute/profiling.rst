@@ -90,10 +90,10 @@ search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is
 
 Users are supposed to provide 3 env vars for memory profiling.
 
-- `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`
-- `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values.
-  - Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
-- `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
+* `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`
+* `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values.
+  *  Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
+* `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
 
 .. code-block:: bash
 
@@ -127,7 +127,7 @@ Users are supposed to provide 3 env vars for memory profiling.
 
   # Use jeprof to view the profile data. The first argument is the binary of GCS server.
   # Note that you can also use `--pdf` or `--svg` to generate different formats of the profile data.
-  jeprof --text $YOUR_RAY_REPO_ROOT/python/ray/core/src/ray/gcs/gcs_server $PATH_TO_OUTPUT_DIR/jeprof.out.1904189.0.f.heap
+  jeprof --text $YOUR_RAY_SRC_DIR/python/ray/core/src/ray/gcs/gcs_server $PATH_TO_OUTPUT_DIR/jeprof.out.1904189.0.f.heap
 
   # [Example output]
   Using local file ../ray/core/src/ray/gcs/gcs_server.
