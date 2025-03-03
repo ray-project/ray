@@ -295,6 +295,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
     }
     current_actor_id_ = task_spec.ActorCreationId();
+    current_actor_should_exit_ = false;
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
@@ -392,6 +393,17 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 bool WorkerContext::CurrentActorIsAsync() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_is_asyncio_;
+}
+
+void WorkerContext::SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_) {
+  absl::WriterMutexLock lock(&mutex_);
+  RAY_CHECK(!current_actor_id_.IsNil());
+  current_actor_should_exit_ = true;
+}
+
+bool WorkerContext::GetCurrentActorShouldExit() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_actor_should_exit_;
 }
 
 bool WorkerContext::CurrentActorDetached() const {

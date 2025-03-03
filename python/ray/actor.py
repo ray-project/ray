@@ -29,7 +29,6 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
-from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -1771,7 +1770,11 @@ def exit_actor():
     This API can be used only inside an actor. Use ray.kill
     API if you'd like to kill an actor using actor handle.
 
-    When the API is called, the actor raises an exception and exits.
+    When the API is called, if the actor it not async actor,
+    it raises an exception and exits. For async actor,
+    it sets a flag to exit and the worker periodically checks
+    the flag and exits the actor. So there may be some delay
+    before the actor actually exits.
     Any queued methods will fail. Any ``atexit``
     handlers installed in the actor will be run.
 
@@ -1780,19 +1783,12 @@ def exit_actor():
             worker is not an actor.
     """
     worker = ray._private.worker.global_worker
-    if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
-        # In asyncio actor mode, we can't raise SystemExit because it will just
-        # quit the asycnio event loop thread, not the main thread. Instead, we
-        # raise a custom error to the main thread to tell it to exit.
-        if worker.core_worker.current_actor_is_asyncio():
-            raise AsyncioActorExit()
-
-        # Set a flag to indicate this is an intentional actor exit. This
-        # reduces log verbosity.
-        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
-    else:
+    if worker.mode != ray.WORKER_MODE or worker.actor_id.is_nil():
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "
             f"{worker.mode}. Call this API inside an actor methods"
             "if you'd like to exit the actor gracefully."
         )
+    if not worker.core_worker.current_actor_is_asyncio():
+        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
+    worker.core_worker.set_current_actor_should_exit()
