@@ -1102,8 +1102,11 @@ void CoreWorker::Disconnect(
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     connected_ = false;
     if (local_raylet_client_) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(
-          exit_type, exit_detail, creation_task_exception_pb_bytes));
+      Status status = local_raylet_client_->Disconnect(
+          exit_type, exit_detail, creation_task_exception_pb_bytes);
+      if (!status.ok()) {
+        RAY_LOG(WARNING) << "Failed to send disconnect message to the local raylet.";
+      }
     }
   }
 }
