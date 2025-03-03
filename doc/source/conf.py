@@ -628,6 +628,7 @@ autodoc_mock_imports = [
     "wandb",
     "watchfiles",
     "openai",
+    "optax",
     "xgboost",
     "xgboost_ray",
     "psutil",
