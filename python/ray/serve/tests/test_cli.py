@@ -6,6 +6,7 @@ from copy import deepcopy
 from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional
 
+from click.testing import CliRunner
 import pytest
 import requests
 import yaml
@@ -16,9 +17,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.scripts import remove_ansi_escape_sequences
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
-from click.testing import CliRunner
 from ray.serve.scripts import cli
 
 
