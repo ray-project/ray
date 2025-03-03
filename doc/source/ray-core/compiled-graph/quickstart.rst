@@ -15,14 +15,14 @@ This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
 First, define a simple actor that echoes its argument.
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __simple_actor_start__
     :end-before: __simple_actor_start__
 
 Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ray.get`` to execute tasks on the actor.
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __simple_actor_usage_start__
     :end-before: __simple_actor_start__
@@ -45,7 +45,7 @@ Note 3 key differences with the classic Ray Core APIs:
 Here, define a graph and execute it.
 Note that there is **no** compilation happening here. This uses the same execution backend as the preceding example:
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __dag_usage_start__
     :end-before: __dag_usage_end__
@@ -53,7 +53,7 @@ Note that there is **no** compilation happening here. This uses the same executi
 Next, compile the ``dag`` using the :func:`experimental_compile <ray.dag.DAGNode.experimental_compile>` API.
 The graph uses the same APIs for execution:
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_usage_start__
     :end-before: __cgraph_usage_end__
@@ -76,7 +76,7 @@ Normal tasks can still execute on the actors while the actors participate in a C
 Once you're done, you can tear down the Compiled Graph by deleting it or explicitly calling ``dag.teardown()``.
 This allows reuse of the actors in a new Compiled Graph.
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_teardown_start__
     :end-before: __cgraph_teardown_end__
@@ -88,7 +88,7 @@ Specifying data dependencies
 When creating the DAG, a ``ray.dag.DAGNode`` can be passed as an argument to other ``.bind`` calls to specify data dependencies.
 For example, the following uses the preceding example to create a DAG that passes the same message from one actor to another:
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_dependency_start__
     :end-before: __cgraph_dependency_end__
@@ -101,7 +101,7 @@ Here is another example that passes the same message to both actors, which can t
 It uses :class:`ray.dag.MultiOutputNode <ray.dag.output_node.MultiOutputNode>` to indicate that this DAG returns multiple outputs.
 Then, :func:`dag.execute() <ray.dag.compiled_dag_node.CompiledDAG.execute>` returns multiple :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>` objects, one per node:
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_multi_output_start__
     :end-before: __cgraph_multi_output_end__
@@ -145,7 +145,7 @@ the graph to shut down, the remaining actors stay alive.
 For example, this example explicitly destroys an actor while it's participating in a Compiled Graph.
 The remaining actors are reusable:
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_actor_death_start__
     :end-before: __cgraph_actor_death_end__
@@ -178,14 +178,14 @@ The cupy version affects the NCCL version. The Ray team is also planning to supp
 
 First, create sender and receiver actors. Note that this example requires at least 2 GPUs.
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_gpu_to_gpu_start__
     :end-before: __cgraph_gpu_to_gpu_end__
 
 To support GPU-to-GPU communication with NCCL, wrap the DAG node that contains the ``torch.Tensor`` that you want to transmit using the ``with_tensor_transport`` API hint:
 
-.. literalinclude:: doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_nccl_start__
     :end-before: __cgraph_nccl_end__
