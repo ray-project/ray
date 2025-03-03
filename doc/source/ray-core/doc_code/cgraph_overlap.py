@@ -71,3 +71,4 @@ if __name__ == "__main__":
     for overlap_gpu_communication in [False, True]:
         test(overlap_gpu_communication)
 # __cgraph_overlap_end__
+
