@@ -158,7 +158,7 @@ class TestTensorTransport:
             compiled_dag.teardown()
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    @pytest.mark.parametrize("device", ["retain", "cpu", "gpu", "cuda"])
+    @pytest.mark.parametrize("device", ["default", "cpu", "gpu", "cuda"])
     def test_compiled_graph_transport_driver_to_worker(
         self, ray_start_regular, workers, default_device, device
     ):
@@ -305,7 +305,7 @@ class TestTensorTransport:
             src_device: str,
             expected_dst_device: str,
             transport: str = "auto",
-            device: str = "retain",
+            device: str = "default",
             expect_error: bool = False,
         ) -> None:
             with InputNode() as inp:
@@ -328,7 +328,7 @@ class TestTensorTransport:
 
         # Test 1: CPU tensor transport between workers
         for dst_worker in ["cpu-only", "gpu-2"]:
-            for device in ["cpu", "retain"]:
+            for device in ["cpu", "default"]:
                 create_and_execute_dag(
                     "cpu-only", dst_worker, "cpu", "cpu", device=device
                 )
@@ -339,7 +339,7 @@ class TestTensorTransport:
         # # Test both auto and nccl transport with retain device placement
         for transport in ["auto", "nccl"]:
             create_and_execute_dag(
-                "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, device="retain"
+                "gpu-1", "gpu-2", "cuda:0", "cuda:0", transport, device="default"
             )
 
         # Test 3: GPU tensor transport to CPU
@@ -349,7 +349,7 @@ class TestTensorTransport:
 
         # Should fail with retain device/gpu placement when sending to CPU worker
         create_and_execute_dag(
-            "gpu-2", "cpu-only", "cuda:0", "cpu", device="retain", expect_error=True
+            "gpu-2", "cpu-only", "cuda:0", "cpu", device="default", expect_error=True
         )
         create_and_execute_dag(
             "gpu-2", "cpu-only", "cuda:0", "cpu", device="gpu", expect_error=True
@@ -377,7 +377,7 @@ class TestTensorTransport:
             dst_worker: str,
             expected_device_dict: Dict[str, str],
             transport: str = "auto",
-            device: str = "retain",
+            device: str = "default",
             expect_error: bool = False,
         ) -> None:
             with InputNode() as inp:
@@ -398,7 +398,7 @@ class TestTensorTransport:
                 compiled_dag.teardown()
 
         # Test 1: Transport between GPU workers
-        create_and_execute_dict_dag("gpu-1", "gpu-2", mixed_dict, device="retain")
+        create_and_execute_dict_dag("gpu-1", "gpu-2", mixed_dict, device="default")
 
         # With gpu: should move everything to GPU
         create_and_execute_dict_dag("gpu-1", "gpu-2", all_gpu_dict, device="gpu")
@@ -411,9 +411,9 @@ class TestTensorTransport:
         # With cpu: should move everything to CPU
         create_and_execute_dict_dag("gpu-1", "cpu-only", all_cpu_dict, device="cpu")
 
-        # With retain: should fail since CPU worker can't handle GPU tensors
+        # With default: should fail since CPU worker can't handle GPU tensors
         create_and_execute_dict_dag(
-            "gpu-1", "cpu-only", mixed_dict, device="retain", expect_error=True
+            "gpu-1", "cpu-only", mixed_dict, device="default", expect_error=True
         )
 
         # With gpu: should fail since CPU worker can't handle GPU tensors
@@ -422,8 +422,8 @@ class TestTensorTransport:
         )
 
         # Test 3: Test NCCL transport between GPU workers
-        for device in ["retain", "gpu", "cuda"]:
-            expected_dict = mixed_dict if device == "retain" else all_gpu_dict
+        for device in ["default", "gpu", "cuda"]:
+            expected_dict = mixed_dict if device == "default" else all_gpu_dict
             create_and_execute_dict_dag(
                 "gpu-1", "gpu-2", expected_dict, transport="nccl", device=device
             )
@@ -510,11 +510,11 @@ class TestTensorTransport:
             compiled_dag.teardown()
 
         # transport cpu tensor
-        for device in ["retain", "cpu"]:
+        for device in ["default", "cpu"]:
             create_and_execute_dag("gpu-1", "cpu", "cpu", device)
 
         # transport gpu tensor, assuming driver has access to GPUs
-        for device in ["retain", "gpu", "cuda"]:
+        for device in ["default", "gpu", "cuda"]:
             create_and_execute_dag("gpu-1", "cuda:0", "cuda:0", device)
 
         # transport gpu tensor as a cpu tensor
@@ -535,7 +535,7 @@ class TestTensorTransport:
             compiled_dag.teardown()
 
         create_and_execute_dict_dag("gpu-1", "cpu", "cpu")
-        create_and_execute_dict_dag("gpu-1", "cuda:0", "retain")
+        create_and_execute_dict_dag("gpu-1", "cuda:0", "default")
 
 
 if __name__ == "__main__":

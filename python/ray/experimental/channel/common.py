@@ -123,7 +123,7 @@ class ChannelContext:
     _torch_available: Optional[bool] = None
     _torch_device: Optional["torch.device"] = None
     _current_stream: Optional["torch.cuda.Stream"] = None
-    _target_device: Device = Device.RETAIN
+    _target_device: Device = Device.DEFAULT
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.

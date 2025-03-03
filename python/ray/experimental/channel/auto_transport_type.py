@@ -17,7 +17,7 @@ class AutoTransportType(ChannelOutputType):
 
     def __init__(
         self,
-        device: Device = Device.RETAIN,
+        device: Device = Device.DEFAULT,
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):

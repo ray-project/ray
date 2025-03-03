@@ -21,7 +21,7 @@ class ReduceOp(_CollectiveOp):
 
 @PublicAPI
 class Device(Enum):
-    RETAIN = "retain"
+    DEFAULT = "default"
     CPU = "cpu"
     GPU = "gpu"
     CUDA = "cuda"

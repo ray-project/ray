@@ -150,7 +150,7 @@ class _SerializationContext:
 
         ctx = ChannelContext.get_current()
 
-        if ctx.target_device == Device.RETAIN:
+        if ctx.target_device == Device.DEFAULT:
             target_device_type = tensor_device_type
         elif ctx.target_device in [Device.GPU, Device.CUDA]:
             target_device_type = "cuda"
