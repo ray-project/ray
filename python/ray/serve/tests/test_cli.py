@@ -18,6 +18,8 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
+from click.testing import CliRunner
+from ray.serve.scripts import cli
 
 
 def assert_deployments_live(ids: List[DeploymentID]):
@@ -31,40 +33,47 @@ def assert_deployments_live(ids: List[DeploymentID]):
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
 
 
-def test_start_shutdown(ray_start_stop):
+@pytest.fixture
+def runner():
+    return CliRunner()
+
+
+def test_start_shutdown(ray_start_stop, runner):
     subprocess.check_output(["serve", "start"])
     # deploy a simple app
     import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
-    subprocess.check_output(["serve", "deploy", import_path])
+
+    result = runner.invoke(cli, ["deploy", import_path])
+    assert result.exit_code == 0
     wait_for_condition(
         check_http_response,
         expected_text="DEFAULT",
         timeout=15,
     )
-    ret = subprocess.check_output(["serve", "shutdown", "-y"])
-    assert "Sent shutdown request" in ret.decode("utf-8")
+    ret = runner.invoke(cli, ["shutdown", "-y"])
+    assert "Sent shutdown request" in ret.output
 
     def check_no_apps():
-        status = subprocess.check_output(["serve", "status"])
-        return "applications: {}" in status.decode("utf-8")
+        status = runner.invoke(cli, ["status"])
+        return "applications: {}" in status.output
 
     wait_for_condition(check_no_apps, timeout=15)
 
-    ret = subprocess.check_output(["serve", "shutdown", "-y"])
-    assert "there are no applications deployed" in ret.decode("utf-8")
-    assert "Sent shutdown request" not in ret.decode("utf-8")
+    ret = runner.invoke(cli, ["shutdown", "-y"])
+    assert "there are no applications currently deployed" in ret.output
+    assert "Sent shutdown request" not in ret.output
 
 
-def test_start_shutdown_without_serve_running(ray_start_stop):
-    ret = subprocess.check_output(["serve", "shutdown", "-y"])
-    assert "there are no applications deployed" in ret.decode("utf-8")
-    assert "Sent shutdown request" not in ret.decode("utf-8")
+def test_start_shutdown_without_serve_running(ray_start_stop, runner):
+    ret = runner.invoke(cli, ["shutdown", "-y"])
+    assert "there are no applications currently deployed" in ret.output
+    assert "Sent shutdown request" not in ret.output
 
 
-def test_start_shutdown_without_ray_running():
-    ret = subprocess.check_output(["serve", "shutdown", "-y"])
-    assert "Cannot shutdown Serve applications" in ret.decode("utf-8")
-    assert "Sent shutdown request" not in ret.decode("utf-8")
+def test_start_shutdown_without_ray_running(runner):
+    ret = runner.invoke(cli, ["shutdown", "-y"])
+    assert "Cannot shutdown Serve applications" in ret.output
+    assert "Sent shutdown request" not in ret.output
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
