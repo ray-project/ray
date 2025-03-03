@@ -660,7 +660,7 @@ def _do_init_communicator(
             comm_id,
             rank,
             actor_handles,
-            torch.cuda.current_stream().cuda_stream,
+            torch.cuda.current_stream(),
             use_communication_streams,
         )
 
