@@ -25,6 +25,7 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_MLU_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV,
@@ -124,6 +125,11 @@ class BackendExecutor:
                 ray_constants.NPU,
                 ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
                 ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR,
+            ),
+            ResourceConfig(
+                ray_constants.MLU,
+                ENABLE_SHARE_MLU_VISIBLE_DEVICES_ENV,
+                ray_constants.MLU_VISIBLE_DEVICES_ENV_VAR,
             ),
             # For AMD GPUs, they are using ROCR_VISIBLE_DEVICES env var.
             ResourceConfig(
