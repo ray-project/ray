@@ -6,6 +6,7 @@ from ray.dag import InputNode, MultiOutputNode
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.air._internal import torch_utils
 
+
 @ray.remote(num_cpus=0, num_gpus=1)
 class TorchTensorWorker:
     def __init__(self):
@@ -29,7 +30,8 @@ class TorchTensorWorker:
         assert two_d_tensor.device == self.device
         torch.matmul(two_d_tensor, two_d_tensor)
         return (two_d_tensor[0][0].item(), two_d_tensor.shape, two_d_tensor.dtype)
-        
+
+
 def test(overlap_gpu_communication):
     num_senders = 3
     senders = [TorchTensorWorker.remote() for _ in range(num_senders)]
@@ -67,8 +69,7 @@ def test(overlap_gpu_communication):
     duration = time.monotonic() - start
     print(f"{overlap_gpu_communication=}, {duration=}")
 
-if __name__ == "__main__":
-    for overlap_gpu_communication in [False, True]:
-        test(overlap_gpu_communication)
-# __cgraph_overlap_end__
 
+for overlap_gpu_communication in [False, True]:
+    test(overlap_gpu_communication)
+# __cgraph_overlap_end__

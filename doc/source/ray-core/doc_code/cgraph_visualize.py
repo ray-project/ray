@@ -2,6 +2,7 @@
 import ray
 from ray.dag import InputNode, MultiOutputNode
 
+
 @ray.remote
 class Worker:
     def inc(self, x):
@@ -12,6 +13,7 @@ class Worker:
 
     def echo(self, x):
         return x
+
 
 sender1 = Worker.remote()
 sender2 = Worker.remote()
@@ -27,4 +29,3 @@ with InputNode() as inp:
 compiled_dag = dag.experimental_compile()
 compiled_dag.visualize()
 # __cgraph_visualize_end__
-
