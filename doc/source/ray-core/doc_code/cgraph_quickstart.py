@@ -100,8 +100,8 @@ from ray.dag import InputNode, MultiOutputNode
 
 @ray.remote
 class EchoActor:
-def echo(self, msg):
-    return msg
+    def echo(self, msg):
+        return msg
 
 actors = [EchoActor.remote() for _ in range(4)]
 with InputNode() as inp:
