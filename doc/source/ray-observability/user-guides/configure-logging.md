@@ -582,7 +582,7 @@ Some system component logs aren't structured as suggested preceding as of 2.5. T
 
 Ray supports log rotation of log files. Note that not all components support log rotation. (Raylet, Python, and Java worker logs don't rotate).
 
-By default, logs rotate when they reach 512 MB-maxBytes, and have a maximum of five backup files-backupCount. Ray appended indexes to all backup files-for example, `raylet.out.1`
+By default, logs rotate when they reach 512 MB (maxBytes), and have a maximum of five backup files (backupCount). Ray appends indexes to all backup files - for example, `raylet.out.1`.
 To change the log rotation configuration, specify environment variables. For example,
 
 ```bash
