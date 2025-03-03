@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
+import enum
 
 import numpy as np
 
@@ -287,6 +288,11 @@ class _StatsActor:
             description="Total work units for dataset",
             tag_keys=dataset_tags,
         )
+        self.dataset_state = Gauge(
+            "ray_data_dataset_state",
+            description=f"State of dataset ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
+            tag_keys=("dataset",),
+        )
 
         operator_tags = ("dataset", "operator")
         self.operator_progress = Gauge(
@@ -301,17 +307,9 @@ class _StatsActor:
         )
         self.operator_state = Gauge(
             "ray_data_operator_state",
-            description="State of operator (0=UNKNOWN, 1=RUNNING, 2=DONE, 3=FAILED)",
+            description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
             tag_keys=("dataset", "operator"),
         )
-
-        # Define state mapping as a class constant
-        self.OPERATOR_STATE_MAP = {
-            "UNKNOWN": 0,
-            "RUNNING": 1,
-            "DONE": 2,
-            "FAILED": 3,
-        }
 
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
@@ -467,14 +465,14 @@ class _StatsActor:
     def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
             "job_id": job_id,
-            "state": "RUNNING",
+            "state": DatasetState.RUNNING.name,
             "progress": 0,
             "total": 0,
             "start_time": time.time(),
             "end_time": None,
             "operators": {
                 operator: {
-                    "state": "RUNNING",
+                    "state": DatasetState.RUNNING.name,
                     "progress": 0,
                     "total": 0,
                 }
@@ -482,13 +480,16 @@ class _StatsActor:
             },
         }
 
-    def update_dataset(self, dataset_tag, state):
+    def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
 
         # Update dataset-level metrics
         dataset_tags = {"dataset": dataset_tag}
         self.dataset_progress.set(state.get("progress", 0), dataset_tags)
         self.dataset_total.set(state.get("total", 0), dataset_tags)
+        self.dataset_state.set(
+            state.get("state", DatasetState.UNKNOWN.name), dataset_tags
+        )
 
         # Update operator-level metrics
         for operator, op_state in state.get("operators", {}).items():
@@ -499,12 +500,10 @@ class _StatsActor:
             self.operator_progress.set(op_state.get("progress", 0), operator_tags)
             self.operator_total.set(op_state.get("total", 0), operator_tags)
 
-            # Map state string to numeric value
-            state_value = self.OPERATOR_STATE_MAP.get(
-                op_state.get("state", "UNKNOWN"),
-                self.OPERATOR_STATE_MAP["UNKNOWN"]
-            )
-            self.operator_state.set(state_value, operator_tags)
+            # Get state code directly from enum
+            state_string = op_state.get("state", DatasetState.UNKNOWN.name)
+            state_enum = DatasetState.from_string(state_string)
+            self.operator_state.set(state_enum.value, operator_tags)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
@@ -746,6 +745,26 @@ class _StatsManager:
 
 
 StatsManager = _StatsManager()
+
+
+class DatasetState(enum.IntEnum):
+    """Enum representing the possible states of a dataset during execution."""
+
+    UNKNOWN = 0
+    RUNNING = 1
+    FINISHED = 2
+    FAILED = 3
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def from_string(cls, text):
+        """Get enum by name."""
+        try:
+            return cls[text]  # This uses the name to lookup the enum
+        except KeyError:
+            return cls.UNKNOWN
 
 
 class DatasetStats:
@@ -1469,8 +1488,12 @@ class OperatorStatsSummary:
         wall_time_stats = {k: fmt(v) for k, v in (self.wall_time or {}).items()}
         cpu_stats = {k: fmt(v) for k, v in (self.cpu_time or {}).items()}
         memory_stats = {k: fmt(v) for k, v in (self.memory or {}).items()}
-        output_num_rows_stats = {k: fmt(v) for k, v in (self.output_num_rows or {}).items()}
-        output_size_bytes_stats = {k: fmt(v) for k, v in (self.output_size_bytes or {}).items()}
+        output_num_rows_stats = {
+            k: fmt(v) for k, v in (self.output_num_rows or {}).items()
+        }
+        output_size_bytes_stats = {
+            k: fmt(v) for k, v in (self.output_size_bytes or {}).items()
+        }
         node_conut_stats = {k: fmt(v) for k, v in (self.node_count or {}).items()}
         out = (
             f"{indent}OperatorStatsSummary(\n"
