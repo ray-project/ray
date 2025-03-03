@@ -91,8 +91,7 @@ search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is
 Users are supposed to provide 3 env vars for memory profiling.
 
 * `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`
-* `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values.
-  *  Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
+* `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values. Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
 * `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
 
 .. code-block:: bash
@@ -104,7 +103,7 @@ Users are supposed to provide 3 env vars for memory profiling.
   export JEMALLOC_DIR=$PWD
   ./configure --enable-prof --enable-prof-libunwind 
   make
-  make install
+  sudo make install
 
   # Verify jeprof is installed.
   which jeprof
