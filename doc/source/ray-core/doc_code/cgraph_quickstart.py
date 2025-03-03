@@ -21,7 +21,7 @@ start = time.perf_counter()
 msg_ref = a.echo.remote("hello")
 ray.get(msg_ref)
 end = time.perf_counter()
-print(f"Execution takes {(end - start) * 1000 * 1000} us"
+print(f"Execution takes {(end - start) * 1000 * 1000} us")
 # __simple_actor_usage_end__
 
 # __dag_usage_start__
