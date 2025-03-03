@@ -401,6 +401,10 @@ Content-Type: application/json
 
 ## LLM API
 
+```{eval-rst}
+.. currentmodule:: ray
+```
+
 ### Builders
 
 ```{eval-rst}
