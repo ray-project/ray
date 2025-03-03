@@ -64,6 +64,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "serve/integration/test_openai_compatibility.py",
+    "serve/integration/test_openai_compatibility_no_accelerator_type.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "large",

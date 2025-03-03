@@ -59,13 +59,13 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelData,
     Model,
-    AutoscalingConfig,
 )
 from ray.llm._internal.serve.deployments.routers.middleware import (
     SetRequestIdMiddleware,
     add_exception_handling_middleware,
 )
 from ray.llm._internal.serve.deployments.utils.server_utils import replace_prefix
+from ray.serve.config import AutoscalingConfig
 
 # Import asyncio timeout depends on python version
 if sys.version_info >= (3, 11):
@@ -443,7 +443,10 @@ class LLMRouter:
                     # When autoscaling config is not provided, we use the default.
                     autoscaling_config = AutoscalingConfig()
                 model_min_replicas += autoscaling_config.min_replicas
-                model_initial_replicas += autoscaling_config.initial_replicas
+                model_initial_replicas += (
+                    autoscaling_config.initial_replicas
+                    or autoscaling_config.min_replicas
+                )
                 model_max_replicas += autoscaling_config.max_replicas
             min_replicas = int(model_min_replicas * ROUTER_TO_MODEL_REPLICA_RATIO)
             initial_replicas = int(

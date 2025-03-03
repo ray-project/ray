@@ -12,6 +12,7 @@ py_test(
     srcs = ["test_conditional_testing.py"],
     data = [
         ":determine_tests_to_run.py",
+        ":test_rules.txt",
     ],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
