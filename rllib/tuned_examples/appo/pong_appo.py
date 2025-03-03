@@ -11,6 +11,7 @@ from ray.tune.registry import register_env
 parser = add_rllib_example_script_args(
     default_reward=20.0,
     default_timesteps=10000000,
+    default_iters=30,
 )
 parser.set_defaults(
     enable_new_api_stack=True,
@@ -80,7 +81,8 @@ config = (
     )
 )
 
-
+args.num_learners = 2
+args.num_env_runners=4
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
