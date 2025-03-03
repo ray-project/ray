@@ -1563,7 +1563,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
-  RAY_LOG(INFO) << "NodeManager::DisconnectClient, graceful=" << graceful << ", disconnect_type=" << disconnect_type
+  RAY_LOG(INFO) << "NodeManager::DisconnectClient, graceful=" << graceful
+                << ", disconnect_type=" << disconnect_type
                 << ", has creation task exception = " << std::boolalpha
                 << bool(creation_task_exception != nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
@@ -1688,10 +1689,10 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   auto reply = protocol::CreateDisconnectClientReply(fbb);
   fbb.Finish(reply);
   // XXX: async write?
-  const auto status =
-      client->WriteMessage(static_cast<int64_t>(protocol::MessageType::DisconnectClientReply),
-                           fbb.GetSize(),
-                           fbb.GetBufferPointer());
+  const auto status = client->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::DisconnectClientReply),
+      fbb.GetSize(),
+      fbb.GetBufferPointer());
   RAY_CHECK_OK(status);
   client->Close();
 
@@ -1715,8 +1716,11 @@ void NodeManager::ProcessDisconnectClientMessage(
     creation_task_exception->ParseFromString(std::string(
         reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
   }
-  DisconnectClient(
-      client, graceful, disconnect_type, disconnect_detail, creation_task_exception.get());
+  DisconnectClient(client,
+                   graceful,
+                   disconnect_type,
+                   disconnect_detail,
+                   creation_task_exception.get());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1830,7 +1834,8 @@ void NodeManager::ProcessWaitRequestMessage(
           std::ostringstream stream;
           stream << "Failed to write WaitReply to the client. Status " << status
                  << ", message: " << status.message();
-          DisconnectClient(client, false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+          DisconnectClient(
+              client, false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
         }
       });
 }

@@ -84,7 +84,6 @@ Status RayletClient::Disconnect(
   }
   const auto &fb_exit_detail = fbb.CreateString(exit_detail);
   protocol::DisconnectClientRequestBuilder builder(fbb);
-  builder.add_graceful(true);
   builder.add_disconnect_type(static_cast<int>(exit_type));
   builder.add_disconnect_detail(fb_exit_detail);
   // Add to table builder here to avoid nested construction of flatbuffers
