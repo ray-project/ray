@@ -17,8 +17,6 @@ class AbstractNcclGroup(Communicator):
     A dummy NCCL group for testing.
     """
 
-    import cupy as cp
-
     def __init__(self, actor_handles: List[ray.actor.ActorHandle]):
         self._actor_handles = actor_handles
         self._rank = None
@@ -59,11 +57,11 @@ class AbstractNcclGroup(Communicator):
         raise NotImplementedError
 
     @property
-    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def recv_stream(self):
         return None
 
     @property
-    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+    def send_stream(self):
         return None
 
     def destroy(self) -> None:
