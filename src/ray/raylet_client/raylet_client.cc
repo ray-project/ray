@@ -92,6 +92,8 @@ Status RayletClient::Disconnect(
   }
   fbb.Finish(builder.Finish());
   std::vector<uint8_t> reply;
+  // NOTE(edoakes): AtomicRequestReply will fast fail and exit the process if the raylet
+  // is already dead.
   return conn_->AtomicRequestReply(MessageType::DisconnectClientRequest,
                                    MessageType::DisconnectClientReply,
                                    &reply,
