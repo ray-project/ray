@@ -91,14 +91,7 @@ Status RayletClient::Disconnect(
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
   fbb.Finish(builder.Finish());
-  // TODO(myan): In the current implementation, if raylet is already terminated in the
-  // "WriteMessage" function above, the worker process will exit early in the function
-  // and will not reach here. However, the code path here is shared between graceful
-  // shutdown and force termination. We need to make sure the above early exit
-  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
-  // leak if early exit is triggered
   std::vector<uint8_t> reply;
-  // XXX: figure out if the above is still true.
   return conn_->AtomicRequestReply(MessageType::DisconnectClientRequest,
                                    MessageType::DisconnectClientReply,
                                    &reply,
