@@ -1,5 +1,5 @@
 from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import (
-    VLLMService as _VLLMService,
+    VLLMServer as _VLLMServer,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter as _LLMRouter,
@@ -10,7 +10,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class VLLMService(_VLLMService):
+class VLLMServer(_VLLMServer):
     """The implementation of the VLLM engine deployment.
 
     To build a VLLMDeployment object you should use `build_vllm_deployment` function.
@@ -22,19 +22,16 @@ class VLLMService(_VLLMService):
             :skipif: True
 
             from ray import serve
-            from ray.serve.config import AutoscalingConfig
-            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
-            from ray.serve.llm.deployments import VLLMDeployment
-            from ray.serve.llm.openai_api_models import ChatCompletionRequest
+            from ray.serve.llm import LLMConfig, VLLMServer
 
             # Configure the model
             llm_config = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
+                model_loading_config=dict(
                     served_model_name="llama-3.1-8b",
                     model_source="meta-llama/Llama-3.1-8b-instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1,
                         max_replicas=8,
                     )
@@ -42,7 +39,7 @@ class VLLMService(_VLLMService):
             )
 
             # Build the deployment directly
-            VLLMDeployment = VLLMService.as_deployment(llm_config.get_serve_options())
+            VLLMDeployment = VLLMServer.as_deployment(llm_config.get_serve_options())
             vllm_app = VLLMDeployment.bind(llm_config)
 
             model_handle = serve.run(vllm_app)
@@ -83,39 +80,37 @@ class LLMRouter(_LLMRouter):
 
 
             from ray import serve
-            from ray.serve.config import AutoscalingConfig
-            from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig, DeploymentConfig
-            from ray.serve.llm.deployments import VLLMDeployment
+            from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
             from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
 
             llm_config1 = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
+                model_loading_config=dict(
                     served_model_name="llama-3.1-8b",  # Name shown in /v1/models
                     model_source="meta-llama/Llama-3.1-8b-instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1, max_replicas=8,
                     )
                 ),
             )
             llm_config2 = LLMConfig(
-                model_loading_config=ModelLoadingConfig(
+                model_loading_config=dict(
                     served_model_name="llama-3.2-3b",  # Name shown in /v1/models
                     model_source="meta-llama/Llama-3.2-3b-instruct",
                 ),
-                deployment_config=DeploymentConfig(
-                    autoscaling_config=AutoscalingConfig(
+                deployment_config=dict(
+                    autoscaling_config=dict(
                         min_replicas=1, max_replicas=8,
                     )
                 ),
             )
 
             # Deploy the application
-            vllm_deployment1 = VLLMDeployment.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
-            vllm_deployment2 = VLLMDeployment.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
-            llm_app = LLMModelRouterDeployment.as_deployment().bind([vllm_deployment1, vllm_deployment2])
+            vllm_deployment1 = VLLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
+            vllm_deployment2 = VLLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
+            llm_app = LLMRouter.as_deployment().bind([vllm_deployment1, vllm_deployment2])
             serve.run(llm_app)
     """
 

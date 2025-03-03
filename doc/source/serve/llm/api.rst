@@ -41,7 +41,7 @@ Deployments
    :nosignatures:
    :toctree: doc/
 
-   VLLMService
+   VLLMServer
    LLMRouter
 
 

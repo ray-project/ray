@@ -16,8 +16,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm.configs import LLMConfig
-            from ray.serve.llm.builders import build_vllm_deployment
+            from ray.serve.llm import LLMConfig, build_vllm_deployment
 
             # Configure the model
             llm_config = LLMConfig(
@@ -85,8 +84,7 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm.configs import LLMConfig
-            from ray.serve.llm.deployments import VLLMService, LLMRouter
+            from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
 
             llm_config1 = LLMConfig(
                 model_loading_config=dict(
@@ -115,8 +113,8 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
             )
 
             # Deploy the application
-            deployment1 = VLLMService.as_deployment().bind(llm_config1)
-            deployment2 = VLLMService.as_deployment().bind(llm_config2)
+            deployment1 = VLLMServer.as_deployment().bind(llm_config1)
+            deployment2 = VLLMServer.as_deployment().bind(llm_config2)
             llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
             serve.run(llm_app)
 
