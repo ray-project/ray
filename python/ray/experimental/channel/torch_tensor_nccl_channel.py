@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
-
+import os
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext, utils
@@ -12,7 +12,6 @@ from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI
@@ -27,6 +26,22 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+USE_GPU = True
+USE_NPU = False
+if os.getenv("ASCEND_RT_VISIBLE_DEVICES"):
+    try:
+        from ray.experimental.channel.hccl_group import _HcclGroup as _NcclGroup
+
+        USE_GPU = False
+        USE_NPU = True
+    except Exception as e:
+        logger.warning(
+            f"Failed in import hccl_group, use nccl_group instead with exception {e}"
+        )
+        from ray.experimental.channel.nccl_group import _NcclGroup
+
+else:
+    from ray.experimental.channel.nccl_group import _NcclGroup
 
 
 @dataclass
@@ -259,10 +274,16 @@ class TorchTensorNcclChannel(ChannelInterface):
                     "return a CUDA torch.Tensor, instead found value "
                     f"`{value}`. DAG will shut down."
                 )
-            elif not value.is_cuda:
+            if USE_GPU and (not value.is_cuda):
                 raise ValueError(
                     "Task annotated with _direct_return=True must "
                     "return a CUDA torch.Tensor, instead found CPU tensor. "
+                    "DAG will shut down."
+                )
+            elif USE_NPU and (not value.is_npu):
+                raise ValueError(
+                    "Task annotated with _direct_return=True must "
+                    "return a NPU torch.Tensor, instead found CPU tensor. "
                     "DAG will shut down."
                 )
             self._gpu_data_channel.write([value], timeout=timeout)
@@ -448,13 +469,13 @@ class _TorchTensorNcclChannel(ChannelInterface):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._writer_registered
         ctx = ChannelContext.get_current()
-        assert ctx.torch_device.type == "cuda"
+        assert ctx.torch_device.type in ["cuda", "npu"]
 
     def ensure_registered_as_reader(self) -> bool:
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._reader_registered
         ctx = ChannelContext.get_current()
-        assert ctx.torch_device.type == "cuda"
+        assert ctx.torch_device.type in ["cuda", "npu"]
 
     def __reduce__(self):
         return (
@@ -632,6 +653,12 @@ class _TorchTensorNcclChannel(ChannelInterface):
             del ctx.communicators[self._nccl_group_id]
 
 
+def _do_set_rank(self, group_id, rank_map):
+    ctx = ChannelContext.get_current()
+    ctx.communicators[group_id].rank_map = rank_map
+    return ctx.communicators[group_id]
+
+
 def _do_init_communicator(
     self,
     group_id,
@@ -645,15 +672,15 @@ def _do_init_communicator(
     import torch
 
     if not custom_communicator:
-        assert (
-            ray.get_gpu_ids()
-        ), "Actors participating in NCCL group must have at least one GPU assigned"
+        assert bool(ray.get_gpu_ids()) or bool(
+            "NPU" in ray.cluster_resources()
+        ), "Actors participating in Communicator group must have at least one XPU assigned"
 
     ctx = ChannelContext.get_current()
     if custom_communicator is not None:
         custom_communicator.initialize(rank)
         ctx.communicators[group_id] = custom_communicator
-    else:
+    elif USE_GPU:
         # default to NcclGroup
         ctx.communicators[group_id] = _NcclGroup(
             world_size,
@@ -663,6 +690,16 @@ def _do_init_communicator(
             torch.cuda.current_stream().cuda_stream,
             use_communication_streams,
         )
+    else:
+        ctx.communicators[group_id] = _NcclGroup(
+            world_size,
+            comm_id,
+            rank,
+            actor_handles,
+            None,
+        )
+        # Need return this actor in NPU to get the rank map
+        return ctx.communicators[group_id]
 
 
 def _do_destroy_communicator(self, group_id):
@@ -676,13 +713,17 @@ def _do_destroy_communicator(self, group_id):
 
 
 def _do_check_has_gpu(self) -> bool:
-    return bool(ray.get_gpu_ids())
+    return bool(ray.get_gpu_ids()) or bool("NPU" in ray.cluster_resources())
 
 
 def _do_get_unique_nccl_id(self) -> bool:
-    from cupy.cuda import nccl
+    if "NPU" in ray.cluster_resources():
+        # NPU doesn't have get_unique_id
+        return uuid.uuid4()
+    else:
+        from cupy.cuda import nccl
 
-    return nccl.get_unique_id()
+        return nccl.get_unique_id()
 
 
 def _get_ranks(
@@ -787,7 +828,23 @@ def _init_communicator(
         for rank, actor in zip(ranks, actors)
     ]
     try:
-        ray.get(init_tasks, timeout=30)
+        if USE_GPU:
+            ray.get(init_tasks, timeout=30)
+        else:
+            # Since the NPU use torch distributed for communication.
+            # If the init is call outside hccl group, i.e. in vLLM,
+            # The rank in dist is not the same the rank in rank.
+            # We need a rank map to map the rank in ray to correct
+            # rank in dist for device.
+            tmp_actors = ray.get(init_tasks, timeout=30)
+            rank_map = dict()
+            for rank, tmp_actor in zip(ranks, tmp_actors):
+                rank_map[rank] = tmp_actor.real_rank
+            set_tasks = [
+                actor.__ray_call__.remote(_do_set_rank, group_id, rank_map)
+                for actor in actors
+            ]
+            ray.get(set_tasks, timeout=30)
     except ray.exceptions.GetTimeoutError:
         logger.warning(
             "NCCL group creation not done after 30s. NCCL group creation may be hung."
