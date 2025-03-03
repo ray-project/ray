@@ -178,17 +178,17 @@ The cupy version affects the NCCL version. The Ray team is also planning to supp
 
 First, create sender and receiver actors. Note that this example requires at least 2 GPUs.
 
-.. literalinclude:: ../doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_nccl.py
     :language: python
-    :start-after: __cgraph_gpu_to_gpu_start__
-    :end-before: __cgraph_gpu_to_gpu_end__
+    :start-after: __cgraph_nccl_setup_start__
+    :end-before: __cgraph_nccl_setup_end__
 
 To support GPU-to-GPU communication with NCCL, wrap the DAG node that contains the ``torch.Tensor`` that you want to transmit using the ``with_tensor_transport`` API hint:
 
-.. literalinclude:: ../doc_code/cgraph_quickstart.py
+.. literalinclude:: ../doc_code/cgraph_nccl.py
     :language: python
-    :start-after: __cgraph_nccl_start__
-    :end-before: __cgraph_nccl_end__
+    :start-after: __cgraph_nccl_exec_start__
+    :end-before: __cgraph_nccl_exec_end__
 
 Current limitations include:
 * ``torch.Tensor`` and NVIDIA NCCL only

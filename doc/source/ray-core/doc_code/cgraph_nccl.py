@@ -1,5 +1,5 @@
 
-# __cgraph_gpu_to_gpu_start__
+# __cgraph_nccl_setup_start__
 import torch
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
@@ -25,9 +25,9 @@ class GPUReceiver:
 
 sender = GPUSender.remote()
 receiver = GPUReceiver.remote()
-# __cgraph_gpu_to_gpu_end__
+# __cgraph_nccl_setup_end__
 
-# __cgraph_nccl_start__
+# __cgraph_nccl_exec_start__
 with ray.dag.InputNode() as inp:
     dag = sender.send.bind(inp)
     # Add a type hint that the return value of `send` should use NCCL.
@@ -40,4 +40,4 @@ with ray.dag.InputNode() as inp:
 # accordingly.
 dag = dag.experimental_compile()
 assert ray.get(dag.execute((10,))) == (10,)
-# __cgraph_nccl_end__
+# __cgraph_nccl_exec_end__

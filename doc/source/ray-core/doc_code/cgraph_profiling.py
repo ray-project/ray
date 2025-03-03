@@ -32,4 +32,3 @@ for i in range(3):
     ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
     assert ray.get(ref) == (i, shape, dtype)
 # __profiling_execution_end__
-

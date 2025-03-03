@@ -1,8 +1,6 @@
-load("//bazel:python.bzl", "py_test_run_all_subdirectory")
-load("//bazel:python.bzl", "py_test_run_all_notebooks")
-load("//bazel:python.bzl", "doctest")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:python.bzl", "doctest", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
 
 exports_files(["test_myst_doc.py"])
 
@@ -153,6 +151,18 @@ py_test(
     ],
 )
 
+py_test(
+    name = "doc_code_cgraph_profiling",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_profiling.py"],
+    main = "source/ray-core/doc_code/cgraph_profiling.py",
+    tags = [
+        "exclusive",
+        "multi-gpu",
+        "team:core",
+    ],
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
@@ -160,6 +170,8 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/runtime_env_example.py",
         "source/ray-core/doc_code/cross_language.py",
         "source/ray-core/doc_code/ray_oom_prevention.py",
+        "source/ray-core/doc_code/cgraph_profiling.py",
+        "source/ray-core/doc_code/cgraph_nccl.py",
     ],
     extra_srcs = [],
     tags = [
@@ -414,7 +426,7 @@ doctest(
             "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-gpus.rst",
             "source/train/horovod.rst",  # CI do not have Horovod
-        ]
+        ],
     ),
     tags = ["team:ml"],
 )
@@ -443,6 +455,7 @@ doctest(
 doctest(
     name = "doctest[rllib]",
     size = "large",
+    data = ["//rllib:cartpole-v1_large"],
     files = glob(
         include = [
             "source/rllib/**/*.rst",
@@ -450,9 +463,8 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
-        ]
+        ],
     ),
-    data = ["//rllib:cartpole-v1_large"],
     tags = ["team:rllib"],
 )
 
