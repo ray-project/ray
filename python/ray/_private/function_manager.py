@@ -665,9 +665,7 @@ class FunctionActorManager:
         actor_class.__module__ = module_name
         return actor_class
 
-    def _make_actor_method_executor(
-        self, method_name: str, method, actor_imported: bool
-    ):
+    def _make_actor_method_executor(self, method_name: str, method):
         """Make an executor that wraps a user-defined actor method.
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.
@@ -676,9 +674,6 @@ class FunctionActorManager:
             method: The actor method to wrap. This should be a
                 method defined on the actor class and should therefore take an
                 instance of the actor as the first argument.
-            actor_imported: Whether the actor has been imported.
-                Checkpointing operations will not be run if this is set to
-                False.
         Returns:
             A function that executes the given actor method on the worker's
                 stored instance of the actor. The function also updates the
