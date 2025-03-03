@@ -287,11 +287,3 @@ table SubscribePlasmaReady {
   // The owner address for the ObjectID
   owner_address: Address;
 }
-
-table ForceSpillObjectsRequest {
-  // List of object IDs to be spilled to external storage.
-  object_ids: [string];
-}
-
-table ForceSpillObjectsReply {
-}
