@@ -15,10 +15,8 @@ actor = NumPyActor.remote()
 with InputNode() as inp:
     dag = actor.get_arr.bind(inp)
 cgraph = dag.experimental_compile()
-refs = []
 for _ in range(5):
-    refs.append(cgraph.execute(0))
-for ref in refs:
+    ref = cgraph.execute(0)
     result = ray.get(ref)
     # Adding this explicit del would fix any issues
     # del result
