@@ -290,6 +290,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
         spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
+    RAY_LOG(ERROR) << "AddPendingTask: num_pending_tasks_ incremented to = "
+                   << num_pending_tasks_ << " by task " << spec.TaskId();
   }
 
   RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -321,6 +323,8 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       resubmit = true;
       MarkTaskRetryOnResubmit(it->second);
       num_pending_tasks_++;
+      RAY_LOG(ERROR) << "ResubmitTask: num_pending_tasks_ incremented to = "
+                     << num_pending_tasks_ << " by task " << task_id;
 
       // The task is pending again, so it's no longer counted as lineage. If
       // the task finishes and we still need the spec, we'll add the task back
@@ -889,7 +893,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     } else {
       SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     }
+
     num_pending_tasks_--;
+    RAY_LOG(ERROR) << "CompletePendingTask, " << task_id
+                   << ", num_pending_tasks_ decremented to =" << num_pending_tasks_;
 
     // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
@@ -1068,6 +1075,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     }
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
+    RAY_LOG(ERROR) << "Task " << task_id << " failed, num_pending_tasks_ decremented to ="
+                   << num_pending_tasks_;
 
     // Throttled logging of task failure errors.
     auto debug_str = spec.DebugString();
@@ -1142,6 +1151,9 @@ void TaskManager::ShutdownIfNeeded() {
       std::swap(shutdown_hook_, shutdown_hook);
     }
   }
+  RAY_LOG(ERROR) << "TaskManager::ShutdownIfNeeded, shutting down = "
+                 << (shutdown_hook != nullptr)
+                 << ", num_pending_tasks_ = " << num_pending_tasks_;
   // Do not hold the lock when calling callbacks.
   if (shutdown_hook != nullptr) {
     shutdown_hook();
