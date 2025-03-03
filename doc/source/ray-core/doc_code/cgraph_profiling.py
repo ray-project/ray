@@ -3,6 +3,7 @@ import ray
 import torch
 from ray.dag import InputNode
 
+
 @ray.remote(num_gpus=1, runtime_env={"nsight": "default"})
 class RayActor:
     def send(self, shape, dtype, value: int):
@@ -10,6 +11,7 @@ class RayActor:
 
     def recv(self, tensor):
         return (tensor[0].item(), tensor.shape, tensor.dtype)
+
 
 sender = RayActor.remote()
 receiver = RayActor.remote()
