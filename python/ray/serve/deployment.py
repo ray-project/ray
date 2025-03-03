@@ -127,7 +127,7 @@ class Deployment:
         # name does not contain #
         if "#" in name:
             warnings.warn(
-                f"Name cannot contain '#' character, it will be removed in future releases. "
+                f"Deployment names cannot contain '#' character, this will raise an error in a future release. "
                 f"Current name: {name}."
             )
 
