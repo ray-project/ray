@@ -13,7 +13,7 @@ from ray.util.annotations import PublicAPI
 class VLLMServer(_VLLMServer):
     """The implementation of the VLLM engine deployment.
 
-    To build a VLLMDeployment object you should use `build_vllm_deployment` function.
+    To build a Deployment object you should use `build_vllm_deployment` function.
     We also expose a lower level API for more control over the deployment class
     through `as_deployment` method.
 
