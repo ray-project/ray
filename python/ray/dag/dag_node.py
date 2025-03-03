@@ -143,7 +143,7 @@ class DAGNode(DAGNodeBase):
     def with_tensor_transport(
         self,
         transport: Optional[Union[str, Communicator]] = "auto",
-        device: Literal["retain", "auto", "cpu", "gpu", "cuda"] = "retain",
+        device: Literal["retain", "cpu", "gpu", "cuda"] = "retain",
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
@@ -157,7 +157,6 @@ class DAGNode(DAGNodeBase):
                 either through NCCL or host memory.
             device: The target device to use for the tensor transport.
                 "retain" (default) means that device in the receiver will match the sender.
-                "auto" means that device in the receiver will be it's default torch_device.
                 "cpu" means that device in the receiver will be cpu.
                 "gpu" and "cuda" means that device in the receiver will be gpu.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
@@ -174,7 +173,7 @@ class DAGNode(DAGNodeBase):
         except ValueError:
             raise ValueError(
                 f"Invalid device '{device}'. "
-                "Valid options are: 'retain', 'auto', 'cpu', 'gpu', 'cuda'."
+                "Valid options are: 'retain', 'cpu', 'gpu', 'cuda'."
             )
         if transport == "auto":
             self._type_hint = AutoTransportType(

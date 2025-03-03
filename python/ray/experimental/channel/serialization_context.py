@@ -149,15 +149,9 @@ class _SerializationContext:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
-        default_device_type = (
-            "cpu" if ctx.torch_device is None else ctx.torch_device.type
-        )
 
         if ctx.target_device == Device.RETAIN:
             target_device_type = tensor_device_type
-        elif ctx.target_device == Device.AUTO:
-            # 'auto' uses the receiver's default device
-            target_device_type = default_device_type
         elif ctx.target_device in [Device.GPU, Device.CUDA]:
             target_device_type = "cuda"
         else:

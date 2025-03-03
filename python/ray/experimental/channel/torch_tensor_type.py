@@ -44,8 +44,6 @@ class TorchTensorType(ChannelOutputType):
                 the host memory copy.
             device: Defines the target device for transporting a torch.Tensor.
                 If "retain" is set, it retains the same device type as in the sender.
-                If "auto" is set, it moves the tensor to the default device
-                on the receiver.
                 If "cpu" is set, it moves the tensor to the CPU on the receiver.
                 If "gpu" or "cuda" is set, it moves the tensor to the GPU on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
