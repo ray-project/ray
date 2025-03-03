@@ -29,6 +29,7 @@ def error_logged(capsys, msg):
 class MockedWorker:
     def __init__(self):
         self.chan = None
+        self.device = torch.device("cuda")
 
     def start_mock(self):
         """
@@ -40,7 +41,7 @@ class MockedWorker:
         if send_as_dict:
             return self.send_dict([(value, value, shape, dtype)])
 
-        return torch.ones(shape, dtype=dtype) * value
+        return torch.ones(shape, dtype=dtype, device=self.device) * value
 
     def recv(self, tensor):
         if isinstance(tensor, dict):
@@ -52,7 +53,7 @@ class MockedWorker:
     def send_dict(self, entries):
         results = {}
         for key, value, shape, dtype in entries:
-            results[key] = torch.ones(shape, dtype=dtype) * value
+            results[key] = torch.ones(shape, dtype=dtype, device=self.device) * value
         return results
 
     def recv_dict(self, tensor_dict):
@@ -80,10 +81,10 @@ def test_p2p(ray_start_cluster):
     correct results.
     """
     # Barrier name should be barrier-{lower rank}-{higher rank}.
-    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+    barrier = Barrier.options(name="barrier-0-1", num_gpus=0.5).remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
+    receiver = MockedWorker.options(num_gpus=0.5).remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -133,10 +134,10 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     the same shape, then it works.
     """
     # Barrier name should be barrier-{lower rank}-{higher rank}.
-    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+    barrier = Barrier.options(name="barrier-0-1", num_gpus=0.5).remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
+    receiver = MockedWorker.options(num_gpus=0.5).remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -173,10 +174,10 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
     different shape or dtype is found.
     """
     # Barrier name should be barrier-{lower rank}-{higher rank}.
-    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+    barrier = Barrier.options(name="barrier-0-1", num_gpus=0.5).remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
+    receiver = MockedWorker.options(num_gpus=0.5).remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -230,10 +231,10 @@ def test_p2p_direct_return(ray_start_cluster):
     Test simple sender -> receiver pattern with _direct_return=True
     """
     # Barrier name should be barrier-{lower rank}-{higher rank}.
-    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+    barrier = Barrier.options(name="barrier-0-1", num_gpus=0.5).remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
+    receiver = MockedWorker.options(num_gpus=0.5).remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -272,10 +273,10 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     actor task does not return a tensor directly.
     """
     # Barrier name should be barrier-{lower rank}-{higher rank}.
-    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+    barrier = Barrier.options(name="barrier-0-1", num_gpus=0.5).remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
+    receiver = MockedWorker.options(num_gpus=0.5).remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -338,10 +339,10 @@ def test_p2p_static_shape_and_direct_return(
     (check_static_shape=False).
     """
     # Barrier name should be barrier-{lower rank}-{higher rank}.
-    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+    barrier = Barrier.options(name="barrier-0-1", num_gpus=0.5).remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
+    receiver = MockedWorker.options(num_gpus=0.5).remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
