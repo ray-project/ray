@@ -22,6 +22,8 @@ import "src/ray/protobuf/export_api/export_actor_data.proto";
 import "src/ray/protobuf/export_api/export_driver_job_event.proto";
 import "src/ray/protobuf/export_api/export_submission_job_event.proto";
 
+import "src/ray/protobuf/export_api/export_train_state.proto";
+
 // ExportEvent defines events stored by the export API. This
 // schema is public and any changes must be backward compatible.
 message ExportEvent {
@@ -31,6 +33,8 @@ message ExportEvent {
     EXPORT_ACTOR = 2;
     EXPORT_DRIVER_JOB = 3;
     EXPORT_SUBMISSION_JOB = 4;
+    EXPORT_TRAIN_RUN = 5;
+    EXPORT_TRAIN_RUN_ATTEMPT = 6;
   }
 
   // event_id is the unique ID of this event
@@ -47,5 +51,7 @@ message ExportEvent {
     ExportActorData actor_event_data = 6;
     ExportDriverJobEventData driver_job_event_data = 7;
     ExportSubmissionJobEventData submission_job_event_data = 8;
+    ExportTrainRunEventData train_run_event_data = 9;
+    ExportTrainRunAttemptEventData train_run_attempt_event_data = 10;
   }
 }

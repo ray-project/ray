@@ -127,7 +127,7 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
         status=RunStatus.INITIALIZING,
         status_detail=None,
         controller_actor_id="controller_1",
-        start_time_ms=1000,
+        start_time_ns=1000,
     )
 
     ray.get(actor.create_or_update_train_run.remote(run))
@@ -147,7 +147,7 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
     runs = ray.get(actor.get_train_runs.remote())
     stored_run = runs["test_run"]
     assert stored_run == updated_run
-    assert stored_run.start_time_ms == run.start_time_ms  # Original field preserved
+    assert stored_run.start_time_ns == run.start_time_ns  # Original field preserved
 
 
 def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
@@ -159,7 +159,7 @@ def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
         attempt_id="attempt_1",
         status=RunAttemptStatus.PENDING,
         status_detail=None,
-        start_time_ms=1000,
+        start_time_ns=1000,
         resources=resources,
         workers=[],
     )
@@ -172,7 +172,7 @@ def test_train_state_actor_create_and_get_run_attempt(ray_start_regular):
 
     attempt = attempts["test_run"]["attempt_1"]
     assert attempt.status == RunAttemptStatus.PENDING
-    assert attempt.start_time_ms == 1000
+    assert attempt.start_time_ns == 1000
     assert attempt.resources == resources
     assert len(attempt.workers) == 0
 
@@ -204,8 +204,8 @@ def test_train_state_manager_run_lifecycle(ray_start_regular):
     # Verify initial state
     run = get_run()
     assert run.status == RunStatus.INITIALIZING
-    assert run.start_time_ms is not None
-    assert run.end_time_ms is None
+    assert run.start_time_ns is not None
+    assert run.end_time_ns is None
 
     # Test state transitions with timestamps
     state_transitions = [
@@ -220,9 +220,9 @@ def test_train_state_manager_run_lifecycle(ray_start_regular):
         assert run.status == expected_status
 
         if expected_status == RunStatus.FINISHED:
-            assert run.end_time_ms is not None
+            assert run.end_time_ns is not None
         else:
-            assert run.end_time_ms is None
+            assert run.end_time_ns is None
 
 
 def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
@@ -287,7 +287,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     attempts = ray.get(state_actor.get_train_run_attempts.remote())
     attempt = attempts["test_run"]["attempt_1"]
     assert attempt.status == RunAttemptStatus.FINISHED
-    assert attempt.end_time_ms is not None
+    assert attempt.end_time_ns is not None
 
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
@@ -349,7 +349,7 @@ def test_callback_error_state_transition(ray_start_regular, callback):
     run = list(runs.values())[0]
     assert run.status == RunStatus.ERRORED
     assert error_msg in run.status_detail
-    assert run.end_time_ms is not None
+    assert run.end_time_ns is not None
 
 
 def test_callback_worker_group_lifecycle(
@@ -389,7 +389,7 @@ def test_callback_worker_group_lifecycle(
     callback.before_worker_group_shutdown(mock_worker_group)
     attempt = get_attempt()
     assert attempt.status == RunAttemptStatus.FINISHED
-    assert attempt.end_time_ms is not None
+    assert attempt.end_time_ns is not None
 
 
 def test_callback_worker_group_error(
@@ -412,7 +412,7 @@ def test_callback_worker_group_error(
     attempt = list(attempts.values())[0]["attempt_1"]
     assert attempt.status == RunAttemptStatus.ERRORED
     assert attempt.status_detail == error_msg
-    assert attempt.end_time_ms is not None
+    assert attempt.end_time_ns is not None
 
 
 if __name__ == "__main__":
