@@ -158,7 +158,7 @@ class TestTensorTransport:
             compiled_dag.teardown()
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    @pytest.mark.parametrize("device", ["retain", "auto", "cpu", "gpu"])
+    @pytest.mark.parametrize("device", ["retain", "auto", "cpu", "gpu", "cuda"])
     def test_compiled_graph_transport_driver_to_worker(
         self, ray_start_regular, workers, default_device, device
     ):
@@ -178,13 +178,13 @@ class TestTensorTransport:
                     inp.with_tensor_transport(device=device)
                 )
             compiled_dag = dag.experimental_compile()
-            if device == "gpu" and worker_name == "cpu-only":
+            if device in ["gpu", "cuda"] and worker_name == "cpu-only":
                 # skip this case because cpu-only worker doesn't have GPUs
                 continue
             ref = compiled_dag.execute(torch.tensor([1]))
             if device == "auto":
                 assert ray.get(ref) == default_device[worker_name], worker_name
-            elif device == "gpu":
+            elif device in ["gpu", "cuda"]:
                 assert ray.get(ref) == "cuda:0", worker_name
             else:
                 assert ray.get(ref) == "cpu", worker_name
@@ -409,6 +409,7 @@ class TestTensorTransport:
 
         # With gpu: should move everything to GPU
         create_and_execute_dict_dag("gpu-1", "gpu-2", all_gpu_dict, device="gpu")
+        create_and_execute_dict_dag("gpu-1", "gpu-2", all_gpu_dict, device="cuda")
 
         # With cpu: should move everything to CPU
         create_and_execute_dict_dag("gpu-1", "gpu-2", all_cpu_dict, device="cpu")
@@ -429,7 +430,7 @@ class TestTensorTransport:
         )
 
         # Test 3: Test NCCL transport between GPU workers
-        for device in ["retain", "auto", "gpu"]:
+        for device in ["retain", "auto", "gpu", "cuda"]:
             expected_dict = mixed_dict if device == "retain" else all_gpu_dict
             create_and_execute_dict_dag(
                 "gpu-1", "gpu-2", expected_dict, transport="nccl", device=device
@@ -521,7 +522,7 @@ class TestTensorTransport:
             create_and_execute_dag("gpu-1", "cpu", "cpu", device)
 
         # transport gpu tensor, assuming driver has access to GPUs
-        for device in ["retain", "gpu"]:
+        for device in ["retain", "gpu", "cuda"]:
             create_and_execute_dag("gpu-1", "cuda:0", "cuda:0", device)
 
         # transport gpu tensor as a cpu tensor

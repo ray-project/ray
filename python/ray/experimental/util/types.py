@@ -25,6 +25,7 @@ class Device(Enum):
     AUTO = "auto"
     CPU = "cpu"
     GPU = "gpu"
+    CUDA = "cuda"
 
     def __str__(self):
         return f"{self.name.lower()}"

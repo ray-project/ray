@@ -158,7 +158,7 @@ class _SerializationContext:
         elif ctx.target_device == Device.AUTO:
             # 'auto' uses the receiver's default device
             target_device_type = default_device_type
-        elif ctx.target_device == Device.GPU:
+        elif ctx.target_device in [Device.GPU, Device.CUDA]:
             target_device_type = "cuda"
         else:
             target_device_type = "cpu"
