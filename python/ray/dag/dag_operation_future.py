@@ -3,9 +3,6 @@ from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
 from ray.util.annotations import DeveloperAPI
 
 
-if TYPE_CHECKING:
-    import cupy as cp
-
 T = TypeVar("T")
 
 
@@ -42,7 +39,7 @@ class ResolvedFuture(DAGOperationFuture):
         """
         self._result = result
 
-    def wait(self):
+    def wait(self, stream: Any = None):
         """
         Wait and immediately return the result. This operation will not block.
         """
@@ -65,7 +62,7 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
-    def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
+    def __init__(self, buf: Any, stream: Any = None):
         """
         Initialize a GPU future on the given stream.
 
@@ -74,22 +71,22 @@ class GPUFuture(DAGOperationFuture[Any]):
             stream: The CUDA stream to record the event on, this event is waited
                 on when the future is resolved. If None, the current stream is used.
         """
-        import cupy as cp
-
+        import torch
         if stream is None:
-            stream = cp.cuda.get_current_stream()
+            stream = torch.cuda.current_stream()
 
         self._buf = buf
-        self._event = cp.cuda.Event()
+        self._event = torch.cuda.Event()
         self._event.record(stream)
 
-    def wait(self) -> Any:
+    def wait(self, stream: Any = None) -> Any:
         """
         Wait for the future on the current CUDA stream and return the result from
         the GPU operation. This operation does not block CPU.
         """
-        import cupy as cp
+        import torch
+        if stream is None:
+            stream = torch.cuda.current_stream()
 
-        current_stream = cp.cuda.get_current_stream()
-        current_stream.wait_event(self._event)
+        stream.wait_event(self._event)
         return self._buf

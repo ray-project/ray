@@ -440,8 +440,6 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
 
-        import cupy as cp
-
         def __init__(self, world_size, comm_id, actor_handles):
             self._world_size = world_size
             self._comm_id = comm_id
@@ -454,7 +452,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
                 self._comm_id,
                 rank,
                 self._actor_handles,
-                torch.cuda.current_stream().cuda_stream,
+                torch.cuda.current_stream(),
             )
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
@@ -502,11 +500,11 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             recv_buf += 1
 
         @property
-        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        def recv_stream(self):
             return self._inner.recv_stream
 
         @property
-        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        def send_stream(self):
             return self._inner.send_stream
 
         def destroy(self) -> None:
@@ -573,8 +571,6 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         A custom NCCL group based on existing torch.distributed setup.
         """
 
-        import cupy as cp
-
         def __init__(self, world_size, actor_handles):
             self._world_size = world_size
             self._actor_handles = actor_handles
@@ -628,16 +624,16 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             raise NotImplementedError
 
         @property
-        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            import cupy as cp
+        def recv_stream(self):
+            import torch
 
-            return cp.cuda.get_current_stream()
+            return torch.cuda.current_stream()
 
         @property
-        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            import cupy as cp
+        def send_stream(self):
+            import torch
 
-            return cp.cuda.get_current_stream()
+            return torch.cuda.current_stream()
 
         def destroy(self) -> None:
             pass
@@ -707,8 +703,6 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
         A custom NCCL group based on existing torch.distributed setup.
         """
 
-        import cupy as cp
-
         def __init__(self, world_size, actor_handles):
             self._world_size = world_size
             self._actor_handles = actor_handles
@@ -762,16 +756,16 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
             raise NotImplementedError
 
         @property
-        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            import cupy as cp
+        def recv_stream(self):
+            import torch
 
-            return cp.cuda.get_current_stream()
+            return torch.cuda.current_stream()
 
         @property
-        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            import cupy as cp
+        def send_stream(self):
+            import torch
 
-            return cp.cuda.get_current_stream()
+            return torch.cuda.current_stream()
 
         def destroy(self) -> None:
             pass
@@ -854,8 +848,6 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
         A custom NCCL group based on existing torch.distributed setup.
         """
 
-        import cupy as cp
-
         def __init__(self, world_size, actor_handles):
             self._world_size = world_size
             self._actor_handles = actor_handles
@@ -909,16 +901,16 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
             raise NotImplementedError
 
         @property
-        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            import cupy as cp
+        def recv_stream(self):
+            import torch
 
-            return cp.cuda.get_current_stream()
+            return torch.cuda.current_stream()
 
         @property
-        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-            import cupy as cp
+        def send_stream(self):
+            import torch
 
-            return cp.cuda.get_current_stream()
+            return torch.cuda.current_stream()
 
         def destroy(self) -> None:
             pass
@@ -1402,8 +1394,6 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
 
-        import cupy as cp
-
         def __init__(self, world_size, comm_id, actor_handles):
             self._world_size = world_size
             self._comm_id = comm_id
@@ -1464,11 +1454,11 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
             recv_buf += 1
 
         @property
-        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        def recv_stream(self):
             return self._inner.recv_stream
 
         @property
-        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        def send_stream(self):
             return self._inner.send_stream
 
         def destroy(self) -> None:

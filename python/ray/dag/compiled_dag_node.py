@@ -83,9 +83,6 @@ from ray.dag.dag_node_operation import (
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-if TYPE_CHECKING:
-    import cupy as cp
-
 logger = logging.getLogger(__name__)
 
 # Keep tracking of every compiled dag created during the lifetime of
@@ -552,8 +549,8 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        self._send_stream = None
+        self._recv_stream = None
         if not overlap_gpu_communication:
             return
 
@@ -572,7 +569,7 @@ class ExecutableTask:
                         nccl_group_id
                     )
                     assert nccl_group is not None
-                    if not isinstance(self._recv_stream, nullcontext):
+                    if self._recv_stream is not None:
                         assert self._recv_stream == nccl_group.recv_stream, (
                             "Currently all torch tensor input channels of a "
                             "Compiled Graph task should use the same recv cuda stream."
@@ -580,7 +577,7 @@ class ExecutableTask:
                     self._recv_stream = nccl_group.recv_stream
 
     def wrap_and_set_intermediate_future(
-        self, val: Any, wrap_in_gpu_future: bool
+        self, val: Any, wrap_in_gpu_future: bool, stream: Any = None,
     ) -> None:
         """
         Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
@@ -596,12 +593,12 @@ class ExecutableTask:
         assert self._intermediate_future is None
 
         if wrap_in_gpu_future:
-            future = GPUFuture(val)
+            future = GPUFuture(val, stream)
         else:
             future = ResolvedFuture(val)
         self._intermediate_future = future
 
-    def reset_and_wait_intermediate_future(self) -> Any:
+    def reset_and_wait_intermediate_future(self, stream: Any = None) -> Any:
         """
         Reset the intermediate future and wait for the result.
 
@@ -615,7 +612,7 @@ class ExecutableTask:
         """
         future = self._intermediate_future
         self._intermediate_future = None
-        return future.wait()
+        return future.wait(stream)
 
     def _read(self, overlap_gpu_communication: bool) -> bool:
         """
@@ -636,7 +633,7 @@ class ExecutableTask:
             # a GPUFuture so that this read operation (communication) can
             # be overlapped with computation.
             self.wrap_and_set_intermediate_future(
-                input_data, wrap_in_gpu_future=overlap_gpu_communication
+                input_data, wrap_in_gpu_future=overlap_gpu_communication, stream = self._recv_stream
             )
         except RayChannelError:
             # Channel closed. Exit the loop.
@@ -707,7 +704,7 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        output_val = self.reset_and_wait_intermediate_future()
+        output_val = self.reset_and_wait_intermediate_future(self._send_stream)
         exit = False
         try:
             self.output_writer.write(output_val)
@@ -738,14 +735,12 @@ class ExecutableTask:
         """
         if op_type == _DAGNodeOperationType.READ:
             with _device_context_manager():
-                with self._recv_stream:
-                    return self._read(overlap_gpu_communication)
+                return self._read(overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             with _device_context_manager():
-                with self._send_stream:
-                    return self._write()
+                return self._write()
 
 
 @dataclass
