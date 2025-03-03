@@ -36,17 +36,6 @@ def _register_numpy_serializer(serialization_context):
     _register_numpy_ndarray_data_serializer(serialization_context)
 
 
-def _register_torch_serializer(serialization_context):
-    try:
-        import torch  # noqa:F401
-    except ModuleNotFoundError:
-        return
-
-    from ray._private.torch_serialization import _register_torch_tensor_data_serializer
-
-    _register_torch_tensor_data_serializer(serialization_context)
-
-
 @DeveloperAPI
 def apply(serialization_context):
     from ray._private.pydantic_compat import register_pydantic_serializers
@@ -54,7 +43,6 @@ def apply(serialization_context):
     register_pydantic_serializers(serialization_context)
     register_starlette_serializer(serialization_context)
     _register_numpy_serializer(serialization_context)
-    # _register_torch_serializer(serialization_context)
 
     if sys.platform != "win32":
         from ray._private.arrow_serialization import (

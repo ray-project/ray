@@ -28,9 +28,8 @@ def _numpy_ndarray_reduce(obj: np.ndarray):
             "To avoid this, use numpy.ascontiguousarray(arr) before "
             "passing or returning the array."
             f"\n\tArray shape: {obj.shape}"
-            f"\n\tArray dtype: {obj.dtype}"
-            f"\n\tArray : {np.take(obj, np.arange(5))}",
+            f"\n\tArray dtype: {obj.dtype}",
             UserWarning,
         )
         _numpy_serializer_has_warned = True
-    return obj.__reduce_ex__(cloudpickle.pickle.HIGHEST_PROTOCOL)
+    return obj.__reduce_ex__(cloudpickle.DEFAULT_PROTOCOL)
