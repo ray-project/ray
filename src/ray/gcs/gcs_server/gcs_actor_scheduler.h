@@ -257,7 +257,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
   void LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                           std::shared_ptr<rpc::GcsNodeInfo> node);
+                           std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// Handler to process a worker lease reply.
   ///
@@ -266,7 +266,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param status Status of the reply of `RequestWorkerLeaseRequest`.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
   virtual void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
-                                      std::shared_ptr<rpc::GcsNodeInfo> node,
+                                      std::shared_ptr<const rpc::GcsNodeInfo> node,
                                       const Status &status,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
@@ -277,7 +277,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
   virtual void RetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                          std::shared_ptr<rpc::GcsNodeInfo> node);
+                                          std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// This method is only invoked inside `RetryLeasingWorkerFromNode`, the purpose of this
   /// is to make it easy to write unit tests.
@@ -286,7 +286,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// specification needed to lease workers from the specified node.
   /// \param node The node that the worker will be leased from.
   void DoRetryLeasingWorkerFromNode(std::shared_ptr<GcsActor> actor,
-                                    std::shared_ptr<rpc::GcsNodeInfo> node);
+                                    std::shared_ptr<const rpc::GcsNodeInfo> node);
 
   /// Handler to process a granted lease.
   ///
@@ -405,7 +405,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// A helper function to select a node from alive nodes randomly.
   ///
   /// \return The selected node. If the selection fails, `nullptr` is returned.
-  std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;
+  std::shared_ptr<const rpc::GcsNodeInfo> SelectNodeRandomly() const;
 
   friend class GcsActorSchedulerTest;
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode);
