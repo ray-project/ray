@@ -372,7 +372,7 @@ You can configure the following parameters:
 
 * `encoding`: The encoding format for the logs. The default is `TEXT` for plain text logs.
 The other option is `JSON` for structured logs.
-In both `TEXT` and `JSON` encoding formats, the logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `taek_function_name`, if available.
+In both `TEXT` and `JSON` encoding formats, the logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `task_function_name`, if available.
 
 * `log_level`: The log level for the driver process. The default is `INFO`.
 Available log levels are defined in the [Python logging library](https://docs.python.org/3/library/logging.html#logging-levels).
