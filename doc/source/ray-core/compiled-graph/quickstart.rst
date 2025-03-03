@@ -18,14 +18,14 @@ First, define a simple actor that echoes its argument.
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __simple_actor_start__
-    :end-before: __simple_actor_start__
+    :end-before: __simple_actor_end__
 
 Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ray.get`` to execute tasks on the actor.
 
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __simple_actor_usage_start__
-    :end-before: __simple_actor_start__
+    :end-before: __simple_actor_usage_end__
 
 .. testoutput::
 
@@ -78,8 +78,8 @@ This allows reuse of the actors in a new Compiled Graph.
 
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
-    :start-after: __cgraph_teardown_start__
-    :end-before: __cgraph_teardown_end__
+    :start-after: __teardown_start__
+    :end-before: __teardown_end__
 
 
 Specifying data dependencies

@@ -1,5 +1,3 @@
-# flake: noqa
-
 # __simple_actor_start__
 import ray
 
