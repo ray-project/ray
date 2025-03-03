@@ -93,7 +93,7 @@ Visualization
 To visualize the graph structure, call the :func:`visualize <ray.dag.compiled_dag_node.CompiledDAG.visualize>` method after calling :func:`experimental_compile <ray.dag.DAGNode.experimental_compile>`
 on the graph.
 
-.. literalinclude:: doc_code/cgraph_visualize.py
+.. literalinclude:: ../doc_code/cgraph_visualize.py
     :language: python
     :start-after: __cgraph_visualize_start__
     :end-before: __cgraph_visualize_end__
@@ -101,8 +101,8 @@ on the graph.
 By default, Ray generates a PNG image named ``compiled_graph.png`` and saves it in the current working directory.
 Note that this requires ``graphviz``.
 
-The visualization for the preceding code is shown below.
-Tasks of the same actor are shown in the same color.
+The following image shows the visualization for the preceding code.
+Tasks that belong to the same actor are the same color.
 
 .. image:: ../../images/compiled_graph_viz.png
     :alt: Visualization of Graph Structure

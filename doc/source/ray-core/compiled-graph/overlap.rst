@@ -10,7 +10,7 @@ To enable this feature, specify ``_overlap_gpu_communication=True`` when calling
 The following code has GPU communication and computation operations that benefit
 from overlapping.
 
-.. literalinclude:: doc_code/cgraph_overlap.py
+.. literalinclude:: ../doc_code/cgraph_overlap.py
     :language: python
     :start-after: __cgraph_overlap_start__
     :end-before: __cgraph_overlap_end__
