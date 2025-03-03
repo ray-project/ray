@@ -32,6 +32,7 @@ class Backend(object):
     NCCL = "nccl"
     MPI = "mpi"
     GLOO = "gloo"
+    HCCL = "hccl"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
