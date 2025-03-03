@@ -410,7 +410,7 @@ ray.init(log_to_driver=False)
 
 The following example configures the `LoggingConfig` to output logs in a structured JSON format and sets the log level to `INFO`.
 It then logs messages with the root loggers in the driver process, Ray tasks, and Ray actors.
-The logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `taek_function_name` when applicable.
+The logs include Ray-specific fields such as `job_id`, `worker_id`, `node_id`, `actor_id`, `actor_name`, `task_id`, `task_name` and `task_function_name` when applicable.
 
 ```python
 import ray
