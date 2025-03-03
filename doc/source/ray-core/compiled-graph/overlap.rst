@@ -1,9 +1,11 @@
-Overlap communication and computation
-======================================
+.. _compiled-graph-overlap:
+
+Experimental: Overlapping communication and computation
+=======================================================
 
 Compiled Graph currently provides experimental support for GPU communication and computation overlap. When you turn this feature on, it automatically overlaps the GPU communication with computation operations, thereby hiding the communication overhead and improving performance.
 
-To enable this feature, specify ``_overlap_gpu_communication=True`` when calling ``dag.experimental_compile()``.
+To enable this feature, specify ``_overlap_gpu_communication=True`` when calling :func:`dag.experimental_compile() <ray.dag.DAGNode.experimental_compile>`.
 
 The following code has GPU communication and computation operations that benefit
 from overlapping.
@@ -90,14 +92,3 @@ The output of the preceding code includes the following two lines:
     overlap_gpu_communication=True, duration=0.9211348341777921
 
 The actual performance numbers may vary on different hardware, but enabling ``_overlap_gpu_communication`` improves latency by about 14% for this example.
-
-To verify that Compiled Graph overlaps the communication and computation operations,
-:ref:`visualize the execution schedule <execution-schedule>` by setting the environment variable
-``RAY_CGRAPH_VISUALIZE_SCHEDULE=1``.
-
-.. image:: ../../images/compiled_graph_schedule_overlap.png
-    :alt: Execution Schedule with GPU Communication Overlap Enabled
-    :align: center
-
-Red nodes denote the operations with different execution orders in the optimized schedule
-compared to the original order, due to ``_overlap_gpu_communication``.

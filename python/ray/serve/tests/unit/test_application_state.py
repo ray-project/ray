@@ -194,11 +194,10 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
 
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     application_state = ApplicationState(
-        "test_app",
-        deployment_state_manager,
-        MockEndpointState(),
-        lambda *args, **kwargs: None,
-        LoggingConfig(),
+        name="test_app",
+        deployment_state_manager=deployment_state_manager,
+        endpoint_state=MockEndpointState(),
+        logging_config=LoggingConfig(),
     )
     yield application_state, deployment_state_manager
 
@@ -950,6 +949,9 @@ def test_application_state_recovery(mocked_application_state_manager):
     app_state_manager.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
+    # In real code this checkpoint would be done by the caller of the deploys
+    app_state_manager.save_checkpoint()
+
     # Simulate controller crashed!! Create new deployment state manager,
     # which should recover target state for deployment "d1" from kv store
     new_deployment_state_manager = MockDeploymentStateManager(kv_store)
@@ -1003,6 +1005,9 @@ def test_recover_during_update(mocked_application_state_manager):
     params2 = deployment_params("d1")
     app_state_manager.deploy_app(app_name, [params2])
     assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # In real code this checkpoint would be done by the caller of the deploys
+    app_state_manager.save_checkpoint()
 
     # Before application state manager could propagate new version to
     # deployment state manager, controller crashes.

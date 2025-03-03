@@ -12,14 +12,14 @@ boto3==1.26.76
 botocore==1.29.76
 Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1725267488082/work
 cachetools==5.3.2
-certifi==2023.11.17
+certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1739515848642/work/certifi
 cffi==1.16.0
 charset-normalizer==3.3.2
 click==8.1.7
 cloudpickle==2.2.0
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
 colorful==0.5.5
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1738241154079/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1739917017929/work
 conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1737800978214/work/src
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1736345463896/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1729004031731/work
@@ -46,7 +46,7 @@ google-oauth==1.0.1
 googleapis-common-protos==1.61.0
 grpcio==1.66.2
 gymnasium==1.0.0
-h11==0.12.0
+h11==0.14.0
 h2 @ file:///home/conda/feedstock_root/build_artifacts/h2_1733298745555/work
 hpack @ file:///home/conda/feedstock_root/build_artifacts/hpack_1733299205993/work
 httplib2==0.20.4
@@ -102,7 +102,7 @@ python-dateutil==2.8.2
 python-dotenv==1.0.1
 pytz==2022.7.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=a5ec7173be061e5ac92edb52247cb55ca91aadae85a69314644b46ee884c3322
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=216b3829e71c72921212388d5e637c99892794092ca21e9f97b3d7c47b4ca37e
 redis==4.4.2
 referencing==0.36.2
 requests==2.31.0

@@ -2070,7 +2070,7 @@ def read_webdataset(
     expand_json: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
-    `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+    `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -3035,7 +3035,7 @@ def from_spark(
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
-    `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
+    `Spark DataFrame <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.html>`_.
 
     Args:
         df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).

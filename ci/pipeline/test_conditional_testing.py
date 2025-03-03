@@ -8,6 +8,8 @@ import runfiles
 import pytest
 import yaml
 
+from ci.pipeline.determine_tests_to_run import TagRule, TagRuleSet
+
 _REPO_NAME = "com_github_ray_project_ray"
 _runfiles = runfiles.Create()
 
@@ -77,6 +79,7 @@ BUILD.bazel:
 
 def test_conditional_testing_pull_request():
     script = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/determine_tests_to_run.py")
+    config_file = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/test_rules.txt")
 
     class FileToTags:
         file: str
@@ -145,15 +148,54 @@ def test_conditional_testing_pull_request():
             envs["BUILDKITE_PULL_REQUEST"] = "true"
             envs["BUILDKITE_COMMIT"] = commit
 
+            args = [sys.executable, script, config_file]
             output = (
-                subprocess.check_output([sys.executable, script], env=envs, cwd=workdir)
-                .decode()
-                .strip()
+                subprocess.check_output(args, env=envs, cwd=workdir).decode().strip()
             )
             tags = output.split()
 
             want = test_case.tags
             assert want == set(tags), f"file {test_case.file}, want {want}, got {tags}"
+
+
+def test_tag_rule():
+    rule = TagRule(
+        tags=["hit"],
+        dirs=["fancy"],
+        files=["file.txt"],
+        patterns=["python/*.py"],
+    )
+
+    assert rule.match("fancy")
+    assert rule.match("fancy/a.md")
+    assert rule.match("python/a.py")
+    assert rule.match("python/subdir/a.py")
+    assert rule.match("file.txt")
+    assert not rule.match("fancy_file.txt")
+    assert not rule.match("python/a.txt")
+
+    assert rule.match_tags("fancy") == ({"hit"}, True)
+    assert rule.match_tags("not_match") == (set(), False)
+
+    skip_rule = TagRule(tags=[], files=["skip.txt"])
+    assert skip_rule.match("skip.txt")
+    assert skip_rule.match_tags("skip.txt") == (set(), True)
+    assert skip_rule.match_tags("not_match") == (set(), False)
+
+
+def test_tag_rule_set():
+    rule_set = TagRuleSet("\n".join(["#comment", "fancy/ # a dir", "@fancy"]))
+    assert rule_set.match_tags("fancy/file.txt") == ({"fancy"}, True)
+
+    rule_set = TagRuleSet(
+        "\n".join(["fancy/ #dir", "@fancy", ";", "\t\t  ", "foobar.txt", "@foobar"])
+    )
+    assert rule_set.match_tags("fancy/file.txt") == ({"fancy"}, True)
+    assert rule_set.match_tags("foobar.txt") == ({"foobar"}, True)
+    assert rule_set.match_tags("not_a_match") == (set(), False)
+
+    rule_set = TagRuleSet("")
+    assert rule_set.match_tags("anything") == (set(), False)
 
 
 if __name__ == "__main__":

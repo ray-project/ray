@@ -12,6 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+#include "gmock/gmock.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/ray_syncer/ray_syncer_bidi_reactor.h"
+#include "ray/common/ray_syncer/ray_syncer_bidi_reactor_base.h"
+
 namespace ray {
 namespace syncer {
 

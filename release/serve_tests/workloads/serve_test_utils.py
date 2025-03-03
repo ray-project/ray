@@ -3,11 +3,13 @@ import json
 import logging
 import os
 import random
+import time
 import ray
 import re
 import subprocess
 from collections import defaultdict
 
+from ray.serve.schema import ProxyStatus
 from serve_test_cluster_utils import NUM_CPU_PER_NODE
 from subprocess import PIPE
 from typing import Dict, List, Optional, Union
@@ -195,7 +197,19 @@ def run_one_wrk_trial(
     http_host: str,
     http_port: str,
     endpoint: str = "",
+    init_timeout_s: int = 30,
 ) -> None:
+    # wait until the proxy is ready
+    start_time = time.time()
+    node_id = ray.get_runtime_context().get_node_id()
+    proxy_statuses = ray.serve.status().proxies
+    while (
+        time.time() < start_time + init_timeout_s
+        and proxy_statuses.get(node_id, ProxyStatus.UNHEALTHY) != ProxyStatus.HEALTHY
+    ):
+        time.sleep(1)
+        proxy_statuses = ray.serve.status().proxies
+
     proc = subprocess.Popen(
         [
             "wrk",

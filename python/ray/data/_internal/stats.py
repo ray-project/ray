@@ -2,9 +2,10 @@ import collections
 import logging
 import threading
 import time
+from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from dataclasses import dataclass, fields
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
 
 import numpy as np
@@ -14,7 +15,9 @@ from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     MetricsGroup,
+    NodeMetrics,
     OpRuntimeMetrics,
+    NODE_UNKNOWN,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
@@ -158,6 +161,9 @@ class _StatsActor:
         # Dataset metadata to be queried directly by DashboardHead api.
         self.datasets: Dict[str, Any] = {}
 
+        # Cache of calls to ray.nodes() to prevent unnecessary network calls
+        self._ray_nodes_cache: Dict[str, str] = {}
+
         # Ray Data dashboard metrics
         # Everything is a gauge because we need to reset all of
         # a dataset's metrics to 0 after each finishes execution.
@@ -249,6 +255,9 @@ class _StatsActor:
             )
         )
 
+        # Per Node metrics
+        self.per_node_metrics = self._create_prometheus_metrics_for_per_node_metrics()
+
         iter_tag_keys = ("dataset",)
         self.iter_total_blocked_s = Gauge(
             "data_iter_total_blocked_seconds",
@@ -279,6 +288,17 @@ class _StatsActor:
                 metric_name,
                 description=metric_description,
                 tag_keys=tag_keys,
+            )
+        return metrics
+
+    def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
+        metrics = {}
+        for field in fields(NodeMetrics):
+            metric_name = f"data_{field.name}_per_node"
+            metrics[field.name] = Gauge(
+                metric_name,
+                description="",
+                tag_keys=("dataset", "node_ip"),
             )
         return metrics
 
@@ -334,6 +354,7 @@ class _StatsActor:
         op_metrics: List[Dict[str, Union[int, float]]],
         operator_tags: List[str],
         state: Dict[str, Any],
+        per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
     ):
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
@@ -364,9 +385,36 @@ class _StatsActor:
             for field_name, prom_metric in self.execution_metrics_misc.items():
                 prom_metric.set(stats.get(field_name, 0), tags)
 
+        # Update per node metrics if they exist, the creation of these metrics is controlled
+        # by the _data_context.enable_per_node_metrics flag in the streaming executor but
+        # that is not exposed in the _StatsActor so here we simply check if the metrics exist
+        # and if so, update them
+        if per_node_metrics is not None:
+            for node_id, node_metrics in per_node_metrics.items():
+                # Translate node_id into node_name (the node ip), cache node info
+                if node_id not in self._ray_nodes_cache:
+                    # Rebuilding this cache will fetch all nodes, this
+                    # only needs to be done up to once per loop
+                    self._rebuild_ray_nodes_cache()
+
+                node_ip = self._ray_nodes_cache.get(node_id, NODE_UNKNOWN)
+
+                tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
+                for metric_name, metric_value in node_metrics.items():
+                    prom_metric = self.per_node_metrics[metric_name]
+                    prom_metric.set(metric_value, tags)
+
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
         self.update_dataset(dataset_tag, state)
+
+    def _rebuild_ray_nodes_cache(self) -> None:
+        current_nodes = ray.nodes()
+        for node in current_nodes:
+            node_id = node.get("NodeID", None)
+            node_name = node.get("NodeName", None)
+            if node_id is not None and node_name is not None:
+                self._ray_nodes_cache[node_id] = node_name
 
     def update_iteration_metrics(
         self,
@@ -404,10 +452,17 @@ class _StatsActor:
             return self.datasets
         return {k: v for k, v in self.datasets.items() if v["job_id"] == job_id}
 
-    def _create_tags(self, dataset_tag: str, operator_tag: Optional[str] = None):
+    def _create_tags(
+        self,
+        dataset_tag: str,
+        operator_tag: Optional[str] = None,
+        node_ip_tag: Optional[str] = None,
+    ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
             tags["operator"] = operator_tag
+        if node_ip_tag is not None:
+            tags["node_ip"] = node_ip_tag
         return tags
 
 
@@ -549,6 +604,28 @@ class _StatsManager:
 
     # Execution methods
 
+    def _aggregate_per_node_metrics(
+        self, op_metrics: List[OpRuntimeMetrics]
+    ) -> Optional[Mapping[str, Mapping[str, Union[int, float]]]]:
+        """
+        Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
+
+        If per-node metrics are disabled in the current DataContext, returns None.
+        Otherwise, it sums up all NodeMetrics fields across the provided metrics and
+        returns a nested dictionary mapping each node ID to a dict of field values.
+        """
+        if not DataContext.get_current().enable_per_node_metrics:
+            return None
+
+        aggregated_by_node = defaultdict(lambda: defaultdict(int))
+        for metrics in op_metrics:
+            for node_id, node_metrics in metrics._per_node_metrics.items():
+                agg_node_metrics = aggregated_by_node[node_id]
+                for f in fields(NodeMetrics):
+                    agg_node_metrics[f.name] += getattr(node_metrics, f.name)
+
+        return aggregated_by_node
+
     def update_execution_metrics(
         self,
         dataset_tag: str,
@@ -558,7 +635,8 @@ class _StatsManager:
         force_update: bool = False,
     ):
         op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
-        args = (dataset_tag, op_metrics_dicts, operator_tags, state)
+        per_node_metrics = self._aggregate_per_node_metrics(op_metrics)
+        args = (dataset_tag, op_metrics_dicts, operator_tags, state, per_node_metrics)
         if force_update:
             self._stats_actor().update_execution_metrics.remote(*args)
         else:

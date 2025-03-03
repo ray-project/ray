@@ -293,7 +293,7 @@ class Preprocessor(abc.ABC):
 
         if output_columns and len(columns) != len(output_columns):
             raise ValueError(
-                "Invalid output_columns: Got len(columns) != len(output_columns)."
+                "Invalid output_columns: Got len(columns) != len(output_columns). "
                 "The length of columns and output_columns must match."
             )
         return output_columns or columns

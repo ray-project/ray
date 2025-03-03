@@ -61,6 +61,7 @@ from ray.includes.optional cimport (
     make_optional,
 )
 
+from libcpp.functional cimport function
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
@@ -68,6 +69,10 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 
 from cython.operator import dereference, postincrement
+from cpython.pystate cimport (
+    PyGILState_Ensure,
+    PyGILState_Release,
+)
 
 from ray.includes.common cimport (
     CBuffer,
@@ -2241,6 +2246,25 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
 
+cdef function[void()] initialize_pygilstate_for_thread() nogil:
+    """
+    This function initializes a C++ thread to make it be considered as a
+    Python thread from the Python interpreter's perspective, regardless of whether
+    it is executing Python code or not. This function must be called in a thread
+    before executing any Ray tasks on that thread.
+
+    Returns:
+        A function that calls `PyGILState_Release` to release the GIL state.
+        This function should be called in a thread before the thread exits.
+
+    Reference: https://docs.python.org/3/c-api/init.html#non-python-created-threads
+    """
+    cdef function[void()] callback
+    with gil:
+        gstate = PyGILState_Ensure()
+        callback = bind(PyGILState_Release, ref(gstate))
+    return callback
+
 cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -2990,6 +3014,7 @@ cdef class CoreWorker:
         options.node_manager_port = node_manager_port
         options.raylet_ip_address = raylet_ip_address.encode("utf-8")
         options.driver_name = driver_name
+        options.initialize_thread_callback = initialize_pygilstate_for_thread
         options.task_execution_callback = task_execution_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect

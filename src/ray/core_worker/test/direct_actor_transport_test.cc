@@ -813,11 +813,13 @@ class MockTaskReceiver : public TaskReceiver {
                    instrumented_io_context &main_io_service,
                    worker::TaskEventBuffer &task_event_buffer,
                    const TaskHandler &task_handler,
+                   std::function<std::function<void()>()> initialize_thread_callback,
                    const OnActorCreationTaskDone &actor_creation_task_done_)
       : TaskReceiver(worker_context,
                      main_io_service,
                      task_event_buffer,
                      task_handler,
+                     initialize_thread_callback,
                      actor_creation_task_done_) {}
 
   void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
@@ -841,9 +843,12 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_5,
                                   std::placeholders::_6);
     receiver_ = std::make_unique<MockTaskReceiver>(
-        worker_context_, main_io_service_, task_event_buffer_, execute_task, [] {
-          return Status::OK();
-        });
+        worker_context_,
+        main_io_service_,
+        task_event_buffer_,
+        execute_task,
+        /* intiialize_thread_callback= */ []() { return []() { return; }; },
+        /* actor_creation_task_done= */ []() { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_,

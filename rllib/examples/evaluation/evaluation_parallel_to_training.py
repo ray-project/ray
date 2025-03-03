@@ -92,7 +92,6 @@ parser = add_rllib_example_script_args(default_reward=500.0)
 parser.set_defaults(
     evaluation_num_env_runners=2,
     evaluation_interval=1,
-    evaluation_duration_unit="timesteps",
 )
 
 

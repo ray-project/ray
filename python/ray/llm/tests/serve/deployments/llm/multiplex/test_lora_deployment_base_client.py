@@ -161,11 +161,12 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 1: test a path that exists in the cloud. The LoRA adapters
         # must be included.
         (
-            "s3://rayllm-ci/lora-checkpoints/",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-7b-chat-hf",
             "meta-llama/Llama-2-7b-chat-hf",
             [
                 "meta-llama/Llama-2-7b-chat-hf:gen-config-but-no-context-len:1234",
                 "meta-llama/Llama-2-7b-chat-hf:with-context-len-and-gen-config:1234",
+                "meta-llama/Llama-2-7b-chat-hf:long-context-model:1234",
                 "meta-llama/Llama-2-7b-chat-hf",
             ],
         ),
@@ -173,10 +174,9 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # case). But test a different model. Ensure that only this model's
         # LoRA adapters are returned.
         (
-            "s3://rayllm-ci/lora-checkpoints/",
+            "s3://anonymous@air-example-data/rayllm-ossci/lora-checkpoints/meta-llama/Llama-2-13b-chat-hf",
             "meta-llama/Llama-2-13b-chat-hf",
             [
-                "meta-llama/Llama-2-13b-chat-hf:long-context-model:1234",
                 "meta-llama/Llama-2-13b-chat-hf:pre-long-context-model:1234",
                 "meta-llama/Llama-2-13b-chat-hf",
             ],
@@ -184,7 +184,7 @@ async def test_lora_list_base_model(shutdown_ray_and_serve):
         # Case 3: test a path that doesn't exist in the cloud. Only the
         # base model_id should be included.
         (
-            "s3://rayllm-ci/path-does-not-exist/",
+            "s3://anonymous@air-example-data/rayllm-ossci/path-does-not-exist/",
             "meta-llama/Llama-2-7b-chat-hf",
             ["meta-llama/Llama-2-7b-chat-hf"],
         ),
@@ -199,8 +199,8 @@ async def test_lora_include_adapters_in_list_models(
 ):
     """Check that LoRA adapters are included in the models list.
 
-    This test pulls real configs from an S3 bucket. It requires
-    `anyscale-dev-product` AWS credentials to run.
+    This test pulls real configs from an S3 bucket located in
+    `anyscale-legacy-work` account.
 
     This test is similar to test_lora_list_base_model. It checks that
     the LoRA adapters are included in the list of models.

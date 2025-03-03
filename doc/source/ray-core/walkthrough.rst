@@ -20,8 +20,6 @@ Ray Core provides a small number of core primitives (i.e., tasks, actors, object
     Ray has introduced an experimental API for high-performance workloads that is
     especially well suited for applications using multiple GPUs.
     See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
-    
-    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
 
 Getting Started
 ---------------

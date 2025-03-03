@@ -1,9 +1,6 @@
 import asyncio
 import os
-import subprocess
 from typing import Dict, Optional
-
-import backoff
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
@@ -13,6 +10,7 @@ from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
     get_lora_mirror_config,
     sync_model,
     make_async,
+    retry_with_exponential_backoff,
 )
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
@@ -155,13 +153,14 @@ class LoraModelLoader:
     def _load_model_sync(
         self, lora_mirror_config: LoraMirrorConfig
     ) -> DiskMultiplexConfig:
-        download_with_backoff = backoff.on_exception(
-            backoff.expo,
-            subprocess.SubprocessError,
+        """Load a model from the given mirror configuration."""
+        # Apply retry decorator to _download_lora at runtime with instance parameters
+        download_with_retries = retry_with_exponential_backoff(
             max_tries=self.max_tries,
-            logger=logger,
-        )(self._download_lora)
-        local_path = download_with_backoff(lora_mirror_config)
+            exception_to_check=Exception,  # Catch any exception from CloudFileSystem
+        )(lambda config: self._download_lora(config))
+
+        local_path = download_with_retries(lora_mirror_config)
         # the lora_assigned_id is consistent for the lifetime of the disk cache entry
         # If the disk cache is cleared, a new id will be generated.
         return DiskMultiplexConfig.model_validate(
