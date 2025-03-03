@@ -118,7 +118,7 @@ steps:
     tags:
       - python
       - data
-      # - skip-on-premerge
+      - skip-on-premerge
       - oss
     instance_type: medium
     parallelism: 2
@@ -135,7 +135,7 @@ steps:
     tags:
       - python
       - data
-      # - skip-on-premerge
+      - skip-on-premerge
       - oss
     instance_type: medium
     commands:
