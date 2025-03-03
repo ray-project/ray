@@ -67,7 +67,7 @@ System logs may include information about your applications. For example, ``runt
 
 (log-redirection-to-driver)=
 ## Redirecting Worker logs to the Driver
-By default, Worker stdout and stderr for Tasks and Actors stream to the Ray Driver-the entrypoint script that calls ``ray.init``. It helps users aggregate the logs for the distributed Ray application in a single place.
+By default, Worker stdout and stderr for Tasks and Actors stream to the Ray Driver (the entrypoint script that calls ``ray.init``). It helps users aggregate the logs for the distributed Ray application in a single place.
 
 ```{literalinclude} ../doc_code/app_logging.py
 ```
