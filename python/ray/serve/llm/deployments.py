@@ -11,7 +11,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class VLLMServer(_VLLMServer):
-    """The implementation of the VLLM engine deployment.
+    """The implementation of the vLLM engine deployment.
 
     To build a Deployment object you should use `build_vllm_deployment` function.
     We also expose a lower level API for more control over the deployment class
