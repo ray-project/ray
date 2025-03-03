@@ -1558,6 +1558,22 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
+void SendDisconnectClientReply(const WorkerID &worker_id, const std::shared_ptr<ClientConnection> &client) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = protocol::CreateDisconnectClientReply(fbb);
+  fbb.Finish(reply);
+
+  // NOTE(edoakes): it's important to use sync WriteMessage here to ensure the message
+  // is written to the socket before it's closed.
+  const auto status = client->WriteMessage(
+      static_cast<int64_t>(protocol::MessageType::DisconnectClientReply),
+      fbb.GetSize(),
+      fbb.GetBufferPointer());
+    if (!status.ok()) {
+    RAY_LOG(WARNING).WithField(worker_id) << "Failed to send disconnect reply to worker.";
+    }
+}
+
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    bool graceful,
                                    rpc::WorkerExitType disconnect_type,
@@ -1684,16 +1700,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
   cluster_task_manager_->CancelAllTaskOwnedBy(worker->WorkerId());
 
-  // XXX: move to util or something.
-  flatbuffers::FlatBufferBuilder fbb;
-  auto reply = protocol::CreateDisconnectClientReply(fbb);
-  fbb.Finish(reply);
-  // XXX: async write?
-  const auto status = client->WriteMessage(
-      static_cast<int64_t>(protocol::MessageType::DisconnectClientReply),
-      fbb.GetSize(),
-      fbb.GetBufferPointer());
-  RAY_CHECK_OK(status);
+  if (graceful) {
+    SendDisconnectClientReply(worker->WorkerId(), client);
+  }
   client->Close();
 
   // TODO(rkn): Tell the object manager that this client has disconnected so
