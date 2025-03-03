@@ -568,9 +568,7 @@ class FunctionActorManager:
                     )
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
-                    actor_method_name,
-                    actor_method,
-                    actor_imported=True,
+                    actor_method_name, actor_method
                 )
                 self._function_execution_info[method_id] = FunctionExecutionInfo(
                     function=executor,
