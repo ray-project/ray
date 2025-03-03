@@ -205,7 +205,7 @@ This tqdm implementation works as follows:
 
 Limitations:
 
-- Ray only supports a subset of tqdm feature. Refer to the ray_tqdm [implementation](https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py) for more details.
+- Ray only supports a subset of tqdm features. Refer to the ray_tqdm [implementation](https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py) for more details.
 - Performance may be poor if there are more than a couple thousand updates per second because Ray doesn't batch updates.
 
 By default, the built-in print is also patched to use `ray.experimental.tqdm_ray.safe_print` when you use `tqdm_ray`.
