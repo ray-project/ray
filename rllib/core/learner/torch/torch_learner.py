@@ -353,8 +353,10 @@ class TorchLearner(Learner):
                     config=self.config.get_config_for_module(module_id=module_id),
                 )
             if name in self._named_optimizers:
+                optim_state_dict = {"state": convert_to_torch_tensor(state_dict["state"]["state"], device=self._device),
+                                    "param_groups": state_dict["state"]["param_groups"]}
                 self._named_optimizers[name].load_state_dict(
-                    convert_to_torch_tensor(state_dict["state"], device=self._device)
+                    optim_state_dict
                 )
 
     @override(Learner)
