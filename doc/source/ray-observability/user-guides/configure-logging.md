@@ -60,7 +60,7 @@ System logs may include information about your applications. For example, ``runt
 - ``redis.[out|err]``: Redis log files.
 - ``runtime_env_agent.log``: Every Ray node has one agent that manages {ref}`Runtime Environment <runtime-environments>` creation, deletion, and caching.
   This is the log file of the agent containing logs of create or delete requests and cache hits and misses.
-  For the logs of the actual installations-for example, ``pip install`` logs, see the ``runtime_env_setup-[job_id].log`` file below.
+ The logs of the actual installations for ``pip install`` logs are in the following ``runtime_env_setup-[job_id].log`` file.
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
 - ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor, or Job. This file is only present if you install a runtime environment.
 
