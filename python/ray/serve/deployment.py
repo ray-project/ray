@@ -127,7 +127,7 @@ class Deployment:
         # name does not contain #
         if "#" in name:
             warnings.warn(
-                f"Deployment names should not contain the '#' character, this will raise an error after 3 releases. "
+                f"Deployment names should not contain the '#' character, this will raise an error starting in Ray 2.46.0. "
                 f"Current name: {name}."
             )
 
