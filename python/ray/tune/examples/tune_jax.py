@@ -1,4 +1,5 @@
 import os
+
 # Prevent preeallocating entire GPU memory, locking us out of the device
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 import tempfile
@@ -18,6 +19,7 @@ import matplotlib.pyplot as plt
 from ray import tune
 from ray.tune import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
+
 
 class Func(eqx.Module):
     mlp: eqx.nn.MLP
@@ -60,6 +62,7 @@ class NeuralODE(eqx.Module):
         )
         return solution.ys
 
+
 def _get_data(ts, *, key):
     y0 = jr.uniform(key, (2,), minval=-0.6, maxval=1)
 
@@ -83,6 +86,7 @@ def get_data(dataset_size, *, key):
     ys = jax.vmap(lambda key: _get_data(ts, key=key))(key)
     return ts, ys
 
+
 def dataloader(arrays, batch_size, *, key):
     dataset_size = arrays[0].shape[0]
     indices = jnp.arange(dataset_size)
@@ -97,6 +101,7 @@ def dataloader(arrays, batch_size, *, key):
             start = end
             end = start + batch_size
 
+
 steps = 1000
 checkpoint_every = 500
 seed = 5678
@@ -107,8 +112,14 @@ data_key, model_key, loader_key = jr.split(key, 3)
 ts, ys = get_data(dataset_size, key=data_key)
 
 train_size = 0.6
-train_ts, test_ts = ts[:int(jnp.ceil(train_size * len(ts)))], ts[int(jnp.ceil(train_size * len(ts))):]
-train_ys, test_ys = ys[:, :int(jnp.ceil(train_size * len(ts)))], ys[:, int(jnp.ceil(train_size * len(ts))):]
+train_ts, test_ts = (
+    ts[: int(jnp.ceil(train_size * len(ts)))],
+    ts[int(jnp.ceil(train_size * len(ts))) :],
+)
+train_ys, test_ys = (
+    ys[:, : int(jnp.ceil(train_size * len(ts)))],
+    ys[:, int(jnp.ceil(train_size * len(ts))) :],
+)
 _, length_size, data_size = train_ys.shape
 
 config = {
@@ -117,6 +128,7 @@ config = {
     "width_size": tune.choice([32, 128, 512]),
     "depth": tune.choice([1, 3, 5]),
 }
+
 
 def train_fn(config):
     batch_size = config["batch_size"]
@@ -147,10 +159,7 @@ def train_fn(config):
             model_loc = os.path.join(checkpoint_dir, "model.eqx")
 
             base_model = NeuralODE(
-                ode_size=data_size,
-                width_size=width_size,
-                depth=depth,
-                key=model_key
+                ode_size=data_size, width_size=width_size, depth=depth, key=model_key
             )
 
             model = eqx.tree_deserialise_leaves(model_loc, copy.deepcopy(base_model))
@@ -166,7 +175,7 @@ def train_fn(config):
         loss, model, opt_state = make_step(train_ts, yi, model, opt_state)
 
         test_model_ys = jax.vmap(model, in_axes=(None, 0))(test_ts, test_ys)
-        test_loss = jnp.mean((test_model_ys - test_ys)**2)
+        test_loss = jnp.mean((test_model_ys - test_ys) ** 2)
         checkpoint_data = {
             "train_loss": float(loss),
             "test_loss": float(test_loss),
@@ -185,13 +194,10 @@ def train_fn(config):
                 eqx.tree_serialise_leaves(opt_state_loc, opt_state)
 
                 tune.report(
-                    checkpoint_data,
-                    checkpoint=Checkpoint.from_directory(ckpt_loc)
+                    checkpoint_data, checkpoint=Checkpoint.from_directory(ckpt_loc)
                 )
         else:
-            tune.report(
-                checkpoint_data
-            )
+            tune.report(checkpoint_data)
 
     return ts, ys, model
 
@@ -201,10 +207,9 @@ def main(gpus_per_trial=0.2, SMOKE_TEST=True):
     scheduler = ASHAScheduler(max_t=steps, grace_period=200, reduction_factor=2)
     tuner = tune.Tuner(
         tune.with_resources(
-            tune.with_parameters(train_fn),
-            resources={"cpu": 1, "gpu": gpus_per_trial}
+            tune.with_parameters(train_fn), resources={"cpu": 1, "gpu": gpus_per_trial}
         ),
-        run_config = tune.RunConfig(
+        run_config=tune.RunConfig(
             name="node_asha",
             stop={"training_iteration": steps},
         ),
@@ -224,7 +229,9 @@ def main(gpus_per_trial=0.2, SMOKE_TEST=True):
 results = main()
 
 
-best_result = results.get_best_result().get_best_checkpoint(metric="test_loss", mode="min").path
+best_result = (
+    results.get_best_result().get_best_checkpoint(metric="test_loss", mode="min").path
+)
 base_best_result = best_result.split("/")[:-1]
 
 base = ""
@@ -239,7 +246,7 @@ model = NeuralODE(
     ode_size=data_size,
     depth=config["depth"],
     width_size=config["width_size"],
-    key=jax.random.PRNGKey(42)
+    key=jax.random.PRNGKey(42),
 )
 
 model = eqx.tree_deserialise_leaves(os.path.join(best_result, "model.eqx"), model)
