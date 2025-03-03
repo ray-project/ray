@@ -1,13 +1,29 @@
 Profiling
 =========
 
-Ray Compiled Graph provides profiling functionalities to better understand the performance
-of individual tasks, systems overhead, and performance bottlenecks.
+Ray Compiled Graph provides both PyTorch-based and Nsight-based profiling functionalities to better understand the performance
+of individual tasks, systems overhead, and performance bottlenecks. You can pick your favorite profiler based on your preference.
+
+PyTorch profiler
+----------------
+
+To run PyTorch Profiling on Compiled Graph, simply set the environment variable ``RAY_CGRAPH_ENABLE_TORCH_PROFILING=1``
+when running the script. For example, for a Compiled Graph script in ``example.py``, run the following command:
+
+.. testcode::
+
+    RAY_CGRAPH_ENABLE_TORCH_PROFILING=1 python3 example.py
+
+After execution, Compiled Graph generates the profiling results in the `compiled_graph_torch_profiles` directory
+under the current working directory. Compiled Graph generates one trace file per actor.
+
+Traces can be visualized using https://ui.perfetto.dev/.
+
 
 Nsight system profiler
 ----------------------
 
-Compiled Graph build on top of Ray's profiling capabilities, and leverage Nsight
+Compiled Graph builds on top of Ray's profiling capabilities, and leverages Nsight
 system profiling. 
 
 To run Nsight Profiling on Compiled Graph, specify the runtime_env for the involved actors
