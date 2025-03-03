@@ -22,7 +22,6 @@
 #include <string>
 #include <utility>
 
-#include "cluster_task_manager.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
