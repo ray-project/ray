@@ -1,10 +1,13 @@
 # __simple_actor_start__
 import ray
 
+
 @ray.remote
 class SimpleActor:
     def echo(self, msg):
         return msg
+
+
 # __simple_actor_end__
 
 # __simple_actor_usage_start__
@@ -98,10 +101,12 @@ print(ray.get(dag.execute("hello")))
 # __cgraph_actor_death_start__
 from ray.dag import InputNode, MultiOutputNode
 
+
 @ray.remote
 class EchoActor:
     def echo(self, msg):
         return msg
+
 
 actors = [EchoActor.remote() for _ in range(4)]
 with InputNode() as inp:
@@ -136,18 +141,23 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 ray.init()
 # Note that the following example requires at least 2 GPUs.
-assert ray.available_resources().get("GPU") >= 2, "At least 2 GPUs are required to run this example."
+assert (
+    ray.available_resources().get("GPU") >= 2
+), "At least 2 GPUs are required to run this example."
+
 
 @ray.remote(num_gpus=1)
 class GPUSender:
     def send(self, shape):
         return torch.zeros(shape, device="cuda")
 
+
 @ray.remote(num_gpus=1)
 class GPUReceiver:
     def recv(self, tensor: torch.Tensor):
         assert tensor.device.type == "cuda"
         return tensor.shape
+
 
 sender = GPUSender.remote()
 receiver = GPUReceiver.remote()
@@ -165,5 +175,5 @@ with ray.dag.InputNode() as inp:
 # Compile API prepares the NCCL communicator across all workers and schedule operations
 # accordingly.
 dag = dag.experimental_compile()
-assert ray.get(dag.execute((10, ))) == (10, )
+assert ray.get(dag.execute((10,))) == (10,)
 # __cgraph_nccl_end__
