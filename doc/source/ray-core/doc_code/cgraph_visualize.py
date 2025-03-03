@@ -1,6 +1,3 @@
-#flake8: noqa
-
-# fmt: off
 # __cgraph_visualize_start__
 import ray
 from ray.dag import InputNode, MultiOutputNode
@@ -30,4 +27,3 @@ with InputNode() as inp:
 compiled_dag = dag.experimental_compile()
 compiled_dag.visualize()
 # __cgraph_visualize_end__
-# fmt: on
