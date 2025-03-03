@@ -368,9 +368,9 @@ def mock_deployment_state_manager(
 
 
 @pytest.fixture
-def mock_max_per_replica_retry_multiplier():
+def mock_max_per_replica_retry_count():
     with mock.patch(
-        "ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_MULTIPLIER", 2
+        "ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2
     ):
         yield 2
 
@@ -2288,7 +2288,7 @@ def _constructor_failure_loop_two_replica(
 
 
 def test_deploy_with_consistent_constructor_failure(
-    mock_deployment_state_manager, mock_max_per_replica_retry_multiplier
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
 ):
     """
     Test deploy() multiple replicas with consistent constructor failure.
@@ -2307,15 +2307,12 @@ def test_deploy_with_consistent_constructor_failure(
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
-    loop_count = mock_max_per_replica_retry_multiplier
+    loop_count = mock_max_per_replica_retry_count
     _constructor_failure_loop_two_replica(
-        dsm, ds, loop_count, mock_max_per_replica_retry_multiplier
+        dsm, ds, loop_count, mock_max_per_replica_retry_count
     )
 
-    assert (
-        ds._replica_constructor_retry_counter
-        == 2 * mock_max_per_replica_retry_multiplier
-    )
+    assert ds._replica_constructor_retry_counter == 2 * mock_max_per_replica_retry_count
     assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert (
         ds.curr_status_info.status_trigger
@@ -2326,7 +2323,7 @@ def test_deploy_with_consistent_constructor_failure(
 
 
 def test_deploy_with_partial_constructor_failure(
-    mock_deployment_state_manager, mock_max_per_replica_retry_multiplier
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
 ):
     """
     Test deploy() multiple replicas with constructor failure exceedining
@@ -2354,9 +2351,7 @@ def test_deploy_with_partial_constructor_failure(
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
 
-    _constructor_failure_loop_two_replica(
-        dsm, ds, 1, mock_max_per_replica_retry_multiplier
-    )
+    _constructor_failure_loop_two_replica(dsm, ds, 1, mock_max_per_replica_retry_count)
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
         ds.curr_status_info.status_trigger
