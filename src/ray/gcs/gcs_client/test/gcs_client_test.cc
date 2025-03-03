@@ -356,13 +356,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return nodes;
   }
 
-  bool DrainNode(const NodeID &node_id) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDrainNode(
-        node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
