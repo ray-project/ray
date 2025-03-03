@@ -24,8 +24,8 @@ Next instantiate the actor and use the classic Ray Core APIs ``remote`` and ``ra
 
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
-    :start-after: __simple_actor_usage_start__
-    :end-before: __simple_actor_usage_end__
+    :start-after: __ray_core_usage_start__
+    :end-before: __ray_core_usage_end__
 
 .. testoutput::
 
@@ -90,8 +90,8 @@ For example, the following uses the preceding example to create a DAG that passe
 
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
-    :start-after: __cgraph_dependency_start__
-    :end-before: __cgraph_dependency_end__
+    :start-after: __cgraph_bind_start__
+    :end-before: __cgraph_bind_end__
 
 .. testoutput::
 

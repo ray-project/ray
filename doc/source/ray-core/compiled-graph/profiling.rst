@@ -17,7 +17,7 @@ when running the script. For example, for a Compiled Graph script in ``example.p
 After execution, Compiled Graph generates the profiling results in the `compiled_graph_torch_profiles` directory
 under the current working directory. Compiled Graph generates one trace file per actor.
 
-Traces can be visualized using https://ui.perfetto.dev/.
+You can visualize traces by using https://ui.perfetto.dev/.
 
 
 Nsight system profiler
@@ -29,41 +29,17 @@ system profiling.
 To run Nsight Profiling on Compiled Graph, specify the runtime_env for the involved actors
 as described in :ref:`Run Nsight on Ray <run-nsight-on-ray>`. For example,
 
-.. testcode::
-    import ray
-    import torch
-    from ray.dag import InputNode
-
-    @ray.remote(num_gpus=1, runtime_env={"nsight": "default"})
-    class RayActor:
-        def send(self, shape, dtype, value: int):
-            return torch.ones(shape, dtype=dtype, device=self.device) * value
-
-        def recv(self, tensor):
-            return (tensor[0].item(), tensor.shape, tensor.dtype)
-
-    sender = RayActor.remote()
-    receiver = RayActor.remote()
+.. literalinclude:: ../doc_code/cgraph_profiling.py
+    :language: python
+    :start-after: __profiling_setup_start__
+    :end-before: __profiling_setup_end__
 
 Then, create a Compiled Graph as usual.
 
-.. testcode::
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Test normal execution.
-    with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_tensor_transport(transport="nccl")
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    for i in range(3):
-        shape = (10 * (i + 1),)
-        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        assert ray.get(ref) == (i, shape, dtype)
+.. literalinclude:: ../doc_code/cgraph_profiling.py
+    :language: python
+    :start-after: __profiling_execution_start__
+    :end-before: __profiling_execution_end__
 
 Finally, run the script as usual.
 
