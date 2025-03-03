@@ -20,6 +20,9 @@ package ray.rpc;
 
 // Metadata for a Ray Train run, including its details and status
 message ExportTrainRunEventData {
+  // Version of the message schema
+  uint32 version = 1;
+
   // Enumeration of the possible statuses for a Train run
   enum RunStatus {
     // Default value required by proto3
@@ -39,26 +42,29 @@ message ExportTrainRunEventData {
   }
 
   // Unique identifier for the Train run
-  string id = 1;
+  string id = 2;
   // Human-readable name assigned to the Train run
-  string name = 2;
+  string name = 3;
   // The Ray Job ID associated with this Train run
-  bytes job_id = 3;
+  bytes job_id = 4;
   // Unique ID of the actor managing the Train run
-  bytes controller_actor_id = 4;
+  bytes controller_actor_id = 5;
   // The current execution status of the Train run
-  RunStatus status = 5;
+  RunStatus status = 6;
   // Additional details about the current status, including error messages if applicable
-  optional string status_detail = 6;
+  optional string status_detail = 7;
   // The timestamp when the Train run started in ns.
-  uint64 start_time_ns = 7;
+  uint64 start_time_ns = 8;
   // The timestamp when the Train run ended in ns. If not set, the run is still
   // in progress
-  optional uint64 end_time_ns = 8;
+  optional uint64 end_time_ns = 9;
 }
 
 // Metadata for an individual attempt to execute a Train run
 message ExportTrainRunAttemptEventData {
+  // Version of the message schema
+  uint32 version = 1;
+
   // Enumeration of the possible statuses for a Train run attempt
   enum RunAttemptStatus {
     // Default value required by proto3
@@ -117,20 +123,20 @@ message ExportTrainRunAttemptEventData {
   }
 
   // Unique identifier for the parent Train run
-  string run_id = 1;
+  string run_id = 2;
   // Unique identifier for this specific Train run attempt
-  string attempt_id = 2;
+  string attempt_id = 3;
   // The current execution status of the Train run attempt
-  RunAttemptStatus status = 3;
+  RunAttemptStatus status = 4;
   // Additional details about the status, including error messages if applicable
-  optional string status_detail = 4;
+  optional string status_detail = 5;
   // The timestamp when the Train run attempt started in ns.
-  uint64 start_time_ns = 5;
+  uint64 start_time_ns = 6;
   // The timestamp when the Train run attempt ended in ns. If null, the attempt
   // is still ongoing
-  optional uint64 end_time_ns = 6;
+  optional uint64 end_time_ns = 7;
   // The resources (e.g., CPU, GPU) allocated to the Train run attempt
-  repeated TrainResources resources = 7;
+  repeated TrainResources resources = 8;
   // List of Train workers participating in this attempt, sorted by global ranks
-  repeated TrainWorker workers = 8;
+  repeated TrainWorker workers = 9;
 }
