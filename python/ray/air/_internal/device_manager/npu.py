@@ -55,7 +55,7 @@ class NPUTorchDeviceManager(TorchDeviceManager):
 
             if len(npu_ids) > 0:
                 npu_visible_str = os.environ.get(
-                    ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR, ""
+                    ray_constants.ASCEND_RT_VISIBLE_DEVICES_ENV_VAR, ""
                 )
                 if npu_visible_str and npu_visible_str != "NoDevFiles":
                     npu_visible_list = npu_visible_str.split(",")

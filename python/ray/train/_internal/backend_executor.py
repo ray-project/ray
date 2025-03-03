@@ -123,7 +123,7 @@ class BackendExecutor:
             ResourceConfig(
                 ray_constants.NPU,
                 ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
-                ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR,
+                ray_constants.ASCEND_RT_VISIBLE_DEVICES_ENV_VAR,
             ),
             # For AMD GPUs, they are using ROCR_VISIBLE_DEVICES env var.
             ResourceConfig(

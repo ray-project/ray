@@ -4,11 +4,12 @@ import logging
 from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.ray_constants import (
+    CUDA_VISIBLE_DEVICES_ENV_VAR,
+    NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR,
+)
 
 logger = logging.getLogger(__name__)
-
-CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
-NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
 
 # TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
