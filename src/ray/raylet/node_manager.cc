@@ -1558,7 +1558,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void SendDisconnectClientReply(const WorkerID &worker_id, const std::shared_ptr<ClientConnection> &client) {
+void SendDisconnectClientReply(const WorkerID &worker_id,
+                               const std::shared_ptr<ClientConnection> &client) {
   flatbuffers::FlatBufferBuilder fbb;
   auto reply = protocol::CreateDisconnectClientReply(fbb);
   fbb.Finish(reply);
@@ -1569,9 +1570,9 @@ void SendDisconnectClientReply(const WorkerID &worker_id, const std::shared_ptr<
       static_cast<int64_t>(protocol::MessageType::DisconnectClientReply),
       fbb.GetSize(),
       fbb.GetBufferPointer());
-    if (!status.ok()) {
+  if (!status.ok()) {
     RAY_LOG(WARNING).WithField(worker_id) << "Failed to send disconnect reply to worker.";
-    }
+  }
 }
 
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
