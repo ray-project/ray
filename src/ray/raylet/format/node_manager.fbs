@@ -41,6 +41,7 @@ enum MessageType:int {
   // This is sent from a worker to a raylet.
   DisconnectClientRequest,
   // Notify the client that the raylet has deregistered this client.
+  // The client should block until it receives this message before closing the socket.
   DisconnectClientReply,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
