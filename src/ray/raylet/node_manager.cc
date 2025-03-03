@@ -1685,7 +1685,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
   // XXX: move to util or something.
   flatbuffers::FlatBufferBuilder fbb;
-  auto reply = protocol::DisconnectClientReply(fbb);
+  auto reply = protocol::CreateDisconnectClientReply(fbb);
   fbb.Finish(reply);
   // XXX: async write?
   const auto status =
