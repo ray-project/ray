@@ -293,7 +293,7 @@ size_t TaskSpecification::ArgDataSize(size_t arg_index) const {
 }
 
 bool TaskSpecification::ArgIsErrorType(size_t arg_index, rpc::ErrorType error_type) const {
-  const std::string_view metadata(message_->args(arg_index).data().data(), message_->args(arg_index).data().size());
+  const std::string_view metadata(message_->args(arg_index).metadata().data(), message_->args(arg_index).metadata().size());
   return metadata == std::to_string(error_type);
 }
 

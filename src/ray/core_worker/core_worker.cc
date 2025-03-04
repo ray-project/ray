@@ -3792,26 +3792,21 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
     } else {
       std::shared_ptr<Buffer> data = nullptr;
       std::shared_ptr<Buffer> metadata = nullptr;
-      if (task.ArgByRef(i)) {
-        std::string arg(reinterpret_cast<const char *>(task.ArgData(i)), task.ArgDataSize(i));
-        RAY_CHECK(task.ArgIsErrorType(i, rpc::ErrorType::OBJECT_IN_ACTOR)) << arg;
+      // A pass-by-value argument.
+      if (task.ArgDataSize(i) != 0u) {
+        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
+                                                   task.ArgDataSize(i));
+      } else if (task.ArgByRef(i)) {
+        RAY_CHECK(task.ArgIsErrorType(i, rpc::ErrorType::OBJECT_IN_ACTOR));
         const auto it = in_actor_dependencies_metadata.find(task.ArgId(i));
         RAY_CHECK(it != in_actor_dependencies_metadata.end());
         data = it->second;
-
-        std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_ACTOR));
-        auto metadata_buf = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-        metadata = std::make_shared<ray::LocalMemoryBuffer>(metadata_buf, meta.size(), /*copy_data=*/true);
-      } else {
-        // A pass-by-value argument.
-        if (task.ArgDataSize(i) != 0u) {
-          data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
-                                                     task.ArgDataSize(i));
-        }
-        if (task.ArgMetadataSize(i) != 0u) {
-          metadata = std::make_shared<LocalMemoryBuffer>(
-              const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
-        }
+        metadata = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgMetadata(i)),
+                                                   task.ArgMetadataSize(i));
+      }
+      if (task.ArgMetadataSize(i) != 0u) {
+        metadata = std::make_shared<LocalMemoryBuffer>(
+            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
       // NOTE: this is a workaround to avoid an extra copy for Java workers.
       // Python workers need this copy to pass test case
