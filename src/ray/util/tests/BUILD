@@ -375,3 +375,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "invoke_once_token_test",
+    srcs = ["invoke_once_token_test.cc"],
+    size = "small",
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:invoke_once_token",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

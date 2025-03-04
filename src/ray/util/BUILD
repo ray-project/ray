@@ -364,3 +364,11 @@ ray_cc_library(
         "//conditions:default": ["//src/ray/util:logging"],
     }),
 )
+
+ray_cc_library(
+    name = "invoke_once_token",
+    hdrs = ["invoke_once_token.h"],
+    deps = [
+        ":logging",
+    ],
+)
