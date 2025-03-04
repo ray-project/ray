@@ -420,7 +420,12 @@ class Dataset:
         self._plan._dataset_name = name
 
     @property
+    @Deprecated(message="Use name instead", warning=True)
     def _name(self) -> Optional[str]:
+        return self.name
+
+    @property
+    def name(self) -> Optional[str]:
         """Returns the dataset name"""
         return self._plan._dataset_name
 
@@ -5296,7 +5301,7 @@ class Dataset:
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
-        output.set_name(copy._name)
+        output.set_name(copy.name)
         output._set_uuid(copy._get_uuid())
         output._plan.execute()  # No-op that marks the plan as fully executed.
         return output

@@ -1713,7 +1713,7 @@ def test_stats_actor_iter_metrics():
 def test_dataset_name():
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds.set_name"test_ds")
-    assert ds._name == "test_ds"
+    assert ds.name== "test_ds"
     assert str(ds) == (
         "MapBatches(<lambda>)\n"
         "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
@@ -1725,7 +1725,7 @@ def test_dataset_name():
 
     # Names persist after an execution
     ds = ds.random_shuffle()
-    assert ds._name == "test_ds"
+    assert ds.name == "test_ds"
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
@@ -1733,7 +1733,7 @@ def test_dataset_name():
 
     ds.set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
-    assert ds._name == "test_ds_two"
+    assert ds.name == "test_ds_two"
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
@@ -1741,7 +1741,7 @@ def test_dataset_name():
 
     ds.set_name(None)
     ds = ds.map_batches(lambda x: x)
-    assert ds._name is None
+    assert ds.name is None
     with patch_update_stats_actor() as update_fn:
         mds = ds.materialize()
 
@@ -1796,7 +1796,7 @@ def test_stats_actor_datasets(ray_start_cluster):
     stats_actor = _get_or_create_stats_actor()
 
     datasets = ray.get(stats_actor.get_datasets.remote())
-    dataset_name = list(filter(lambda x: x.startswith(ds._name), datasets))
+    dataset_name = list(filter(lambda x: x.startswith(ds.name, datasets))
     assert len(dataset_name) == 1
     dataset = datasets[dataset_name[0]]
 
@@ -1850,7 +1850,7 @@ def test_stats_manager(shutdown_only):
 
     # Clear dataset tags manually.
     for dataset in datasets:
-        dataset_tag = create_dataset_tag(dataset._name, dataset._uuid)
+        dataset_tag = create_dataset_tag(dataset.name, dataset._uuid)
         assert dataset_tag in StatsManager._last_execution_stats
         assert dataset_tag in StatsManager._last_iteration_stats
         StatsManager.clear_last_execution_stats(dataset_tag)

@@ -159,7 +159,7 @@ class SplitCoordinator:
                 executor = StreamingExecutor(
                     self._data_context,
                     create_dataset_tag(
-                        self._base_dataset._name, self._base_dataset._uuid
+                        self._base_dataset.name self._base_dataset._uuid
                     ),
                 )
                 self._executor = executor
