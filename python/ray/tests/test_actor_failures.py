@@ -994,8 +994,14 @@ def test_exit_actor_async_actor(shutdown_only, tmp_path):
 
     a = AsyncActor.remote()
     ray.get(a.__ray_ready__.remote())
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
         ray.get(a.exit.remote())
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
 
     def verify():
         return temp_file_atexit.exists()
@@ -1024,14 +1030,8 @@ def test_exit_actor_async_actor_user_catch_err_should_still_exit(
 
     a = AsyncActor.remote()
     ray.get(a.__ray_ready__.remote())
-    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.exit.remote())
-    assert (
-        # Exited when task execution returns
-        "exit_actor()" in str(exc_info.value)
-        # Exited during periodical check in worker
-        or "User requested to exit the actor" in str(exc_info.value)
-    )
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.create.remote())
