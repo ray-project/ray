@@ -79,9 +79,10 @@ class _SerializationContext:
             fut_id: GPU future ID.
             fut: GPU future to be cached.
         """
-        assert (
-            fut_id not in self.gpu_futures
-        ), f"GPUFuture with id {fut_id} is already cached"
+        if fut_id in self.gpu_futures:
+            # The future was from a previous execution of the compiled DAG,
+            # but it was not awaited, likely due to an exception.
+            self.gpu_futures.pop(fut_id).destroy_event()
         self.gpu_futures[fut_id] = fut
 
     def remove_gpu_future(self, fut_id: int) -> None:
