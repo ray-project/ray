@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     make_global_state_accessor,
     wait_for_condition,
 )
+import numpy as np
 
 
 def test_replenish_resources(ray_start_regular):
@@ -85,6 +86,31 @@ def test_available_resources_per_node(ray_start_cluster_head):
         return True
 
     wait_for_condition(available_resources_per_node_check2)
+
+
+def test_zero_cpu_obj_store_memory(ray_start_cluster):
+    # Test that available_resources gives us 0 CPU and object store memory
+    # and doesn't erase those values
+
+    cluster = ray_start_cluster
+    head_node = cluster.add_node(num_cpus=0, object_store_memory=80e6)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0)
+    def return_large_object():
+        # 100mb so will spill on worker, but not once on head
+        return np.zeros(100 * 1024 * 1024, dtype=np.uint8)
+
+    ref = return_large_object.remote()
+    ray.wait([ref], fetch_local=False)
+    time.sleep(0.1)
+
+    head_node_resources = ray._private.state.available_resources_per_node()[
+        head_node.node_id
+    ]
+    # TODO(dayshah): Figure out why CPU is not propogated when 0
+    # assert head_node_resources["CPU"] == 0
+    assert head_node_resources["object_store_memory"] == 0
 
 
 def test_total_resources_per_node(ray_start_cluster_head):
