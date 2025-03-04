@@ -423,7 +423,7 @@ class LLMConfig(BaseModelExtended):
                 :skipif: True
 
                 from ray import serve
-                from ray.serve.llm import LLMConfig, VLLMServer
+                from ray.serve.llm import LLMConfig, LLMServer
 
                 llm_config = LLMConfig(
                     model_loading_config=dict(model_id="test_model"),
@@ -431,8 +431,8 @@ class LLMConfig(BaseModelExtended):
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
                 serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                vllm_app = VLLMServer.options(**serve_options).bind(llm_config)
-                serve.run(vllm_app)
+                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
+                serve.run(llm_app)
 
         Keyword Args:
             name_prefix: The prefix to use for the deployment name.

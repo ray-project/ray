@@ -10,8 +10,8 @@ from ray.llm._internal.serve.configs.server_models import (
     CloudMirrorConfig as _CloudMirrorConfig,
     LoraConfig as _LoraConfig,
 )
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import (
-    VLLMServer as _VLLMServer,
+from ray.llm._internal.serve.deployments.llm.llm_server import (
+    LLMServer as _LLMServer,
 )
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter as _LLMRouter,
@@ -68,7 +68,7 @@ class LoraConfig(_LoraConfig):
 
 
 @PublicAPI(stability="alpha")
-def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
+def build_llm_deployment(llm_config: "LLMConfig") -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
     Examples:
@@ -76,7 +76,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, build_vllm_deployment
+            from ray.serve.llm import LLMConfig, build_llm_deployment
 
             # Configure the model
             llm_config = LLMConfig(
@@ -94,10 +94,10 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
             )
 
             # Build the deployment
-            vllm_app = build_vllm_deployment(llm_config)
+            llm_app = build_llm_deployment(llm_config)
 
             # Deploy the application
-            model_handle = serve.run(vllm_app)
+            model_handle = serve.run(llm_app)
 
             # Querying the model handle
             import asyncio
@@ -127,9 +127,9 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.builders import build_vllm_deployment
+    from ray.llm._internal.serve.builders import build_llm_deployment
 
-    return build_vllm_deployment(llm_config=llm_config)
+    return build_llm_deployment(llm_config=llm_config)
 
 
 @PublicAPI(stability="alpha")
@@ -144,7 +144,7 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
+            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
 
             llm_config1 = LLMConfig(
                 model_loading_config=dict(
@@ -173,8 +173,8 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
             )
 
             # Deploy the application
-            deployment1 = VLLMServer.as_deployment().bind(llm_config1)
-            deployment2 = VLLMServer.as_deployment().bind(llm_config2)
+            deployment1 = LLMServer.as_deployment().bind(llm_config1)
+            deployment2 = LLMServer.as_deployment().bind(llm_config2)
             llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
             serve.run(llm_app)
 
@@ -209,10 +209,10 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 
 
 @PublicAPI(stability="alpha")
-class VLLMServer(_VLLMServer):
+class LLMServer(_LLMServer):
     """The implementation of the vLLM engine deployment.
 
-    To build a Deployment object you should use `build_vllm_deployment` function.
+    To build a Deployment object you should use `build_llm_deployment` function.
     We also expose a lower level API for more control over the deployment class
     through `as_deployment` method.
 
@@ -221,7 +221,7 @@ class VLLMServer(_VLLMServer):
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, VLLMServer
+            from ray.serve.llm import LLMConfig, LLMServer
 
             # Configure the model
             llm_config = LLMConfig(
@@ -238,10 +238,10 @@ class VLLMServer(_VLLMServer):
             )
 
             # Build the deployment directly
-            VLLMDeployment = VLLMServer.as_deployment(llm_config.get_serve_options())
-            vllm_app = VLLMDeployment.bind(llm_config)
+            LLMDeployment = LLMServer.as_deployment(llm_config.get_serve_options())
+            llm_app = LLMDeployment.bind(llm_config)
 
-            model_handle = serve.run(vllm_app)
+            model_handle = serve.run(llm_app)
 
             # Query the model via `chat` api
             from ray.serve.llm.openai_api_models import ChatCompletionRequest
@@ -279,7 +279,7 @@ class LLMRouter(_LLMRouter):
 
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
+            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
             from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
 
@@ -307,8 +307,8 @@ class LLMRouter(_LLMRouter):
             )
 
             # Deploy the application
-            vllm_deployment1 = VLLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
-            vllm_deployment2 = VLLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
+            vllm_deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
+            vllm_deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
             llm_app = LLMRouter.as_deployment().bind([vllm_deployment1, vllm_deployment2])
             serve.run(llm_app)
     """
@@ -322,8 +322,8 @@ __all__ = [
     "ModelLoadingConfig",
     "CloudMirrorConfig",
     "LoraConfig",
-    "build_vllm_deployment",
+    "build_llm_deployment",
     "build_openai_app",
-    "VLLMServer",
+    "LLMServer",
     "LLMRouter",
 ]
