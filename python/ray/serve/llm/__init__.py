@@ -6,7 +6,7 @@ from ray.serve.llm.configs import (
     CloudMirrorConfig,
     LoraConfig,
 )
-from ray.serve.llm.builders import build_vllm_deployment, build_openai_app
+from ray.serve.llm.builders import build_llm_deployment, build_openai_app
 
 
 __all__ = [
@@ -17,7 +17,7 @@ __all__ = [
     "CloudMirrorConfig",
     "LoraConfig",
     # Builders
-    "build_vllm_deployment",
+    "build_llm_deployment",
     "build_openai_app",
     # Deployments
     "LLMServer",

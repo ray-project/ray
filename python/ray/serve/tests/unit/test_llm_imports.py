@@ -37,7 +37,7 @@ def test_serve_llm_import_does_not_error():
         )
     with pytest.raises(ImportError):
         from ray.serve.llm.builders import (
-            build_vllm_deployment,  # noqa: F401
+            build_llm_deployment,  # noqa: F401
             build_openai_app,  # noqa: F401
         )
 

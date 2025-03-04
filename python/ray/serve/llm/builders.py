@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="alpha")
-def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
+def build_llm_deployment(llm_config: "LLMConfig") -> "Application":
     """Helper to build a single vllm deployment from the given llm config.
 
     Examples:
@@ -16,7 +16,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
             :skipif: True
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, build_vllm_deployment
+            from ray.serve.llm import LLMConfig, build_llm_deployment
 
             # Configure the model
             llm_config = LLMConfig(
@@ -34,7 +34,7 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
             )
 
             # Build the deployment
-            vllm_app = build_vllm_deployment(llm_config)
+            vllm_app = build_llm_deployment(llm_config)
 
             # Deploy the application
             model_handle = serve.run(vllm_app)
@@ -67,9 +67,9 @@ def build_vllm_deployment(llm_config: "LLMConfig") -> "Application":
     Returns:
         The configured Ray Serve Application for vllm deployment.
     """
-    from ray.llm._internal.serve.builders import build_vllm_deployment
+    from ray.llm._internal.serve.builders import build_llm_deployment
 
-    return build_vllm_deployment(llm_config=llm_config)
+    return build_llm_deployment(llm_config=llm_config)
 
 
 @PublicAPI(stability="alpha")
