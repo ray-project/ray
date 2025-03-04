@@ -25,9 +25,6 @@ How does Ray Data compare to other solutions for offline inference?
 
     However, Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic ETL pipelines like Spark and Daft.
 
-    For general ETL, a common paradigm is to first run your batch data processing tool of choice, persist the results of your computation into object storage, and then read it into Ray Data. With a tool that runs on your Ray cluster natively such as Daft,
-    you can even convert it in-memory into a Ray Dataset with a zero-copy integration, skipping the intermediate persistence into object storage altogether.
-
     For a more detailed performance comparison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
 
 
