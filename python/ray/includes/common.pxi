@@ -26,6 +26,7 @@ from ray.exceptions import (
     OutOfDiskError,
     GetTimeoutError,
     TaskCancelledError,
+    AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
