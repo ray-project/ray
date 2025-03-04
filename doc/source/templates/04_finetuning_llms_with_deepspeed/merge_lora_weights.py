@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument(
         "--output-path",
         type=str,
-        help="Path to output directory. Defaults to the orginal checkpoint directory.",
+        help="Path to output directory. Defaults to the original checkpoint directory.",
         required=True,
     )
 
@@ -60,15 +60,15 @@ def test_eval(model, tokenizer):
     model.eval()
     model.to("cuda")
 
-    print("Prompting model with promtp : ", TEST_PROMPT)
+    print("Prompting model with prompt : ", TEST_PROMPT)
     input_ids = tokenizer(TEST_PROMPT, return_tensors="pt")["input_ids"].to("cuda")
 
-    stop_token_embeding = tokenizer(
+    stop_token_embedding = tokenizer(
         STOP_TOKEN, return_tensors="pt", add_special_tokens=False
     )["input_ids"].to("cuda")
 
     def custom_stopping_criteria(embeddings, *args, **kwargs) -> bool:
-        return stop_token_embeding in embeddings
+        return stop_token_embedding in embeddings
 
     stopping_criteria = StoppingCriteriaList([custom_stopping_criteria])
 
