@@ -80,7 +80,7 @@ class TorchModel(nn.Module, Model, abc.ABC):
     def get_num_parameters(self) -> Tuple[int, int]:
         num_trainable_parameters = 0
         num_frozen_parameters = 0
-        for p in self.model.parameters():
+        for p in self.parameters():
             n = p.numel()
             if p.requires_grad:
                 num_trainable_parameters += n
@@ -90,8 +90,13 @@ class TorchModel(nn.Module, Model, abc.ABC):
 
     @override(Model)
     def _set_to_dummy_weights(self, value_sequence=(-0.02, -0.01, 0.01, 0.02)):
-        trainable_weights = [p for p in self.parameters() if p.requires_grad]
-        non_trainable_weights = [p for p in self.parameters() if not p.requires_grad]
+        trainable_weights = []
+        non_trainable_weights = []
+        for p in self.parameters():
+            if p.requires_grad:
+                trainable_weights.append(p)
+            else:
+                non_trainable_weights.append(p)
         for i, w in enumerate(trainable_weights + non_trainable_weights):
             fill_val = value_sequence[i % len(value_sequence)]
             with torch.no_grad():
