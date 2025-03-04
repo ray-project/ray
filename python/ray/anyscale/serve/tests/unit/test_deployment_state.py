@@ -23,7 +23,8 @@ def rconfig(**config_opts):
 
 
 def test_compact_node(mock_deployment_state_manager):  # noqa: F811
-    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
     cluster_node_info_cache.add_node("node1", {"CPU": 9})
     cluster_node_info_cache.add_node("node2", {"CPU": 4})
     cluster_node_info_cache.add_node("node3", {"CPU": 5})
@@ -69,6 +70,13 @@ def test_compact_node(mock_deployment_state_manager):  # noqa: F811
     dsC._replicas.get()[1]._actor.set_node_id("node1")
     dsC._replicas.get()[1]._actor.set_ready()
 
+    # Deployment transitions to healthy
+    dsm.update()
+    assert dsA.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert dsB.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert dsC.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(305)
+
     # Node 3 should be compacted
     dsm.update()
     check_counts(dsA, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
@@ -112,7 +120,8 @@ def test_compact_node(mock_deployment_state_manager):  # noqa: F811
 
 
 def test_compaction_cancelled(mock_deployment_state_manager):  # noqa: F811
-    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
     cluster_node_info_cache.add_node("node1", {"CPU": 3})
     cluster_node_info_cache.add_node("node2", {"CPU": 3})
 
@@ -131,6 +140,11 @@ def test_compaction_cancelled(mock_deployment_state_manager):  # noqa: F811
     ds._replicas.get()[1]._actor.set_ready()
     ds._replicas.get()[2]._actor.set_node_id("node2")
     ds._replicas.get()[2]._actor.set_ready()
+
+    # Deployment transitions to healthy
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(305)
 
     # Node 2 should be compacted
     dsm.update()

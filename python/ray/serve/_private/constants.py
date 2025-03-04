@@ -388,3 +388,8 @@ RAY_SERVE_PROXY_GC_THRESHOLD = int(
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
     os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
 )
+
+# How long to wait after deployments become stable before attempting node compaction
+RAY_SERVE_NODE_COMPACTION_DELAY_S = int(
+    os.environ.get("RAY_SERVE_NODE_COMPACTION_DELAY_S", "300")
+)
