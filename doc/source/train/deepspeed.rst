@@ -68,7 +68,7 @@ You can use your existing DeepSpeed training code with Ray Train's TorchTrainer.
 
 
 Complete Examples
-----------------
+-----------------
 
 Below are complete examples of ZeRO-3 training with DeepSpeed. Each example shows a full implementation of fine-tuning
  a Bidirectional Encoder Representations from Transformers (BERT) model on the Microsoft Research Paraphrase Corpus (MRPC) dataset.
