@@ -497,7 +497,7 @@ class Node:
         try_to_create_directory(self._runtime_env_dir)
         # Create a symlink to the libtpu tpu_logs directory if it exists.
         user_temp_dir = ray._private.utils.get_user_temp_dir()
-        tpu_log_dir = os.environ.get("TPU_LOG_DIR", f"{user_temp_dir}/tpu_logs")
+        tpu_log_dir = f"{user_temp_dir}/tpu_logs"
         if os.path.isdir(tpu_log_dir):
             tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
             try_to_symlink(tpu_logs_symlink, tpu_log_dir)

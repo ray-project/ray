@@ -237,7 +237,7 @@ class LogMonitor:
         monitor_log_paths += glob.glob(f"{self.logs_dir}/gcs_server*.err")
 
         # Add libtpu logs if they exist in the Ray container.
-        tpu_log_dir = f"{self.logs_dir}/tpu_logs/"
+        tpu_log_dir = f"{self.logs_dir}/tpu_logs"
         if os.path.isdir(tpu_log_dir):
             monitor_log_paths += glob.glob(f"{self.logs_dir}/tpu_logs/**")
 
