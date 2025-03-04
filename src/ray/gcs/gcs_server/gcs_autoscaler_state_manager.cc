@@ -14,8 +14,6 @@
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
-#include <type_traits>
-
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -61,8 +59,6 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::autoscaler::ReportAutoscalingStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
-  // TODO(rickyx): We should handle the infeasible requests in the future.
-  // Right now, this info will only be used for observability, i.e. ray status.
 
   // Never seen any autoscaling state before - so just takes this.
   if (!autoscaling_state_.has_value()) {
@@ -70,6 +66,16 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     send_reply_callback(ray::Status::OK(), nullptr, nullptr);
     return;
   }
+
+  // Cancel the infeasible requests if the feature is enabled
+  std::function<void()> callback = [this]() {
+    bool enable_infeasible_task_early_exit =
+        RayConfig::instance().enable_infeasible_task_early_exit();
+
+    if (enable_infeasible_task_early_exit) {
+      this->CancelInfeasibleRequests();
+    }
+  };
 
   // We have a state cached. We discard the incoming state if it's older than the
   // cached state.
@@ -80,13 +86,13 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
                   << ", received version: "
                   << request.autoscaling_state().autoscaler_state_version()
                   << ". Discarding incoming request.";
-    send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+    send_reply_callback(ray::Status::OK(), callback, nullptr);
     return;
   }
 
   // We should overwrite the cache version.
   autoscaling_state_ = std::move(*request.mutable_autoscaling_state());
-  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+  send_reply_callback(ray::Status::OK(), callback, nullptr);
 }
 
 void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
@@ -466,37 +472,37 @@ GcsAutoscalerStateManager::GetPerNodeInfeasibleResourceRequests() const {
     return per_node_infeasible_requests;
   }
 
-  // obtain the infeasible requests from the autoscaler state
+  // Early return if there is no infeasible resource requests
+  auto infeasible_resource_shapes_size =
+      autoscaling_state_.value().infeasible_resource_requests_size();
+  if (infeasible_resource_shapes_size == 0) {
+    return per_node_infeasible_requests;
+  }
+
+  // Obtain the infeasible requests from the autoscaler state
   std::vector<google::protobuf::Map<std::string, double>>
       autoscaler_infeasible_resource_shapes;
-  autoscaler_infeasible_resource_shapes.reserve(
-      autoscaling_state_.value().infeasible_resource_requests_size());
-  for (int i = 0; i < autoscaling_state_.value().infeasible_resource_requests_size();
-       i++) {
+  autoscaler_infeasible_resource_shapes.reserve(infeasible_resource_shapes_size);
+  for (int i = 0; i < infeasible_resource_shapes_size; i++) {
     autoscaler_infeasible_resource_shapes.emplace_back(
         autoscaling_state_.value().infeasible_resource_requests(i).resources_bundle());
   }
 
-  // collect the infeasible requests per node
+  // Collect the infeasible requests per node
   for (const auto &[node_id, time_resource_data_pair] : node_resource_info_) {
+    // Iterate through the resource load on each nodes
     const auto &resource_load_by_shape =
         time_resource_data_pair.second.resource_load_by_shape();
 
     for (int i = 0; i < resource_load_by_shape.resource_demands_size(); i++) {
-      bool is_infeasible_shape = false;
-      auto &infeasible_resource_shape = autoscaler_infeasible_resource_shapes.at(0);
+      // Check with each infeasible resource shapes from the autoscaler state
       for (const auto &shape : autoscaler_infeasible_resource_shapes) {
         const auto &resource_demand = resource_load_by_shape.resource_demands(i);
         if (resource_demand.num_infeasible_requests_queued() > 0 &&
             MapEqual(shape, resource_demand.shape())) {
-          is_infeasible_shape = true;
-          infeasible_resource_shape = shape;
+          per_node_infeasible_requests[node_id].emplace_back(std::move(shape));
           break;
         }
-      }
-
-      if (is_infeasible_shape) {
-        per_node_infeasible_requests[node_id].emplace_back(infeasible_resource_shape);
       }
     }
   }
@@ -512,9 +518,30 @@ void GcsAutoscalerStateManager::CancelInfeasibleRequests() const {
     return;
   }
 
-  // Cancel the infeasible requests
-  // NOTE(mengjin): This is just a stub for now, but will soon be implemented to support
-  // cancel infeasible resource requests
+  // Cancel the infeasible requests for each nodes
+  for (const auto &node_infeasible_request_pair : per_node_infeasible_requests) {
+    const auto &node_id = node_infeasible_request_pair.first;
+    const auto &infeasible_shapes = node_infeasible_request_pair.second;
+    const auto raylet_client = raylet_client_pool_.GetOrConnectByID(node_id);
+
+    if (raylet_client.has_value()) {
+      std::string resource_shapes_str =
+          ray::VectorToString(infeasible_shapes, ray::DebugString<std::string, double>);
+
+      RAY_LOG(WARNING) << "Canceling infeasible requests on node " << node_id
+                       << " with infeasible_shapes=" << resource_shapes_str;
+
+      (*raylet_client)
+          ->CancelTasksWithResourceShapes(
+              infeasible_shapes,
+              [node_id](const Status, const rpc::CancelTasksWithResourceShapesReply) {
+                RAY_LOG(INFO) << "Infeasible tasks cancelled on node " << node_id;
+              });
+    } else {
+      RAY_LOG(WARNING) << "Failed to cancel infeasible requests on node " << node_id
+                       << ". Raylet client to the node is not available.";
+    }
+  }
 }
 
 }  // namespace gcs
