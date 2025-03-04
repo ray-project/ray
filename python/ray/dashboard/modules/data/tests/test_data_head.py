@@ -76,7 +76,7 @@ def test_unique_operator_id(ray_start_regular_shared):
 )
 def test_get_datasets(ray_start_regular_shared):
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds._set_name("data_head_test")
+    ds.set_name"data_head_test")
     ds.materialize()
 
     client = JobSubmissionClient()

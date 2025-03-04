@@ -1712,7 +1712,7 @@ def test_stats_actor_iter_metrics():
 
 def test_dataset_name():
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds._set_name("test_ds")
+    ds.set_name"test_ds")
     assert ds._name == "test_ds"
     assert str(ds) == (
         "MapBatches(<lambda>)\n"
@@ -1731,7 +1731,7 @@ def test_dataset_name():
 
     assert update_fn.call_args_list[-1].args[0] == f"test_ds_{mds._uuid}"
 
-    ds._set_name("test_ds_two")
+    ds.set_name("test_ds_two")
     ds = ds.map_batches(lambda x: x)
     assert ds._name == "test_ds_two"
     with patch_update_stats_actor() as update_fn:
@@ -1739,7 +1739,7 @@ def test_dataset_name():
 
     assert update_fn.call_args_list[-1].args[0] == f"test_ds_two_{mds._uuid}"
 
-    ds._set_name(None)
+    ds.set_name(None)
     ds = ds.map_batches(lambda x: x)
     assert ds._name is None
     with patch_update_stats_actor() as update_fn:
@@ -1748,7 +1748,7 @@ def test_dataset_name():
     assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
 
     ds = ray.data.range(100, override_num_blocks=20)
-    ds._set_name("very_loooooooong_name")
+    ds.set_name"very_loooooooong_name")
     assert (
         str(ds)
         == "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
@@ -1791,7 +1791,7 @@ def test_op_state_logging():
 
 def test_stats_actor_datasets(ray_start_cluster):
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds._set_name("test_stats_actor_datasets")
+    ds.set_name"test_stats_actor_datasets")
     ds.materialize()
     stats_actor = _get_or_create_stats_actor()
 
