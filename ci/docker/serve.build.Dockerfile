@@ -29,11 +29,10 @@ fi
 git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
 
 # Install custom Pydantic version if requested.
-if [[ -n "${PYDANTIC_VERSION-}" ]]; then 
+if [[ -n "${PYDANTIC_VERSION-}" ]]; then
   pip install -U pydantic==$PYDANTIC_VERSION
-else 
+else
   echo "Not installing Pydantic from source"
 fi
 
 EOF
-

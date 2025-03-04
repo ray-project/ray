@@ -261,7 +261,7 @@ cdef class NodeID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CNodeID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -319,7 +319,7 @@ cdef class WorkerID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CWorkerID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -387,7 +387,7 @@ cdef class FunctionID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CFunctionID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -402,7 +402,7 @@ cdef class ActorClassID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CActorClassID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -416,7 +416,7 @@ cdef class ClusterID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CClusterID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):

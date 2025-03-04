@@ -380,12 +380,7 @@ class JobInfoStorageClient:
             job_info = await self.get_info(job_id, timeout)
             return job_id, job_info
 
-        return {
-            job_id: job_info
-            for job_id, job_info in await asyncio.gather(
-                *[get_job_info(job_id) for job_id in job_ids]
-            )
-        }
+        return dict(await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids]))
 
 
 class VirtualClusterClient:

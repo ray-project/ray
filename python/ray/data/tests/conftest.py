@@ -22,6 +22,7 @@ from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.cluster_utils import Cluster
 from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 from ray.job_submission import JobSubmissionClient
 
@@ -30,8 +31,10 @@ from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import (
     _ray_start,
     get_default_fixture_ray_kwargs,
+    pytest_runtest_makereport,  # noqa
     wait_for_condition,
 )
+from ray.util.debug import reset_log_once
 
 
 @pytest.fixture(scope="module")
@@ -270,13 +273,34 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
-@pytest.fixture(params=[True, False])
-def use_push_based_shuffle(request):
+@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+def configure_shuffle_method(request):
+    shuffle_strategy = request.param
+
     ctx = ray.data.context.DataContext.get_current()
-    original = ctx.use_push_based_shuffle
-    ctx.use_push_based_shuffle = request.param
+
+    original_shuffle_strategy = ctx.shuffle_strategy
+
+    ctx.shuffle_strategy = shuffle_strategy
+
     yield request.param
-    ctx.use_push_based_shuffle = original
+
+    ctx.shuffle_strategy = original_shuffle_strategy
+
+
+@pytest.fixture(params=[True, False])
+def use_polars(request):
+    use_polars = request.param
+
+    ctx = ray.data.context.DataContext.get_current()
+
+    original_use_polars = ctx.use_polars
+
+    ctx.use_polars = use_polars
+
+    yield request.param
+
+    ctx.use_polars = original_use_polars
 
 
 @pytest.fixture(params=[True, False])
@@ -295,6 +319,12 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = request.param
     yield request.param
     ctx.enable_auto_log_stats = original
+
+
+@pytest.fixture(autouse=True)
+def reset_log_once_fixture():
+    reset_log_once()
+    yield
 
 
 @pytest.fixture(params=[1024])
