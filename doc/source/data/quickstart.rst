@@ -3,7 +3,7 @@
 Ray Data Quickstart
 ===================
 
-Get started with Ray Data's powerful :class:`Dataset <ray.data.Dataset>` abstraction for distributed data processing.
+Get started with Ray Data's :class:`Dataset <ray.data.Dataset>` abstraction for distributed data processing.
 
 This guide introduces you to the core capabilities of Ray Data:
 
