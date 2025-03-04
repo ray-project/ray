@@ -3755,50 +3755,63 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   args->resize(num_args);
   arg_refs->resize(num_args);
 
-  absl::flat_hash_set<ObjectID> by_ref_ids;
+  const auto in_actor_dependencies_metadata = task.GetInActorDependenciesMetadata();
+  absl::flat_hash_set<ObjectID> by_ref_plasma_ids;
   absl::flat_hash_map<ObjectID, std::vector<size_t>> by_ref_indices;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
-    if (task.ArgByRef(i)) {
-      const auto &arg_ref = task.ArgRef(i);
-      const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
-      by_ref_ids.insert(arg_id);
-      auto it = by_ref_indices.find(arg_id);
-      if (it == by_ref_indices.end()) {
-        by_ref_indices.emplace(arg_id, std::vector<size_t>({i}));
-      } else {
-        it->second.push_back(i);
-      }
-      arg_refs->at(i) = arg_ref;
-      // Pin all args passed by reference for the duration of the task.  This
-      // ensures that when the task completes, we can retrieve metadata about
-      // any borrowed ObjectIDs that were serialized in the argument's value.
-      RAY_LOG(DEBUG).WithField(arg_id) << "Incrementing ref for argument ID";
-      reference_counter_->AddLocalReference(arg_id, task.CallSiteString());
-      // Attach the argument's owner's address. This is needed to retrieve the
-      // value from plasma.
-      reference_counter_->AddBorrowedObject(
-          arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
-      borrowed_ids->push_back(arg_id);
-      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
-      // properly redirects to the plasma store.
-      // NOTE: This needs to be done after adding reference to reference counter
-      // otherwise, the put is a no-op.
-      if (!options_.is_local_mode) {
-        RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                      task.ArgId(i)));
-      }
+    if (task.ArgByRef(i) && task.ArgIsErrorType(i, rpc::ErrorType::OBJECT_IN_PLASMA)) {
+        const auto &arg_ref = task.ArgRef(i);
+        const auto arg_id = ObjectID::FromBinary(arg_ref.object_id());
+        by_ref_plasma_ids.insert(arg_id);
+        auto it = by_ref_indices.find(arg_id);
+        if (it == by_ref_indices.end()) {
+          by_ref_indices.emplace(arg_id, std::vector<size_t>({i}));
+        } else {
+          it->second.push_back(i);
+        }
+        arg_refs->at(i) = arg_ref;
+        // Pin all args passed by reference for the duration of the task.  This
+        // ensures that when the task completes, we can retrieve metadata about
+        // any borrowed ObjectIDs that were serialized in the argument's value.
+        RAY_LOG(DEBUG).WithField(arg_id) << "Incrementing ref for argument ID";
+        reference_counter_->AddLocalReference(arg_id, task.CallSiteString());
+        // Attach the argument's owner's address. This is needed to retrieve the
+        // value from plasma.
+        reference_counter_->AddBorrowedObject(
+            arg_id, ObjectID::Nil(), task.ArgRef(i).owner_address());
+        borrowed_ids->push_back(arg_id);
+        // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+        // properly redirects to the plasma store.
+        // NOTE: This needs to be done after adding reference to reference counter
+        // otherwise, the put is a no-op.
+        if (!options_.is_local_mode) {
+          RAY_UNUSED(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                        task.ArgId(i)));
+        }
     } else {
-      // A pass-by-value argument.
-      std::shared_ptr<LocalMemoryBuffer> data = nullptr;
-      if (task.ArgDataSize(i) != 0u) {
-        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
-                                                   task.ArgDataSize(i));
-      }
-      std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
-      if (task.ArgMetadataSize(i) != 0u) {
-        metadata = std::make_shared<LocalMemoryBuffer>(
-            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
+      std::shared_ptr<Buffer> data = nullptr;
+      std::shared_ptr<Buffer> metadata = nullptr;
+      if (task.ArgByRef(i)) {
+        std::string arg(reinterpret_cast<const char *>(task.ArgData(i)), task.ArgDataSize(i));
+        RAY_CHECK(task.ArgIsErrorType(i, rpc::ErrorType::OBJECT_IN_ACTOR)) << arg;
+        const auto it = in_actor_dependencies_metadata.find(task.ArgId(i));
+        RAY_CHECK(it != in_actor_dependencies_metadata.end());
+        data = it->second;
+
+        std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_ACTOR));
+        auto metadata_buf = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+        metadata = std::make_shared<ray::LocalMemoryBuffer>(metadata_buf, meta.size(), /*copy_data=*/true);
+      } else {
+        // A pass-by-value argument.
+        if (task.ArgDataSize(i) != 0u) {
+          data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
+                                                     task.ArgDataSize(i));
+        }
+        if (task.ArgMetadataSize(i) != 0u) {
+          metadata = std::make_shared<LocalMemoryBuffer>(
+              const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
+        }
       }
       // NOTE: this is a workaround to avoid an extra copy for Java workers.
       // Python workers need this copy to pass test case
@@ -3828,10 +3841,10 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   if (options_.is_local_mode) {
     RAY_RETURN_NOT_OK(
-        memory_store_->Get(by_ref_ids, -1, worker_context_, &result_map, &got_exception));
+        memory_store_->Get(by_ref_plasma_ids, -1, worker_context_, &result_map, &got_exception));
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-        by_ref_ids, -1, worker_context_, &result_map, &got_exception));
+        by_ref_plasma_ids, -1, worker_context_, &result_map, &got_exception));
   }
   for (const auto &it : result_map) {
     for (size_t idx : by_ref_indices[it.first]) {

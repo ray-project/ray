@@ -121,8 +121,10 @@ void ActorSchedulingQueue::Add(
     }
 
     p2p_waiter_.Wait(in_actor_dependencies_metadata, [seq_no, task_spec, this]() {
+      RAY_LOG(INFO) << "Done waiting on actor deps for task " << task_spec.TaskId();
       const auto plasma_dependencies = task_spec.GetPlasmaDependencies();
-      waiter_.Wait(plasma_dependencies, [seq_no, this]() {
+      waiter_.Wait(plasma_dependencies, [seq_no, task_spec, this]() {
+        RAY_LOG(INFO) << "Done waiting on plasma deps for task " << task_spec.TaskId();
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
         auto it = pending_actor_tasks_.find(seq_no);
         if (it != pending_actor_tasks_.end()) {

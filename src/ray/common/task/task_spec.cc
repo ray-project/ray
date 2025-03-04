@@ -297,6 +297,12 @@ bool TaskSpecification::ArgIsErrorType(size_t arg_index, rpc::ErrorType error_ty
   return metadata == std::to_string(error_type);
 }
 
+rpc::ErrorType TaskSpecification::ArgErrorType(size_t arg_index) const {
+  //const std::string_view metadata(message_->args(arg_index).data().data(), message_->args(arg_index).data().size());
+  //int error = std::stoi(metadata);
+  //RAY_CHECK(rpc::ErrorType_IsValid(error));
+  return static_cast<rpc::ErrorType>(0);
+}
 
 const uint8_t *TaskSpecification::ArgMetadata(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).metadata().data());

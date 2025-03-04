@@ -84,6 +84,7 @@ if __name__ == "__main__":
     ref = actors[0].randn.remote(shape)
     print("ObjectRef:", ref)
     ref = actors[1].sum.remote(ref)
+    print("Waiting on ref", ref)
     print(ray.get(ref))
 
     ## After getting response from actor A, driver will now have in its local
