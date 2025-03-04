@@ -3,13 +3,16 @@
 Ray Distributed Debugger
 ========================
 
-The Ray Distributed Debugger is a `VS Code extension <https://www.anyscale.com/blog/ray-distributed-debugger?utm_source=ray_docs&utm_medium=docs&utm_campaign=promotion#download-for-free>`_ that streamlines the debugging process with an interactive debugging experience. The Ray Debugger enables you to:
+The Ray Distributed Debugger includes a debugger backend and a `VS Code extension <https://www.anyscale.com/blog/ray-distributed-debugger?utm_source=ray_docs&utm_medium=docs&utm_campaign=promotion#download-for-free>`_ frontend that streamline the debugging process with an interactive debugging experience. The Ray Debugger enables you to:
 
 - **Break into remote tasks**: Set a breakpoint in any remote task. A breakpoint pauses execution and allows you to connect with VS Code for debugging.
 - **Post-mortem debugging**: When Ray tasks fail with unhandled exceptions, Ray automatically freezes the failing task and waits for the Ray Debugger to attach, allowing you to inspect the state of the program at the time of the error.
 
 Ray Distributed Debugger abstracts the complexities of debugging distributed systems for you to debug Ray applications more efficiently, saving time and effort in the development workflow.
 
+.. note::
+
+    The Ray Distributed Debugger frontend is only available in VS Code and other VS Code-compatible IDEs like Cursor. If you need support for other IDEs, file a feature request on `GitHub <https://github.com/ray-project/ray/issues>`_.
 
 
 .. raw:: html

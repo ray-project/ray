@@ -34,6 +34,9 @@ pre_commit() {
     end-of-file-fixer
     check-json
     trailing-whitespace
+    cpplint
+    buildifier
+    buildifier-lint
   )
 
   for HOOK in "${HOOKS[@]}"; do
