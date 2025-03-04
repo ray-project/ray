@@ -428,8 +428,8 @@
 # LLM
 ##############
 
-- name: llm_hello
-  frequency: manual
+- name: llm_serving_llama_3dot1_8B_quantized_tp_1
+  frequency: nightly
   python: "3.11"
   group: llm
   working_dir: llm_tests
@@ -437,8 +437,47 @@
   cluster:
     byod:
       type: llm-cu124
-    cluster_compute: llm_compute.yaml
+    cluster_compute: llm_auto_select_worker.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
     timeout: 3600
-    script: python llm_hello_world.py
+    long_running: false
+    script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_quantized_tp1.yaml
+
+- name: llm_serving_llama_3dot1_8B_tp_2
+  frequency: nightly
+  python: "3.11"
+  group: llm
+  working_dir: llm_tests
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_tp2.yaml
+
+- name: llm_serving_llama_3dot1_8B_lora
+  frequency: nightly
+  python: "3.11"
+  group: llm
+  working_dir: llm_tests
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_auto_select_worker.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_lora.yaml
