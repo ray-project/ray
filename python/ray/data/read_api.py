@@ -2585,14 +2585,14 @@ def read_hudi(
 
 
 @PublicAPI
-def from_daft(df: "daft.DataFrame") -> MaterializedDataset:
+def from_daft(df: "daft.DataFrame") -> Dataset:
     """Create a :class:`~ray.data.Dataset` from a `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
 
     Args:
         df: A Daft DataFrame
 
     Returns:
-        A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
+        A :class:`~ray.data.Dataset` holding rows read from the DataFrame.
     """
     # NOTE: Today this returns a MaterializedDataset. We should also integrate Daft such that we can stream object references into a Ray
     # dataset. Unfortunately this is very tricky today because of the way Ray Datasources are implemented with a fully-materialized `list`
