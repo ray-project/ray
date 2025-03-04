@@ -121,7 +121,7 @@ nitpicky = True
 nitpick_ignore_regex = [
     ("py:class", ".*"),
     # Workaround for https://github.com/sphinx-doc/sphinx/issues/10974
-    ("py:obj", "ray\.data\.datasource\.datasink\.WriteReturnType"),
+    ("py:obj", "ray\\.data\\.datasource\\.datasink\\.WriteReturnType"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -230,6 +230,7 @@ all_toc_libs += [
     "train",
     "rllib",
     "serve",
+    "llm",
     "workflows",
 ]
 if build_one_lib and build_one_lib in all_toc_libs:
@@ -579,9 +580,13 @@ autosummary_filename_map = {
 }
 
 # Mock out external dependencies here.
+
 autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
+    "async_timeout",
+    "backoff",
+    "cachetools",
     "composer",
     "cupy",
     "dask",
@@ -595,6 +600,7 @@ autodoc_mock_imports = [
     "gymnasium",
     "horovod",
     "huggingface",
+    "httpx",
     "joblib",
     "lightgbm",
     "lightgbm_ray",
@@ -617,11 +623,13 @@ autodoc_mock_imports = [
     "uvicorn",
     "wandb",
     "watchfiles",
+    "openai",
     "xgboost",
     "xgboost_ray",
     "psutil",
     "colorama",
     "grpc",
+    "vllm",
     # Internal compiled modules
     "ray._raylet",
     "ray.core.generated",

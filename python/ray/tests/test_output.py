@@ -33,9 +33,9 @@ ray.get([verbose.remote() for _ in range(10)])
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
 
-    assert out_str.count("hello") == 2
-    assert out_str.count("RAY_DEDUP_LOGS") == 1
-    assert out_str.count("[repeated 9x across cluster]") == 1
+    assert out_str.count("hello") == 2, out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
+    assert out_str.count("[repeated 9x across cluster]") == 1, out_str
 
 
 def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
@@ -71,9 +71,9 @@ for actor in actors:
 """
         out_str = run_string_as_driver(script)
         print(out_str)
-    assert "PYTHON worker processes have been started" in out_str
-    assert out_str.count("RAY_DEDUP_LOGS") == 1
-    assert "[repeated" in out_str
+    assert "PYTHON worker processes have been started" in out_str, out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
+    assert "[repeated" in out_str, out_str
 
 
 def test_logger_config_with_ray_init():
@@ -747,14 +747,12 @@ import ray
 from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
 
-num_redis_shards = 5
-redis_max_memory = 10**8
 object_store_memory = 10**9
 num_nodes = 3
 
 message = ("Make sure there is enough memory on this machine to run this "
            "workload. We divide the system memory by 2 to provide a buffer.")
-assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
+assert (num_nodes * object_store_memory <
         ray._private.utils.get_system_memory() / 2), message
 
 # Simulate a cluster on one machine.

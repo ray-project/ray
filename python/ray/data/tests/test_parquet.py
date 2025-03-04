@@ -63,6 +63,8 @@ def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
             "b": list(range(num_partitions)) * rows_per_partition,
             "c": list(range(num_rows)),
             "d": list(range(num_rows)),
+            # Make sure algorithm does not fail for tensor types.
+            "e": list(np.random.random((num_rows, 128))),
         }
     )
 
@@ -78,6 +80,7 @@ def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
         d_expected = [k * i for k in range(rows_per_partition)].sort()
         assert c_expected == dsf_partition["c"].tolist().sort()
         assert d_expected == dsf_partition["d"].tolist().sort()
+        assert dsf_partition["e"].shape == (rows_per_partition,)
 
     # Test that partition are read back properly into original dataset schema
     ds1 = ray.data.read_parquet(tmp_path)

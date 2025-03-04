@@ -939,3 +939,13 @@ RAY_CONFIG(bool, enable_export_api_write, false)
 // src/ray/protobuf/export_api/export_event.proto
 // Example config: `export RAY_enable_export_api_write_config='EXPORT_ACTOR,EXPORT_TASK'`
 RAY_CONFIG(std::vector<std::string>, enable_export_api_write_config, {})
+
+// Configuration for pipe logger buffer size.
+RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
+
+// Configuration to enable or disable the infeasible task early termination feature. If
+// set to true, whenever the autoscaler detects that a task is infeasible, the task will
+// be cancelled with SCHEDULING_CANCELLED_UNSCHEDULABLE state. If set to false, the task
+// will be waiting for the required resources to become available achieved mainly by
+// updating the cluster config to add new nodes.
+RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
