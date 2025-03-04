@@ -206,11 +206,11 @@ class GcsWorkerTable : public GcsTable<WorkerID, rpc::WorkerTableData> {
 };
 
 class GcsVirtualClusterTable
-    : public GcsTable<VirtualClusterID, VirtualClusterTableData> {
+    : public GcsTable<VirtualClusterID, rpc::VirtualClusterTableData> {
  public:
   explicit GcsVirtualClusterTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::VIRTUAL_CLUSTER);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::VIRTUAL_CLUSTER);
   }
 };
 

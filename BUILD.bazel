@@ -755,7 +755,10 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_placement_group_scheduler.cc",
         "src/ray/gcs/gcs_server/gcs_resource_manager.cc",
         "src/ray/gcs/gcs_server/gcs_server.cc",
+        "src/ray/gcs/gcs_server/gcs_server.ant.cc",
         "src/ray/gcs/gcs_server/gcs_task_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_virtual_cluster_manager.cc",
+        "src/ray/gcs/gcs_server/gcs_virtual_cluster.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_server/gcs_actor_manager.h",
@@ -770,6 +773,8 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_server.h",
         "src/ray/gcs/gcs_server/gcs_server_io_context_policy.h",
         "src/ray/gcs/gcs_server/gcs_task_manager.h",
+        "src/ray/gcs/gcs_server/gcs_virtual_cluster_manager.h",
+        "src/ray/gcs/gcs_server/gcs_virtual_cluster.h",
     ],
     deps = [
         ":gcs_runtime_env_handler",
@@ -1006,6 +1011,7 @@ ray_cc_library(
         "src/ray/raylet/local_object_manager.cc",
         "src/ray/raylet/local_task_manager.cc",
         "src/ray/raylet/node_manager.cc",
+        "src/ray/raylet/node_manager.ant.cc",
         "src/ray/raylet/placement_group_resource_manager.cc",
         "src/ray/raylet/raylet.cc",
         "src/ray/raylet/runtime_env_agent_client.cc",
@@ -1015,6 +1021,7 @@ ray_cc_library(
         "src/ray/raylet/worker_killing_policy_group_by_owner.cc",
         "src/ray/raylet/worker_killing_policy_retriable_fifo.cc",
         "src/ray/raylet/worker_pool.cc",
+        "src/ray/raylet/virtual_cluster_manager.cc",
     ],
     hdrs = [
         "src/ray/raylet/agent_manager.h",
@@ -1032,6 +1039,7 @@ ray_cc_library(
         "src/ray/raylet/worker_killing_policy_group_by_owner.h",
         "src/ray/raylet/worker_killing_policy_retriable_fifo.h",
         "src/ray/raylet/worker_pool.h",
+        "src/ray/raylet/virtual_cluster_manager.h",
     ],
     linkopts = select({
         "@platforms//os:windows": [

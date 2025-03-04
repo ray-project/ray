@@ -193,11 +193,6 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
 cdef extern from "ray/common/simple_id.h" namespace "ray" nogil:
     cdef cppclass CSimpleID[T]:
-        @staticmethod
-        T FromBinary(const c_string &binary)
-
-        @staticmethod
-        const T Nil()
 
         size_t Hash() const
         c_bool IsNil() const
