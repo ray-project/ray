@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import os
 import pathlib
+from platform import node
 import signal
 import sys
 
@@ -46,6 +47,7 @@ class DashboardAgent:
     ):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
+        assert node_ip_address is not None
         self.ip = node_ip_address
         self.minimal = minimal
 
