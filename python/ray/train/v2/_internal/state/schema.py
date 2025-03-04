@@ -173,12 +173,12 @@ class TrainRunAttempt(BaseModel):
         description="Additional details about the status,"
         " including error messages if applicable."
     )
-    start_time_ms: int = Field(
-        description="The UNIX timestamp (in milliseconds)"
+    start_time_ns: int = Field(
+        description="The UNIX timestamp (in nanoseconds)"
         " when the Train run attempt started."
     )
-    end_time_ms: Optional[int] = Field(
-        description="The UNIX timestamp (in milliseconds)"
+    end_time_ns: Optional[int] = Field(
+        description="The UNIX timestamp (in nanoseconds)"
         " when the Train run attempt ended. "
         "If null, the attempt is still ongoing."
     )
@@ -218,11 +218,11 @@ class TrainRun(BaseModel):
         description="Additional details about the current status, "
         "including error messages if applicable."
     )
-    start_time_ms: int = Field(
-        description="The UNIX timestamp (in milliseconds) when the Train run started."
+    start_time_ns: int = Field(
+        description="The UNIX timestamp (in nanoseconds) when the Train run started."
     )
-    end_time_ms: Optional[int] = Field(
-        description="The UNIX timestamp (in milliseconds) when the Train run ended. "
+    end_time_ns: Optional[int] = Field(
+        description="The UNIX timestamp (in nanoseconds) when the Train run ended. "
         "If null, the run is still in progress."
     )
 
