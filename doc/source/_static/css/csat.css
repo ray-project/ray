@@ -66,6 +66,7 @@
   background-color: var(--pst-color-on-background);
   border: 1px solid var(--pst-color-border);
   border-radius: 4px;
+  color: var(--pst-color-text-base);
 }
 
 #csat-textarea::placeholder {

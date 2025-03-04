@@ -1,6 +1,8 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import ray.cloudpickle as pickle
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -70,6 +72,8 @@ class JobConfig:
         self.set_default_actor_lifetime(default_actor_lifetime)
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
+        # Python logging configurations that will be passed to Ray tasks/actors.
+        self.py_logging_config = None
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
@@ -114,6 +118,20 @@ class JobConfig:
         if validate:
             self.runtime_env = self._validate_runtime_env()
         self._cached_pb = None
+
+    def set_py_logging_config(
+        self,
+        logging_config: Optional[LoggingConfig] = None,
+    ):
+        """Set the logging configuration for the job.
+
+        The logging configuration will be applied to the root loggers of
+        all Ray task and actor processes that belong to this job.
+
+        Args:
+            logging_config: The logging configuration to set.
+        """
+        self.py_logging_config = logging_config
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
@@ -188,6 +206,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
+            if self.py_logging_config:
+                pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
 
         return self._cached_pb

@@ -23,6 +23,7 @@
 
 #include "ray/common/id.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace raylet {
@@ -54,11 +55,14 @@ class AgentManager {
     bool fate_shares;
   };
 
-  explicit AgentManager(Options options,
-                        DelayExecutorFn delay_executor,
-                        bool start_agent = true /* for test */)
+  explicit AgentManager(
+      Options options,
+      DelayExecutorFn delay_executor,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
+        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";
@@ -79,6 +83,7 @@ class AgentManager {
   const Options options_;
   Process process_;
   DelayExecutorFn delay_executor_;
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   // If true, when the agent dies, raylet kills itself.
   std::atomic<bool> fate_shares_;
   std::unique_ptr<std::thread> monitor_thread_;

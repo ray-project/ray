@@ -1,51 +1,72 @@
-from typing import Iterable, List, Optional
+import logging
+import warnings
+from typing import Iterable, List
 
 import ray
-import ray.cloudpickle as cloudpickle
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
-    ApplyAdditionalSplitToOutputBlocks,
     BlockMapTransformFn,
     BuildOutputBlocksMapTransformFn,
     MapTransformer,
     MapTransformFn,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.util import _warn_on_high_parallelism
-from ray.data.block import Block
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
+from ray.experimental.locations import get_local_object_locations
+from ray.util.debug import log_once
 
-TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
+TASK_SIZE_WARN_THRESHOLD_BYTES = 1024 * 1024  # 1 MiB
+
+logger = logging.getLogger(__name__)
 
 
-# Defensively compute the size of the block as the max size reported by the
-# datasource and the actual read task size. This is to guard against issues
-# with bad metadata reporting.
-def cleaned_metadata(read_task: ReadTask):
-    block_meta = read_task.get_metadata()
-    task_size = len(cloudpickle.dumps(read_task))
+def cleaned_metadata(read_task: ReadTask, read_task_ref) -> BlockMetadata:
+    # NOTE: Use the `get_local_object_locations` API to get the size of the
+    # serialized ReadTask, instead of pickling.
+    # Because the ReadTask may capture ObjectRef objects, which cannot
+    # be serialized out-of-band.
+    locations = get_local_object_locations([read_task_ref])
+    task_size = locations[read_task_ref]["object_size"]
+    if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES and log_once(
+        f"large_read_task_{read_task.read_fn.__name__}"
+    ):
+        warnings.warn(
+            "The serialized size of your read function named "
+            f"'{read_task.read_fn.__name__}' is {memory_string(task_size)}. This size "
+            "relatively large. As a result, Ray might excessively "
+            "spill objects during execution. To fix this issue, avoid accessing "
+            f"`self` or other large objects in '{read_task.read_fn.__name__}'."
+        )
+
+    # Defensively compute the size of the block as the max size reported by the
+    # datasource and the actual read task size. This is to guard against issues
+    # with bad metadata reporting.
+    block_meta = read_task.metadata
     if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
-        if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
-            print(
-                f"WARNING: the read task size ({task_size} bytes) is larger "
-                "than the reported output size of the task "
-                f"({block_meta.size_bytes} bytes). This may be a size "
-                "reporting bug in the datasource being read from."
-            )
         block_meta.size_bytes = task_size
+
     return block_meta
 
 
-def plan_read_op(op: Read) -> PhysicalOperator:
+def plan_read_op(
+    op: Read,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
+    assert len(physical_children) == 0
 
     def get_input_data(target_max_block_size) -> List[RefBundle]:
         parallelism = op.get_detected_parallelism()
@@ -55,14 +76,16 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
-        return [
-            RefBundle(
+        ret = []
+        for read_task in read_tasks:
+            read_task_ref = ray.put(read_task)
+            ref_bundle = RefBundle(
                 [
                     (
                         # TODO(chengsu): figure out a better way to pass read
                         # tasks other than ray.put().
-                        ray.put(read_task),
-                        cleaned_metadata(read_task),
+                        read_task_ref,
+                        cleaned_metadata(read_task, read_task_ref),
                     )
                 ],
                 # `owns_blocks` is False, because these refs are the root of the
@@ -70,10 +93,11 @@ def plan_read_op(op: Read) -> PhysicalOperator:
                 # be reconstructed.
                 owns_blocks=False,
             )
-            for read_task in read_tasks
-        ]
+            ret.append(ref_bundle)
+        return ret
 
     inputs = InputDataBuffer(
+        data_context,
         input_data_factory=get_input_data,
     )
 
@@ -92,37 +116,9 @@ def plan_read_op(op: Read) -> PhysicalOperator:
     return MapOperator.create(
         map_transformer,
         inputs,
+        data_context,
         name=op.name,
         target_max_block_size=None,
+        compute_strategy=TaskPoolStrategy(op._concurrency),
         ray_remote_args=op._ray_remote_args,
     )
-
-
-def apply_output_blocks_handling_to_read_task(
-    read_task: ReadTask,
-    additional_split_factor: Optional[int],
-):
-    """Patch the read task and apply output blocks handling logic.
-    This function is only used for compability with the legacy LazyBlockList code path.
-    """
-    transform_fns: List[MapTransformFn] = []
-    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
-
-    if additional_split_factor is not None:
-        transform_fns.append(
-            ApplyAdditionalSplitToOutputBlocks(additional_split_factor)
-        )
-
-    map_transformer = MapTransformer(transform_fns)
-    ctx = DataContext.get_current()
-    map_transformer.set_target_max_block_size(ctx.target_max_block_size)
-
-    original_read_fn = read_task._read_fn
-
-    def new_read_fn():
-        blocks = original_read_fn()
-        # We pass None as the TaskContext because we don't have access to it here.
-        # This is okay because the transform functions don't use the TaskContext.
-        return map_transformer.apply_transform(blocks, None)  # type: ignore
-
-    read_task._read_fn = new_read_fn

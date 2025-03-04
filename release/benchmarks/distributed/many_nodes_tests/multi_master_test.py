@@ -76,15 +76,15 @@ def main():
     )
 
     if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        results = {
-            "actor_launch_time": actor_launch_time,
-            "actor_ready_time": actor_ready_time,
-            "total_time": actor_launch_time + actor_ready_time,
-            "num_actors": args.total_actors,
-            "success": "1",
-        }
-        json.dump(results, out_file)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            results = {
+                "actor_launch_time": actor_launch_time,
+                "actor_ready_time": actor_ready_time,
+                "total_time": actor_launch_time + actor_ready_time,
+                "num_actors": args.total_actors,
+                "success": "1",
+            }
+            json.dump(results, out_file)
 
 
 if __name__ == "__main__":

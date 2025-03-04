@@ -17,7 +17,6 @@ from ray.util.client.common import (
     _propagate_error_in_context,
     OrderedResponseCache,
 )
-from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
 
@@ -33,7 +32,7 @@ def _get_reconnecting_from_context(context: Any) -> bool:
     """
     Get `reconnecting` from gRPC metadata, or False if missing.
     """
-    metadata = {k: v for k, v in context.invocation_metadata()}
+    metadata = dict(context.invocation_metadata())
     val = metadata.get("reconnecting")
     if val is None or val not in ("True", "False"):
         logger.error(
@@ -156,7 +155,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         start_time = time.time()
         # set to True if client shuts down gracefully
         cleanup_requested = False
-        metadata = {k: v for k, v in context.invocation_metadata()}
+        metadata = dict(context.invocation_metadata())
         client_id = metadata.get("client_id")
         if client_id is None:
             logger.error("Client connecting with no client_id")
@@ -275,6 +274,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.task, arglist, kwargs, context
                         )
                         resp = ray_client_pb2.DataResponse(task_ticket=resp_ticket)
+                        del arglist
+                        del kwargs
                 elif req_type == "terminate":
                     with self.clients_lock:
                         response = self.basic_service.Terminate(req.terminate, context)
@@ -412,5 +413,4 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             ),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=CURRENT_PROTOCOL_VERSION,
         )

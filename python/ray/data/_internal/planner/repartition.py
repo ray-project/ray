@@ -17,12 +17,14 @@ from ray.data._internal.planner.exchange.split_repartition_task_scheduler import
     SplitRepartitionTaskScheduler,
 )
 from ray.data._internal.stats import StatsDict
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 
 
 def generate_repartition_fn(
     num_outputs: int,
     shuffle: bool,
+    data_context: DataContext,
+    _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to partition each records of blocks."""
 
@@ -54,12 +56,19 @@ def generate_repartition_fn(
             upstream_map_fn=upstream_map_fn,
         )
 
-        if DataContext.get_current().use_push_based_shuffle:
+        if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             scheduler = PushBasedShuffleTaskScheduler(shuffle_spec)
         else:
             scheduler = PullBasedShuffleTaskScheduler(shuffle_spec)
 
-        return scheduler.execute(refs, num_outputs, ctx)
+        return scheduler.execute(
+            refs,
+            num_outputs,
+            ctx,
+            _debug_limit_execution_to_num_blocks=(
+                _debug_limit_shuffle_execution_to_num_blocks
+            ),
+        )
 
     def split_repartition_fn(
         refs: List[RefBundle],

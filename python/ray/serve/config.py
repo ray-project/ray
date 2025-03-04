@@ -3,19 +3,24 @@ import warnings
 from enum import Enum
 from typing import Any, Callable, List, Optional, Union
 
+from ray import cloudpickle
 from ray._private.pydantic_compat import (
     BaseModel,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
+    PrivateAttr,
     validator,
 )
 from ray._private.utils import import_attr
 from ray.serve._private.constants import (
+    DEFAULT_AUTOSCALING_POLICY,
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -35,23 +40,29 @@ class AutoscalingConfig(BaseModel):
     min_replicas: NonNegativeInt = 1
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
-    target_num_ongoing_requests_per_replica: PositiveFloat = 1.0
 
-    # Private options below.
-
-    # Metrics scraping options
+    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
 
     # How often to scrape for metrics
     metrics_interval_s: PositiveFloat = 10.0
     # Time window to average over for metrics.
     look_back_period_s: PositiveFloat = 30.0
 
-    # Internal autoscaling configuration options
+    # DEPRECATED
+    smoothing_factor: PositiveFloat = 1.0
+    # DEPRECATED: replaced by `downscaling_factor`
+    upscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None, description="[DEPRECATED] Please use `upscaling_factor` instead."
+    )
+    # DEPRECATED: replaced by `upscaling_factor`
+    downscale_smoothing_factor: Optional[PositiveFloat] = Field(
+        default=None,
+        description="[DEPRECATED] Please use `downscaling_factor` instead.",
+    )
 
     # Multiplicative "gain" factor to limit scaling decisions
-    smoothing_factor: PositiveFloat = 1.0
-    upscale_smoothing_factor: Optional[PositiveFloat] = None
-    downscale_smoothing_factor: Optional[PositiveFloat] = None
+    upscaling_factor: Optional[PositiveFloat] = None
+    downscaling_factor: Optional[PositiveFloat] = None
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
@@ -59,6 +70,12 @@ class AutoscalingConfig(BaseModel):
     downscale_delay_s: NonNegativeFloat = 600.0
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
+
+    # Cloudpickled policy definition.
+    _serialized_policy_def: bytes = PrivateAttr(default=b"")
+
+    # Custom autoscaling config. Defaults to the request-based autoscaler.
+    _policy: Union[str, Callable] = PrivateAttr(default=DEFAULT_AUTOSCALING_POLICY)
 
     @validator("max_replicas", always=True)
     def replicas_settings_valid(cls, max_replicas, values):
@@ -84,18 +101,57 @@ class AutoscalingConfig(BaseModel):
 
         return max_replicas
 
-    def get_upscale_smoothing_factor(self) -> PositiveFloat:
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.serialize_policy()
+
+    def serialize_policy(self) -> None:
+        """Serialize policy with cloudpickle.
+
+        Import the policy if it's passed in as a string import path. Then cloudpickle
+        the policy and set `serialized_policy_def` if it's empty.
+        """
+        values = self.dict()
+        policy = values.get("_policy")
+        if isinstance(policy, Callable):
+            policy = f"{policy.__module__}.{policy.__name__}"
+
+        if not policy:
+            policy = DEFAULT_AUTOSCALING_POLICY
+
+        policy_path = policy
+        policy = import_attr(policy)
+
+        if not values.get("_serialized_policy_def"):
+            self._serialized_policy_def = cloudpickle.dumps(policy)
+        self._policy = policy_path
+
+    @classmethod
+    def default(cls):
+        return cls(
+            target_ongoing_requests=DEFAULT_TARGET_ONGOING_REQUESTS,
+            min_replicas=1,
+            max_replicas=100,
+        )
+
+    def get_policy(self) -> Callable:
+        """Deserialize policy from cloudpickled bytes."""
+        return cloudpickle.loads(self._serialized_policy_def)
+
+    def get_upscaling_factor(self) -> PositiveFloat:
+        if self.upscaling_factor:
+            return self.upscaling_factor
+
         return self.upscale_smoothing_factor or self.smoothing_factor
 
-    def get_downscale_smoothing_factor(self) -> PositiveFloat:
+    def get_downscaling_factor(self) -> PositiveFloat:
+        if self.downscaling_factor:
+            return self.downscaling_factor
+
         return self.downscale_smoothing_factor or self.smoothing_factor
 
-    # TODO(architkulkarni): implement below
-    # The num_ongoing_requests_per_replica error ratio (desired / current)
-    # threshold for overriding `upscale_delay_s`
-    # panic_mode_threshold: float = 2.0
-
-    # TODO(architkulkarni): Add reasonable defaults
+    def get_target_ongoing_requests(self) -> PositiveFloat:
+        return self.target_ongoing_requests
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
@@ -124,17 +180,44 @@ class ProxyLocation(str, Enum):
     EveryNode = "EveryNode"
 
     @classmethod
-    def _to_deployment_mode(cls, v: Union["ProxyLocation", str]) -> DeploymentMode:
-        if not isinstance(v, (cls, str)):
-            raise TypeError(f"Must be a `ProxyLocation` or str, got: {type(v)}.")
-        elif v == ProxyLocation.Disabled:
+    def _to_deployment_mode(
+        cls, proxy_location: Union["ProxyLocation", str]
+    ) -> DeploymentMode:
+        if isinstance(proxy_location, str):
+            proxy_location = ProxyLocation(proxy_location)
+        elif not isinstance(proxy_location, ProxyLocation):
+            raise TypeError(
+                f"Must be a `ProxyLocation` or str, got: {type(proxy_location)}."
+            )
+
+        if proxy_location == ProxyLocation.Disabled:
             return DeploymentMode.NoServer
-        elif v == ProxyLocation.HeadOnly:
-            return DeploymentMode.HeadOnly
-        elif v == ProxyLocation.EveryNode:
-            return DeploymentMode.EveryNode
         else:
-            raise ValueError(f"Unrecognized `ProxyLocation`: {v}.")
+            return DeploymentMode(proxy_location.value)
+
+    @classmethod
+    def _from_deployment_mode(
+        cls, deployment_mode: Optional[Union[DeploymentMode, str]]
+    ) -> Optional["ProxyLocation"]:
+        """Converts DeploymentMode enum into ProxyLocation enum.
+
+        DeploymentMode is a deprecated version of ProxyLocation that's still
+        used internally throughout Serve.
+        """
+
+        if deployment_mode is None:
+            return None
+        elif isinstance(deployment_mode, str):
+            deployment_mode = DeploymentMode(deployment_mode)
+        elif not isinstance(deployment_mode, DeploymentMode):
+            raise TypeError(
+                f"Must be a `DeploymentMode` or str, got: {type(deployment_mode)}."
+            )
+
+        if deployment_mode == DeploymentMode.NoServer:
+            return ProxyLocation.Disabled
+        else:
+            return ProxyLocation(deployment_mode.value)
 
 
 @PublicAPI(stability="stable")

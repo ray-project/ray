@@ -81,8 +81,8 @@ class FilenameProvider:
 
         .. tip::
             If you require a contiguous row index into the global dataset, use
-            :meth:`~Dataset.iter_rows`. This method is single-threaded and isn't
-            recommended for large datasets.
+            :meth:`~ray.data.Dataset.iter_rows`. This method is single-threaded and
+            isn't recommended for large datasets.
 
         Args:
             row: The row that will be written to a file.

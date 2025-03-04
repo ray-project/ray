@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -62,7 +61,7 @@ message Event {
   string label = 6;
   // message is main information of this event
   string message = 7;
-  // timestamp is the report millionseconds since 00:00, Jan 1 1970 UTC
+  // timestamp is the report milliseconds since 00:00, Jan 1 1970 UTC
   int64 timestamp = 8;
   // store custom key such as node_id, job_id, task_id
   map<string, string> custom_fields = 9;

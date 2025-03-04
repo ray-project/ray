@@ -4,18 +4,19 @@ from __future__ import print_function
 
 import argparse
 import os
+
 import torch
 import torch.optim as optim
 
 import ray
-from ray import train, tune
-from ray.tune.schedulers import ASHAScheduler
+from ray import tune
 from ray.tune.examples.mnist_pytorch import (
-    train_func,
-    test_func,
-    get_data_loaders,
     ConvNet,
+    get_data_loaders,
+    test_func,
+    train_func,
 )
+from ray.tune.schedulers import ASHAScheduler
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512
@@ -71,12 +72,12 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         tune.with_resources(TrainMNIST, resources={"cpu": 3, "gpu": int(args.use_gpu)}),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             stop={
                 "mean_accuracy": 0.95,
                 "training_iteration": 3 if args.smoke_test else 20,
             },
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_at_end=True, checkpoint_frequency=3
             ),
         ),

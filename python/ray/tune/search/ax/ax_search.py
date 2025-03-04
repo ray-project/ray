@@ -1,9 +1,17 @@
 import copy
-import numpy as np
+import logging
 from typing import Dict, List, Optional, Union
+
+import numpy as np
 
 from ray import cloudpickle
 from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 from ray.tune.search.sample import (
     Categorical,
     Float,
@@ -11,12 +19,6 @@ from ray.tune.search.sample import (
     LogUniform,
     Quantized,
     Uniform,
-)
-from ray.tune.search import (
-    UNRESOLVED_SEARCH_SPACE,
-    UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
-    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import flatten_dict, unflatten_list_dict
@@ -34,7 +36,6 @@ try:
 except ImportError:
     MaxParallelismReachedException = DataRequiredError = Exception
 
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,11 @@ class AxSearch(Searcher):
     interface with BoTorch, a flexible, modern library for Bayesian
     optimization in PyTorch. More information can be found in https://ax.dev/.
 
-    To use this search algorithm, you must install Ax and sqlalchemy:
+    To use this search algorithm, you must install Ax:
 
     .. code-block:: bash
 
-        $ pip install ax-platform sqlalchemy
+        $ pip install ax-platform
 
     Parameters:
         space: Parameters in the experiment search space.
@@ -87,7 +88,7 @@ class AxSearch(Searcher):
 
     .. code-block:: python
 
-        from ray import train, tune
+        from ray import tune
         from ray.tune.search.ax import AxSearch
 
         config = {
@@ -98,7 +99,7 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                train.report({"score": intermediate_result})
+                tune.report({"score": intermediate_result})
 
         ax_search = AxSearch()
         tuner = tune.Tuner(
@@ -117,7 +118,7 @@ class AxSearch(Searcher):
 
     .. code-block:: python
 
-        from ray import train, tune
+        from ray import tune
         from ray.tune.search.ax import AxSearch
 
         parameters = [
@@ -128,7 +129,7 @@ class AxSearch(Searcher):
         def easy_objective(config):
             for i in range(100):
                 intermediate_result = config["x1"] + config["x2"] * i
-                train.report({"score": intermediate_result})
+                tune.report({"score": intermediate_result})
 
         ax_search = AxSearch(space=parameters, metric="score", mode="max")
         tuner = tune.Tuner(
@@ -156,7 +157,7 @@ class AxSearch(Searcher):
             ax is not None
         ), """Ax must be installed!
             You can install AxSearch with the command:
-            `pip install ax-platform sqlalchemy`."""
+            `pip install ax-platform`."""
 
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."

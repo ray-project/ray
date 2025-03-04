@@ -53,7 +53,7 @@ do
     cpp_failed=false
     printf "\n\n\n"
     echo "========================================================="
-    if python sanity_check.py; then
+    if python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$RAY_HASH"; then
         echo "PYTHON ${PYTHON_VERSION} succeed sanity check."
     else
         failed=true

@@ -27,6 +27,7 @@ int cmd_argc = 0;
 char **cmd_argv = nullptr;
 
 ABSL_FLAG(bool, external_cluster, false, "");
+ABSL_FLAG(std::string, redis_username, "default", "");
 ABSL_FLAG(std::string, redis_password, "12345678", "");
 ABSL_FLAG(int32_t, redis_port, 6379, "");
 
@@ -67,10 +68,13 @@ TEST(RayClusterModeTest, FullTest) {
       "--num-cpus", "2", "--resources", "{\"resource1\":1,\"resource2\":2}"};
   if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
+    std::string username = absl::GetFlag<std::string>(FLAGS_redis_username);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
     std::string local_ip = ray::internal::GetNodeIpAddress();
-    ray::internal::ProcessHelper::GetInstance().StartRayNode(local_ip, port, password);
+    ray::internal::ProcessHelper::GetInstance().StartRayNode(
+        local_ip, port, username, password);
     config.address = local_ip + ":" + std::to_string(port);
+    config.redis_username_ = username;
     config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
@@ -588,11 +592,11 @@ class Pip {
       : packages(packages), pip_check(pip_check) {}
 };
 
-void to_json(json &j, const Pip &pip) {
-  j = json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
+void to_json(nlohmann::json &j, const Pip &pip) {
+  j = nlohmann::json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
 };
 
-void from_json(const json &j, Pip &pip) {
+void from_json(const nlohmann::json &j, Pip &pip) {
   j.at("packages").get_to(pip.packages);
   j.at("pip_check").get_to(pip.pip_check);
 };

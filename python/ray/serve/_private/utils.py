@@ -3,13 +3,10 @@ import copy
 import importlib
 import inspect
 import logging
-import math
 import os
 import random
-import string
-import threading
 import time
-import traceback
+import uuid
 from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
@@ -21,11 +18,11 @@ import requests
 import ray
 import ray.util.serialization_addons
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import import_attr
+from ray._private.utils import get_random_alphanumeric_string, import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
+from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
@@ -41,6 +38,11 @@ except ImportError:
     np = None
 
 MESSAGE_PACK_OFFSET = 9
+GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Streaming deployment handle results cannot be passed to "
+    "downstream handle calls. If you have a use case requiring "
+    "this feature, please file a feature request on GitHub."
+)
 
 
 # Use a global singleton enum to emulate default options. We cannot use None
@@ -67,6 +69,9 @@ T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Format for component files
+FILE_FMT = "{component_name}_{component_id}{suffix}"
 
 
 class _ServeCustomEncoders:
@@ -134,12 +139,8 @@ def block_until_http_ready(
         time.sleep(backoff_time_s)
 
 
-# Match the standard alphabet used for UUIDs.
-RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
-
-
-def get_random_string(length=8):
-    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
+def get_random_string(length: int = 8):
+    return get_random_alphanumeric_string(length)
 
 
 def format_actor_name(actor_name, *modifiers):
@@ -155,17 +156,6 @@ def ensure_serialization_context():
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
-
-
-def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
-    """Utility method to wrap exceptions in user code."""
-
-    try:
-        # Raise and catch so we can access traceback.format_exc()
-        raise exception
-    except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 def msgpack_serialize(obj):
@@ -312,7 +302,7 @@ def require_packages(packages: List[str]):
                         "`pip install` them or add them to "
                         "`runtime_env`."
                     )
-                setattr(func, "_require_packages_checked", True)
+                func._require_packages_checked = True
 
         if inspect.iscoroutinefunction(func):
 
@@ -393,106 +383,6 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
                 return args[0]
 
     return None
-
-
-class _MetricTask:
-    def __init__(self, task_func, interval_s, callback_func):
-        """
-        Args:
-            task_func: a callable that MetricsPusher will try to call in each loop.
-            interval_s: the interval of each task_func is supposed to be called.
-            callback_func: callback function is called when task_func is done, and
-                the result of task_func is passed to callback_func as the first
-                argument, and the timestamp of the call is passed as the second
-                argument.
-        """
-        self.task_func: Callable = task_func
-        self.interval_s: float = interval_s
-        self.callback_func: Callable[[Any, float]] = callback_func
-        self.last_ref: Optional[ray.ObjectRef] = None
-        self.last_call_succeeded_time: Optional[float] = time.time()
-
-
-class MetricsPusher:
-    """
-    Metrics pusher is a background thread that run the registered tasks in a loop.
-    """
-
-    def __init__(
-        self,
-    ):
-        self.tasks: List[_MetricTask] = []
-        self.pusher_thread: Union[threading.Thread, None] = None
-        self.stop_event = threading.Event()
-
-    def register_task(self, task_func, interval_s, process_func=None):
-        self.tasks.append(_MetricTask(task_func, interval_s, process_func))
-
-    def start(self):
-        """Start a background thread to run the registered tasks in a loop.
-
-        We use this background so it will be not blocked by user's code and ensure
-        consistently metrics delivery. Python GIL will ensure that this thread gets
-        fair timeshare to execute and run.
-        """
-
-        def send_forever():
-            while True:
-                if self.stop_event.is_set():
-                    return
-
-                start = time.time()
-                for task in self.tasks:
-                    try:
-                        if start - task.last_call_succeeded_time >= task.interval_s:
-                            if task.last_ref:
-                                ready_refs, _ = ray.wait([task.last_ref], timeout=0)
-                                if len(ready_refs) == 0:
-                                    continue
-                            data = task.task_func()
-                            task.last_call_succeeded_time = time.time()
-                            if task.callback_func and ray.is_initialized():
-                                task.last_ref = task.callback_func(
-                                    data, send_timestamp=time.time()
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            f"MetricsPusher thread failed to run metric task: {e}"
-                        )
-
-                # For all tasks, check when the task should be executed
-                # next. Sleep until the next closest time.
-                least_interval_s = math.inf
-                for task in self.tasks:
-                    time_until_next_push = task.interval_s - (
-                        time.time() - task.last_call_succeeded_time
-                    )
-                    least_interval_s = min(least_interval_s, time_until_next_push)
-
-                time.sleep(max(least_interval_s, 0))
-
-        if len(self.tasks) == 0:
-            raise ValueError("MetricsPusher has zero tasks registered.")
-
-        self.pusher_thread = threading.Thread(target=send_forever)
-        # Making this a daemon thread so it doesn't leak upon shutdown, and it
-        # doesn't need to block the replica's shutdown.
-        self.pusher_thread.setDaemon(True)
-        self.pusher_thread.start()
-
-    def __del__(self):
-        self.shutdown()
-
-    def shutdown(self):
-        """Shutdown metrics pusher gracefully.
-
-        This method will ensure idempotency of shutdown call.
-        """
-        if not self.stop_event.is_set():
-            self.stop_event.set()
-
-        if self.pusher_thread:
-            self.pusher_thread.join()
 
 
 def call_function_from_import_path(import_path: str) -> Any:
@@ -644,3 +534,86 @@ def get_capacity_adjusted_num_replicas(
         rounding=ROUND_HALF_UP
     )
     return max(1, int(rounded_adjusted_num_replicas))
+
+
+def generate_request_id() -> str:
+    # NOTE(edoakes): we use random.getrandbits because it reduces CPU overhead
+    # significantly. This is less cryptographically secure but should be ok for
+    # request ID generation.
+    # See https://bugs.python.org/issue45556 for discussion.
+    return str(uuid.UUID(int=random.getrandbits(128), version=4))
+
+
+def inside_ray_client_context() -> bool:
+    return ray.util.client.ray.is_connected()
+
+
+def get_component_file_name(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType],
+    suffix: str = "",
+) -> str:
+    """Get the component's file name."""
+
+    # For DEPLOYMENT component type, we want to log the deployment name
+    # instead of adding the component type to the component name.
+    component_log_file_name = component_name
+    if component_type is not None:
+        component_log_file_name = f"{component_type.value}_{component_name}"
+        if component_type != ServeComponentType.REPLICA:
+            component_name = f"{component_type}_{component_name}"
+    file_name = FILE_FMT.format(
+        component_name=component_log_file_name,
+        component_id=component_id,
+        suffix=suffix,
+    )
+    return file_name
+
+
+def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
+    if route_prefix is DEFAULT.VALUE or route_prefix is None:
+        return
+
+    if not route_prefix.startswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "must start with a forward slash ('/')."
+        )
+
+    if route_prefix != "/" and route_prefix.endswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "may not end with a trailing '/'."
+        )
+
+    if "{" in route_prefix or "}" in route_prefix:
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+        )
+
+
+async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
+    """Resolve `DeploymentResponse` objects to underlying object references.
+
+    This enables composition without explicitly calling `_to_object_ref`.
+    """
+    from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
+
+    if isinstance(obj, DeploymentResponseGenerator):
+        raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
+    elif isinstance(obj, DeploymentResponse):
+        # Launch async task to convert DeploymentResponse to an object ref
+        return asyncio.create_task(obj._to_object_ref())
+
+
+def wait_for_interrupt() -> None:
+    try:
+        while True:
+            # Block, letting Ray print logs to the terminal.
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.warning("Got KeyboardInterrupt, exiting...")
+        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+        # from the main script.
+        raise

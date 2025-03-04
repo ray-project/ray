@@ -3,8 +3,15 @@ exclude: |
     python/ray/core/generated/|
     python/ray/serve/generated/|
     python/ray/cloudpickle/|
+    python/ray/dashboard/client/public/|
+    python/ray/tests/test_cli_patterns|
     python/ray/_private/runtime_env/_clonevirtualenv.py|
-    doc/external/
+    python/ray/data/examples/data/|
+    release/release_logs/|
+    rllib/tests/data|
+    thirdparty/patches/|
+    doc/external/|
+    doc/source/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -29,6 +36,27 @@ repos:
           )
       - id: check-toml
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [ --fix, --exit-non-zero-on-fix ]
+
+  - repo: https://github.com/cpplint/cpplint
+    rev: 2.0.0
+    hooks:
+      - id: cpplint
+        args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
+        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|rpc(?:/.*)?)/.*\.(h|cc)$
+
+  - repo: https://github.com/keith/pre-commit-buildifier
+    rev: 8.0.1
+    hooks:
+      - id: buildifier
+        files: ^(src|cpp)(/[^/]+)*/BUILD$
+      - id: buildifier-lint
+        files: ^(src|cpp)(/[^/]+)*/BUILD$
+
   - repo: https://github.com/psf/black
     rev: 22.10.0
     hooks:
@@ -41,27 +69,17 @@ repos:
             python/ray/thirdparty_files/|
             python/ray/_private/thirdparty/|
             python/ray/serve/tests/test_config_files/syntax_error\.py|
+            python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
             doc/external/
           )
         types_or: [python]
-
-  - repo: https://github.com/pycqa/flake8
-    rev: 3.9.1
-    hooks:
-      - id: flake8
-        additional_dependencies:
-          [
-            flake8-comprehensions==3.10.1,
-            flake8-quotes==2.0.0,
-            flake8-bugbear==21.9.2,
-          ]
 
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v3.0.3
     hooks:
       - id: prettier
         files: 'doc/'
-        types_or: [javascript, ts, tsx, html]
+        types_or: [javascript, ts, tsx, html, css]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.7.0
@@ -79,15 +97,8 @@ repos:
           )
         additional_dependencies:
           [
-            types-PyYAML
+            types-PyYAML==6.0.12.2,
           ]
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-        name: isort (python)
-        types_or: [python]
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
@@ -97,8 +108,8 @@ repos:
       - id: python-no-log-warn
       - id: python-check-mock-methods
 
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.9.0
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.1
     hooks:
       - id: shellcheck
         args: ['--exclude=1090,1091,2207']
@@ -142,3 +153,12 @@ repos:
         types: [python]
         pass_filenames: false
         args: [".", "-s", "ci", "-s", "python/ray/thirdparty_files", "-s", "python/build", "-s", "lib"]
+
+  - repo: local
+    hooks:
+      - id: check-cpp-files-inclusion
+        name: Check ray core C++ files inclusion violations
+        entry: ci/lint/check_cpp_files_inclusion.py
+        language: python
+        files: '^src/ray/'
+        types: [c++]

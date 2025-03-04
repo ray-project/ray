@@ -14,13 +14,15 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.stats import StatsDict
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 
 
 def generate_random_shuffle_fn(
+    data_context: DataContext,
     seed: Optional[int],
     num_outputs: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
 
@@ -60,7 +62,7 @@ def generate_random_shuffle_fn(
             upstream_map_fn=upstream_map_fn,
         )
 
-        if DataContext.get_current().use_push_based_shuffle:
+        if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             if num_outputs is not None:
                 raise NotImplementedError(
                     "Push-based shuffle doesn't support setting num_blocks yet."
@@ -72,9 +74,12 @@ def generate_random_shuffle_fn(
         return scheduler.execute(
             refs,
             num_outputs or num_input_blocks,
-            ctx=ctx,
+            task_ctx=ctx,
             map_ray_remote_args=ray_remote_args,
             reduce_ray_remote_args=ray_remote_args,
+            _debug_limit_execution_to_num_blocks=(
+                _debug_limit_shuffle_execution_to_num_blocks
+            ),
         )
 
     return fn

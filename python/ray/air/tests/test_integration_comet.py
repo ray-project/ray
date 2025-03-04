@@ -1,7 +1,8 @@
 import unittest
-from unittest.mock import patch
-from ray.air.integrations.comet import CometLoggerCallback
 from collections import namedtuple
+from unittest.mock import patch
+
+from ray.air.integrations.comet import CometLoggerCallback
 
 
 class MockTrial(
@@ -358,7 +359,8 @@ class LogTrialEndTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

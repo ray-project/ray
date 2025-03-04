@@ -2,14 +2,14 @@ import gymnasium as gym
 from typing import Dict, List, Union
 
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 _, nn = try_import_torch()
 
 
-@PublicAPI
+@OldAPIStack
 class TorchModelV2(ModelV2):
     """Torch version of ModelV2.
 

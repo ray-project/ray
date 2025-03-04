@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
+from ray.serve._private.common import gRPCRequest
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
@@ -57,7 +57,7 @@ class TestASGIProxyRequest:
         """
         proxy_request = self.create_asgi_proxy_request(scope={})
         assert isinstance(proxy_request, ProxyRequest)
-        assert proxy_request.method == "WEBSOCKET"
+        assert proxy_request.method == "WS"
 
         method = "fake-method"
         proxy_request = self.create_asgi_proxy_request(scope={"method": method})
@@ -116,22 +116,6 @@ class TestASGIProxyRequest:
         proxy_request = self.create_asgi_proxy_request(scope={"headers": headers})
         assert isinstance(proxy_request, ProxyRequest)
         assert proxy_request.headers == headers
-
-    def test_request_object(self):
-        """Test calling request_object on an instance of ASGIProxyRequest.
-
-        When the request_object is called, it returns a StreamingHTTPRequest object
-        with the correct pickled_asgi_scope and http_proxy_handle.
-        """
-        proxy_handle = MagicMock()
-        headers = [(b"fake-header-key", b"fake-header-value")]
-        scope = {"headers": headers}
-        proxy_request = self.create_asgi_proxy_request(scope=scope)
-        request_object = proxy_request.request_object(proxy_handle=proxy_handle)
-
-        assert isinstance(request_object, StreamingHTTPRequest)
-        assert pickle.loads(request_object.pickled_asgi_scope) == scope
-        assert request_object.http_proxy_handle == proxy_handle
 
     def test_is_route_request(self):
         """Test calling is_route_request on an instance of ASGIProxyRequest.
@@ -235,7 +219,6 @@ class TestgRPCProxyRequest:
         )
         assert isinstance(proxy_request, ProxyRequest)
         assert proxy_request.route_path == application
-        assert pickle.loads(proxy_request.request) == request_proto
         assert proxy_request.method_name == method_name
         assert proxy_request.app_name == application
         assert proxy_request.request_id == request_id
@@ -248,11 +231,11 @@ class TestgRPCProxyRequest:
             ("request_id", request_id)
         ]
 
-        proxy_handle = MagicMock()
-        request_object = proxy_request.request_object(proxy_handle=proxy_handle)
+        serialized_arg = proxy_request.serialized_replica_arg()
+        assert isinstance(serialized_arg, bytes)
+        request_object = pickle.loads(serialized_arg)
         assert isinstance(request_object, gRPCRequest)
-        assert pickle.loads(request_object.grpc_user_request) == request_proto
-        assert request_object.grpc_proxy_handle == proxy_handle
+        assert request_object.user_request_proto == request_proto
 
 
 if __name__ == "__main__":

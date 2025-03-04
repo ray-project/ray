@@ -1,7 +1,9 @@
 from math import ceil
-import ray
 import time
-import psutil
+import random
+
+import ray
+from ray._private.utils import get_system_memory, get_used_memory
 
 
 @ray.remote
@@ -15,14 +17,19 @@ def allocate_memory(
     bytes_per_chunk = total_allocate_bytes / 8 / num_chunks
     for _ in range(num_chunks):
         chunks.append([0] * ceil(bytes_per_chunk))
-        time.sleep(allocate_interval_s)
+
+        # If all tasks try to allocate memory at the same time,
+        # the memory monitor might not be able to kill them in time.
+        # To avoid this, we introduce a random sleep interval.
+        r = 1 + 5 * random.random()
+        time.sleep(allocate_interval_s * r)
     return 1
 
 
 def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
-    node_mem = psutil.virtual_memory()
-    used = node_mem.total - node_mem.available
-    bytes_needed = node_mem.total * pct - used
+    total = get_system_memory()
+    used = get_used_memory()
+    bytes_needed = total * pct - used
     assert bytes_needed > 0, "node has less memory than what is requested"
     return int(bytes_needed)
 
@@ -60,6 +67,8 @@ if __name__ == "__main__":
         )
         for _ in range(args.num_tasks)
     ]
+    # When a task or actor is killed by the memory monitor
+    # it will be retried with exponential backoff.
     results = [ray.get(ref) for ref in task_refs]
     end = time.time()
 

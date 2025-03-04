@@ -9,6 +9,7 @@ from gymnasium.spaces import Space
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
@@ -20,7 +21,6 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def _get_buffered_slice_with_paddings(d, inds):
     return element_at_t
 
 
-@PublicAPI
+@OldAPIStack
 class AgentCollector:
     """Collects samples for one agent in one trajectory (episode).
 

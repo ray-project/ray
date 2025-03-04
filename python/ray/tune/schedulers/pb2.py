@@ -1,6 +1,7 @@
-from typing import Callable, Dict, Optional, Tuple, Union, TYPE_CHECKING
-from copy import deepcopy
 import logging
+from copy import deepcopy
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
 
@@ -31,12 +32,12 @@ GPy, has_sklearn = import_pb2_dependencies()
 
 if GPy and has_sklearn:
     from ray.tune.schedulers.pb2_utils import (
+        UCB,
+        TV_SquaredExp,
         normalize,
         optimize_acq,
         select_length,
-        UCB,
         standardize,
-        TV_SquaredExp,
     )
 
 logger = logging.getLogger(__name__)
@@ -227,18 +228,18 @@ def _explore(
 
         new_config = config.copy()
         values = []
+        # Cast types for new hyperparameters.
         for i, col in enumerate(hparams.columns):
-            if isinstance(config[col], int):
-                new_config[col] = int(new[i])
-                values.append(int(new[i]))
-            else:
-                new_config[col] = new[i]
-                values.append(new[i])
+            # Use the type from the old config. Like this types
+            # should be passed on from the first config downwards.
+            type_ = type(config[col])
+            new_config[col] = type_(new[i])
+            values.append(type_(new[i]))
 
         new_T = df[df["Trial"] == str(base)].iloc[-1, :]["Time"]
         new_Reward = df[df["Trial"] == str(base)].iloc[-1, :].Reward
 
-        lst = [[old] + [new_T] + values + [new_Reward]]
+        lst = [[str(old)] + [new_T] + values + [new_Reward]]
         cols = ["Trial", "Time"] + list(bounds) + ["Reward"]
         new_entry = pd.DataFrame(lst, columns=cols)
 

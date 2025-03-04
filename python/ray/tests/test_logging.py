@@ -9,8 +9,10 @@ import logging
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from typing import Dict
+from unittest.mock import Mock, MagicMock, patch
 
+import colorama
 import pytest
 
 import ray
@@ -32,6 +34,7 @@ from ray._private.test_utils import (
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray._private.worker import print_worker_logs
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -128,13 +131,15 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
 
 def test_log_file_exists(shutdown_only):
     """Verify all log files exist as specified in
-    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure # noqa
     """
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
@@ -143,10 +148,8 @@ def test_log_file_exists(shutdown_only):
         (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER, [".log"]),
-        # Below components are not log rotating now.
         (ray_constants.PROCESS_TYPE_RAYLET, [".out", ".err"]),
         (ray_constants.PROCESS_TYPE_GCS_SERVER, [".out", ".err"]),
-        (ray_constants.PROCESS_TYPE_WORKER, [".out", ".err"]),
     ]
 
     # Run the basic workload.
@@ -166,33 +169,35 @@ def test_log_file_exists(shutdown_only):
             filename = path.stem
             suffix = path.suffix
             if component in filename:
-                # core-worker log also contains "worker keyword". We ignore this case.
-                if (
-                    component == ray_constants.PROCESS_TYPE_WORKER
-                    and ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER in filename
-                ):
-                    continue
-                if suffix in suffixes:
-                    return True
-                else:
-                    # unexpected suffix.
-                    return False
+                return suffix in suffixes
 
         return False
 
     for component in log_rotating_component:
         assert component_and_suffix_exists(component, paths), (component, paths)
 
+    # Special handle application log.
+    application_log_prefix = ray_constants.PROCESS_TYPE_WORKER
+    appplication_log_suffixes = [".out", ".err"]
+    for path in paths:
+        filename = path.stem
+        suffix = path.suffix
+        if filename.startswith(application_log_prefix):
+            return suffix in appplication_log_suffixes
 
-def test_log_rotation(shutdown_only, monkeypatch):
-    max_bytes = 1
-    backup_count = 3
+
+# Rotation is disable in the unit test.
+def test_log_rotation_disable_rotation_params(shutdown_only, monkeypatch):
+    max_bytes = 0
+    backup_count = 1
     set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"
 
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
     log_rotating_component = [
         ray_constants.PROCESS_TYPE_DASHBOARD,
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
@@ -200,10 +205,8 @@ def test_log_rotation(shutdown_only, monkeypatch):
         ray_constants.PROCESS_TYPE_MONITOR,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
-        # Below components are not log rotating now.
-        # ray_constants.PROCESS_TYPE_RAYLET,
-        # ray_constants.PROCESS_TYPE_GCS_SERVER,
-        # ray_constants.PROCESS_TYPE_WORKER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
     ]
 
     # Run the basic workload.
@@ -215,14 +218,109 @@ def test_log_rotation(shutdown_only, monkeypatch):
     # Create a runtime env to make sure dashboard agent is alive.
     ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
-    # Filter out only paths that end in .log, .log.1, etc.
-    # These paths are handled by the logger; the others (.out, .err) are not.
+    # Filter out only paths that end in .log, .log.1, (which is produced by python
+    # rotating log handler) and .out.1 and so on (which is produced by C++ spdlog
+    # rotation handler) . etc. These paths are handled by the logger; the others (.err)
+    # are not.
     paths = []
     for path in log_dir_path.iterdir():
+        # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
         if re.search(r".*\.log(\.\d+)?", str(path)):
+            paths.append(path)
+        elif re.search(r".*\.out(\.\d+)?", str(path)):
             paths.append(path)
 
     def component_exist(component, paths):
+        """Return whether there's at least one log file path is for the given
+        [component]."""
+        for path in paths:
+            filename = path.stem
+            if component in filename:
+                return True
+        return False
+
+    for component in log_rotating_component:
+        assert component_exist(component, paths), paths
+
+    # Check if the backup count is respected.
+    file_cnts = defaultdict(int)
+    for path in paths:
+        filename = path.name
+        parts = filename.split(".")
+        if len(parts) == 3:
+            filename_without_suffix = parts[0]
+            file_type = parts[1]  # eg. err, log, out
+            file_cnts[f"{filename_without_suffix}.{file_type}"] += 1
+    for filename, file_cnt in file_cnts.items():
+        assert file_cnt == backup_count, (
+            f"{filename} has files that are more than "
+            f"backup count {backup_count}, file count: {file_cnt}"
+        )
+
+    # Test application log, which starts with `worker-`.
+    # Should be tested separately with other components since "worker" is a substring of "python-core-worker".
+    #
+    # Check file count.
+    application_stdout_paths = []
+    for path in paths:
+        if (
+            path.stem.startswith("worker-")
+            and re.search(r".*\.out(\.\d+)?", str(path))
+            and path.stat().st_size > 0
+        ):
+            application_stdout_paths.append(path)
+    assert len(application_stdout_paths) == 1, application_stdout_paths
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Log rotation is disable on windows platform."
+)
+def test_log_rotation(shutdown_only, monkeypatch):
+    max_bytes = 1
+    backup_count = 3
+    set_logging_config(monkeypatch, max_bytes, backup_count)
+    ray.init(num_cpus=1)
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
+    log_rotating_component = [
+        ray_constants.PROCESS_TYPE_DASHBOARD,
+        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
+        ray_constants.PROCESS_TYPE_LOG_MONITOR,
+        ray_constants.PROCESS_TYPE_MONITOR,
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    # Create a runtime env to make sure dashboard agent is alive.
+    ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
+
+    # Filter out only paths that end in .log, .log.1, (which is produced by python
+    # rotating log handler) and .out.1 and so on (which is produced by C++ spdlog
+    # rotation handler) . etc. These paths are handled by the logger; the others (.err)
+    # are not.
+    paths = []
+    for path in log_dir_path.iterdir():
+        # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
+        if re.search(r".*\.log(\.\d+)?", str(path)):
+            paths.append(path)
+        elif re.search(r".*\.out(\.\d+)?", str(path)):
+            paths.append(path)
+
+    def component_exist(component, paths):
+        """Return whether there's at least one log file path is for the given
+        [component]."""
         for path in paths:
             filename = path.stem
             if component in filename:
@@ -257,12 +355,50 @@ def test_log_rotation(shutdown_only, monkeypatch):
         parts = filename.split(".")
         if len(parts) == 3:
             filename_without_suffix = parts[0]
-            file_cnts[filename_without_suffix] += 1
+            file_type = parts[1]  # eg. err, log, out
+            file_cnts[f"{filename_without_suffix}.{file_type}"] += 1
     for filename, file_cnt in file_cnts.items():
         assert file_cnt <= backup_count, (
             f"{filename} has files that are more than "
             f"backup count {backup_count}, file count: {file_cnt}"
         )
+
+    # Test dashboard agent output file, which starts with `agent-`.
+    # Should be tested separately with other components since "agent" is a substring of "dashboard-agent".
+    #
+    # Check file count.
+    dashboard_stdout_paths = []
+    for path in paths:
+        if path.stem.startswith("agent-") and re.search(r".*\.out(\.\d+)?", str(path)):
+            dashboard_stdout_paths.append(path)
+    # For this unit test, we should only have 1 output file for dashboard agent.
+    assert len(dashboard_stdout_paths) == 1, dashboard_stdout_paths
+
+    # Check file content, each file should have one line.
+    for cur_path in dashboard_stdout_paths:
+        with cur_path.open() as f:
+            lines = f.readlines()
+            assert len(lines) <= 1, lines
+
+    # Test application log, which starts with `worker-`.
+    # Should be tested separately with other components since "worker" is a substring of "python-core-worker".
+    #
+    # Check file count.
+    application_stdout_paths = []
+    for path in paths:
+        if (
+            path.stem.startswith("worker-")
+            and re.search(r".*\.out(\.\d+)?", str(path))
+            and path.stat().st_size > 0
+        ):
+            application_stdout_paths.append(path)
+    assert len(application_stdout_paths) == 4, application_stdout_paths
+
+    # Check file content, each file should have one line.
+    for cur_path in application_stdout_paths:
+        with cur_path.open() as f:
+            lines = f.readlines()
+            assert len(lines) == 1, lines
 
 
 def test_periodic_event_stats(shutdown_only):
@@ -319,7 +455,7 @@ def test_worker_id_names(shutdown_only):
     ray.get(f.remote())
 
     paths = list(log_dir_path.iterdir())
-
+    worker_log_files = list()
     ids = []
     for path in paths:
         if "python-core-worker" in str(path):
@@ -329,12 +465,13 @@ def test_worker_id_names(shutdown_only):
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
+        worker_log_files.append(str(paths))
         ids.append(worker_id)
     counts = Counter(ids).values()
     for count in counts:
-        # There should be a "python-core-.*.log", "worker-.*.out",
-        # and "worker-.*.err"
-        assert count == 3
+        # For each worker, there should be a "python-core-.*.log", "worker-.*.out",
+        # and "worker-.*.err".
+        assert count == 3, worker_log_files
 
 
 def test_log_pid_with_hex_job_id(ray_start_cluster):
@@ -388,7 +525,6 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
 
 
 def test_log_redirect_to_stderr(shutdown_only):
-
     log_components = {
         ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
@@ -458,6 +594,15 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
         # parentheses since some components, like the core driver and worker, add a
         # unique ID suffix.
         assert f"({component}" in stderr, stderr
+
+
+def test_custom_logging_format(shutdown_only):
+    script = """
+import ray
+ray.init(logging_format='custom logging format - %(message)s')
+"""
+    stderr = run_string_as_driver(script)
+    assert "custom logging format - " in stderr
 
 
 def test_segfault_stack_trace(ray_start_cluster, capsys):
@@ -881,29 +1026,6 @@ def test_ray_does_not_break_makeRecord():
 
 
 @pytest.mark.parametrize(
-    "logger_name,package_name",
-    (
-        ("ray", ""),
-        ("ray.air", "[Ray AIR]"),
-        ("ray.data", "[Ray Data]"),
-        ("ray.rllib", "[Ray RLlib]"),
-        ("ray.serve", "[Ray Serve]"),
-        ("ray.train", "[Ray Train]"),
-        ("ray.tune", "[Ray Tune]"),
-        ("ray.workflow", "[Ray Workflow]"),
-    ),
-)
-def test_log_library_context(propagate_logs, caplog, logger_name, package_name):
-    """Test that the log configuration injects the correct context into log messages."""
-    logger = logging.getLogger(logger_name)
-    logger.critical("Test!")
-
-    assert (
-        caplog.records[-1].package == package_name
-    ), "Missing ray package name in log record."
-
-
-@pytest.mark.parametrize(
     "logger_name,logger_level",
     (
         ("ray", logging.INFO),
@@ -945,7 +1067,6 @@ def test_log_level_settings(
 
 
 def test_log_with_import():
-
     logger = logging.getLogger(__name__)
     assert not logger.disabled
     ray.log.logger_initialized = False
@@ -973,6 +1094,127 @@ def test_log_monitor_ip_correct(ray_start_cluster):
         p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
     )
     assert data[0]["ip"] == "127.0.0.2"
+
+
+def get_print_worker_logs_output(data: Dict[str, str]) -> str:
+    """
+    Helper function that returns the output of `print_worker_logs` as a str.
+    """
+    out = io.StringIO()
+    print_worker_logs(data, out)
+    out.seek(0)
+    return out.readline()
+
+
+def test_print_worker_logs_default_color() -> None:
+    # Test multiple since pid may affect color
+    for pid in (0, 1):
+        data = dict(
+            ip="10.0.0.1",
+            localhost="172.0.0.1",
+            pid=str(pid),
+            task_name="my_task",
+            lines=["is running"],
+        )
+        output = get_print_worker_logs_output(data)
+        assert output == (
+            f"{colorama.Fore.CYAN}(my_task pid={pid}, ip=10.0.0.1)"
+            + f"{colorama.Style.RESET_ALL} is running\n"
+        )
+
+    # Special case
+    raylet = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="raylet",
+        task_name="my_task",
+        lines=["Warning: uh oh"],
+    )
+    output = get_print_worker_logs_output(raylet)
+    assert output == (
+        f"{colorama.Fore.YELLOW}(raylet, ip=10.0.0.1){colorama.Style.RESET_ALL} "
+        + "Warning: uh oh\n"
+    )
+
+
+@patch.dict(os.environ, {"RAY_COLOR_PREFIX": "0"})
+def test_print_worker_logs_no_color() -> None:
+    for pid in (0, 1):
+        data = dict(
+            ip="10.0.0.1",
+            localhost="172.0.0.1",
+            pid=str(pid),
+            task_name="my_task",
+            lines=["is running"],
+        )
+        output = get_print_worker_logs_output(data)
+        assert output == f"(my_task pid={pid}, ip=10.0.0.1) is running\n"
+
+    raylet = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="raylet",
+        task_name="my_task",
+        lines=["Warning: uh oh"],
+    )
+    output = get_print_worker_logs_output(raylet)
+    assert output == "(raylet, ip=10.0.0.1) Warning: uh oh\n"
+
+
+@patch.dict(os.environ, {"RAY_COLOR_PREFIX": "1"})
+def test_print_worker_logs_multi_color() -> None:
+    data_pid_0 = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="0",
+        task_name="my_task",
+        lines=["is running"],
+    )
+    output = get_print_worker_logs_output(data_pid_0)
+    assert output == (
+        f"{colorama.Fore.MAGENTA}(my_task pid=0, ip=10.0.0.1)"
+        + f"{colorama.Style.RESET_ALL} is running\n"
+    )
+
+    data_pid_2 = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="2",
+        task_name="my_task",
+        lines=["is running"],
+    )
+    output = get_print_worker_logs_output(data_pid_2)
+    assert output == (
+        f"{colorama.Fore.GREEN}(my_task pid=2, ip=10.0.0.1){colorama.Style.RESET_ALL} "
+        + "is running\n"
+    )
+
+
+class TestSetupLogRecordFactory:
+    def test_setup_log_record_factory_directly(self):
+        # Reset the log record factory to the default.
+        logging.setLogRecordFactory(logging.LogRecord)
+        record_old = logging.makeLogRecord({})
+
+        # Set up the log record factory with _setup_log_record_factory().
+        ray.log._setup_log_record_factory()
+        record_new = logging.makeLogRecord({})
+
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
+
+    def test_setup_log_record_factory_in_generate_logging_config(self):
+        # Reset the log record factory to the default.
+        logging.setLogRecordFactory(logging.LogRecord)
+        record_old = logging.makeLogRecord({})
+
+        # generate_logging_config() also setup the log record factory.
+        ray.log.logger_initialized = False
+        ray.log.generate_logging_config()
+        record_new = logging.makeLogRecord({})
+
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
 
 
 if __name__ == "__main__":

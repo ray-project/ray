@@ -74,7 +74,7 @@ INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / def
 INFO 2023-05-24 01:19:16,993 default_Model default_Model#rimNjA WzjTbJvbPN / default replica.py:542 - __CALL__ OK 1005.7ms
 ```
 
-You can also send a request to a specific model by using handle {mod}`options <ray.serve.handle.RayServeHandle>` API.
+You can also send a request to a specific model by using handle {mod}`options <ray.serve.handle.DeploymentHandle>` API.
 ```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_handle_send_example_begin__

@@ -3,7 +3,7 @@ import gymnasium as gym
 import logging
 import re
 import tree  # pip install dm_tree
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -15,7 +15,7 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
-    DeveloperAPI,
+    OldAPIStack,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
@@ -38,22 +38,18 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.debug import log_once
 
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
-
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class DynamicTFPolicyV2(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
     This class is intended to be used and extended by sub-classing.
     """
 
-    @DeveloperAPI
     def __init__(
         self,
         obs_space: gym.spaces.Space,
@@ -137,14 +133,12 @@ class DynamicTFPolicyV2(TFPolicy):
             timestep=timestep,
         )
 
-    @DeveloperAPI
     @staticmethod
     def enable_eager_execution_if_necessary():
         # This is static graph TF policy.
         # Simply do nothing.
         pass
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def validate_spaces(
         self,
@@ -154,7 +148,6 @@ class DynamicTFPolicyV2(TFPolicy):
     ):
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     @override(Policy)
     def loss(
@@ -175,7 +168,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Stats function. Returns a dict of statistics.
@@ -188,7 +180,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def grad_stats_fn(
         self, train_batch: SampleBatch, grads: ModelGradients
@@ -203,7 +194,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def make_model(self) -> ModelV2:
         """Build underlying model for this Policy.
@@ -223,7 +213,6 @@ class DynamicTFPolicyV2(TFPolicy):
             framework="tf",
         )
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def compute_gradients_fn(
         self, optimizer: LocalOptimizer, loss: TensorType
@@ -244,7 +233,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
@@ -263,7 +251,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_sampler_fn(
         self,
@@ -288,7 +275,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return None, None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_distribution_fn(
         self,
@@ -312,7 +298,6 @@ class DynamicTFPolicyV2(TFPolicy):
         """
         return None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def get_batch_divisibility_req(self) -> int:
         """Get batch divisibility request.
@@ -324,7 +309,6 @@ class DynamicTFPolicyV2(TFPolicy):
         return 1
 
     @override(TFPolicy)
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
         """Extra values to fetch and return from compute_actions().
@@ -337,7 +321,6 @@ class DynamicTFPolicyV2(TFPolicy):
         extra_action_fetches.update(self._policy_extra_action_fetches)
         return extra_action_fetches
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
         """Extra stats to be reported after gradient computation.
@@ -357,7 +340,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         """Post process trajectory in the format of a SampleBatch.
 
@@ -750,7 +733,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 {SampleBatch.SEQ_LENS: train_batch[SampleBatch.SEQ_LENS]}
             )
 
-        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
+        self._loss_input_dict.update(dict(train_batch))
 
         if log_once("loss_init"):
             logger.debug(
@@ -880,7 +863,6 @@ class DynamicTFPolicyV2(TFPolicy):
         return losses
 
     @override(TFPolicy)
-    @DeveloperAPI
     def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
@@ -953,7 +935,6 @@ class DynamicTFPolicyV2(TFPolicy):
         return instance
 
     @override(Policy)
-    @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         if self.model:
             return self.model.get_initial_state()
@@ -961,7 +942,6 @@ class DynamicTFPolicyV2(TFPolicy):
             return []
 
     @override(Policy)
-    @DeveloperAPI
     def load_batch_into_buffer(
         self,
         batch: SampleBatch,
@@ -994,7 +974,6 @@ class DynamicTFPolicyV2(TFPolicy):
         )
 
     @override(Policy)
-    @DeveloperAPI
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
@@ -1009,7 +988,6 @@ class DynamicTFPolicyV2(TFPolicy):
         return self.multi_gpu_tower_stacks[buffer_index].num_tuples_loaded
 
     @override(Policy)
-    @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
@@ -1022,9 +1000,12 @@ class DynamicTFPolicyV2(TFPolicy):
                 )
             # Get the correct slice of the already loaded batch to use,
             # based on offset and batch size.
-            batch_size = self.config.get(
-                "sgd_minibatch_size", self.config["train_batch_size"]
-            )
+            batch_size = self.config.get("minibatch_size")
+            if batch_size is None:
+                batch_size = self.config.get(
+                    "sgd_minibatch_size", self.config["train_batch_size"]
+                )
+
             if batch_size >= len(self._loaded_single_cpu_batch):
                 sliced_batch = self._loaded_single_cpu_batch
             else:

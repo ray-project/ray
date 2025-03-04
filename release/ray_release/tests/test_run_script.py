@@ -18,7 +18,9 @@ def setup(tmpdir):
     os.environ["NO_INSTALL"] = "1"
     os.environ["NO_CLONE"] = "1"
     os.environ["NO_ARTIFACTS"] = "1"
-    os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_run_release_test_sh.py"
+    os.environ[
+        "RAY_TEST_SCRIPT"
+    ] = "python ray_release/tests/_test_run_release_test_sh.py"
     os.environ["OVERRIDE_SLEEP_TIME"] = "0"
     os.environ["MAX_RETRIES"] = "3"
 
@@ -114,7 +116,7 @@ def test_repeat(setup):
 def test_parameters(setup):
     state_file, test_script = setup
 
-    os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_catch_args.py"
+    os.environ["RAY_TEST_SCRIPT"] = "python ray_release/tests/_test_catch_args.py"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         argv_file = os.path.join(tmpdir, "argv.json")

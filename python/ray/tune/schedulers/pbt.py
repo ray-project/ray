@@ -7,19 +7,19 @@ import random
 import shutil
 import warnings
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
+from ray.tune import Checkpoint
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.tune.error import TuneError
-from ray.tune.result import DEFAULT_METRIC
-from ray.tune.search import SearchGenerator
-from ray.tune.utils.util import SafeFallbackEncoder
-from ray.tune.search.sample import Domain, Function
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.search.variant_generator import format_vars
 from ray.tune.experiment import Trial
+from ray.tune.result import DEFAULT_METRIC
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.search import SearchGenerator
+from ray.tune.search.sample import Domain, Function
+from ray.tune.search.variant_generator import format_vars
+from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util import PublicAPI
 from ray.util.debug import log_once
 
@@ -1036,7 +1036,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     .. code-block:: python
 
         # Replaying a result from ray.tune.examples.pbt_convnet_example
-        from ray import train, tune
+        from ray import tune
 
         from ray.tune.examples.pbt_convnet_example import PytorchTrainable
         from ray.tune.schedulers import PopulationBasedTrainingReplay
@@ -1046,7 +1046,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         tuner = tune.Tuner(
             PytorchTrainable,
-            run_config=train.RunConfig(
+            run_config=tune.RunConfig(
                 stop={"training_iteration": 100}
             ),
             tune_config=tune.TuneConfig(

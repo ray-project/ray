@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 from collections import namedtuple
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Set
 
 from prometheus_client.core import (
     CounterMetricFamily,
@@ -14,6 +14,7 @@ from prometheus_client.core import (
     HistogramMetricFamily,
 )
 from opencensus.metrics.export.value import ValueDouble
+from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
 from opencensus.stats.view_manager import ViewManager
@@ -24,6 +25,7 @@ from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
+    SumAggregationData,
 )
 from opencensus.stats.view import View
 from opencensus.tags import tag_key as tag_key_module
@@ -34,6 +36,9 @@ import ray
 from ray._raylet import GcsClient
 
 from ray.core.generated.metrics_pb2 import Metric
+from ray._private.ray_constants import env_bool
+
+from ray.util.metrics import _is_invalid_metric_name
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +58,13 @@ class Gauge(View):
     """
 
     def __init__(self, name, description, unit, tags: List[str]):
+        if _is_invalid_metric_name(name):
+            raise ValueError(
+                f"Invalid metric name: {name}. Metric will be discarded "
+                "and data will not be collected or published. "
+                "Metric names can only contain letters, numbers, _, and :. "
+                "Metric names cannot start with numbers."
+            )
         self._measure = measure_module.MeasureInt(name, description, unit)
         tags = [tag_key_module.TagKey(tag) for tag in tags]
         self._view = View(
@@ -161,11 +173,22 @@ class OpencensusProxyMetric:
 
             # Aggregate points.
             for point in series.points:
-                if point.HasField("int64_value"):
+                if (
+                    metric.metric_descriptor.type
+                    == MetricDescriptorType.CUMULATIVE_INT64
+                ):
                     data = CountAggregationData(point.int64_value)
-                elif point.HasField("double_value"):
+                elif (
+                    metric.metric_descriptor.type
+                    == MetricDescriptorType.CUMULATIVE_DOUBLE
+                ):
+                    data = SumAggregationData(ValueDouble, point.double_value)
+                elif metric.metric_descriptor.type == MetricDescriptorType.GAUGE_DOUBLE:
                     data = LastValueAggregationData(ValueDouble, point.double_value)
-                elif point.HasField("distribution_value"):
+                elif (
+                    metric.metric_descriptor.type
+                    == MetricDescriptorType.CUMULATIVE_DISTRIBUTION
+                ):
                     dist_value = point.distribution_value
                     counts_per_bucket = [bucket.count for bucket in dist_value.buckets]
                     bucket_bounds = dist_value.bucket_options.explicit.bounds
@@ -254,6 +277,10 @@ class OpenCensusProxyCollector:
         # For other components (raylet, GCS),
         # they contain the global key `GLOBAL_COMPONENT_KEY`.
         self._components = {}
+        # Whether we want to export counter as gauge.
+        # This is for bug compatibility.
+        # See https://github.com/ray-project/ray/pull/43795.
+        self._export_counter_as_gauge = env_bool("RAY_EXPORT_COUNTER_AS_GAUGE", True)
 
     def record(self, metrics: List[Metric], worker_id_hex: str = None):
         """Record the metrics reported from the component that reports it.
@@ -292,7 +319,7 @@ class OpenCensusProxyCollector:
             return stale_components
 
     # TODO(sang): add start and end timestamp
-    def to_metric(
+    def to_metrics(
         self,
         metric_name: str,
         metric_description: str,
@@ -300,8 +327,8 @@ class OpenCensusProxyCollector:
         metric_units: str,
         label_values: Tuple[tag_value_module.TagValue],
         agg_data: Any,
-        metrics_map: Dict[str, PrometheusMetric],
-    ) -> PrometheusMetric:
+        metrics_map: Dict[str, List[PrometheusMetric]],
+    ):
         """to_metric translate the data that OpenCensus create
         to Prometheus format, using Prometheus Metric object.
 
@@ -315,9 +342,8 @@ class OpenCensusProxyCollector:
             label_values: The values of `label_keys`.
             agg_data: `opencensus.stats.aggregation_data.AggregationData` object.
                 Aggregated data that needs to be converted as Prometheus samples
+            metrics_map: The converted metric is added to this map.
 
-        Returns:
-            A Prometheus metric object
         """
         assert self._components_lock.locked()
         metric_name = f"{self._namespace}_{metric_name}"
@@ -328,17 +354,64 @@ class OpenCensusProxyCollector:
         label_values = [tv if tv else "" for tv in label_values]
 
         if isinstance(agg_data, CountAggregationData):
-            metric = metrics_map.get(metric_name)
-            if not metric:
+            metrics = metrics_map.get(metric_name)
+            if not metrics:
                 metric = CounterMetricFamily(
                     name=metric_name,
                     documentation=metric_description,
                     unit=metric_units,
                     labels=label_keys,
                 )
-                metrics_map[metric_name] = metric
-            metric.add_metric(labels=label_values, value=agg_data.count_data)
-            return metric
+                metrics = [metric]
+                metrics_map[metric_name] = metrics
+            metrics[0].add_metric(labels=label_values, value=agg_data.count_data)
+            return
+
+        if isinstance(agg_data, SumAggregationData):
+            # This should be emitted as prometheus counter
+            # but we used to emit it as prometheus gauge.
+            # To keep the backward compatibility
+            # (changing from counter to gauge changes the metric name
+            # since prometheus client will add "_total" suffix to counter
+            # per OpenMetrics specification),
+            # we now emit both counter and gauge and in the
+            # next major Ray release (3.0) we can stop emitting gauge.
+            # This leaves people enough time to migrate their dashboards.
+            # See https://github.com/ray-project/ray/pull/43795.
+            metrics = metrics_map.get(metric_name)
+            if not metrics:
+                metric = CounterMetricFamily(
+                    name=metric_name,
+                    documentation=metric_description,
+                    labels=label_keys,
+                )
+                metrics = [metric]
+                metrics_map[metric_name] = metrics
+            metrics[0].add_metric(labels=label_values, value=agg_data.sum_data)
+
+            if not self._export_counter_as_gauge:
+                pass
+            elif metric_name.endswith("_total"):
+                # In this case, we only need to emit prometheus counter
+                # since for metric name already ends with _total suffix
+                # prometheus client won't change it
+                # so there is no backward compatibility issue.
+                # See https://prometheus.github.io/client_python/instrumenting/counter/
+                pass
+            else:
+                if len(metrics) == 1:
+                    metric = GaugeMetricFamily(
+                        name=metric_name,
+                        documentation=(
+                            f"(DEPRECATED, use {metric_name}_total metric instead) "
+                            f"{metric_description}"
+                        ),
+                        labels=label_keys,
+                    )
+                    metrics.append(metric)
+                assert len(metrics) == 2
+                metrics[1].add_metric(labels=label_values, value=agg_data.sum_data)
+            return
 
         elif isinstance(agg_data, DistributionAggregationData):
 
@@ -356,32 +429,34 @@ class OpenCensusProxyCollector:
             # In OpenCensus we don't have +Inf in the bucket bonds so need to
             # append it here.
             buckets.append(["+Inf", agg_data.count_data])
-            metric = metrics_map.get(metric_name)
-            if not metric:
+            metrics = metrics_map.get(metric_name)
+            if not metrics:
                 metric = HistogramMetricFamily(
                     name=metric_name,
                     documentation=metric_description,
                     labels=label_keys,
                 )
-                metrics_map[metric_name] = metric
-            metric.add_metric(
+                metrics = [metric]
+                metrics_map[metric_name] = metrics
+            metrics[0].add_metric(
                 labels=label_values,
                 buckets=buckets,
                 sum_value=agg_data.sum,
             )
-            return metric
+            return
 
         elif isinstance(agg_data, LastValueAggregationData):
-            metric = metrics_map.get(metric_name)
-            if not metric:
+            metrics = metrics_map.get(metric_name)
+            if not metrics:
                 metric = GaugeMetricFamily(
                     name=metric_name,
                     documentation=metric_description,
                     labels=label_keys,
                 )
-                metrics_map[metric_name] = metric
-            metric.add_metric(labels=label_values, value=agg_data.value)
-            return metric
+                metrics = [metric]
+                metrics_map[metric_name] = metrics
+            metrics[0].add_metric(labels=label_values, value=agg_data.value)
+            return
 
         else:
             raise ValueError(f"unsupported aggregation type {type(agg_data)}")
@@ -399,7 +474,7 @@ class OpenCensusProxyCollector:
             for component in self._components.values():
                 for metric in component.metrics.values():
                     for label_values, data in metric.data.items():
-                        self.to_metric(
+                        self.to_metrics(
                             metric.name,
                             metric.desc,
                             metric.label_keys,
@@ -409,8 +484,9 @@ class OpenCensusProxyCollector:
                             metrics_map,
                         )
 
-        for metric in metrics_map.values():
-            yield metric
+        for metrics in metrics_map.values():
+            for metric in metrics:
+                yield metric
 
 
 class MetricsAgent:
@@ -460,6 +536,9 @@ class MetricsAgent:
                 component_timeout_s=int(os.getenv(RAY_WORKER_TIMEOUT_S, 120)),
             )
 
+        # Registered view names.
+        self._registered_views: Set[str] = set()
+
     def record_and_export(self, records: List[Record], global_tags=None):
         """Directly record and export stats from the same process."""
         global_tags = global_tags or {}
@@ -474,18 +553,16 @@ class MetricsAgent:
                 self._record_gauge(gauge, value, {**tags, **global_tags})
 
     def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
-        view_data = self.view_manager.get_view(gauge.name)
-        if not view_data:
+        if gauge.name not in self._registered_views:
             self.view_manager.register_view(gauge.view)
-            # Reobtain the view.
-        view = self.view_manager.get_view(gauge.name).view
+            self._registered_views.add(gauge.name)
         measurement_map = self.stats_recorder.new_measurement_map()
         tag_map = tag_map_module.TagMap()
         for key, tag_val in tags.items():
             tag_key = tag_key_module.TagKey(key)
             tag_value = tag_value_module.TagValue(tag_val)
             tag_map.insert(tag_key, tag_value)
-        measurement_map.measure_float_put(view.measure, value)
+        measurement_map.measure_float_put(gauge.measure, value)
         # NOTE: When we record this metric, timestamp will be renewed.
         measurement_map.record(tag_map)
 
@@ -537,7 +614,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     """
 
     def __init__(self, gcs_address, temp_dir):
-        gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
+        gcs_client_options = ray._raylet.GcsClientOptions.create(
+            gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
+        )
         self.gcs_address = gcs_address
 
         ray._private.state.state._initialize_global_state(gcs_client_options)

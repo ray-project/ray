@@ -16,7 +16,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
     import deepspeed
     from deepspeed.accelerator import get_accelerator
 
-    def train_func(config):
+    def train_func():
         # Instantiate your model and dataset
         model = ...
         train_dataset = ...
@@ -97,6 +97,6 @@ Check the below examples for more details:
    * - Accelerate (:ref:`User Guide <train-hf-accelerate>`)
      - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
    * - Transformers (:ref:`User Guide <train-pytorch-transformers>`)
-     - :ref:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <gptj_deepspeed_finetune>`
+     - :doc:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj_deepspeed_fine_tuning>`
    * - Lightning (:ref:`User Guide <train-pytorch-lightning>`)
-     - :ref:`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <vicuna_lightning_deepspeed_finetuning>`
+     - :doc:`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <examples/lightning/vicuna_13b_lightning_deepspeed_finetune>`

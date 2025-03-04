@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import tensorflow as tf
@@ -57,7 +58,7 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
         """
         tempdir = tempfile.mkdtemp()
         filename = "model.keras"
-        model.save(os.path.join(tempdir, filename))
+        model.save(Path(tempdir, filename).as_posix())
 
         checkpoint = cls.from_directory(tempdir)
         if preprocessor:
@@ -90,7 +91,7 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
             )
         tempdir = tempfile.mkdtemp()
         filename = os.path.basename(file_path)
-        new_checkpoint_file = os.path.join(tempdir, filename)
+        new_checkpoint_file = Path(tempdir, filename).as_posix()
         shutil.copy(file_path, new_checkpoint_file)
 
         checkpoint = cls.from_directory(tempdir)
@@ -150,5 +151,5 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
             )
         model_filename = metadata[self.MODEL_FILENAME_KEY]
         with self.as_directory() as checkpoint_dir:
-            model_path = os.path.join(checkpoint_dir, model_filename)
+            model_path = Path(checkpoint_dir, model_filename).as_posix()
             return keras.models.load_model(model_path)

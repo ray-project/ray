@@ -4,31 +4,112 @@
 * dark/light theme specific values, which normally take precedence over the PST defaults.
 * */
 html {
-  --anyscale-blue: #0641AC;
-  --ray-blue: #3C8AE9; /* Ray blue color - use this for all ray branding */
+  --anyscale-blue: #0066FF;
+  --ray-blue: #02A0CF; /* Ray blue color - use this for all ray branding */
   --pst-color-primary: var(--ray-blue) !important;
-  --pst-color-link-hover: var(--ray-blue) !important;
   --pst-color-inline-code-links: var(--ray-blue) !important;
 
   /* Transparent highlight color; default yellow is hard on the eyes */
-  --pst-color-target: #FFFFFF00 !important;
+  --pst-color-target: #ffffff00 !important;
   --color-diff-delete-bg: rgba(212, 118, 22, 0.3);
   --color-diff-insert-bg: rgba(56, 139, 253, 0.3);
   --color-diff-nochange-bg: rgba(0, 0, 0, 0);
+
+  --pst-font-family-base: 'Inter', sans-serif;
+  --stata-dark-background: #232629;
+}
+
+html[data-theme='dark'] {
+  --pst-color-background: #161a1d;
+  --pst-color-on-background: #1d2125;
+  --pst-color-text-base: #f1f2f4;
+  --pst-color-text-muted: #b3b9c4;
+  --pst-color-border: #2c333a;
+  --bs-body-color: #f1f2f4;
+  --heading-color: #ffffff;
+  --base-pygments-code-color: #cccccc;
+  --pst-color-link-hover: #cce0ff;
+  --anyscale-border-color: #f1f2f4;
+}
+
+html[data-theme='light'] {
+  --pst-color-background: #ffffff;
+  --pst-color-on-background: #ffffff;
+  --pst-color-text-base: #22272b;
+  --pst-color-text-muted: #454f59;
+  --pst-color-border: #dcdfe4;
+  --heading-color: #161a1d;
+  --base-pygments-code-color: #cccccc;
+  --pst-color-link-hover: #09326c;
+  --anyscale-border-color: #161a1d;
+}
+
+nav.bd-links li > a:hover {
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration-thickness: unset;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--heading-color);
+}
+
+/* Gradient ellipse background */
+.bd-sidebar-secondary {
+  background-color: transparent;
+}
+.bd-content:after {
+  /*   Commenting the code below to make more modifications after 2.10 release */
+  /*   background: linear-gradient(
+    60deg,
+    rgba(0, 85, 204, 0.18) 14%,
+    rgba(110, 93, 198, 0.18) 49.2%,
+    rgba(174, 71, 135, 0.18) 81.54%
+  ); */
+  background-size: 746px 746px;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 373px;
+  background-origin: 50%;
+  background-attachment: scroll;
+  content: '';
+  transform: translate(50%, 0%);
+  width: 746px;
+  height: 746px;
+  position: absolute;
+  filter: blur(100px);
+  z-index: -1;
 }
 
 /* Pygments diff code cell line colors; match github colorblind theme */
 div.highlight > pre > span.gd {
   background-color: var(--color-diff-delete-bg);
-  color: var(--pst-color-text-base) !important;
 }
 div.highlight > pre > span.gi {
   background-color: var(--color-diff-insert-bg);
-  color: var(--pst-color-text-base) !important;
 }
 div.highlight > pre > span.w {
   background-color: var(--color-diff-nochange-bg);
-  color: var(--pst-color-text-base) !important;
+}
+/* Fix some pygments styles that inadvertently get overridden by PST */
+.highlight pre {
+  background-color: var(--stata-dark-background);
+  color: var(--base-pygments-code-color);
+}
+
+/* Make the article content take up all available space */
+.bd-main .bd-content .bd-article-container {
+  max-width: 100%; /* default is 60em */
+}
+.bd-page-width {
+  max-width: 100%; /* default is 88rem */
 }
 
 /* Hide the "Hide Search Matches" button (we aren't highlighting search terms anyway) */
@@ -71,9 +152,6 @@ span.navbar-link-title {
 ul.navbar-toplevel li:hover > div.navbar-dropdown {
   display: block;
 }
-ul.navbar-toplevel > li:hover {
-  border-bottom:
-}
 ul.navbar-toplevel {
   display: flex;
   flex-direction: row;
@@ -81,6 +159,7 @@ ul.navbar-toplevel {
   align-items: center;
   margin: 0;
   height: 100%;
+  padding-left: 0;
 }
 .navbar-content ul.navbar-sublevel {
   position: absolute;
@@ -113,17 +192,32 @@ nav.navbar-nav {
   gap: 0.5em;
   height: 100%;
 }
+/* Highlight active nav bar link */
+li.active-link {
+  font-weight: bold;
+}
 .navbar-header-items__end {
   /* Prevent the anyscale button from wrapping */
   flex-flow: nowrap !important;
 }
-
-/* Highlight active nav bar link; offset content to compensate for border size */
-li.active-link {
-  border-bottom: 4px solid var(--ray-blue);
+.navbar {
+  box-shadow: 0px 4px 10px 0px rgba(0, 0, 0, 0.08);
 }
-li.active-link > .ref-container {
-  transform: translateY(2px);
+/* Set the first .navbar-persistent--mobile element to have auto left margin */
+.navbar-persistent--mobile {
+  margin-left: auto;
+}
+/* Set any .navbar-persistent--mobile preceeded by a .navbar-persistent--mobile to have */
+/* a 1em left margin */
+.navbar-persistent--mobile ~ .navbar-persistent--mobile {
+  margin-left: 1em;
+}
+/* Disable underline for hovered links in the nav bar */
+.navbar-nav li a:hover {
+  text-decoration: none;
+}
+.navbar-header-items {
+  padding-left: 0;
 }
 
 /* Ray logo */
@@ -133,18 +227,11 @@ li.active-link > .ref-container {
 .navbar-brand.logo > svg path#ray-text {
   fill: var(--pst-color-text-base);
 }
-.navbar-brand.logo > svg path#ray-logo {
-  fill: var(--ray-blue);
-}
 
 /* Anyscale branding */
-#anyscale-logo > path {
-  fill: var(--anyscale-blue);
-}
-#try-anyscale {
+#try-anyscale-text {
   color: var(--pst-color-text-base);
-  background-color: var(--pst-color-surface);
-  border-radius: 6px;
+  border-radius: 2px;
   white-space: nowrap;
   padding: 0px 12px;
   height: 40px;
@@ -153,7 +240,10 @@ li.active-link > .ref-container {
   justify-content: center;
   align-items: center;
   gap: 1em;
-  border: 1px solid var(--pst-color-border);
+  border: 1px solid var(--anyscale-border-color);
+}
+#try-anyscale-href {
+  text-decoration: none;
 }
 
 /* Remove margin for the release header in the sidebar, otherwise it's too much space */
@@ -181,32 +271,58 @@ button#pst-back-to-top {
 }
 
 .bottom-right-promo-banner {
-    position: fixed;
-    bottom: 100px;
-    right: 20px;
-    width: 270px;
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  width: 270px;
 }
 
 @media (max-width: 1500px) {
-    .bottom-right-promo-banner {
-        display: none;
-    }
+  .bottom-right-promo-banner {
+    display: none;
+  }
 }
 
 /* Nav sidebar styles */
-/* Sidebar checkboxes are toggled by clicking on the label; hide actual checkboxes */
-.sidebar-checkbox {
-  display: none;
+.bd-sidebar-primary {
+  width: 280px;
+  padding: 2em 2em 0em 2em;
 }
-.sidebar-checkbox[type="checkbox"]:checked ~ dd {
-  display: none;
+/* Make sidebar take up full primary sidebar gutter, but don't wrap content */
+#main-sidebar {
+  width: 100%;
+}
+nav.bd-links li > a {
+  color: var(--pst-color-text-base);
+}
+/* Sidebar checkboxes are toggled by clicking on the label; hide actual checkboxes */
+.toctree-checkbox[type='checkbox']:checked ~ ul > li.current-page:before {
+  background-color: var(--ray-blue);
+  border-radius: 0.5px;
+}
+.toctree-checkbox[type='checkbox']:checked ~ ul > li:before {
+  content: '';
+  width: 1px;
+  height: 100%;
+  position: absolute;
+  background-color: var(--pst-color-border);
+}
+/* Highlight and bold the primary sidebar entry for the current page */
+#main-sidebar li.current-page > a {
+  color: var(--ray-blue) !important;
+  font-weight: 600;
+}
+/* Bold the top level primary sidebar links */
+#main-sidebar > .navbar-nav > .nav.bd-sidenav > li > a {
+  font-weight: 500;
 }
 
 /* Fix some spacing issues associated with competition with PST styles */
 .sidebar-content dl {
   margin-bottom: 0;
 }
-.sidebar-content ol li > p:first-child, ul li > p:first-child {
+.sidebar-content ol li > p:first-child,
+ul li > p:first-child {
   margin-top: 0 !important;
 }
 
@@ -229,4 +345,61 @@ table.autosummary tr > td:first-child > p > a > code > span {
   display: block;
   overflow: clip;
   text-overflow: ellipsis;
+}
+
+/* RTD footer container makes the parent */
+/* #main-sidebar always scrollable if you don't remove negative margin. */
+/* Restrict width to 30% of the window */
+.bd-sidebar-primary div#rtd-footer-container {
+  margin: unset;
+  max-width: 30vw;
+}
+
+.query-param-ref-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid var(--pst-color-border);
+  border-radius: 8px;
+}
+
+.query-param-ref-wrapper p {
+  margin: 0;
+}
+
+/* Styles for tables in example pages */
+.table.example-table {
+  table-layout: fixed;
+}
+.table.example-table th:first-child {
+  width: 30%;
+}
+
+.bd-header-announcement {
+  color: var(--pst-color-light);
+}
+
+.bd-header-announcement::after {
+  background-color: var(--ray-blue);
+}
+
+.bd-header-announcement a {
+  color: var(--pst-color-light);
+  text-decoration: underline;
+}
+
+/* Prevent the the PyData theme Version Switcher from getting too large */
+.version-switcher__menu {
+  max-height: 40rem;
+  overflow-y: scroll;
+}
+
+/* Hide the RTD version switcher since we are using PyData theme one */
+readthedocs-flyout {
+  display: none !important;
+}
+
+/* Styling the experimental Anyscale upsell CTA */
+.anyscale-cta {
+  margin-bottom: 16px;
 }

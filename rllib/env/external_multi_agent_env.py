@@ -2,16 +2,15 @@ import uuid
 import gymnasium as gym
 from typing import Optional
 
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override, OldAPIStack
 from ray.rllib.env.external_env import ExternalEnv, _ExternalEnvEpisode
 from ray.rllib.utils.typing import MultiAgentDict
 
 
-@PublicAPI
+@OldAPIStack
 class ExternalMultiAgentEnv(ExternalEnv):
     """This is the multi-agent version of ExternalEnv."""
 
-    @PublicAPI
     def __init__(
         self,
         action_space: gym.Space,
@@ -37,7 +36,6 @@ class ExternalMultiAgentEnv(ExternalEnv):
                     )
                 )
 
-    @PublicAPI
     def run(self):
         """Override this to implement the multi-agent run loop.
 
@@ -54,7 +52,6 @@ class ExternalMultiAgentEnv(ExternalEnv):
         """
         raise NotImplementedError
 
-    @PublicAPI
     @override(ExternalEnv)
     def start_episode(
         self, episode_id: Optional[str] = None, training_enabled: bool = True
@@ -74,7 +71,6 @@ class ExternalMultiAgentEnv(ExternalEnv):
 
         return episode_id
 
-    @PublicAPI
     @override(ExternalEnv)
     def get_action(
         self, episode_id: str, observation_dict: MultiAgentDict
@@ -95,7 +91,6 @@ class ExternalMultiAgentEnv(ExternalEnv):
         episode = self._get(episode_id)
         return episode.wait_for_action(observation_dict)
 
-    @PublicAPI
     @override(ExternalEnv)
     def log_action(
         self,
@@ -114,7 +109,6 @@ class ExternalMultiAgentEnv(ExternalEnv):
         episode = self._get(episode_id)
         episode.log_action(observation_dict, action_dict)
 
-    @PublicAPI
     @override(ExternalEnv)
     def log_returns(
         self,
@@ -153,7 +147,6 @@ class ExternalMultiAgentEnv(ExternalEnv):
         if info_dict:
             episode.cur_info_dict = info_dict or {}
 
-    @PublicAPI
     @override(ExternalEnv)
     def end_episode(self, episode_id: str, observation_dict: MultiAgentDict) -> None:
         """Record the end of an episode.

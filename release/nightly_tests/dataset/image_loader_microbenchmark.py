@@ -372,7 +372,9 @@ def get_ray_mosaic_dataset(mosaic_data_root):
 
 def get_ray_parquet_dataset(parquet_data_root, parallelism=None):
     if parallelism is not None:
-        ray_dataset = ray.data.read_parquet(parquet_data_root, parallelism=parallelism)
+        ray_dataset = ray.data.read_parquet(
+            parquet_data_root, override_num_blocks=parallelism
+        )
     else:
         ray_dataset = ray.data.read_parquet(parquet_data_root)
     ray_dataset = ray_dataset.map(decode_image_crop_and_flip)
@@ -429,7 +431,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     metrics = {}
-    benchmark = Benchmark("image_loader_microbenchmark")
+    benchmark = Benchmark()
 
     if args.data_root is not None:
         # tf.data, load images.
@@ -581,7 +583,4 @@ if __name__ == "__main__":
                     ray_dataset.iter_torch_batches(batch_size=args.batch_size),
                 )
 
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/image_loader_microbenchmark.json"
-    )
-    benchmark.write_result(test_output_json)
+    benchmark.write_result()

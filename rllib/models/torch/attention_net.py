@@ -25,7 +25,7 @@ from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
@@ -36,6 +36,7 @@ from ray.util import log_once
 torch, nn = try_import_torch()
 
 
+@OldAPIStack
 class GTrXLNet(RecurrentNetwork, nn.Module):
     """A GTrXL net Model described in [2].
 
@@ -288,7 +289,7 @@ class AttentionWrapper(TorchModelV2, nn.Module):
             elif isinstance(space, MultiDiscrete):
                 self.action_dim += np.sum(space.nvec)
             elif space.shape is not None:
-                self.action_dim += int(np.product(space.shape))
+                self.action_dim += int(np.prod(space.shape))
             else:
                 self.action_dim += int(len(space))
 

@@ -1,3 +1,4 @@
+# @OldAPIStack
 """
 Tests, whether APPO can learn in a fault-tolerant fashion.
 
@@ -7,20 +8,30 @@ The environment we use here is configured to crash with a certain probability on
 `step()` and/or `reset()` call. Additionally, the environment is configured to stall
 with a configured probability on each `step()` call for a certain amount of time.
 """
+from gymnasium.wrappers import TimeLimit
+
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray import tune
 
-tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 
-
-stop = {
-    "evaluation/sampler_results/episode_reward_mean": 400.0,
-    "num_env_steps_sampled": 250000,
-}
+tune.register_env(
+    "env",
+    lambda cfg: TimeLimit(CartPoleCrashing(cfg), max_episode_steps=500),
+)
 
 config = (
     APPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment(
         "env",
         env_config={
@@ -33,25 +44,21 @@ config = (
             "stall_time_sec": (2, 5),  # stall between 2 and 10sec.
             "stall_on_worker_indices": [2, 3],
         },
-        # Disable env checking. Env checker doesn't handle Exceptions from
-        # user envs, and will crash rollout worker.
-        disable_env_checking=True,
     )
-    .rollouts(
-        num_rollout_workers=1,
-        num_envs_per_worker=1,
+    .env_runners(
+        num_env_runners=1,
+        num_envs_per_env_runner=1,
     )
     # Switch on resiliency (recreate any failed worker).
     .fault_tolerance(
-        recreate_failed_workers=True,
+        restart_failed_env_runners=True,
     )
     .evaluation(
-        evaluation_num_workers=1,
+        evaluation_num_env_runners=4,
         evaluation_interval=1,
         evaluation_duration=25,
         evaluation_duration_unit="episodes",
         evaluation_parallel_to_training=True,
-        enable_async_evaluation=True,
         evaluation_config=APPOConfig.overrides(
             explore=False,
             env_config={
@@ -61,15 +68,16 @@ config = (
                 "p_crash": 0.0,
                 "p_crash_reset": 0.0,
                 "init_time_s": 0.0,
-                "p_stall": 0.0,
+                "p_stall": 0.01,
+                "stall_time_sec": 300,  # stall for 5min.
                 "p_stall_reset": 0.0,
+                "stall_on_worker_indices": [1, 2],
             },
         ),
     )
 )
 
-
-if __name__ == "__main__":
-    algo = config.framework("tf2").build()
-    for _ in range(1000):
-        print(algo.train())
+stop = {
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 500.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 2000000,
+}

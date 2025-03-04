@@ -394,6 +394,59 @@ def test_temp_dir_with_node_ip_address(ray_start_cluster, short_tmp_path):
     assert short_tmp_path == ray._private.worker._global_node.get_temp_dir_path()
 
 
+def test_can_create_actor_in_multiple_sessions(shutdown_only):
+    """Validates a bugfix that, if you create an actor in driver, then you shutdown and
+    restart and create the actor in task, it fails.
+    https://github.com/ray-project/ray/issues/44380
+    """
+
+    # To avoid interference with other tests, we need a fresh cluster.
+    assert not ray.is_initialized()
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            print("A.__init__")
+
+    @ray.remote
+    def make_actor_in_task():
+        a = A.remote()
+        return a
+
+    ray.init()
+    A.remote()
+    ray.shutdown()
+
+    ray.init()
+    ray.get(make_actor_in_task.remote())
+
+
+def test_can_create_task_in_multiple_sessions(shutdown_only):
+    """Validates a bugfix that, if you create a task in driver, then you shutdown and
+    restart and create the task in task, it hangs.
+    https://github.com/ray-project/ray/issues/44380
+    """
+
+    # To avoid interference with other tests, we need a fresh cluster.
+    assert not ray.is_initialized()
+
+    @ray.remote
+    def the_task():
+        print("the task")
+        return "the task"
+
+    @ray.remote
+    def run_task_in_task():
+        return ray.get(the_task.remote())
+
+    ray.init()
+    assert ray.get(the_task.remote()) == "the task"
+    ray.shutdown()
+
+    ray.init()
+    assert ray.get(run_task_in_task.remote()) == "the task"
+
+
 if __name__ == "__main__":
     import sys
 

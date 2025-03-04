@@ -1,6 +1,6 @@
 # See https://hub.docker.com/r/anyscale/ray for full list of
 # available Ray, Python, and CUDA versions.
-base_image: anyscale/ray:latest-py39-cu118
+base_image: anyscale/ray:2.9.0-py39-cu118
 
 env_vars: {}
 

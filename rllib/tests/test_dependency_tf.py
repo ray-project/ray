@@ -22,9 +22,13 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=True,
+            enable_rl_module_and_learner=True,
+        )
         .environment("CartPole-v1")
         .framework("torch")
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
     )
     # Note: No ray.init(), to test it works without Ray
     algo = config.build()

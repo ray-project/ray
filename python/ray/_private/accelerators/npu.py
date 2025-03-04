@@ -7,8 +7,10 @@ from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
-ASCEND_VISIBLE_DEVICES_ENV_VAR = "ASCEND_VISIBLE_DEVICES"
-NOSET_ASCEND_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ASCEND_VISIBLE_DEVICES"
+ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"
+NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES"
+)
 
 
 class NPUAcceleratorManager(AcceleratorManager):
@@ -20,7 +22,7 @@ class NPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
-        return ASCEND_VISIBLE_DEVICES_ENV_VAR
+        return ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
@@ -58,7 +60,7 @@ class NPUAcceleratorManager(AcceleratorManager):
             logger.debug("Could not import AscendCL: %s", e)
 
         try:
-            npu_files = glob.glob("/dev/davinci?")
+            npu_files = glob.glob("/dev/davinci[0-9]*")
             return len(npu_files)
         except Exception as e:
             logger.debug("Failed to detect number of NPUs: %s", e)
@@ -89,7 +91,7 @@ class NPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_npu_devices: List[str],
     ) -> None:
-        if os.environ.get(NOSET_ASCEND_VISIBLE_DEVICES_ENV_VAR):
+        if os.environ.get(NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR):
             return
 
         os.environ[

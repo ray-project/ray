@@ -30,6 +30,8 @@ bool SequentialActorSubmitQueue::Contains(uint64_t sequence_no) const {
   return requests.find(sequence_no) != requests.end();
 }
 
+bool SequentialActorSubmitQueue::Empty() { return requests.empty(); }
+
 const std::pair<TaskSpecification, bool> &SequentialActorSubmitQueue::Get(
     uint64_t sequence_no) const {
   auto it = requests.find(sequence_no);

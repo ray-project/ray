@@ -1,10 +1,9 @@
-import os
-import pandas as pd
-import pyarrow
 from typing import Optional, Union
 
+import pandas as pd
+import pyarrow
+
 from ray.air.result import Result
-from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
@@ -25,7 +24,7 @@ class ResultGrid:
     .. testcode::
 
         import random
-        from ray import train, tune
+        from ray import tune
         def random_error_trainable(config):
             if random.random() < 0.5:
                 return {"loss": 0.0}
@@ -33,7 +32,7 @@ class ResultGrid:
                 raise ValueError("This is an error")
         tuner = tune.Tuner(
             random_error_trainable,
-            run_config=train.RunConfig(name="example-experiment"),
+            run_config=tune.RunConfig(name="example-experiment"),
             tune_config=tune.TuneConfig(num_samples=10),
         )
         try:
@@ -183,16 +182,14 @@ class ResultGrid:
 
             .. testcode::
 
-                from ray import train
-                from ray.train import RunConfig
-                from ray.tune import Tuner
+                import ray.tune
 
                 def training_loop_per_worker(config):
-                    train.report({"accuracy": 0.8})
+                    ray.tune.report({"accuracy": 0.8})
 
-                result_grid = Tuner(
+                result_grid = ray.tune.Tuner(
                     trainable=training_loop_per_worker,
-                    run_config=RunConfig(name="my_tune_run")
+                    run_config=ray.tune.RunConfig(name="my_tune_run")
                 ).fit()
 
                 # Get last reported results per trial
@@ -254,15 +251,7 @@ class ResultGrid:
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.status == Trial.TERMINATED:
             return None
-        # TODO(justinvyu): [populate_exception] for storage_path != None
-        if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
-            with open(trial.pickled_error_file, "rb") as f:
-                e = cloudpickle.load(f)
-                return e
-        elif trial.error_file and os.path.exists(trial.error_file):
-            with open(trial.error_file, "r") as f:
-                return TuneError(f.read())
-        return None
+        return trial.get_pickled_error() or trial.get_error()
 
     def _trial_to_result(self, trial: Trial) -> Result:
         cpm = trial.run_metadata.checkpoint_manager

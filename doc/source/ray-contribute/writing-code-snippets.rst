@@ -229,7 +229,6 @@ To ignore parts of a *doctest-style* output, replace problematic sections with e
     >>> import ray
     >>> ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
     Dataset(
-       num_blocks=...,
        num_rows=...,
        schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
     )
@@ -251,7 +250,6 @@ with ellipses. ::
     .. testoutput::
 
         Dataset(
-           num_blocks=...,
            num_rows=...,
            schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
         )

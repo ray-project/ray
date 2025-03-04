@@ -1,9 +1,14 @@
 :orphan:
 
-.. _deepspeed_example:
-
 Train with DeepSpeed ZeRO-3 and Ray Train
 =========================================
+
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-deepspeed_example" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=deepspeed_example">
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
 
 This is an intermediate example that shows how to do distributed training with DeepSpeed ZeRO-3 and Ray Train.
 It demonstrates how to use :ref:`Ray Data <data>` with DeepSpeed ZeRO-3 and Ray Train.
@@ -19,6 +24,6 @@ Code example
 See also
 --------
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases.
+* :doc:`Ray Train Examples <../../examples>` for more use cases.
 
-* :ref:`Get Started with DeepSpeed <train-deepspeed>` for a tutorial.    
+* :ref:`Get Started with DeepSpeed <train-deepspeed>` for a tutorial.

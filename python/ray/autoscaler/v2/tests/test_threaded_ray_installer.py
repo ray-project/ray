@@ -8,7 +8,7 @@ import pytest  # noqa
 
 from ray._private.test_utils import load_test_config
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
@@ -22,13 +22,9 @@ from ray.tests.autoscaler_test_utils import MockProcessRunner, MockProvider
 class ThreadedRayInstallerTest(unittest.TestCase):
     def setUp(self):
         self.base_provider = MockProvider()
-        self.instance_config_provider = NodeProviderConfig(
-            load_test_config("test_ray_complex.yaml")
-        )
+        self.config = AutoscalingConfig(load_test_config("test_ray_complex.yaml"))
         self.runner = MockProcessRunner()
-        self.ray_installer = RayInstaller(
-            self.base_provider, self.instance_config_provider, self.runner
-        )
+        self.ray_installer = RayInstaller(self.base_provider, self.config, self.runner)
         self.instance_storage = InstanceStorage(
             cluster_id="test_cluster_id",
             storage=InMemoryStorage(),

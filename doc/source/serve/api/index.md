@@ -6,7 +6,7 @@
 (core-apis)=
 
 ```{eval-rst}
-.. module:: ray
+.. currentmodule:: ray
 ```
 
 ### Writing Applications
@@ -43,8 +43,8 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-{mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` is now the default handle API.
-You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs using `handle.options(use_new_handle_api=False)` or `export RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, but this support will be removed in a future version.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
+See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}
@@ -56,8 +56,6 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
-   serve.handle.RayServeHandle
-   serve.handle.RayServeSyncHandle
 ```
 
 ### Running Applications
@@ -87,6 +85,22 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.config.AutoscalingConfig
 ```
 
+### Schemas
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_init_args.rst
+
+   serve.schema.ServeActorDetails
+   serve.schema.ProxyDetails
+   serve.schema.ApplicationStatusOverview
+   serve.schema.ServeStatus
+   serve.schema.DeploymentStatusOverview
+   serve.schema.EncodingType
+```
+
 #### Advanced APIs
 
 ```{eval-rst}
@@ -100,7 +114,12 @@ You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs
    serve.get_app_handle
    serve.get_deployment_handle
    serve.grpc_util.RayServegRPCContext
+   serve.exceptions.BackPressureError
+   serve.exceptions.RayServeException
+   serve.exceptions.RequestCancelledError
+   serve.exceptions.DeploymentUnavailableError
 ```
+
 
 (serve-cli)=
 
@@ -237,7 +256,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Translator",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": {
                             "language": "german"
                         },
@@ -275,7 +294,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Summarizer",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": null,
                         "graceful_shutdown_wait_loop_s": 2.0,
                         "graceful_shutdown_timeout_s": 20.0,
@@ -355,12 +374,14 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
-   :template: autosummary/class_with_inherited_members.rst
 
    schema.ServeInstanceDetails
+   schema.APIType
+   schema.ApplicationStatus
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+   schema.ProxyStatus
 ```
 
 ## Observability
@@ -374,4 +395,72 @@ Content-Type: application/json
    metrics.Histogram
    metrics.Gauge
    schema.LoggingConfig
+```
+
+(serve-llm-api)=
+
+## LLM API
+
+```{eval-rst}
+.. currentmodule:: ray
+``` 
+
+
+### Builders
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.build_llm_deployment
+   serve.llm.build_openai_app
+```
+
+### Configs
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   serve.llm.LLMConfig
+   serve.llm.LLMServingArgs
+   serve.llm.ModelLoadingConfig
+   serve.llm.CloudMirrorConfig
+   serve.llm.LoraConfig
+```
+
+
+### Deployments
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.LLMServer
+   serve.llm.LLMRouter
+```
+
+### OpenAI API Models
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic_show_json.rst
+
+   serve.llm.openai_api_models.ChatCompletionRequest
+   serve.llm.openai_api_models.CompletionRequest
+   serve.llm.openai_api_models.ChatCompletionStreamResponse
+   serve.llm.openai_api_models.ChatCompletionResponse
+   serve.llm.openai_api_models.CompletionStreamResponse
+   serve.llm.openai_api_models.CompletionResponse
+   serve.llm.openai_api_models.ErrorResponse
 ```

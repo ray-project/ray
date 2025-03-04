@@ -111,6 +111,18 @@ def test_gpu_ids(shutdown_only):
     ray.get(a1.test.remote())
 
 
+def test_gpu_ids_cuda_visible_devices_preset(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        m.setenv("CUDA_VISIBLE_DEVICES", "uuid1,uuid2")
+        ray.init(num_gpus=1)
+
+        @ray.remote(num_gpus=1)
+        def get_gpu_ids():
+            return ray.get_gpu_ids()
+
+        assert ray.get(get_gpu_ids.remote()) == ["uuid1"]
+
+
 def test_zero_cpus(shutdown_only):
     ray.init(num_cpus=0)
 

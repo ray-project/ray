@@ -20,8 +20,6 @@ NUM_REPLICAS = 7
 MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
-NUM_REDIS_SHARDS = 1
-REDIS_MAX_MEMORY = 10**8
 OBJECT_STORE_MEMORY = 10**8
 NUM_NODES = 4
 
@@ -51,12 +49,10 @@ cluster = Cluster()
 for i in range(NUM_NODES):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
-        num_redis_shards=NUM_REDIS_SHARDS if i == 0 else None,
         num_cpus=16,
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=OBJECT_STORE_MEMORY,
-        redis_max_memory=REDIS_MAX_MEMORY,
         dashboard_host="0.0.0.0",
     )
 
@@ -140,7 +136,7 @@ class RandomTest:
 
         if blocking:
             ray.get(self.random_killer.spare.remote(new_name))
-            serve.run(
+            serve._run(
                 handler.bind(),
                 name=new_name,
                 route_prefix=f"/{new_name}",
@@ -149,7 +145,7 @@ class RandomTest:
             self.applications.append(new_name)
             ray.get(self.random_killer.stop_spare.remote(new_name))
         else:
-            serve.run(
+            serve._run(
                 handler.bind(),
                 name=new_name,
                 route_prefix=f"/{new_name}",

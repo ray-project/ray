@@ -4,21 +4,43 @@ import json
 import logging
 import pickle
 import socket
-from typing import Any, List, Optional, Type
+from collections import deque
+from dataclasses import dataclass
+from packaging import version
+from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
 
 import starlette
+import uvicorn
 from fastapi.encoders import jsonable_encoder
+from starlette.datastructures import MutableHeaders
+from starlette.middleware import Middleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._private.pydantic_compat import IS_PYDANTIC_2
-from ray.actor import ActorHandle
+from ray.serve.config import HTTPOptions
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.utils import serve_encoders
+from ray.serve._private.utils import serve_encoders, generate_request_id
 from ray.serve.exceptions import RayServeException
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+@dataclass(frozen=True)
+class ASGIArgs:
+    scope: Scope
+    receive: Receive
+    send: Send
+
+    def to_args_tuple(self) -> Tuple[Scope, Receive, Send]:
+        return (self.scope, self.receive, self.send)
+
+    def to_starlette_request(self) -> starlette.requests.Request:
+        return starlette.requests.Request(
+            *self.to_args_tuple(),
+        )
 
 
 def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
@@ -124,17 +146,23 @@ async def receive_http_body(scope, receive, send):
     return b"".join(body_buffer)
 
 
-class ASGIMessageQueue(Send):
+class MessageQueue(Send):
     """Queue enables polling for received or sent messages.
 
-    This class assumes a single consumer of the queue (concurrent calls to
-    `get_messages_nowait` and `wait_for_message` is undefined behavior).
+    Implements the ASGI `Send` interface.
+
+    This class:
+        - Is *NOT* thread safe and should only be accessed from a single asyncio
+          event loop.
+        - Assumes a single consumer of the queue (concurrent calls to
+          `get_messages_nowait` and `wait_for_message` is undefined behavior).
     """
 
     def __init__(self):
-        self._message_queue = asyncio.Queue()
+        self._message_queue = deque()
         self._new_message_event = asyncio.Event()
         self._closed = False
+        self._error = None
 
     def close(self):
         """Close the queue, rejecting new messages.
@@ -146,6 +174,13 @@ class ASGIMessageQueue(Send):
         self._closed = True
         self._new_message_event.set()
 
+    def set_error(self, e: BaseException):
+        self._error = e
+
+    def put_nowait(self, message: Message):
+        self._message_queue.append(message)
+        self._new_message_event.set()
+
     async def __call__(self, message: Message):
         """Send a message, putting it on the queue.
 
@@ -154,22 +189,7 @@ class ASGIMessageQueue(Send):
         if self._closed:
             raise RuntimeError("New messages cannot be sent after the queue is closed.")
 
-        await self._message_queue.put(message)
-        self._new_message_event.set()
-
-    def get_messages_nowait(self) -> List[Message]:
-        """Returns all messages that are currently available (non-blocking).
-
-        At least one message will be present if `wait_for_message` had previously
-        returned and a subsequent call to `wait_for_message` blocks until at
-        least one new message is available.
-        """
-        messages = []
-        while not self._message_queue.empty():
-            messages.append(self._message_queue.get_nowait())
-
-        self._new_message_event.clear()
-        return messages
+        self.put_nowait(message)
 
     async def wait_for_message(self):
         """Wait until at least one new message is available.
@@ -183,24 +203,87 @@ class ASGIMessageQueue(Send):
         if not self._closed:
             await self._new_message_event.wait()
 
+    def get_messages_nowait(self) -> List[Message]:
+        """Returns all messages that are currently available (non-blocking).
+
+        At least one message will be present if `wait_for_message` had previously
+        returned and a subsequent call to `wait_for_message` blocks until at
+        least one new message is available.
+        """
+        messages = []
+        while len(self._message_queue) > 0:
+            messages.append(self._message_queue.popleft())
+
+        self._new_message_event.clear()
+        return messages
+
+    async def get_one_message(self) -> Message:
+        """This blocks until a message is ready.
+
+        This method should not be used together with get_messages_nowait.
+        Please use either `get_one_message` or `get_messages_nowait`.
+
+        Raises:
+            StopAsyncIteration: if the queue is closed and there are no
+                more messages.
+            Exception (self._error): if there are no more messages in
+                the queue and an error has been set.
+        """
+
+        if self._error:
+            raise self._error
+
+        await self._new_message_event.wait()
+
+        if len(self._message_queue) > 0:
+            msg = self._message_queue.popleft()
+
+            if len(self._message_queue) == 0 and not self._closed:
+                self._new_message_event.clear()
+
+            return msg
+        elif len(self._message_queue) == 0 and self._error:
+            raise self._error
+        elif len(self._message_queue) == 0 and self._closed:
+            raise StopAsyncIteration
+
 
 class ASGIReceiveProxy:
     """Proxies ASGI receive from an actor.
 
-    The provided actor handle is expected to implement a single method:
-    `receive_asgi_messages`. It will be called repeatedly until a disconnect message
-    is received.
+    The `receive_asgi_messages` callback will be called repeatedly to fetch messages
+    until a disconnect message is received.
     """
 
     def __init__(
         self,
-        request_id: str,
-        actor_handle: ActorHandle,
+        scope: Scope,
+        request_metadata: RequestMetadata,
+        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
     ):
+        self._type = scope["type"]  # Either 'http' or 'websocket'.
         self._queue = asyncio.Queue()
-        self._request_id = request_id
-        self._actor_handle = actor_handle
+        self._request_metadata = request_metadata
+        self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
+
+    def _get_default_disconnect_message(self) -> Message:
+        """Return the appropriate disconnect message based on the connection type.
+
+        HTTP ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event
+
+        WS ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event-ws
+        """
+        if self._type == "websocket":
+            return {
+                "type": "websocket.disconnect",
+                # 1005 is the default disconnect code according to the ASGI spec.
+                "code": 1005,
+            }
+        else:
+            return {"type": "http.disconnect"}
 
     async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
@@ -212,10 +295,8 @@ class ASGIReceiveProxy:
         """
         while True:
             try:
-                pickled_messages = (
-                    await self._actor_handle.receive_asgi_messages.remote(
-                        self._request_id
-                    )
+                pickled_messages = await self._receive_asgi_messages(
+                    self._request_metadata
                 )
                 for message in pickle.loads(pickled_messages):
                     self._queue.put_nowait(message)
@@ -223,7 +304,16 @@ class ASGIReceiveProxy:
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
                         self._disconnect_message = message
                         return
+            except KeyError:
+                # KeyError can be raised if the request is no longer active in the proxy
+                # (i.e., the user disconnects). This is expected behavior and we should
+                # not log an error: https://github.com/ray-project/ray/issues/43290.
+                message = self._get_default_disconnect_message()
+                self._queue.put_nowait(message)
+                self._disconnect_message = message
+                return
             except Exception as e:
+                # Raise unexpected exceptions in the next `__call__`.
                 self._queue.put_nowait(e)
                 return
 
@@ -314,8 +404,8 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
             for parameter in old_parameters[1:]
         ]
         new_signature = old_signature.replace(parameters=new_parameters)
-        setattr(route.endpoint, "__signature__", new_signature)
-        setattr(route.endpoint, "_serve_cls", cls)
+        route.endpoint.__signature__ = new_signature
+        route.endpoint._serve_cls = cls
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
@@ -386,6 +476,10 @@ class ASGIAppReplicaWrapper:
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
 
+    @property
+    def app(self) -> ASGIApp:
+        return self._asgi_app
+
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
         # Within this block we temporarily uplevel for cleaner logging
@@ -424,7 +518,7 @@ class ASGIAppReplicaWrapper:
 
 def validate_http_proxy_callback_return(
     middlewares: Any,
-) -> [starlette.middleware.Middleware]:
+) -> [Middleware]:
     """Validate the return value of HTTP proxy callback.
 
     Middlewares should be a list of Starlette middlewares. If it is None, we
@@ -443,9 +537,102 @@ def validate_http_proxy_callback_return(
         # All middlewares must be Starlette middlewares.
         # https://www.starlette.io/middleware/#using-pure-asgi-middleware
         for middleware in middlewares:
-            if not issubclass(type(middleware), starlette.middleware.Middleware):
+            if not issubclass(type(middleware), Middleware):
                 raise ValueError(
                     "HTTP proxy callback must return a list of Starlette middlewares, "
                     f"instead got {type(middleware)} type item in the list."
                 )
     return middlewares
+
+
+class RequestIdMiddleware:
+    def __init__(self, app: ASGIApp):
+        self._app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        headers = MutableHeaders(scope=scope)
+        if "x-request-id" not in headers:
+            request_id = generate_request_id()
+            headers.append("x-request-id", request_id)
+        elif "x-request-id" in headers:
+            request_id = headers["x-request-id"]
+
+        async def send_with_request_id(message: Message):
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers.append("X-Request-ID", request_id)
+            if message["type"] == "websocket.accept":
+                message["X-Request-ID"] = request_id
+            await send(message)
+
+        await self._app(scope, receive, send_with_request_id)
+
+
+def _apply_middlewares(app: ASGIApp, middlewares: List[Callable]) -> ASGIApp:
+    """Wrap the ASGI app with the provided middlewares.
+
+    The built-in RequestIdMiddleware will always be applied first.
+    """
+    for middleware in [Middleware(RequestIdMiddleware)] + middlewares:
+        if version.parse(starlette.__version__) < version.parse("0.35.0"):
+            app = middleware.cls(app, **middleware.options)
+        else:
+            # In starlette >= 0.35.0, middleware.options does not exist:
+            # https://github.com/encode/starlette/pull/2381.
+            app = middleware.cls(
+                app,
+                *middleware.args,
+                **middleware.kwargs,
+            )
+
+    return app
+
+
+async def start_asgi_http_server(
+    app: ASGIApp,
+    http_options: HTTPOptions,
+    *,
+    event_loop: asyncio.AbstractEventLoop,
+    enable_so_reuseport: bool = False,
+) -> asyncio.Task:
+    """Start an HTTP server to run the ASGI app.
+
+    Returns a task that blocks until the server exits (e.g., due to error).
+    """
+    app = _apply_middlewares(app, http_options.middlewares)
+
+    sock = socket.socket()
+    if enable_so_reuseport:
+        set_socket_reuse_port(sock)
+
+    try:
+        sock.bind((http_options.host, http_options.port))
+    except OSError as e:
+        raise RuntimeError(
+            f"Failed to bind to address '{http_options.host}:{http_options.port}'."
+        ) from e
+
+    # NOTE: We have to use lower level uvicorn Config and Server
+    # class because we want to run the server as a coroutine. The only
+    # alternative is to call uvicorn.run which is blocking.
+    server = uvicorn.Server(
+        config=uvicorn.Config(
+            lambda: app,
+            factory=True,
+            host=http_options.host,
+            port=http_options.port,
+            root_path=http_options.root_path,
+            timeout_keep_alive=http_options.keep_alive_timeout_s,
+            loop=event_loop,
+            lifespan="off",
+            access_log=False,
+            log_level="warning",
+        )
+    )
+
+    # NOTE(edoakes): we need to override install_signal_handlers here
+    # because the existing implementation fails if it isn't running in
+    # the main thread and uvicorn doesn't expose a way to configure it.
+    server.install_signal_handlers = lambda: None
+
+    return event_loop.create_task(server.serve(sockets=[sock]))

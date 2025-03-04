@@ -14,10 +14,13 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import read_and_validate_release_test_collection
+from ray_release.config import (
+    read_and_validate_release_test_collection,
+    RELEASE_TEST_CONFIG_FILES,
+)
 from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test
-from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 
 
 @click.command()
@@ -208,16 +211,20 @@ def _obtain_test_result(
             if commit in outcomes and len(outcomes[commit]) == run_per_commit:
                 continue
             for run in range(run_per_commit):
-                outcome = subprocess.check_output(
-                    [
-                        "buildkite-agent",
-                        "step",
-                        "get",
-                        "outcome",
-                        "--step",
-                        f"{commit}-{run}",
-                    ]
-                ).decode("utf-8")
+                outcome = (
+                    subprocess.check_output(
+                        [
+                            "buildkite-agent",
+                            "step",
+                            "get",
+                            "outcome",
+                            "--step",
+                            f"{commit}-{run}",
+                        ]
+                    )
+                    .decode("utf-8")
+                    .strip()
+                )
                 if not outcome:
                     continue
                 if commit not in outcomes:
@@ -237,7 +244,7 @@ def _obtain_test_result(
 
 def _get_test(test_name: str, test_collection_file: Tuple[str]) -> Test:
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file or ["release/release_tests.yaml"],
+        test_collection_file or RELEASE_TEST_CONFIG_FILES,
     )
     return [test for test in test_collection if test["name"] == test_name][0]
 
@@ -261,7 +268,7 @@ def _update_test_state(test: Test, blamed_commit: str) -> None:
     test[Test.KEY_BISECT_BLAMED_COMMIT] = blamed_commit
 
     # Compute and update the next test state, then comment blamed commit on github issue
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     sm.comment_blamed_commit_on_github_issue()
 

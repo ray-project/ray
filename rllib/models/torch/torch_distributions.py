@@ -5,7 +5,7 @@ already be familiar with.
 """
 import gymnasium as gym
 import numpy as np
-from typing import Optional, List, Mapping, Iterable, Dict
+from typing import Dict, Iterable, List, Optional
 import tree
 import abc
 
@@ -13,6 +13,7 @@ import abc
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, SMALL_NUMBER
 from ray.rllib.utils.typing import TensorType, Union, Tuple
 
 torch, nn = try_import_torch()
@@ -48,24 +49,28 @@ class TorchDistribution(Distribution, abc.ABC):
     def sample(
         self,
         *,
-        sample_shape=torch.Size(),
+        sample_shape=None,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        sample = self._dist.sample(sample_shape)
+        sample = self._dist.sample(
+            sample_shape if sample_shape is not None else torch.Size()
+        )
         return sample
 
     @override(Distribution)
     def rsample(
         self,
         *,
-        sample_shape=torch.Size(),
+        sample_shape=None,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        rsample = self._dist.rsample(sample_shape)
+        rsample = self._dist.rsample(
+            sample_shape if sample_shape is not None else torch.Size()
+        )
         return rsample
 
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
-    """Wrapper class for PyTorch Categorical distribution.
+    r"""Wrapper class for PyTorch Categorical distribution.
 
     Creates a categorical distribution parameterized by either :attr:`probs` or
     :attr:`logits` (but not both).
@@ -102,8 +107,8 @@ class TorchCategorical(TorchDistribution):
     @override(TorchDistribution)
     def __init__(
         self,
-        logits: torch.Tensor = None,
-        probs: torch.Tensor = None,
+        logits: "torch.Tensor" = None,
+        probs: "torch.Tensor" = None,
     ) -> None:
         # We assert this here because to_deterministic makes this assumption.
         assert (probs is None) != (
@@ -112,18 +117,21 @@ class TorchCategorical(TorchDistribution):
 
         self.probs = probs
         self.logits = logits
-        self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-            logits=logits, probs=probs
-        )
         super().__init__(logits=logits, probs=probs)
+
+        # Build this distribution only if really needed (in `self.rsample()`). It's
+        # quite expensive according to cProfile.
+        self._one_hot = None
 
     @override(TorchDistribution)
     def _get_torch_distribution(
         self,
-        logits: torch.Tensor = None,
-        probs: torch.Tensor = None,
+        logits: "torch.Tensor" = None,
+        probs: "torch.Tensor" = None,
     ) -> "torch.distributions.Distribution":
-        return torch.distributions.categorical.Categorical(logits=logits, probs=probs)
+        return torch.distributions.categorical.Categorical(
+            logits=logits, probs=probs, validate_args=False
+        )
 
     @staticmethod
     @override(Distribution)
@@ -133,7 +141,11 @@ class TorchCategorical(TorchDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        one_hot_sample = self.one_hot.sample(sample_shape)
+        if self._one_hot is None:
+            self._one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
+                logits=self.logits, probs=self.probs, validate_args=False
+            )
+        one_hot_sample = self._one_hot.sample(sample_shape)
         return (one_hot_sample - self.probs).detach() + self.probs
 
     @classmethod
@@ -190,14 +202,14 @@ class TorchDiagGaussian(TorchDistribution):
     @override(TorchDistribution)
     def __init__(
         self,
-        loc: Union[float, torch.Tensor],
-        scale: Optional[Union[float, torch.Tensor]],
+        loc: Union[float, "torch.Tensor"],
+        scale: Optional[Union[float, "torch.Tensor"]],
     ):
         self.loc = loc
         super().__init__(loc=loc, scale=scale)
 
     def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
-        return torch.distributions.normal.Normal(loc, scale)
+        return torch.distributions.normal.Normal(loc, scale, validate_args=False)
 
     @override(TorchDistribution)
     def logp(self, value: TensorType) -> TensorType:
@@ -229,6 +241,106 @@ class TorchDiagGaussian(TorchDistribution):
 
 
 @DeveloperAPI
+class TorchSquashedGaussian(TorchDistribution):
+    @override(TorchDistribution)
+    def __init__(
+        self,
+        loc: Union[float, "torch.Tensor"],
+        scale: Optional[Union[float, "torch.Tensor"]] = 1.0,
+        low: float = -1.0,
+        high: float = 1.0,
+    ):
+        self.loc = loc
+        self.low = low
+        self.high = high
+
+        super().__init__(loc=loc, scale=scale)
+
+    def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
+        return torch.distributions.normal.Normal(loc, scale, validate_args=False)
+
+    @override(TorchDistribution)
+    def sample(
+        self, *, sample_shape=None
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        # Sample from the Normal distribution.
+        sample = super().sample(
+            sample_shape=sample_shape if sample_shape is not None else torch.Size()
+        )
+        # Return the squashed sample.
+        return self._squash(sample)
+
+    @override(TorchDistribution)
+    def rsample(
+        self, *, sample_shape=None
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        # Sample from the Normal distribution.
+        sample = super().rsample(
+            sample_shape=sample_shape if sample_shape is not None else torch.Size()
+        )
+        # Return the squashed sample.
+        return self._squash(sample)
+
+    @override(TorchDistribution)
+    def logp(self, value: TensorType, **kwargs) -> TensorType:
+        # Unsquash value.
+        value = self._unsquash(value)
+        # Get log-probabilities from Normal distribution.
+        logp = super().logp(value, **kwargs)
+        # Clip the log probabilities as a safeguard and sum.
+        logp = torch.clamp(logp, -100, 100).sum(-1)
+        # Return the log probabilities for squashed Normal.
+        value = torch.tanh(value)
+        return logp - torch.log(1 - value**2 + SMALL_NUMBER).sum(-1)
+
+    @override(TorchDistribution)
+    def entropy(self) -> TensorType:
+        raise ValueError("ENtropy not defined for `TorchSquashedGaussian`.")
+
+    @override(TorchDistribution)
+    def kl(self, other: Distribution) -> TensorType:
+        raise ValueError("KL not defined for `TorchSquashedGaussian`.")
+
+    def _squash(self, sample: TensorType) -> TensorType:
+        # Rescale the sample to interval given by the bounds (including the bounds).
+        sample = ((torch.tanh(sample) + 1.0) / 2.0) * (self.high - self.low) + self.low
+        # Return a clipped sample to comply with the bounds.
+        return torch.clamp(sample, self.low, self.high)
+
+    def _unsquash(self, sample: TensorType) -> TensorType:
+        # Rescale to [-1.0, 1.0].
+        sample = (sample - self.low) / (self.high - self.low) * 2.0 - 1.0
+        # Stabilize input to atanh function.
+        sample = torch.clamp(sample, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+        return torch.atanh(sample)
+
+    @staticmethod
+    @override(Distribution)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Box), space
+        return int(np.prod(space.shape, dtype=np.int32) * 2)
+
+    @classmethod
+    @override(TorchDistribution)
+    def from_logits(
+        cls, logits: TensorType, low: float = -1.0, high: float = 1.0, **kwargs
+    ) -> "TorchSquashedGaussian":
+        loc, log_std = logits.chunk(2, dim=-1)
+        # Clip the `scale` values (coming from the `RLModule.forward()`) to
+        # reasonable values.
+        log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
+        scale = log_std.exp()
+
+        # Assert that `low` is smaller than `high`.
+        assert np.all(np.less(low, high))
+        # Return class instance.
+        return TorchSquashedGaussian(loc=loc, scale=scale, low=low, high=high)
+
+    def to_deterministic(self) -> Distribution:
+        return TorchDeterministic(loc=self.loc)
+
+
+@DeveloperAPI
 class TorchDeterministic(Distribution):
     """The distribution that returns the input values directly.
 
@@ -252,7 +364,7 @@ class TorchDeterministic(Distribution):
     """
 
     @override(Distribution)
-    def __init__(self, loc: torch.Tensor) -> None:
+    def __init__(self, loc: "torch.Tensor") -> None:
         super().__init__()
         self.loc = loc
 
@@ -260,12 +372,14 @@ class TorchDeterministic(Distribution):
     def sample(
         self,
         *,
-        sample_shape: Tuple[int, ...] = torch.Size(),
+        sample_shape=None,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         device = self.loc.device
         dtype = self.loc.dtype
-        shape = sample_shape + self.loc.shape
+        shape = (
+            sample_shape if sample_shape is not None else torch.Size()
+        ) + self.loc.shape
         return torch.ones(shape, device=device, dtype=dtype) * self.loc
 
     def rsample(
@@ -278,15 +392,15 @@ class TorchDeterministic(Distribution):
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
+        return torch.zeros_like(self.loc)
 
     @override(Distribution)
     def entropy(self, **kwargs) -> TensorType:
-        raise torch.zeros_like(self.loc)
+        raise RuntimeError(f"`entropy()` not supported for {self.__class__.__name__}.")
 
     @override(Distribution)
     def kl(self, other: "Distribution", **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return kl for {self.__class__.__name__}.")
+        raise RuntimeError(f"`kl()` not supported for {self.__class__.__name__}.")
 
     @staticmethod
     @override(Distribution)
@@ -328,7 +442,7 @@ class TorchMultiCategorical(Distribution):
         return sample_
 
     @override(Distribution)
-    def logp(self, value: torch.Tensor) -> TensorType:
+    def logp(self, value: "torch.Tensor") -> TensorType:
         value = torch.unbind(value, dim=-1)
         logps = torch.stack([cat.logp(act) for cat, act in zip(self._cats, value)])
         return torch.sum(logps, dim=0)
@@ -357,7 +471,7 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def from_logits(
         cls,
-        logits: torch.Tensor,
+        logits: "torch.Tensor",
         input_lens: List[int],
         temperatures: List[float] = None,
         **kwargs,
@@ -395,8 +509,17 @@ class TorchMultiCategorical(Distribution):
 
         return TorchMultiCategorical(categoricals=categoricals)
 
-    def to_deterministic(self) -> "TorchMultiDistribution":
-        return TorchMultiDistribution([cat.to_deterministic() for cat in self._cats])
+    def to_deterministic(self) -> "TorchDeterministic":
+        if self._cats[0].probs is not None:
+            probs_or_logits = nn.utils.rnn.pad_sequence(
+                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
+            )
+        else:
+            probs_or_logits = nn.utils.rnn.pad_sequence(
+                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
+            )
+
+        return TorchDeterministic(loc=torch.argmax(probs_or_logits, dim=0))
 
 
 @DeveloperAPI
@@ -407,12 +530,11 @@ class TorchMultiDistribution(Distribution):
         self,
         child_distribution_struct: Union[Tuple, List, Dict],
     ):
-        """Initializes a TorchMultiActionDistribution object.
+        """Initializes a TorchMultiDistribution object.
 
         Args:
-            child_distribution_struct: Any struct
-                that contains the child distribution classes to use to
-                instantiate the child distributions from `logits`.
+            child_distribution_struct: A complex struct that contains the child
+                distribution instances that make up this multi-distribution.
         """
         super().__init__()
         self._original_struct = child_distribution_struct
@@ -498,17 +620,21 @@ class TorchMultiDistribution(Distribution):
 
     @staticmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
-        return sum(input_lens)
+    def required_input_dim(
+        space: gym.Space, input_lens: List[int], as_list: bool = False, **kwargs
+    ) -> int:
+        if as_list:
+            return input_lens
+        else:
+            return sum(input_lens)
 
     @classmethod
     @override(Distribution)
     def from_logits(
         cls,
-        logits: torch.Tensor,
-        child_distribution_cls_struct: Union[Mapping, Iterable],
+        logits: "torch.Tensor",
+        child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
-        space: gym.Space,
         **kwargs,
     ) -> "TorchMultiDistribution":
         """Creates this Distribution from logits (and additional arguments).
@@ -525,15 +651,14 @@ class TorchMultiDistribution(Distribution):
             input_lens: A list or dict of integers that indicate the length of each
                 logit. If this is given as a dict, the structure should match the
                 structure of child_distribution_cls_struct.
-            space: The possibly nested output space.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            A TorchMultiActionDistribution object.
+            A TorchMultiDistribution object.
         """
         logit_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
-        split_logits = torch.split(logits, logit_lens, dim=1)
+        split_logits = torch.split(logits, logit_lens, dim=-1)
 
         child_distribution_list = tree.map_structure(
             lambda dist, input_: dist.from_logits(input_),

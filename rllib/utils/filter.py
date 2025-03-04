@@ -4,7 +4,7 @@ import threading
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import TensorStructType
@@ -14,7 +14,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class Filter:
     """Processes input, possibly statefully."""
 
@@ -46,7 +46,7 @@ class Filter:
         pass
 
 
-@DeveloperAPI
+@OldAPIStack
 class NoFilter(Filter):
     is_concurrent = True
 
@@ -77,7 +77,7 @@ class NoFilter(Filter):
 
 
 # http://www.johndcook.com/blog/standard_deviation/
-@DeveloperAPI
+@OldAPIStack
 class RunningStat:
     def __init__(self, shape=()):
         self.num_pushes = 0
@@ -114,12 +114,12 @@ class RunningStat:
             delta = x - self.mean_array
             self.mean_array[...] += delta / self.num_pushes
             self.std_array[...] += (
-                delta * delta * (self.num_pushes - 1) / self.num_pushes
+                (delta / self.num_pushes) * delta * (self.num_pushes - 1)
             )
 
     def update(self, other):
-        n1 = self.num_pushes
-        n2 = other.num_pushes
+        n1 = float(self.num_pushes)
+        n2 = float(other.num_pushes)
         n = n1 + n2
         if n == 0:
             # Avoid divide by zero, which creates nans
@@ -127,7 +127,7 @@ class RunningStat:
         delta = self.mean_array - other.mean_array
         delta2 = delta * delta
         m = (n1 * self.mean_array + n2 * other.mean_array) / n
-        s = self.std_array + other.std_array + delta2 * n1 * n2 / n
+        s = self.std_array + other.std_array + (delta2 / n) * n1 * n2
         self.num_pushes = n
         self.mean_array = m
         self.std_array = s
@@ -151,7 +151,7 @@ class RunningStat:
             self.std_array / (self.num_pushes - 1)
             if self.num_pushes > 1
             else np.square(self.mean_array)
-        )
+        ).astype(np.float32)
 
     @property
     def std(self):
@@ -177,7 +177,7 @@ class RunningStat:
         return running_stats
 
 
-@DeveloperAPI
+@OldAPIStack
 class MeanStdFilter(Filter):
     """Keeps track of a running mean for seen states"""
 
@@ -312,10 +312,8 @@ class MeanStdFilter(Filter):
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        # TODO: Remove these safe-guards if not needed anymore.
         self.running_stats = tree.map_structure(
-            lambda rs: rs.copy(),
-            other.running_stats if hasattr(other, "running_stats") else other.rs,
+            lambda rs: rs.copy(), other.running_stats
         )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
@@ -359,7 +357,7 @@ class MeanStdFilter(Filter):
             return _helper(x, self.running_stats, self.buffer, self.shape)
 
 
-@DeveloperAPI
+@OldAPIStack
 class ConcurrentMeanStdFilter(MeanStdFilter):
     is_concurrent = True
 
@@ -408,9 +406,8 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
         )
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_filter(filter_config, shape):
-    # TODO(rliaw): move this into filter manager
     if filter_config == "MeanStdFilter":
         return MeanStdFilter(shape, clip=None)
     elif filter_config == "ConcurrentMeanStdFilter":

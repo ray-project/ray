@@ -22,7 +22,7 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
               PushActorTask,
               (std::unique_ptr<PushTaskRequest> request,
                bool skip_queue,
-               const ClientCallback<PushTaskReply> &callback),
+               ClientCallback<PushTaskReply> &&callback),
               (override));
   MOCK_METHOD(void,
               PushNormalTask,
@@ -32,7 +32,8 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
   MOCK_METHOD(void,
               NumPendingTasks,
               (std::unique_ptr<NumPendingTasksRequest> request,
-               const ClientCallback<NumPendingTasksReply> &callback),
+               const ClientCallback<NumPendingTasksReply> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(void,
               DirectActorCallArgWaitComplete,
@@ -45,9 +46,9 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                const ClientCallback<GetObjectStatusReply> &callback),
               (override));
   MOCK_METHOD(void,
-              WaitForActorOutOfScope,
-              (const WaitForActorOutOfScopeRequest &request,
-               const ClientCallback<WaitForActorOutOfScopeReply> &callback),
+              WaitForActorRefDeleted,
+              (const WaitForActorRefDeletedRequest &request,
+               const ClientCallback<WaitForActorRefDeletedReply> &callback),
               (override));
   MOCK_METHOD(void,
               PubsubLongPolling,
@@ -133,10 +134,11 @@ class MockCoreWorkerClientConfigurableRunningTasks
       : num_running_tasks_(num_running_tasks) {}
 
   void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
-                       const ClientCallback<NumPendingTasksReply> &callback) override {
+                       const ClientCallback<NumPendingTasksReply> &callback,
+                       int64_t timeout_ms = -1) override {
     NumPendingTasksReply reply;
     reply.set_num_pending_tasks(num_running_tasks_);
-    callback(Status::OK(), reply);
+    callback(Status::OK(), std::move(reply));
   }
 
  private:

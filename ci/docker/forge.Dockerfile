@@ -1,14 +1,17 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/home/forge/.local/bin:${PATH}"
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
+ENV RAY_BUILD_ENV=ubuntu22.04_forge
 
-RUN <<EOF
+RUN \
+  --mount=type=bind,source=ci/k8s/install-k8s-tools.sh,target=install-k8s-tools.sh \
+<<EOF
 #!/bin/bash
 
 set -euo pipefail
@@ -38,7 +41,7 @@ apt-get install -y \
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-python -m pip install pip==23.2.1
+python -m pip install pip==25.0 cffi==1.16.0
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
@@ -55,18 +58,7 @@ usermod -a -G docker0 forge
 usermod -a -G docker forge
 
 if [[ "$(uname -i)" == "x86_64" ]]; then
-  curl -sfL "https://github.com/kubernetes-sigs/kind/releases/download/v0.11.1/kind-linux-amd64" -o /usr/local/bin/kind
-  chmod +x /usr/local/bin/kind
-
-  curl -sfL "https://dl.k8s.io/release/v1.28.4/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl
-  chmod +x /usr/local/bin/kubectl
-
-  curl -sfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.2.1/kustomize_v5.2.1_linux_amd64.tar.gz" \
-      | tar -xzf - -C /usr/local/bin kustomize
-
-  mkdir -p /usr/local/helm
-  curl -sfL "https://get.helm.sh/helm-v3.12.2-linux-amd64.tar.gz" | tar -xzf - -C /usr/local/helm linux-amd64/helm
-  ln -s /usr/local/helm/linux-amd64/helm /usr/local/bin/helm
+  bash install-k8s-tools.sh
 fi
 
 EOF

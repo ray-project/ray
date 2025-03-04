@@ -1,0 +1,14 @@
+name: "$IMAGE_TO"
+froms: ["$IMAGE_FROM"]
+dockerfile: ci/docker/core.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/dl-gpu-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=$IMAGE_FROM
+  - RAYCI_IS_GPU_BUILD
+tags:
+  - cr.ray.io/rayproject/$IMAGE_TO

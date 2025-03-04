@@ -8,7 +8,7 @@ import requests
 ray.init(storage="/tmp/ray/workflow/data")
 # Start a Ray Serve instance. This will automatically start
 # or connect to an existing Ray cluster.
-serve.start(detached=True)
+serve.start()
 
 # fmt: off
 # __wait_for_event_begin__

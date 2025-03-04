@@ -1,39 +1,46 @@
 import copy
 import io
-import os
-import math
 import logging
+import math
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
     Optional,
+    Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
-    Tuple,
 )
 
 import pyarrow.fs
 
 import ray.cloudpickle as pickle
-from ray.util import inspect_serializability
+import ray.train
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.config import RunConfig, ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
-from ray.tune import Experiment, TuneError, ExperimentAnalysis
-from ray.tune.execution.experiment_state import _ResumeConfig
-from ray.tune.tune import _Config
+from ray.train.constants import (
+    _v2_migration_warnings_enabled,
+    V2_MIGRATION_GUIDE_MESSAGE,
+)
+from ray.train.utils import _log_deprecation_warning
+from ray.tune import (
+    Experiment,
+    ExperimentAnalysis,
+    ResumeConfig,
+    RunConfig,
+    TuneConfig,
+    TuneError,
+)
 from ray.tune.registry import is_function_trainable
-from ray.tune.result import _get_defaults_results_dir
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
-from ray.tune.tune import run
-from ray.tune.tune_config import TuneConfig
+from ray.tune.tune import _Config, run
 from ray.tune.utils import flatten_dict
+from ray.util import inspect_serializability
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
@@ -78,14 +85,14 @@ class TunerInternal:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.train.RunConfig for more info.
+            if applicable. Refer to ray.tune.RunConfig for more info.
     """
 
     def __init__(
         self,
         restore_path: str = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
-        resume_config: Optional[_ResumeConfig] = None,
+        resume_config: Optional[ResumeConfig] = None,
         trainable: Optional[TrainableTypeOrTrainer] = None,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
@@ -96,6 +103,14 @@ class TunerInternal:
         from ray.train.trainer import BaseTrainer
 
         if isinstance(trainable, BaseTrainer):
+            if _v2_migration_warnings_enabled():
+                _log_deprecation_warning(
+                    "The Ray Train + Ray Tune integration has been reworked. "
+                    "Passing a Trainer to the Tuner is deprecated and will be removed "
+                    "in a future release. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+                )
+
             run_config = self._choose_run_config(
                 tuner_run_config=run_config,
                 trainer=trainable,
@@ -103,7 +118,16 @@ class TunerInternal:
             )
 
         self._tune_config = tune_config or TuneConfig()
-        self._run_config = run_config or RunConfig()
+        self._run_config = copy.copy(run_config) or RunConfig()
+
+        if not isinstance(self._run_config, RunConfig):
+            if _v2_migration_warnings_enabled():
+                _log_deprecation_warning(
+                    "The `RunConfig` class should be imported from `ray.tune` "
+                    "when passing it to the Tuner. Please update your imports. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+                )
+
         self._entrypoint = _entrypoint
 
         # Restore from Tuner checkpoint.
@@ -130,23 +154,27 @@ class TunerInternal:
         self._resume_config = None
         self._is_restored = False
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
-        (
-            self._local_experiment_dir,
-            self._experiment_dir_name,
-        ) = self.setup_create_experiment_checkpoint_dir(
-            self.converted_trainable, self._run_config
-        )
         self._experiment_analysis = None
 
-        # This needs to happen before `tune.run()` is kicked in.
-        # This is because currently tune does not exit gracefully if
-        # run in ray client mode - if crash happens, it just exits immediately
-        # without allowing for checkpointing tuner and trainable.
-        # Thus this has to happen before tune.run() so that we can have something
-        # to restore from.
-        experiment_checkpoint_path = Path(self._local_experiment_dir, _TUNER_PKL)
-        with open(experiment_checkpoint_path, "wb") as fp:
-            pickle.dump(self.__getstate__(), fp)
+        self._run_config.name = (
+            self._run_config.name
+            or StorageContext.get_experiment_dir_name(self.converted_trainable)
+        )
+        # The storage context here is only used to access the resolved
+        # storage fs and experiment path, in order to avoid duplicating that logic.
+        # This is NOT the storage context object that gets passed to remote workers.
+        storage = StorageContext(
+            storage_path=self._run_config.storage_path,
+            experiment_dir_name=self._run_config.name,
+            storage_filesystem=self._run_config.storage_filesystem,
+        )
+
+        fs = storage.storage_filesystem
+        fs.create_dir(storage.experiment_fs_path)
+        with fs.open_output_stream(
+            Path(storage.experiment_fs_path, _TUNER_PKL).as_posix()
+        ) as f:
+            f.write(pickle.dumps(self.__getstate__()))
 
     def get_run_config(self) -> RunConfig:
         return self._run_config
@@ -321,11 +349,11 @@ class TunerInternal:
         path_or_uri: str,
         trainable: TrainableTypeOrTrainer,
         overwrite_param_space: Optional[Dict[str, Any]],
-        resume_config: _ResumeConfig,
+        resume_config: ResumeConfig,
         storage_filesystem: Optional[pyarrow.fs.FileSystem],
     ):
         fs, fs_path = get_fs_and_path(path_or_uri, storage_filesystem)
-        with fs.open_input_file(os.path.join(fs_path, _TUNER_PKL)) as f:
+        with fs.open_input_file(Path(fs_path, _TUNER_PKL).as_posix()) as f:
             tuner_state = pickle.loads(f.readall())
 
         old_trainable_name, flattened_param_space_keys = self._load_tuner_state(
@@ -350,13 +378,8 @@ class TunerInternal:
         # Ex: s3://bucket/exp_name -> s3://bucket, exp_name
         self._run_config.name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
-
-        (
-            self._local_experiment_dir,
-            self._experiment_dir_name,
-        ) = self.setup_create_experiment_checkpoint_dir(
-            self.converted_trainable, self._run_config
-        )
+        # Update the storage_filesystem with the one passed in on restoration, if any.
+        self._run_config.storage_filesystem = storage_filesystem
 
         # Load the experiment results at the point where it left off.
         try:
@@ -364,6 +387,7 @@ class TunerInternal:
                 experiment_checkpoint_path=path_or_uri,
                 default_metric=self._tune_config.metric,
                 default_mode=self._tune_config.mode,
+                storage_filesystem=storage_filesystem,
             )
         except Exception:
             self._experiment_analysis = None
@@ -397,7 +421,7 @@ class TunerInternal:
             )
 
         # Both Tuner RunConfig + Trainer RunConfig --> prefer Tuner RunConfig
-        if tuner_run_config and trainer.run_config != RunConfig():
+        if tuner_run_config and trainer.run_config != ray.train.RunConfig():
             logger.info(
                 "A `RunConfig` was passed to both the `Tuner` and the "
                 f"`{trainer.__class__.__name__}`. The run config passed to "
@@ -423,38 +447,9 @@ class TunerInternal:
         # TODO: introduce `ray.tune.sample.TuneableDataclass` and allow Tune to
         # natively resolve specs with dataclasses.
         scaling_config = self._param_space.get("scaling_config")
-        if not isinstance(scaling_config, ScalingConfig):
+        if not isinstance(scaling_config, ray.train.ScalingConfig):
             return
         self._param_space["scaling_config"] = scaling_config.__dict__.copy()
-
-    @classmethod
-    def setup_create_experiment_checkpoint_dir(
-        cls, trainable: TrainableType, run_config: Optional[RunConfig]
-    ) -> Tuple[str, str]:
-        """Sets up and creates the local experiment checkpoint dir.
-        This is so that the `tuner.pkl` file gets stored in the same directory
-        and gets synced with other experiment results.
-
-        Returns:
-            Tuple: (experiment_path, experiment_dir_name)
-        """
-        # TODO(justinvyu): Move this logic into StorageContext somehow
-        experiment_dir_name = run_config.name or StorageContext.get_experiment_dir_name(
-            trainable
-        )
-        storage_local_path = _get_defaults_results_dir()
-        experiment_path = (
-            Path(storage_local_path).joinpath(experiment_dir_name).as_posix()
-        )
-
-        os.makedirs(experiment_path, exist_ok=True)
-        return experiment_path, experiment_dir_name
-
-    # This has to be done through a function signature (@property won't do).
-    def get_experiment_checkpoint_dir(self) -> str:
-        # TODO(justinvyu): This is used to populate an error message.
-        # This should point to the storage path experiment dir instead.
-        return self._local_experiment_dir
 
     @property
     def trainable(self) -> TrainableTypeOrTrainer:
@@ -544,7 +539,7 @@ class TunerInternal:
                     "custom training loop, you will need to "
                     "report a checkpoint every `checkpoint_frequency` iterations "
                     "within your training loop using "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
             elif handle_checkpoint_freq is True:
@@ -565,7 +560,7 @@ class TunerInternal:
                     "to your CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in a Trainer that takes in a "
                     "custom training loop, you should include one last call to "
-                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "`ray.tune.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
                 )
             elif handle_cp_at_end is True:
@@ -584,7 +579,7 @@ class TunerInternal:
         return dict(
             storage_path=self._run_config.storage_path,
             storage_filesystem=self._run_config.storage_filesystem,
-            name=self._experiment_dir_name,
+            name=self._run_config.name,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
@@ -602,9 +597,6 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             _entrypoint=self._entrypoint,
-            # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-            # For now, keep accepting both options.
-            local_dir=self._run_config.local_dir,
             # Deprecated
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )
@@ -635,26 +627,14 @@ class TunerInternal:
         self, trainable: TrainableType, param_space: Optional[Dict[str, Any]]
     ) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
-        resume = "AUTO"
-
-        if self._resume_config:
-            if not self._resume_config.resume_unfinished:
-                if self._resume_config.resume_errored:
-                    resume += "+ERRORED_ONLY"
-                elif self._resume_config.restart_errored:
-                    resume += "+RESTART_ERRORED_ONLY"
-            else:
-                if self._resume_config.resume_errored:
-                    resume += "+ERRORED"
-                elif self._resume_config.restart_errored:
-                    resume += "+RESTART_ERRORED"
+        assert self._resume_config
 
         args = {
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
                 config=param_space,
-                resume=resume,
+                resume_config=self._resume_config,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
             ),

@@ -4,10 +4,10 @@ client = JobSubmissionClient("http://127.0.0.1:8265")
 
 kick_off_xgboost_benchmark = (
     # Clone ray. If ray is already present, don't clone again.
-    "git clone https://github.com/ray-project/ray || true;"
+    "git clone https://github.com/ray-project/ray || true; "
     # Run the benchmark.
-    " python ray/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py"
-    " --size 100G --disable-check"
+    "python ray/release/train_tests/xgboost_lightgbm/train_batch_inference_benchmark.py"
+    " xgboost --size=100G --disable-check"
 )
 
 

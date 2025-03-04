@@ -12,7 +12,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
 
     from accelerate import Accelerator
 
-    def train_func(config):
+    def train_func():
         # Instantiate the accelerator
         accelerator = Accelerator(...)
 
@@ -102,7 +102,7 @@ object in your training function. Below are starter examples for configuring Acc
                 "wall_clock_breakdown": False
             }
 
-            def train_func(config):
+            def train_func():
                 # Create a DeepSpeedPlugin from config dict
                 ds_plugin = DeepSpeedPlugin(hf_ds_config=DEEPSPEED_CONFIG)
 
@@ -138,7 +138,7 @@ object in your training function. Below are starter examples for configuring Acc
             from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
             from accelerate import Accelerator, FullyShardedDataParallelPlugin
 
-            def train_func(config):
+            def train_func():
                 fsdp_plugin = FullyShardedDataParallelPlugin(
                     state_dict_config=FullStateDictConfig(
                         offload_to_cpu=False,

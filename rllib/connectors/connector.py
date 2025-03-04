@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     TensorType,
 )
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ConnectorContext:
     """Data bits that may be needed for running connectors.
 
@@ -79,7 +79,7 @@ class ConnectorContext:
         )
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class Connector(abc.ABC):
     """Connector base class.
 
@@ -137,7 +137,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class AgentConnector(Connector):
     """Connector connecting user environments to RLlib policies.
 
@@ -277,7 +277,7 @@ class AgentConnector(Connector):
         raise NotImplementedError
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ActionConnector(Connector):
     """Action connector connects policy outputs including actions,
     to user environments.
@@ -332,7 +332,7 @@ class ActionConnector(Connector):
         raise NotImplementedError
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ConnectorPipeline(abc.ABC):
     """Utility class for quick manipulation of a connector pipeline."""
 

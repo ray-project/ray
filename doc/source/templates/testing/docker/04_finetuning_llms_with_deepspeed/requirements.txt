@@ -1,6 +1,6 @@
-deepspeed
+deepspeed==0.10.2
 fairscale
-transformers>=4.31.0
+transformers>=4.36.2
 dataset
 accelerate
 evaluate
@@ -8,7 +8,5 @@ wandb
 pytorch-lightning
 protobuf<3.21.0
 torchmetrics
-lm_eval==0.3.0
-tiktoken==0.1.2
 sentencepiece
 peft==0.7.0

@@ -1,18 +1,17 @@
 import gymnasium as gym
 from typing import Dict, List
 
-from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
 
-# TODO: (sven) obsolete this class once we only support native keras models.
-@DeveloperAPI
+@OldAPIStack
 class VisionNetwork(TFModelV2):
     """Generic vision network implemented in ModelV2 API.
 

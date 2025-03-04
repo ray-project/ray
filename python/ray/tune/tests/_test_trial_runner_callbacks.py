@@ -4,25 +4,23 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
 from collections import OrderedDict
+from unittest.mock import patch
 
 import ray
 from ray import tune
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
+from ray.tune import Callback
+from ray.tune.callback import warnings
 from ray.tune.execution.ray_trial_executor import (
+    RayTrialExecutor,
     _ExecutorEvent,
     _ExecutorEventType,
-    RayTrialExecutor,
 )
-
-from ray.tune.callback import warnings
-from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
-from ray.tune import Callback
-from ray.tune.experiment import Experiment
+from ray.tune.experiment import Experiment, Trial
 
 
 class TestCallback(Callback):

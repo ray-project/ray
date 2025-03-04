@@ -1,15 +1,24 @@
 import os
 import subprocess
 import sys
-from typing import List, Optional
+from typing import List, Tuple, Optional
 
 from ci.ray_ci.container import Container
 
 
+WORKDIR = "C:\\rayci"
+
+
 class WindowsContainer(Container):
-    def install_ray(self, build_type: Optional[str] = None) -> List[str]:
-        assert build_type is None, f"Windows does not support build types {build_type}"
+    def install_ray(
+        self, build_type: Optional[str] = None, mask: Optional[str] = None
+    ) -> List[str]:
+        assert not build_type, f"Windows does not support build type: {build_type}"
+        assert not mask, f"Windows does not support install mask: {mask}"
+
         bazel_cache = os.environ.get("BUILDKITE_BAZEL_CACHE_URL", "")
+        pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID", "")
+        cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
         subprocess.check_call(
             [
                 "docker",
@@ -18,11 +27,15 @@ class WindowsContainer(Container):
                 f"BASE_IMAGE={self._get_docker_image()}",
                 "--build-arg",
                 f"BUILDKITE_BAZEL_CACHE_URL={bazel_cache}",
+                "--build-arg",
+                f"BUILDKITE_PIPELINE_ID={pipeline_id}",
+                "--build-arg",
+                f"BUILDKITE_CACHE_READONLY={cache_readonly}",
                 "-t",
                 self._get_docker_image(),
                 "-f",
-                "c:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
-                "c:\\workdir",
+                "C:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
+                "C:\\workdir",
             ],
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -36,4 +49,7 @@ class WindowsContainer(Container):
         gpu_ids: Optional[List[int]] = None,
     ) -> List[str]:
         assert not gpu_ids, "Windows does not support gpu ids"
-        return []
+        return ["--workdir", WORKDIR]
+
+    def get_artifact_mount(self) -> Tuple[str, str]:
+        return ("C:\\tmp\\artifacts", "C:\\artifact-mount")

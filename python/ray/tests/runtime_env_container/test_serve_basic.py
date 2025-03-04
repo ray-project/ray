@@ -5,16 +5,20 @@ from ray.serve.handle import DeploymentHandle
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
+parser.add_argument(
+    "--use-image-uri-api",
+    action="store_true",
+    help="Whether to use the new `image_uri` API instead of the old `container` API.",
+)
 args = parser.parse_args()
 
-WORKER_PATH = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+if args.use_image_uri_api:
+    runtime_env = {"image_uri": args.image}
+else:
+    runtime_env = {"container": {"image": args.image}}
 
 
-@serve.deployment(
-    ray_actor_options={
-        "runtime_env": {"container": {"image": args.image, "worker_path": WORKER_PATH}}
-    }
-)
+@serve.deployment(ray_actor_options={"runtime_env": runtime_env})
 class Model:
     def __call__(self):
         with open("file.txt") as f:

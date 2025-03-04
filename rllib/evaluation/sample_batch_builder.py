@@ -1,21 +1,19 @@
 import collections
 import logging
 import numpy as np
-from typing import List, Any, Dict, Optional, TYPE_CHECKING
+from typing import List, Any, Dict, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import PolicyID, AgentID
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +25,7 @@ def _to_float_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
-@Deprecated(new="a child class of `SampleCollector`", error=False)
+@OldAPIStack
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 
@@ -69,9 +67,7 @@ class SampleBatchBuilder:
         return batch
 
 
-# Deprecated class: Use a child class of `SampleCollector` instead
-#  (which handles multi-agent setups as well).
-@DeveloperAPI
+@OldAPIStack
 class MultiAgentSampleBatchBuilder:
     """Util to build SampleBatches for each policy in a multi-agent env.
 
@@ -85,7 +81,7 @@ class MultiAgentSampleBatchBuilder:
         self,
         policy_map: Dict[PolicyID, Policy],
         clip_rewards: bool,
-        callbacks: "DefaultCallbacks",
+        callbacks: "RLlibCallback",
     ):
         """Initialize a MultiAgentSampleBatchBuilder.
 
@@ -131,7 +127,6 @@ class MultiAgentSampleBatchBuilder:
 
         return len(self.agent_builders) > 0
 
-    @DeveloperAPI
     def add_values(self, agent_id: AgentID, policy_id: AgentID, **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch.
 
@@ -151,7 +146,7 @@ class MultiAgentSampleBatchBuilder:
 
         self.agent_builders[agent_id].add_values(**values)
 
-    def postprocess_batch_so_far(self, episode: Optional[Episode] = None) -> None:
+    def postprocess_batch_so_far(self, episode=None) -> None:
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
@@ -244,8 +239,7 @@ class MultiAgentSampleBatchBuilder:
                     "to True. "
                 )
 
-    @DeveloperAPI
-    def build_and_reset(self, episode: Optional[Episode] = None) -> MultiAgentBatch:
+    def build_and_reset(self, episode=None) -> MultiAgentBatch:
         """Returns the accumulated sample batches for each policy.
 
         Any unprocessed rows will be first postprocessed with a policy
