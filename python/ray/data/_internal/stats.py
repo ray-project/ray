@@ -279,34 +279,34 @@ class _StatsActor:
         # === Dataset and Operator Metadata Metrics ===
         dataset_tags = ("dataset",)
         self.dataset_progress = Gauge(
-            "ray_data_dataset_progress",
+            "data_dataset_progress",
             description="Progress of dataset execution",
             tag_keys=dataset_tags,
         )
         self.dataset_total = Gauge(
-            "ray_data_dataset_total",
+            "data_dataset_total",
             description="Total work units for dataset",
             tag_keys=dataset_tags,
         )
         self.dataset_state = Gauge(
-            "ray_data_dataset_state",
+            "data_dataset_state",
             description=f"State of dataset ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
             tag_keys=("dataset",),
         )
 
         operator_tags = ("dataset", "operator")
         self.operator_progress = Gauge(
-            "ray_data_operator_progress",
+            "data_operator_progress",
             description="Progress of operator execution",
             tag_keys=operator_tags,
         )
         self.operator_total = Gauge(
-            "ray_data_operator_total",
+            "data_operator_total",
             description="Total work units for operator",
             tag_keys=operator_tags,
         )
         self.operator_state = Gauge(
-            "ray_data_operator_state",
+            "data_operator_state",
             description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
             tag_keys=("dataset", "operator"),
         )
