@@ -50,7 +50,7 @@ Transforming data
 -----------------
 
 Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations
-across your cluster for optimal performance.
+across your cluster for better performance.
 
 .. testcode::
 
