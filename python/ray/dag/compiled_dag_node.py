@@ -610,7 +610,7 @@ class ExecutableTask:
         assert self._intermediate_future is None
 
         if wrap_in_gpu_future:
-            future = GPUFuture(val)
+            future = GPUFuture(val, self.task_idx)
         else:
             future = ResolvedFuture(val)
         self._intermediate_future = future
