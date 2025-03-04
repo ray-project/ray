@@ -53,7 +53,7 @@ def main(args):
         detokenize = True
 
     processor_config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
