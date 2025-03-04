@@ -70,6 +70,7 @@ config = (
         # learner_queue_size=1,
         circular_buffer_num_batches=4,
         circular_buffer_iterations_per_batch=2,
+        num_pkgs_per_aggregation_cycle=2,
     )
     .rl_module(
         model_config=DefaultModelConfig(
@@ -82,7 +83,7 @@ config = (
 )
 
 args.num_learners = 2
-args.num_env_runners=4
+args.num_env_runners = 4
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
