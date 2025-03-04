@@ -151,4 +151,9 @@ bool RayObject::IsInActorError() const {
   return metadata == std::to_string(ray::rpc::ErrorType::OBJECT_IN_ACTOR);
 }
 
+void RayObject::SetActorLocation(const ActorID &actor_id) {
+  RAY_CHECK(IsInActorError());
+  actor_id_ = actor_id;
+}
+
 }  // namespace ray

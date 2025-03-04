@@ -479,6 +479,10 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 
     RayObject object(data_buffer, metadata_buffer, nested_refs);
 
+    if (object.IsInActorError()) {
+      object.SetActorLocation(ObjectID::ToActorID(object_id));
+    }
+
     rpc::ErrorType error_type;
     if (object.IsException(&error_type)) {
       RAY_LOG(WARNING) << "Task return object " << object_id << " has error type: " << error_type;

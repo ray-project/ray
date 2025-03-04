@@ -792,10 +792,35 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
+  const auto dispatch_nccl_send_callback = [this](const ObjectID &object_id, const ActorID &dst_actor_id) {
+    RAY_CHECK(!actor_nccl_group_.empty());
+    // TODO: Map dst_actor_id to a rank.
+    int64_t dst_rank = 0;
+    for (const auto &actor_id : actor_nccl_group_) {
+      if (actor_id == dst_actor_id) {
+        break;
+      }
+      dst_rank++;
+    }
+    RAY_CHECK(dst_rank < actor_nccl_group_.size());
+
+    // Get the RPC client matching src_actor_id's address.
+    ActorID src_actor_id = ObjectID::ToActorID(object_id);
+    auto addr = actor_manager_->GetActorAddress(src_actor_id);
+    auto rpc_client = core_worker_client_pool_->GetOrConnect(addr);
+    // Send the RPC.
+    rpc::ExecuteNcclSendRequest request;
+    request.set_dst_rank(dst_rank);
+    request.set_object_id(object_id.Binary());
+    rpc_client->ExecuteNcclSend(request, [](Status status, const rpc::ExecuteNcclSendReply &reply) {
+        RAY_CHECK(status.ok());
+        });
+  };
   actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(*core_worker_client_pool_,
                                                                *memory_store_,
                                                                *task_manager_,
                                                                *actor_creator_,
+                                                               dispatch_nccl_send_callback,
                                                                on_excess_queueing,
                                                                io_service_,
                                                                reference_counter_);
@@ -5053,6 +5078,22 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       rpc::TaskStatus::NIL,
       /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
+}
+
+void CoreWorker::HandleExecuteNcclSend(rpc::ExecuteNcclSendRequest request,
+                           rpc::ExecuteNcclSendReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) {
+  // TODO(swang): We should check that this is the correct actor,
+  // using either the ActorID or WorkerID.
+  ObjectID obj_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(INFO) << "ExecuteNcclSend " << obj_id;
+  options_.send_p2p_dependency_callback(obj_id, request.dst_rank());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::RegisterActorNcclGroup(const std::vector<ActorID> &nccl_group) {
+  RAY_CHECK(actor_nccl_group_.empty());
+  actor_nccl_group_ = nccl_group;
 }
 
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(

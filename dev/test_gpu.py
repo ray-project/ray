@@ -9,53 +9,6 @@ import torch.distributed as dist
 # - Read NCCL docs
 # - Walk through code for a single .remote() task submission.
 
-# TODO(swang):
-# Worker return path:
-# 1. Check for CUDA tensor. If is CUDA tensor, use lambda
-# to store in python actor state. Skip allocating in object store.
-# 2. Return OBJECT_IN_ACTOR_STORE instead of OBJECT_IN_PLASMA.
-
-# Worker resolve arguments for task path:
-# 1. In DependencyWaiter::Wait, find all OBJECT_IN_ACTOR args, and start the
-# recv (in Python) for these args.
-# 2. In pyx execute_task handler, during deserialization, replace
-# OBJECT_IN_ACTOR_STORE args with object from python actor store. Error if not
-# found.
-# 3. After task is done, delete the object.
-
-# Driver needs to store:
-# - which actor holds the object
-# - the shape and dtype for the object
-# On driver:
-# 1. On initial task submission with the decorator call, put
-# OBJECT_IN_ACTOR_STORE in local object store.
-# (If actor task returns OBJECT_IN_ACTOR_STORE again, okay to ignore).
-# 2. If task is submitted that depends on OBJECT_IN_ACTOR_STORE, submit
-# send/recv tasks.
-# 3. Add GC callback. Need actor address.
-
-
-# Submit an actor task:
-# Python: .remote
-# Driver C++: CoreWorker::SubmitActorTask. Create task spec:
-# - assigns an execution index
-# - put task arguments into the spec
-# Driver C++: TaskManager::AddPendingTask
-# - resolve arguments - wait for arguments to finish executing, then inline if needed into the taskspec
-# <-- wait until actor A has finished randn and sent back OBJECT_IN_ACTOR error
-# - send PushTaskRequest RPC to the actor to actually execute the task
-# ---> if argument has OBJECT_IN_ACTOR error, submit a Send task or RPC to actor A
-
-
-# B.foo.remote()
-# -> driver assign B.foo execution index 0
-# -> resolve arguments: there are no arguments, so immediately send PushTaskRequest RPC to B
-# -> B will queue B.foo
-# B.bar.remote(<some GPU object ref>)
-# -> driver assigns B.bar execution index 1
-# -> resolve arguments: there's a GPU object ref, so we need to set up a recv call on B.
-#   -> attach metadata with the GPU object argument that allows B to start the recv call
-
 
 # Actor PushTaskRequest handler:
 # - Queue the task.
@@ -99,6 +52,7 @@ class Actor:
         return torch.randn(shape)
 
     def sum(self, tensor):
+        print("SUM")
         return tensor.sum().item()
 
     def send(self, meta, dst_rank):
@@ -121,6 +75,8 @@ if __name__ == "__main__":
     # returns a handle to the group.
     init_method = "tcp://localhost:8889"
     ray.get([actor.setup.remote(WORLD_SIZE, rank, init_method) for rank, actor in enumerate(actors)])
+    actor_ids = [actor._ray_actor_id for actor in actors]
+    ray._private.worker.global_worker.core_worker.register_actor_nccl_group(actor_ids)
     print("Collective group setup done")
 
     shape = (100, )

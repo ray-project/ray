@@ -141,6 +141,8 @@ class ActorManager {
   /// \param actor_id ID of the actor to be subscribed.
   void SubscribeActorState(const ActorID &actor_id);
 
+  rpc::Address GetActorAddress(const ActorID &actor_id) const;
+
  private:
   /// Give this worker a handle to an actor.
   ///
@@ -217,6 +219,9 @@ class ActorManager {
   /// id -> is_killed_or_out_of_scope
   /// The state of actor is true When the actor is out of scope or is killed
   absl::flat_hash_map<ActorID, bool> subscribed_actors_ ABSL_GUARDED_BY(cache_mutex_);
+
+  absl::flat_hash_map<ActorID, rpc::Address> cached_actor_addresses_
+      ABSL_GUARDED_BY(cache_mutex_);
 
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished);
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished);

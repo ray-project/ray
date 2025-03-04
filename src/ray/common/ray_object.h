@@ -127,6 +127,8 @@ class RayObject {
   /// Return the absl time in nanoseconds when this object was created.
   int64_t CreationTimeNanos() const { return creation_time_nanos_; }
 
+  void SetActorLocation(const ActorID &actor_id);
+
  private:
   void Init(const std::shared_ptr<Buffer> &data,
             const std::shared_ptr<Buffer> &metadata,
@@ -168,6 +170,10 @@ class RayObject {
   bool accessed_ = false;
   /// The timestamp at which this object was created locally.
   int64_t creation_time_nanos_;
+  /// If this object is stored in an actor (has OBJECT_IN_ACTOR
+  /// error), then this is the actor location where the object is
+  /// stored.
+  ActorID actor_id_;
 };
 
 }  // namespace ray

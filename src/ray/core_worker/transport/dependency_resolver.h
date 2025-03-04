@@ -30,12 +30,15 @@ namespace core {
 // This class is thread-safe.
 class LocalDependencyResolver {
  public:
+  using DispatchNcclSendCallback = std::function<void(const ObjectID &object_id, const ActorID &dst_actor_id)>;
   LocalDependencyResolver(CoreWorkerMemoryStore &store,
                           TaskFinisherInterface &task_finisher,
-                          ActorCreatorInterface &actor_creator)
+                          ActorCreatorInterface &actor_creator,
+                          DispatchNcclSendCallback dispatch_nccl_send_callback = nullptr)
       : in_memory_store_(store),
         task_finisher_(task_finisher),
-        actor_creator_(actor_creator) {}
+        actor_creator_(actor_creator),
+        dispatch_nccl_send_callback_(dispatch_nccl_send_callback) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -102,6 +105,8 @@ class LocalDependencyResolver {
   TaskFinisherInterface &task_finisher_;
 
   ActorCreatorInterface &actor_creator_;
+
+  DispatchNcclSendCallback dispatch_nccl_send_callback_;
 
   absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
       ABSL_GUARDED_BY(mu_);

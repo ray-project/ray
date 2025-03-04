@@ -2288,6 +2288,15 @@ cdef void fetch_p2p_dependency_handler(
         print("RECEIVED", tensor)
 
 
+cdef void send_p2p_dependency_handler(const CObjectID &object_id, int64_t dst_rank) nogil:
+    with gil, disable_client_hook():
+        print("SEND", object_id.Hex(), dst_rank)
+
+        import torch.distributed as dist
+
+        tensor = ray._private.worker.global_worker.in_actor_object_store[object_id.Hex()]
+        dist.send(tensor, dst_rank)
+
 cdef CRayStatus task_execution_handler(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -3039,6 +3048,7 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.task_execution_callback = task_execution_handler
         options.fetch_p2p_dependency_callback = fetch_p2p_dependency_handler
+        options.send_p2p_dependency_callback = send_p2p_dependency_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
@@ -3069,6 +3079,13 @@ cdef class CoreWorker:
         self._task_id_to_future_lock = threading.Lock()
         self._task_id_to_future = {}
         self.event_loop_executor = None
+
+    def register_actor_nccl_group(self, actor_ids):
+        cdef:
+            c_vector[CActorID] nccl_group
+        for actor_id in actor_ids:
+            nccl_group.push_back((<ActorID>actor_id).native())
+        CCoreWorkerProcess.GetCoreWorker().RegisterActorNcclGroup(nccl_group)
 
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been

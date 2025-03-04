@@ -22,6 +22,7 @@ namespace {
 void InlineDependencies(
     const absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &dependencies,
     TaskSpecification &task,
+    std::function<void(const ObjectID &object_id, const ActorID &dst_actor_id)> &dispatch_nccl_send_callback,
     std::vector<ObjectID> *inlined_dependency_ids,
     std::vector<ObjectID> *contained_ids) {
   auto &msg = task.GetMutableMessage();
@@ -34,22 +35,22 @@ void InlineDependencies(
         RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
         if (it->second->IsInActorError()) {
+          RAY_CHECK(task.IsActorTask());
           RAY_LOG(INFO) << "Adding IN_ACTOR dep " << id << " to task " << task.TaskId();
-          // TaskSpec:
-          // TaskArg: (metadata=ErrorType::OBJECT_IN_ACTOR, data=None)
-          // in_actor_dependencies: [(arg's ObjectID, serialized RayActorObjectMetadata)]
-
-          // Add the IN_ACTOR error.
+          // Add the IN_ACTOR error as the metadata value.
           RAY_CHECK(it->second->HasMetadata());
           const auto &metadata = it->second->GetMetadata();
           mutable_arg->set_metadata(metadata->Data(), metadata->Size());
 
+          // Add the RayActorObjectMetadata as a separate field for in-actor
+          // objects only.
           auto dep = msg.add_in_actor_dependencies();
           dep->set_object_id(id.Binary());
-
           RAY_CHECK(it->second->HasData());
           const auto &data = it->second->GetData();
           dep->set_metadata(data->Data(), data->Size());
+
+          dispatch_nccl_send_callback(id, task.ActorId());
         } else if (!it->second->IsInPlasmaError()) {
           // The object has not been promoted to plasma. Inline the object by
           // clearing the reference and replacing it with the raw value.
@@ -140,6 +141,7 @@ void LocalDependencyResolver::ResolveDependencies(
             if (--state->obj_dependencies_remaining == 0) {
               InlineDependencies(state->local_dependencies,
                                  state->task,
+                                 dispatch_nccl_send_callback_,
                                  &inlined_dependency_ids,
                                  &contained_ids);
               if (state->actor_dependencies_remaining == 0) {

@@ -56,7 +56,8 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PlasmaObjectReady)              \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(Exit)                           \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner)              \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(NumPendingTasks)
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(NumPendingTasks)                \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(ExecuteNcclSend)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
@@ -82,7 +83,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)                \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExecuteNcclSend)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler : public DelayedServiceHandler {

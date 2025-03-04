@@ -1270,7 +1270,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
-  ///
+
+  void HandleExecuteNcclSend(rpc::ExecuteNcclSendRequest request,
+                             rpc::ExecuteNcclSendReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
   ///
@@ -1343,6 +1347,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
             const std::string &detail,
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
+
+  void RegisterActorNcclGroup(const std::vector<ActorID> &nccl_group);
 
  private:
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
@@ -1915,6 +1921,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
+
+  // TODO: Support more than one. Move it into a different class.
+  std::vector<ActorID> actor_nccl_group_;
 };
 
 // Lease request rate-limiter based on cluster node size.

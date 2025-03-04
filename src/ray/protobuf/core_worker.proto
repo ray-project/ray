@@ -399,6 +399,13 @@ message NumPendingTasksReply {
   int64 num_pending_tasks = 1;
 }
 
+message ExecuteNcclSendRequest {
+  int64 dst_rank = 1;
+  bytes object_id = 2;
+}
+
+message ExecuteNcclSendReply {}
+
 message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
   // generated from the executor side.
@@ -500,4 +507,5 @@ service CoreWorkerService {
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
   rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest)
       returns (RegisterMutableObjectReaderReply);
+  rpc ExecuteNcclSend(ExecuteNcclSendRequest) returns (ExecuteNcclSendReply);
 }

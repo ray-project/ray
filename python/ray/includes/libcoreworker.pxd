@@ -364,6 +364,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         unordered_map[CLineageReconstructionTask, uint64_t] \
             GetLocalOngoingLineageReconstructionTasks() const
 
+        void RegisterActorNcclGroup(const c_vector[CActorID] &nccl_group)
+
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
@@ -406,6 +408,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(
             unordered_map[CObjectID, shared_ptr[CBuffer]] &arg_refs,
         ) nogil) fetch_p2p_dependency_callback
+        (void(
+            const CObjectID &, int64_t
+        ) nogil) send_p2p_dependency_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect
