@@ -252,7 +252,7 @@ class VLLMEngine:
         self,
         llm_config: LLMConfig,
     ):
-        """Create a VLLM Engine class
+        """Create a vLLM Engine class
 
         Args:
             llm_config: The llm configuration for this engine
@@ -284,7 +284,7 @@ class VLLMEngine:
         return await initialize_node_util(llm_config)
 
     async def start(self):
-        """Start the VLLM engine.
+        """Start the vLLM engine.
 
         If the engine is already running, do nothing.
         """
@@ -422,7 +422,7 @@ class VLLMEngine:
     ) -> AsyncGenerator[LLMRawResponse, None]:
         """Generate an LLMRawResponse stream
 
-        The VLLM generation request will be passed into VLLM, and the resulting output
+        The vLLM generation request will be passed into vLLM, and the resulting output
         will be wrapped in an LLMRawResponse and yielded back to the user.
 
         Error handling:
@@ -439,7 +439,7 @@ class VLLMEngine:
                 f"Request {vllm_generation_request.request_id} started. "
                 f"Prompt: {vllm_generation_request.prompt}"
             )
-        # Construct a results generator from VLLM
+        # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
             prompt=vllm.inputs.TextPrompt(
                 prompt=vllm_generation_request.prompt,
