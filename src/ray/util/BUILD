@@ -34,6 +34,7 @@ ray_cc_library(
     hdrs = ["env.h"],
     deps = [
         ":logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -168,6 +169,9 @@ ray_cc_library(
     name = "string_utils",
     srcs = ["string_utils.cc"],
     hdrs = ["string_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 ray_cc_library(
@@ -336,4 +340,27 @@ ray_cc_library(
     deps = [
         "@com_google_absl//absl/synchronization",
     ],
+)
+
+ray_cc_library(
+    name = "scoped_dup2_wrapper",
+    srcs = select({
+        "@platforms//os:windows": ["scoped_dup2_wrapper_windows.cc"],
+        "//conditions:default": ["scoped_dup2_wrapper_posix.cc"],
+    }),
+    hdrs = ["scoped_dup2_wrapper.h"],
+    deps = [
+        ":compat",
+        ":logging",
+    ],
+)
+
+ray_cc_library(
+    name = "process_cleaner",
+    srcs = ["process_cleaner.cc"],
+    hdrs = ["process_cleaner.h"],
+    deps = select({
+        "@platforms//os:windows": [],
+        "//conditions:default": ["//src/ray/util:logging"],
+    }),
 )
