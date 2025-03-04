@@ -18,6 +18,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <regex>
 #include <tuple>
 #include <unordered_map>
@@ -142,11 +143,9 @@ class Metric {
   std::vector<opencensus::tags::TagKey> tag_keys_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 
-  // For making sure thread-safe to all of metric registrations.
-  static absl::Mutex registration_mutex_;
-
  private:
   const std::regex &name_regex_;
+  std::once_flag measure_init_flag_;
 };  // class Metric
 
 class Gauge : public Metric {
