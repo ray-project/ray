@@ -291,6 +291,9 @@ def do_profile_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
+    # CUDA events should be destroyed before other CUDA resources.
+    for task in tasks:
+        task.destroy_cuda_event()
     for task in tasks:
         task.cancel()
 
@@ -536,6 +539,17 @@ class ExecutableTask:
         """
         self.input_reader.close()
         self.output_writer.close()
+
+    def destroy_cuda_event(self):
+        """
+        If this executable task has produced a GPU future that is not yet waited,
+        that future is in the channel context cache. Pop the future from the cache
+        and destroy the CUDA event it contains.
+        """
+        from ray.experimental.channel.common import ChannelContext
+
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.remove_gpu_future(self.task_idx)
 
     def prepare(self, overlap_gpu_communication: bool = False):
         """

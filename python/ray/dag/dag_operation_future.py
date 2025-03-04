@@ -65,16 +65,20 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
-    def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
+    def __init__(
+        self, buf: Any, fut_id: int, stream: Optional["cp.cuda.Stream"] = None
+    ):
         """
         Initialize a GPU future on the given stream.
 
         Args:
             buf: The buffer to return when the future is resolved.
+            fut_id: The future ID to cache the future.
             stream: The CUDA stream to record the event on, this event is waited
                 on when the future is resolved. If None, the current stream is used.
         """
         import cupy as cp
+        from ray.experimental.channel.common import ChannelContext
 
         if stream is None:
             stream = cp.cuda.get_current_stream()
@@ -82,6 +86,12 @@ class GPUFuture(DAGOperationFuture[Any]):
         self._buf = buf
         self._event = cp.cuda.Event()
         self._event.record(stream)
+        self._fut_id = fut_id
+        self._waited: bool = False
+
+        # Cache the GPU future such that its CUDA event is properly destroyed.
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.add_gpu_future(fut_id, self)
 
     def wait(self) -> Any:
         """
@@ -89,7 +99,27 @@ class GPUFuture(DAGOperationFuture[Any]):
         the GPU operation. This operation does not block CPU.
         """
         import cupy as cp
+        from ray.experimental.channel.common import ChannelContext
 
         current_stream = cp.cuda.get_current_stream()
-        current_stream.wait_event(self._event)
+        if not self._waited:
+            self._waited = True
+            current_stream.wait_event(self._event)
+            # Destroy the CUDA event after it is waited on.
+            ctx = ChannelContext.get_current().serialization_context
+            ctx.remove_gpu_future(self._fut_id)
+
         return self._buf
+
+    def destroy_event(self) -> None:
+        """
+        Destroy the CUDA event associated with this future.
+        """
+        import cupy as cp
+
+        if self._event is None:
+            return
+
+        cp.cuda.runtime.eventDestroy(self._event.ptr)
+        self._event.ptr = 0
+        self._event = None
