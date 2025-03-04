@@ -29,7 +29,7 @@ _RUN_ID = "mock_run_id"
 
 def _create_mock_train_run(status: RunStatus = RunStatus.RUNNING):
     return TrainRun(
-        version=0,
+        schema_version=0,
         id=_RUN_ID,
         name="test_run",
         job_id=uuid.uuid4().hex,
@@ -58,7 +58,7 @@ def _create_mock_train_run_attempt(
     )
 
     return TrainRunAttempt(
-        version=0,
+        schema_version=0,
         run_id=_RUN_ID,
         attempt_id=attempt_id,
         status=status,
@@ -74,7 +74,7 @@ def _get_export_file_path() -> str:
         ray._private.worker._global_node.get_session_dir_path(),
         "logs",
         "export_events",
-        "event_train_state.log",
+        "event_EXPORT_TRAIN_STATE.log",
     )
 
 

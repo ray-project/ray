@@ -31,17 +31,41 @@ ExportEventDataType = Union[
 
 
 class EventLogType(Enum):
+    """Enum class representing different types of export event logs.
+
+    Each enum value contains a log type name and a set of supported event data types.
+
+    Attributes:
+        TRAIN_STATE: Export events related to training state, supporting train run and attempt events.
+        SUBMISSION_JOB: Export events related to job submissions.
+    """
+
     TRAIN_STATE = (
-        "train_state",
+        "EXPORT_TRAIN_STATE",
         {ExportTrainRunEventData, ExportTrainRunAttemptEventData},
     )
-    SUBMISSION_JOB = ("submission_job", {ExportSubmissionJobEventData})
+    SUBMISSION_JOB = ("EXPORT_SUBMISSION_JOB", {ExportSubmissionJobEventData})
 
     def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
+        """Initialize an EventLogType enum value.
+
+        Args:
+            log_type_name: String identifier for the log type. This name is used to construct the log file name.
+                See `_build_export_event_file_logger` for more details.
+            event_types: Set of event data types that this log type supports.
+        """
         self.log_type_name = log_type_name
         self.event_types = event_types
 
     def supports_event_type(self, event_type: ExportEventDataType) -> bool:
+        """Check if this log type supports the given event data type.
+
+        Args:
+            event_type: The event data type to check for support.
+
+        Returns:
+            bool: True if the event type is supported, False otherwise.
+        """
         return type(event_type) in self.event_types
 
 

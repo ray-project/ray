@@ -51,6 +51,14 @@ class TrainStateActor:
         return self._export_logger is not None
 
     def _init_export_logger(self) -> tuple[Optional[logging.Logger], bool, bool]:
+        """Initialize the export logger and check if the export API is enabled.
+
+        Returns:
+            A tuple containing:
+                - The export logger (or None if export API is not enabled).
+                - A boolean indicating if the export API is enabled for train runs.
+                - A boolean indicating if the export API is enabled for train run attempts.
+        """
         # Proto schemas should be imported within the scope of TrainStateActor to
         # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent

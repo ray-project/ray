@@ -21,7 +21,7 @@ package ray.rpc;
 // Metadata for a Ray Train run, including its details and status
 message ExportTrainRunEventData {
   // Version of the message schema
-  uint32 version = 1;
+  uint32 schema_version = 1;
 
   // Enumeration of the possible statuses for a Train run
   enum RunStatus {
@@ -63,7 +63,7 @@ message ExportTrainRunEventData {
 // Metadata for an individual attempt to execute a Train run
 message ExportTrainRunAttemptEventData {
   // Version of the message schema
-  uint32 version = 1;
+  uint32 schema_version = 1;
 
   // Enumeration of the possible statuses for a Train run attempt
   enum RunAttemptStatus {

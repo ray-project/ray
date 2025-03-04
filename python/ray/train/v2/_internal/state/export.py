@@ -69,7 +69,7 @@ def _to_proto_worker(worker: TrainWorker) -> ProtoTrainRunAttempt.TrainWorker:
 def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt:
     """Convert TrainRunAttempt to protobuf format."""
     proto_attempt = ProtoTrainRunAttempt(
-        version=TRAIN_SCHEMA_VERSION,
+        schema_version=TRAIN_SCHEMA_VERSION,
         run_id=attempt.run_id,
         attempt_id=attempt.attempt_id,
         status=_RUN_ATTEMPT_STATUS_MAP[attempt.status],
@@ -86,7 +86,7 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
 def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
     proto_run = ProtoTrainRun(
-        version=TRAIN_SCHEMA_VERSION,
+        schema_version=TRAIN_SCHEMA_VERSION,
         id=run.id,
         name=run.name,
         job_id=bytes.fromhex(run.job_id),
