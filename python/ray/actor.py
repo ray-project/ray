@@ -29,6 +29,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
     raise_sys_exit_with_custom_error_message,
 )
+from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
@@ -1782,12 +1783,20 @@ def exit_actor():
             worker is not an actor.
     """
     worker = ray._private.worker.global_worker
-    if worker.mode != ray.WORKER_MODE or worker.actor_id.is_nil():
+    if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
+        worker.core_worker.set_current_actor_should_exit()
+        # In asyncio actor mode, we can't raise SystemExit because it will just
+        # quit the asycnio event loop thread, not the main thread. Instead, we
+        # raise a custom error to the main thread to tell it to exit.
+        if worker.core_worker.current_actor_is_asyncio():
+            raise AsyncioActorExit()
+
+        # Set a flag to indicate this is an intentional actor exit. This
+        # reduces log verbosity.
+        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
+    else:
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "
             f"{worker.mode}. Call this API inside an actor methods"
             "if you'd like to exit the actor gracefully."
         )
-    if not worker.core_worker.current_actor_is_asyncio():
-        raise_sys_exit_with_custom_error_message("exit_actor() is called.")
-    worker.core_worker.set_current_actor_should_exit()
