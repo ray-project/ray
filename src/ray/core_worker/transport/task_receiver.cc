@@ -175,6 +175,8 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
               fiber_max_concurrency_,
               initialize_thread_callback_);
         } else {
+          // If the actor is an asyncio actor, then this concurrency group manager
+          // for BoundedExecutor will never be used, so we don't need to initialize it.
           const int default_max_concurrency = task_spec.MaxActorConcurrency();
           pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
               task_spec.ConcurrencyGroups(),
