@@ -186,6 +186,92 @@ def test_log_file_exists(shutdown_only):
             return suffix in appplication_log_suffixes
 
 
+# Rotation is disable in the unit test.
+def test_log_rotation_disable_rotation_params(shutdown_only, monkeypatch):
+    max_bytes = 0
+    backup_count = 1
+    set_logging_config(monkeypatch, max_bytes, backup_count)
+    ray.init(num_cpus=1)
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    # NOTICE: There's no ray_constants.PROCESS_TYPE_WORKER because "worker" is a
+    # substring of "python-core-worker".
+    log_rotating_component = [
+        ray_constants.PROCESS_TYPE_DASHBOARD,
+        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
+        ray_constants.PROCESS_TYPE_LOG_MONITOR,
+        ray_constants.PROCESS_TYPE_MONITOR,
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    # Create a runtime env to make sure dashboard agent is alive.
+    ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
+
+    # Filter out only paths that end in .log, .log.1, (which is produced by python
+    # rotating log handler) and .out.1 and so on (which is produced by C++ spdlog
+    # rotation handler) . etc. These paths are handled by the logger; the others (.err)
+    # are not.
+    paths = []
+    for path in log_dir_path.iterdir():
+        # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
+        if re.search(r".*\.log(\.\d+)?", str(path)):
+            paths.append(path)
+        elif re.search(r".*\.out(\.\d+)?", str(path)):
+            paths.append(path)
+
+    def component_exist(component, paths):
+        """Return whether there's at least one log file path is for the given
+        [component]."""
+        for path in paths:
+            filename = path.stem
+            if component in filename:
+                return True
+        return False
+
+    for component in log_rotating_component:
+        assert component_exist(component, paths), paths
+
+    # Check if the backup count is respected.
+    file_cnts = defaultdict(int)
+    for path in paths:
+        filename = path.name
+        parts = filename.split(".")
+        if len(parts) == 3:
+            filename_without_suffix = parts[0]
+            file_type = parts[1]  # eg. err, log, out
+            file_cnts[f"{filename_without_suffix}.{file_type}"] += 1
+    for filename, file_cnt in file_cnts.items():
+        assert file_cnt == backup_count, (
+            f"{filename} has files that are more than "
+            f"backup count {backup_count}, file count: {file_cnt}"
+        )
+
+    # Test application log, which starts with `worker-`.
+    # Should be tested separately with other components since "worker" is a substring of "python-core-worker".
+    #
+    # Check file count.
+    application_stdout_paths = []
+    for path in paths:
+        if (
+            path.stem.startswith("worker-")
+            and re.search(r".*\.out(\.\d+)?", str(path))
+            and path.stat().st_size > 0
+        ):
+            application_stdout_paths.append(path)
+    assert len(application_stdout_paths) == 1, application_stdout_paths
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Log rotation is disable on windows platform."
 )
@@ -269,7 +355,8 @@ def test_log_rotation(shutdown_only, monkeypatch):
         parts = filename.split(".")
         if len(parts) == 3:
             filename_without_suffix = parts[0]
-            file_cnts[filename_without_suffix] += 1
+            file_type = parts[1]  # eg. err, log, out
+            file_cnts[f"{filename_without_suffix}.{file_type}"] += 1
     for filename, file_cnt in file_cnts.items():
         assert file_cnt <= backup_count, (
             f"{filename} has files that are more than "
