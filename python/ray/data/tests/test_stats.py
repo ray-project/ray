@@ -1711,9 +1711,14 @@ def test_stats_actor_iter_metrics():
 
 
 def test_dataset_name():
+    # Test deprecated APIs
+    ds = ray.data.range(1)
+    ds.set_name("test_ds")
+    assert ds.name == "test_ds"
+
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
     ds.set_name("test_ds")
-    assert ds.name== "test_ds"
+    assert ds.name == "test_ds"
     assert str(ds) == (
         "MapBatches(<lambda>)\n"
         "+- Dataset(name=test_ds, num_rows=100, schema={id: int64})"
@@ -1791,12 +1796,12 @@ def test_op_state_logging():
 
 def test_stats_actor_datasets(ray_start_cluster):
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds.set_name"test_stats_actor_datasets")
+    ds.set_name("test_stats_actor_datasets")
     ds.materialize()
     stats_actor = _get_or_create_stats_actor()
 
     datasets = ray.get(stats_actor.get_datasets.remote())
-    dataset_name = list(filter(lambda x: x.startswith(ds.name, datasets))
+    dataset_name = list(filter(lambda x: x.startswith(ds.name), datasets))
     assert len(dataset_name) == 1
     dataset = datasets[dataset_name[0]]
 
