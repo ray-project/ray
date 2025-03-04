@@ -285,7 +285,12 @@ class _StatsActor:
         )
         self.dataset_total = Gauge(
             "data_dataset_total",
-            description="Total work units for dataset",
+            description="Total work units in blocks for dataset",
+            tag_keys=dataset_tags,
+        )
+        self.dataset_total_rows = Gauge(
+            "data_dataset_total_rows",
+            description="Total work units in rows for dataset",
             tag_keys=dataset_tags,
         )
         self.dataset_state = Gauge(
@@ -302,7 +307,12 @@ class _StatsActor:
         )
         self.operator_total = Gauge(
             "data_operator_total",
-            description="Total work units for operator",
+            description="Total work units in blocks for operator",
+            tag_keys=operator_tags,
+        )
+        self.operator_total_rows = Gauge(
+            "data_operator_total_rows",
+            description="Total work units in rows for operator",
             tag_keys=operator_tags,
         )
         self.operator_state = Gauge(
@@ -487,6 +497,7 @@ class _StatsActor:
         dataset_tags = {"dataset": dataset_tag}
         self.dataset_progress.set(state.get("progress", 0), dataset_tags)
         self.dataset_total.set(state.get("total", 0), dataset_tags)
+        self.dataset_total_rows.set(state.get("total_rows", 0), dataset_tags)
         self.dataset_state.set(
             state.get("state", DatasetState.UNKNOWN.name), dataset_tags
         )
@@ -499,6 +510,7 @@ class _StatsActor:
             }
             self.operator_progress.set(op_state.get("progress", 0), operator_tags)
             self.operator_total.set(op_state.get("total", 0), operator_tags)
+            self.operator_total_rows.set(op_state.get("total_rows", 0), operator_tags)
 
             # Get state code directly from enum
             state_string = op_state.get("state", DatasetState.UNKNOWN.name)

@@ -411,12 +411,14 @@ class StreamingExecutor(Executor, threading.Thread):
             "state": state,
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
+            "total_rows": last_op.num_output_rows_total(),
             "end_time": time.time() if state != DatasetState.RUNNING.name else None,
             "operators": {
                 f"{op.name}{i}": {
                     "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
+                    "total_rows": op.num_output_rows_total(),
                     "state": state,
                 }
                 for i, (op, op_state) in enumerate(self._topology.items())
