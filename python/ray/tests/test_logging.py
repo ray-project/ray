@@ -363,6 +363,23 @@ def test_log_rotation(shutdown_only, monkeypatch):
             f"backup count {backup_count}, file count: {file_cnt}"
         )
 
+    # Test dashboard agent output file, which starts with `agent-`.
+    # Should be tested separately with other components since "agent" is a substring of "dashboard-agent".
+    #
+    # Check file count.
+    dashboard_stdout_paths = []
+    for path in paths:
+        if path.stem.startswith("agent-") and re.search(r".*\.out(\.\d+)?", str(path)):
+            dashboard_stdout_paths.append(path)
+    # For this unit test, we should only have 1 output file for dashboard agent.
+    assert len(dashboard_stdout_paths) == 1, dashboard_stdout_paths
+
+    # Check file content, each file should have one line.
+    for cur_path in dashboard_stdout_paths:
+        with cur_path.open() as f:
+            lines = f.readlines()
+            assert len(lines) <= 1, lines
+
     # Test application log, which starts with `worker-`.
     # Should be tested separately with other components since "worker" is a substring of "python-core-worker".
     #
