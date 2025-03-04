@@ -62,11 +62,17 @@ def test_start_shutdown(ray_start_stop, runner):
     assert "there are no applications currently deployed" in ret.output
     assert "Sent shutdown request" not in ret.output
 
+    serve.shutdown()
+    ray.shutdown()
+
 
 def test_start_shutdown_without_serve_running(ray_start_stop, runner):
     ret = runner.invoke(cli, ["shutdown", "-y"])
     assert "there are no applications currently deployed" in ret.output
     assert "Sent shutdown request" not in ret.output
+
+    serve.shutdown()
+    ray.shutdown()
 
 
 def test_start_shutdown_without_ray_running(runner):
