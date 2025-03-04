@@ -378,8 +378,8 @@ ray_cc_test(
 
 ray_cc_test(
     name = "invoke_once_token_test",
-    srcs = ["invoke_once_token_test.cc"],
     size = "small",
+    srcs = ["invoke_once_token_test.cc"],
     tags = ["team:core"],
     deps = [
         "//src/ray/util:invoke_once_token",
