@@ -128,7 +128,8 @@ If any callback functionality depends on reported metrics, make sure to pass the
 which propagates results to the Tuner. 
 
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray.tune
     from ray.tune.integration.ray_train import TuneReportCallback
