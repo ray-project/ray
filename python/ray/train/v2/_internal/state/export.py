@@ -85,7 +85,6 @@ def train_run_attempt_to_proto(attempt: TrainRunAttempt) -> ProtoTrainRunAttempt
 
 def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
-    print(run.job_id)
     proto_run = ProtoTrainRun(
         version=TRAIN_SCHEMA_VERSION,
         id=run.id,

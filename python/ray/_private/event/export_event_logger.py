@@ -37,12 +37,12 @@ class EventLogType(Enum):
     )
     SUBMISSION_JOB = ("submission_job", {ExportSubmissionJobEventData})
 
-    def __init__(self, name: str, event_types: set[ExportEventDataType]):
-        self.name = name
+    def __init__(self, log_type_name: str, event_types: set[ExportEventDataType]):
+        self.log_type_name = log_type_name
         self.event_types = event_types
 
     def supports_event_type(self, event_type: ExportEventDataType) -> bool:
-        return isinstance(event_type, self.event_types)
+        return type(event_type) in self.event_types
 
 
 def generate_event_id():
@@ -91,8 +91,8 @@ class ExportEventLoggerAdapter:
         if not self.log_type.supports_event_type(event_data):
             global_logger.error(
                 f"event_data has source type {event.source_type}, however "
-                f"the event was sent to a logger with log type {self.log_type.name}. "
-                f"The event will still be written to the file of {self.log_type.name} "
+                f"the event was sent to a logger with log type {self.log_type.log_type_name}. "
+                f"The event will still be written to the file of {self.log_type.log_type_name} "
                 "but this indicates a bug in the code."
             )
             pass
@@ -164,9 +164,9 @@ def get_export_event_logger(log_type: EventLogType, sink_dir: str) -> logging.Lo
     """
     with _export_event_logger_lock:
         global _export_event_logger
-        log_type_name = log_type.name
+        log_type_name = log_type.log_type_name
         if log_type_name not in _export_event_logger:
-            logger = _build_export_event_file_logger(log_type_name, sink_dir)
+            logger = _build_export_event_file_logger(log_type.log_type_name, sink_dir)
             _export_event_logger[log_type_name] = ExportEventLoggerAdapter(
                 log_type, logger
             )

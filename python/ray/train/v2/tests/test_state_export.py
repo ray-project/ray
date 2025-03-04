@@ -29,6 +29,7 @@ _RUN_ID = "mock_run_id"
 
 def _create_mock_train_run(status: RunStatus = RunStatus.RUNNING):
     return TrainRun(
+        version=0,
         id=_RUN_ID,
         name="test_run",
         job_id=uuid.uuid4().hex,
@@ -57,6 +58,7 @@ def _create_mock_train_run_attempt(
     )
 
     return TrainRunAttempt(
+        version=0,
         run_id=_RUN_ID,
         attempt_id=attempt_id,
         status=status,
@@ -72,7 +74,7 @@ def _get_export_file_path() -> str:
         ray._private.worker._global_node.get_session_dir_path(),
         "logs",
         "export_events",
-        "event_EXPORT_TRAIN_RUN.log",
+        "event_train_state.log",
     )
 
 
@@ -211,6 +213,62 @@ def test_export_multiple_source_types(enable_export_api_write):
 
     assert [d["source_type"] for d in data] == expected_source_types
     assert [d["event_data"]["status"] for d in data] == expected_statuses
+
+
+def test_export_optional_fields(enable_export_api_write):
+    """Test that optional fields are correctly exported when present and absent."""
+    state_actor = get_or_create_state_actor()
+
+    # Create run with optional fields
+    run_with_optional = _create_mock_train_run(RunStatus.FINISHED)
+    run_with_optional.status_detail = "Finished with details"
+    run_with_optional.end_time_ns = 1000000000000000000
+
+    # Create attempt with optional fields
+    attempt_with_optional = _create_mock_train_run_attempt(
+        attempt_id="attempt_with_optional",
+        status=RunAttemptStatus.FINISHED,
+    )
+    attempt_with_optional.status_detail = "Attempt details"
+    attempt_with_optional.end_time_ns = 1000000000000000000
+
+    # Create and update states
+    events = [
+        state_actor.create_or_update_train_run.remote(_create_mock_train_run()),
+        state_actor.create_or_update_train_run_attempt.remote(
+            _create_mock_train_run_attempt()
+        ),
+        state_actor.create_or_update_train_run.remote(run_with_optional),
+        state_actor.create_or_update_train_run_attempt.remote(attempt_with_optional),
+    ]
+    ray.get(events)
+
+    data = _get_exported_data()
+    assert len(data) == 4
+
+    # Verify run without optional fields
+    run_data = data[0]
+    assert run_data["source_type"] == "EXPORT_TRAIN_RUN"
+    assert "status_detail" not in run_data["event_data"]
+    assert "end_time_ns" not in run_data["event_data"]
+
+    # Verify attempt without optional fields
+    attempt_data = data[1]
+    assert attempt_data["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
+    assert "status_detail" not in attempt_data["event_data"]
+    assert "end_time_ns" not in attempt_data["event_data"]
+
+    # Verify run with optional fields
+    run_data = data[2]
+    assert run_data["source_type"] == "EXPORT_TRAIN_RUN"
+    assert run_data["event_data"]["status_detail"] == "Finished with details"
+    assert "end_time_ns" in run_data["event_data"]
+
+    # Verify attempt with optional fields
+    attempt_data = data[3]
+    assert attempt_data["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
+    assert attempt_data["event_data"]["status_detail"] == "Attempt details"
+    assert "end_time_ns" in attempt_data["event_data"]
 
 
 if __name__ == "__main__":
