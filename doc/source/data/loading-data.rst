@@ -227,7 +227,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds = ray.data.read_parquet(
-                "gs://ray-example-data/iris.parquet",
+                "gs://...",
                 filesystem=filesystem
             )
 
