@@ -31,7 +31,7 @@ class SendActor:
 
 actor = SendActor.remote()
 with InputNode() as inp:
-    dag = actor.send.bind(x)
+    dag = actor.send.bind(inp)
 cgraph = dag.experimental_compile()
 
 # Not adding this explicit teardown before reusing `actor` could cause problems
