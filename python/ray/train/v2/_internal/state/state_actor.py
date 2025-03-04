@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 import ray
 from ray._private.event.export_event_logger import (
+    EventLogType,
     get_export_event_logger,
     check_export_api_enabled,
 )
@@ -51,6 +52,7 @@ class TrainStateActor:
         # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent
 
+        # TODO: Should this be EventLogType.TRAIN_STATE?
         export_api_enabled = check_export_api_enabled(
             ExportEvent.SourceType.EXPORT_TRAIN_RUN
         )
@@ -64,7 +66,7 @@ class TrainStateActor:
         logger = None
         try:
             logger = get_export_event_logger(
-                ExportEvent.SourceType.EXPORT_TRAIN_RUN,
+                EventLogType.TRAIN_STATE,
                 log_directory,
             )
         except Exception:
