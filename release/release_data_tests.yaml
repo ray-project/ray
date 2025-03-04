@@ -432,7 +432,7 @@
   frequency: nightly
   python: "3.11"
   group: llm
-  working_dir: llm_tests/serve
+  working_dir: llm_tests
 
   cluster:
     byod:
@@ -450,7 +450,7 @@
   frequency: nightly
   python: "3.11"
   group: llm
-  working_dir: llm_tests/serve
+  working_dir: llm_tests
 
   cluster:
     byod:
@@ -468,7 +468,7 @@
   frequency: nightly
   python: "3.11"
   group: llm
-  working_dir: llm_tests/serve
+  working_dir: llm_tests
 
   cluster:
     byod:
