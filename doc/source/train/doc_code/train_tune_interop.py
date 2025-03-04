@@ -93,6 +93,18 @@ results = tuner.fit()
 print(results.get_best_result(metric="loss", mode="min"))
 # __quickstart_end__
 
+# __max_concurrent_trials_start__
+# For a fixed size cluster, calculate this based on the limiting resource (ex: GPUs).
+total_cluster_gpus = 8
+num_gpu_workers_per_trial = 4
+max_concurrent_trials = total_cluster_gpus // num_gpu_workers_per_trial
+
+tuner = ray.tune.Tuner(
+    train_driver_fn,
+    tune_config=ray.tune.TuneConfig(max_concurrent_trials=max_concurrent_trials),
+)
+# __max_concurrent_trials_end__
+
 # __trainable_resources_start__
 # Cluster setup:
 # head_node:
