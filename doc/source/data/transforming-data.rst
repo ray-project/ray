@@ -223,10 +223,17 @@ program might run out of memory. If you encounter an out-of-memory error, decrea
 
 Ordering of rows
 ================
-When applying operations on data such as :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.map_batches`,
-the order of :ref:`blocks <dataset_concept>` is not preserved by default. If the order of blocks needs to be preserved,
+
+When transforming data, the order of :ref:`blocks <data_key_concepts>` isn't preserved by default.
+
+If the order of blocks needs to be preserved/deterministic,
 you can use :meth:`~ray.data.Dataset.sort` method, or set :attr:`ray.data.ExecutionOptions.preserve_order` to `True`.
-Note that this may impact performance.
+Note that setting this flag may negatively impact performance on larger cluster setups where stragglers are more likely.
+
+.. testcode::
+
+   # By default, this is set to False.
+   ctx.execution_options.preserve_order = True
 
 .. _stateful_transforms:
 
