@@ -403,6 +403,7 @@ steps:
       - accelerated_dag
       - gpu
     instance_type: gpu-large
+    # we're running some cgraph doc tests here as well since they need gpus
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //doc/... core
         --gpus 4
