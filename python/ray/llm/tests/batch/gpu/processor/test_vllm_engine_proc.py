@@ -11,7 +11,7 @@ from ray.llm._internal.batch.processor.vllm_engine_proc import (
 
 def test_vllm_engine_processor(gpu_type, model_opt_125m):
     config = vLLMEngineProcessorConfig(
-        model=model_opt_125m,
+        model_source=model_opt_125m,
         engine_kwargs=dict(
             max_model_len=8192,
         ),
@@ -86,7 +86,7 @@ def test_generation_model(gpu_type, model_opt_125m):
     """
 
     processor_config = vLLMEngineProcessorConfig(
-        model=model_opt_125m,
+        model_source=model_opt_125m,
         engine_kwargs=dict(
             enable_prefix_caching=False,
             enable_chunked_prefill=True,
@@ -133,7 +133,7 @@ def test_generation_model(gpu_type, model_opt_125m):
 
 def test_embedding_model(gpu_type, model_opt_125m):
     processor_config = vLLMEngineProcessorConfig(
-        model=model_opt_125m,
+        model_source=model_opt_125m,
         task_type="embed",
         engine_kwargs=dict(
             enable_prefix_caching=False,
@@ -177,7 +177,7 @@ def test_embedding_model(gpu_type, model_opt_125m):
 
 def test_vision_model(gpu_type, model_llava_354m):
     processor_config = vLLMEngineProcessorConfig(
-        model=model_llava_354m,
+        model_source=model_llava_354m,
         task_type="generate",
         engine_kwargs=dict(
             # Skip CUDA graph capturing to reduce startup time.

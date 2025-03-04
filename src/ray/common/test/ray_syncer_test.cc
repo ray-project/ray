@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "mock/ray/common/ray_syncer/ray_syncer.h"
 
 #include <gmock/gmock.h>
 #include <google/protobuf/util/json_util.h>
@@ -26,14 +27,11 @@
 #include <chrono>
 #include <sstream>
 
-// clang-format off
 #include "ray/common/ray_syncer/node_state.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/ray_syncer/ray_syncer_client.h"
 #include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
-#include "mock/ray/common/ray_syncer/ray_syncer.h"
-// clang-format on
 
 using namespace std::chrono;
 using namespace ray::syncer;
