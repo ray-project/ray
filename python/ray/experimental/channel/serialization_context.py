@@ -33,6 +33,15 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
+        # The device to which tensors should be deserialized.
+        self._target_device: Device = Device.DEFAULT
+
+    @property
+    def target_device(self) -> Device:
+        return self._target_device
+
+    def set_target_device(self, device: Device) -> None:
+        self._target_device = device
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
@@ -124,7 +133,6 @@ class _SerializationContext:
     def deserialize_tensor(
         self, val: Union[Tuple["np.ndarray", "torch.dtype", str], int]
     ):
-        from ray.experimental.channel import ChannelContext
 
         # Found a placeholder for a tensor that was serialized via NCCL.
         # Replace it with the corresponding deserialized tensor.
@@ -133,8 +141,7 @@ class _SerializationContext:
             self._deserialized_tensor_placeholders.add(placeholder)
             assert placeholder < len(self._out_of_band_tensors)
             tensor = self._out_of_band_tensors[placeholder]
-            ctx = ChannelContext.get_current()
-            if ctx.target_device == Device.CPU:
+            if self.target_device == Device.CPU:
                 tensor = tensor.to("cpu")
             return tensor
 
@@ -146,13 +153,9 @@ class _SerializationContext:
     ):
         import torch
 
-        from ray.experimental.channel import ChannelContext
-
-        ctx = ChannelContext.get_current()
-
-        if ctx.target_device == Device.DEFAULT:
+        if self.target_device == Device.DEFAULT:
             target_device_type = tensor_device_type
-        elif ctx.target_device in [Device.GPU, Device.CUDA]:
+        elif self.target_device in [Device.GPU, Device.CUDA]:
             target_device_type = "cuda"
         else:
             target_device_type = "cpu"
@@ -189,6 +192,4 @@ class _SerializationContext:
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe to set when deserializing np_array if the
         # upstream task has num_readers=1.
-        # For CPU target, use CPU device regardless of default device
-        target_device = None if target_device_type == "cpu" else ctx.torch_device
-        return torch.tensor(np_array, device=target_device).view(dtype)
+        return torch.tensor(np_array, device=target_device_type).view(dtype)

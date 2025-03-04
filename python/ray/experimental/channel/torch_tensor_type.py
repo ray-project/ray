@@ -68,7 +68,7 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
-        self.device = device
+        self._device = device
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
@@ -98,6 +98,10 @@ class TorchTensorType(ChannelOutputType):
             )
 
     @property
+    def device(self) -> Device:
+        return self._device
+
+    @property
     def static_shape(self):
         return self._static_shape
 
@@ -116,7 +120,7 @@ class TorchTensorType(ChannelOutputType):
 
         def deserialize(b):
             ctx = ChannelContext.get_current()
-            ctx.set_target_device(self.device)
+            ctx.serialization_context.set_target_device(self._device)
             return ctx.serialization_context.deserialize_tensor(b)
 
         ray.util.serialization.register_serializer(

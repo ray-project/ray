@@ -21,7 +21,6 @@ import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.experimental.util.types import Device
 
 # The context singleton on this process.
 _default_context: "Optional[ChannelContext]" = None
@@ -123,7 +122,6 @@ class ChannelContext:
     _torch_available: Optional[bool] = None
     _torch_device: Optional["torch.device"] = None
     _current_stream: Optional["torch.cuda.Stream"] = None
-    _target_device: Device = Device.DEFAULT
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
@@ -180,13 +178,6 @@ class ChannelContext:
 
     def set_torch_device(self, device: "torch.device"):
         self._torch_device = device
-
-    @property
-    def target_device(self) -> Device:
-        return self._target_device
-
-    def set_target_device(self, device: Device):
-        self._target_device = device
 
 
 @PublicAPI(stability="alpha")

@@ -83,7 +83,7 @@ def test_p2p(ray_start_cluster):
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.options().remote()
+    receiver = MockedWorker.remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -136,7 +136,7 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.options().remote()
+    receiver = MockedWorker.remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -178,7 +178,7 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.options().remote()
+    receiver = MockedWorker.remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -237,7 +237,7 @@ def test_p2p_direct_return(ray_start_cluster):
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.options().remote()
+    receiver = MockedWorker.remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -281,7 +281,7 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.options().remote()
+    receiver = MockedWorker.remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -349,7 +349,7 @@ def test_p2p_static_shape_and_direct_return(
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = MockedWorker.remote()
-    receiver = MockedWorker.options().remote()
+    receiver = MockedWorker.remote()
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 

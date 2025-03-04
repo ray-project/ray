@@ -23,14 +23,6 @@ USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 class TensorDeviceWorker:
     """Worker class for testing tensor transport between different devices."""
 
-    def __init__(self):
-        self.default_device = str(torch_utils.get_devices()[0])
-        self.default_gpu_ids = ray.get_gpu_ids()
-
-    def get_device_info(self) -> Tuple[str, List[int]]:
-        """Get the default device and GPU IDs for this worker."""
-        return self.default_device, self.default_gpu_ids
-
     def send(self, value: int, device: str) -> torch.Tensor:
         """Create a tensor with given value on specified device."""
         return torch.full((100,), value, device=device)
@@ -70,28 +62,6 @@ def multi_gpu_workers() -> Dict[str, ray.actor.ActorHandle]:
     }
 
 
-@pytest.fixture
-def default_device() -> Dict[str, str]:
-    """Fixture defining expected default devices for different worker types."""
-    return {
-        "driver": "cpu",
-        "cpu-only": "cpu",
-        "gpu-1": "cuda:0",
-        "gpu-2": "cuda:0",
-    }
-
-
-@pytest.fixture
-def default_device_id() -> Dict[str, List[int]]:
-    """Fixture defining expected default devices for different worker types."""
-    return {
-        "driver": [],
-        "cpu-only": [],
-        "gpu-1": [0],
-        "gpu-2": [1],
-    }
-
-
 class TestTensorTransport:
     """Test suite for PyTorch tensor transport functionality in Ray DAGs.
 
@@ -108,36 +78,6 @@ class TestTensorTransport:
     def teardown_method(self):
         """Cleanup custom serializer after each test."""
         ray.util.serialization.deregister_serializer(torch.Tensor)
-
-    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_default_device(
-        self, ray_start_regular, workers, default_device, default_device_id
-    ):
-        """Validate default devices in driver and ray actors."""
-        if not USE_GPU:
-            pytest.skip("Test requires GPU")
-
-        assert (
-            sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-        ), "This test requires at least 2 GPUs"
-
-        for worker_name in default_device.keys():
-            if worker_name == "driver":
-                worker_device, worker_gpu_ids = (
-                    str(torch_utils.get_devices()[0]),
-                    ray.get_gpu_ids(),
-                )
-            else:
-                worker_device, worker_gpu_ids = ray.get(
-                    workers[worker_name].get_device_info.remote()
-                )
-
-            assert (
-                worker_device == default_device[worker_name]
-            ), f"expected default device for {worker_name} to be {default_device[worker_name]}, but got {worker_device}"
-            assert (
-                worker_gpu_ids == default_device_id[worker_name]
-            ), f"expected default gpu ids for {worker_name} to be {default_device_id[worker_name]}, but got {worker_gpu_ids}"
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
     def test_ray_core_transport_driver_to_worker(self, ray_start_regular, workers):
@@ -160,7 +100,7 @@ class TestTensorTransport:
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
     @pytest.mark.parametrize("device", ["default", "cpu", "gpu", "cuda"])
     def test_compiled_graph_transport_driver_to_worker(
-        self, ray_start_regular, workers, default_device, device
+        self, ray_start_regular, workers, device
     ):
         """Test tensor transport from driver to worker using compiled graph serializer.
         Tests both individual tensors and dictionaries of tensors with mixed CPU/GPU devices.
