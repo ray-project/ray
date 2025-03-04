@@ -22,6 +22,12 @@ namespace ray {
 
 // A util class (a token) which guards again multiple invocations.
 // It's thread-safe.
+//
+// Example usage:
+// void SomeFunc() {
+//   static InvokeOnceToken token;
+//   token.CheckInvokeOnce();
+// }
 class InvokeOnceToken {
  public:
   void CheckInvokeOnce() {
