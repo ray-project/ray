@@ -5,8 +5,6 @@ if TYPE_CHECKING:
     import numpy as np
     import torch
 
-from ray.dag.dag_operation_future import GPUFuture
-
 
 _TORCH_WARNING_FILTER_ACTIVATE = True
 
