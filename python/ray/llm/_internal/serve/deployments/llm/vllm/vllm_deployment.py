@@ -372,7 +372,7 @@ class ResponsePostprocessor:
             )
 
 
-class VLLMService(LLMDeployment):
+class VLLMServer(LLMDeployment):
     _default_engine_cls = VLLMEngine
     _default_image_retriever_cls = ImageRetriever
 
@@ -573,7 +573,7 @@ class VLLMService(LLMDeployment):
     def as_deployment(
         cls, deployment_options: Dict[str, Any] = None
     ) -> serve.Deployment:
-        """Convert the VLLMService to a Ray Serve deployment.
+        """Convert the VLLMServer to a Ray Serve deployment.
 
         Args:
             deployment_options: A dictionary of deployment options.
@@ -604,8 +604,8 @@ class VLLMService(LLMDeployment):
     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
 )
-class VLLMDeployment(VLLMService):
-    # Note (genesu): We are separating the VLLMService and VLLMDeployment just
+class VLLMDeployment(VLLMServer):
+    # Note (genesu): We are separating the VLLMServer and VLLMDeployment just
     # to give developers an ability to test the implementation outside the Ray Serve.
     # But in practice we should always test the VLLMDeployment class as a Serve
     # deployment to ensure all functionalities can be run remotely asynchronously.
