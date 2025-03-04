@@ -4,9 +4,8 @@ import sys
 import torch
 import logging
 import pytest
-from typing import Dict, List, Tuple
+from typing import Dict
 from ray.dag import InputNode
-from ray.air._internal import torch_utils
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 

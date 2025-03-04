@@ -24,7 +24,7 @@ class AutoTransportType(ChannelOutputType):
         self._device = device
         self._static_shape = _static_shape
         self._direct_return = _direct_return
-        
+
     @property
     def device(self) -> Device:
         return self._device
