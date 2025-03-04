@@ -35,14 +35,6 @@ namespace core {
 /// by the SchedulingQueue to provide backpressure to clients.
 class BoundedExecutor {
  public:
-  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
-                                  bool has_other_concurrency_groups) {
-    if (max_concurrency_in_default_group == 0) {
-      return false;
-    }
-    return max_concurrency_in_default_group > 1 || has_other_concurrency_groups;
-  }
-
   explicit BoundedExecutor(int max_concurrency);
 
   /// Posts work to the pool

@@ -91,14 +91,6 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
-  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group,
-                                  bool has_other_concurrency_groups) {
-    RAY_UNUSED(max_concurrency_in_default_group);
-    RAY_UNUSED(has_other_concurrency_groups);
-    /// asyncio mode always need a default executor.
-    return true;
-  }
-
   explicit FiberState(int max_concurrency)
       : allocator_(kStackSize),
         rate_limiter_(max_concurrency),
