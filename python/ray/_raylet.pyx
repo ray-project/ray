@@ -2277,7 +2277,6 @@ cdef void fetch_p2p_dependency_handler(
 
         metadata = ray._private.worker.global_worker.deserialize_objects(
             data_metadata_pairs, ids_to_deserialize)[0]
-        print("RECEIVING", metadata.obj_id)
 
         # Perform the recv.
         tensor = torch.zeros(metadata.shape, dtype=metadata.dtype)
@@ -2285,13 +2284,10 @@ cdef void fetch_p2p_dependency_handler(
         # Put the resulting tensor into the actor's object store, where the
         # task execution handler can read it.
         ray._private.worker.global_worker.in_actor_object_store[metadata.obj_id] = tensor
-        print("RECEIVED", tensor)
 
 
 cdef void send_p2p_dependency_handler(const CObjectID &object_id, int64_t dst_rank) nogil:
     with gil, disable_client_hook():
-        print("SEND", object_id.Hex(), dst_rank)
-
         import torch.distributed as dist
 
         tensor = ray._private.worker.global_worker.in_actor_object_store[object_id.Hex()]
