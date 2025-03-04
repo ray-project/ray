@@ -278,47 +278,47 @@ class _StatsActor:
 
         # === Dataset and Operator Metadata Metrics ===
         dataset_tags = ("dataset",)
-        self.dataset_progress = Gauge(
+        self.data_dataset_progress = Gauge(
             "data_dataset_progress",
             description="Progress of dataset execution",
             tag_keys=dataset_tags,
         )
-        self.dataset_total = Gauge(
-            "data_dataset_total",
+        self.data_dataset_estimated_total_blocks = Gauge(
+            "data_dataset_estimated_total_blocks",
             description="Total work units in blocks for dataset",
             tag_keys=dataset_tags,
         )
-        self.dataset_total_rows = Gauge(
-            "data_dataset_total_rows",
+        self.data_dataset_estimated_total_rows = Gauge(
+            "data_dataset_estimated_total_rows",
             description="Total work units in rows for dataset",
             tag_keys=dataset_tags,
         )
-        self.dataset_state = Gauge(
+        self.data_dataset_state = Gauge(
             "data_dataset_state",
             description=f"State of dataset ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
-            tag_keys=("dataset",),
+            tag_keys=dataset_tags,
         )
 
         operator_tags = ("dataset", "operator")
-        self.operator_progress = Gauge(
+        self.data_operator_progress = Gauge(
             "data_operator_progress",
             description="Progress of operator execution",
             tag_keys=operator_tags,
         )
-        self.operator_total = Gauge(
-            "data_operator_total",
+        self.data_operator_estimated_total_blocks = Gauge(
+            "data_operator_estimated_total_blocks",
             description="Total work units in blocks for operator",
             tag_keys=operator_tags,
         )
-        self.operator_total_rows = Gauge(
-            "data_operator_total_rows",
+        self.data_operator_estimated_total_rows = Gauge(
+            "data_operator_estimated_total_rows",
             description="Total work units in rows for operator",
             tag_keys=operator_tags,
         )
-        self.operator_state = Gauge(
+        self.data_operator_state = Gauge(
             "data_operator_state",
             description=f"State of operator ({', '.join([f'{s.value}={s.name}' for s in DatasetState])})",
-            tag_keys=("dataset", "operator"),
+            tag_keys=operator_tags,
         )
 
     def _create_prometheus_metrics_for_execution_metrics(
@@ -495,10 +495,14 @@ class _StatsActor:
 
         # Update dataset-level metrics
         dataset_tags = {"dataset": dataset_tag}
-        self.dataset_progress.set(state.get("progress", 0), dataset_tags)
-        self.dataset_total.set(state.get("total", 0), dataset_tags)
-        self.dataset_total_rows.set(state.get("total_rows", 0), dataset_tags)
-        self.dataset_state.set(
+        self.data_dataset_progress.set(state.get("progress", 0), dataset_tags)
+        self.data_dataset_estimated_total_blocks.set(
+            state.get("total", 0), dataset_tags
+        )
+        self.data_dataset_estimated_total_rows.set(
+            state.get("total_rows", 0), dataset_tags
+        )
+        self.data_dataset_state.set(
             state.get("state", DatasetState.UNKNOWN.name), dataset_tags
         )
 
@@ -508,14 +512,18 @@ class _StatsActor:
                 "dataset": dataset_tag,
                 "operator": operator,
             }
-            self.operator_progress.set(op_state.get("progress", 0), operator_tags)
-            self.operator_total.set(op_state.get("total", 0), operator_tags)
-            self.operator_total_rows.set(op_state.get("total_rows", 0), operator_tags)
+            self.data_operator_progress.set(op_state.get("progress", 0), operator_tags)
+            self.data_operator_estimated_total_blocks.set(
+                op_state.get("total", 0), operator_tags
+            )
+            self.data_operator_estimated_total_rows.set(
+                op_state.get("total_rows", 0), operator_tags
+            )
 
             # Get state code directly from enum
             state_string = op_state.get("state", DatasetState.UNKNOWN.name)
             state_enum = DatasetState.from_string(state_string)
-            self.operator_state.set(state_enum.value, operator_tags)
+            self.data_operator_state.set(state_enum.value, operator_tags)
 
     def get_datasets(self, job_id: Optional[str] = None):
         if not job_id:
