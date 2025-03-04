@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 if TYPE_CHECKING:
     import numpy as np
     import torch
+    import ray
 
 
 _TORCH_WARNING_FILTER_ACTIVATE = True
@@ -33,7 +34,7 @@ class _SerializationContext:
         self.channel_id_to_num_readers: Dict[str, int] = {}
         # Caching GPU futures ensures CUDA events associated with futures are propoerly
         # destroyed instead of relying on garbage collection.
-        self.gpu_futures: Dict[int, "GPUFuture"] = {}
+        self.gpu_futures: Dict[int, "ray.dag.dag_operation_future.GPUFuture"] = {}
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
@@ -69,7 +70,9 @@ class _SerializationContext:
         self.intra_process_channel_buffers.pop(channel_id, None)
         self.channel_id_to_num_readers.pop(channel_id, None)
 
-    def add_gpu_future(self, fut_id: int, fut: "GPUFuture") -> None:
+    def add_gpu_future(
+        self, fut_id: int, fut: "ray.dag.dag_operation_future.GPUFuture"
+    ) -> None:
         """
         Cache the GPU future.
         Args:
@@ -77,6 +80,8 @@ class _SerializationContext:
             fut: GPU future to be cached.
         """
         if fut_id in self.gpu_futures:
+            # Old future from a previous execution was not waited
+            # because of an exception.
             self.gpu_futures.pop(fut_id).destroy_event()
         self.gpu_futures[fut_id] = fut
 
