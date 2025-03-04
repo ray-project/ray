@@ -1,7 +1,14 @@
 :orphan:
 
-Hyperparameter Tuning with Ray Tune
-===================================
+.. _train-tune-deprecated-api:
+
+Hyperparameter Tuning with Ray Tune (Deprecated API)
+====================================================
+
+.. important::
+    This user guide covers the deprecated Train + Tune integration. See :ref:`train-tune` for the new API user guide.
+
+    Please see :ref:`here <train-tune-deprecation>` for information about the deprecation and migration.
 
 Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported with Ray Train.
 

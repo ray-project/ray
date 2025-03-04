@@ -3,11 +3,12 @@
 Hyperparameter Tuning with Ray Tune
 ===================================
 
-.. info::
+.. important::
     This user guide shows how to integrate Ray Train and Ray Tune to tune over distributed hyperparameter runs
     for the revamped Ray Train V2 available starting from Ray 2.43 by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
-    This user guide assumes that the environment variable has been enabled.
-    Please see <link to bottom section> for information about the migration timeline and a link to the old user guide.
+    **This user guide assumes that the environment variable has been enabled.**
+
+    Please see :ref:`here <train-tune-deprecation>` for information about the deprecation and migration.
 
 
 Ray Train can be used together with Ray Tune to do hyperparameter sweeps of distributed training runs.
@@ -24,31 +25,30 @@ In the example below:
 * :class:`~ray.train.ScalingConfig` defines the number of training workers and resources per worker for a single Ray Train run.
 * ``train_fn_per_worker`` is the Python code that executes on each distributed training worker for a trial.
 
-.. .. literalinclude:: ../doc_code/tuner.py
-..     :language: python
-..     :start-after: __basic_start__
-..     :end-before: __basic_end__
+.. literalinclude:: ../doc_code/train_tune_interop.py
+    :language: python
+    :start-after: __quickstart_start__
+    :end-before: __quickstart_end__
 
 
 Configuring Resources for Multiple Trials
-----------------------------------------
+-----------------------------------------
 
 Ray Tune launches multiple trials which run a user-defined function in a remote Ray actor, where each trial gets a different sampled hyperparameter configuration.
 Typically, these Tune trials do work computation directly inside the Ray actor. For example, each trial could request 1 GPU and do some single-process model
 training within the remote actor itself. When using Ray Train inside Ray Tune functions, the Tune trial is actually not doing extensive computation inside this actor
 -- instead it just acts as a driver process to launch and monitor the Ray Train workers running elsewhere.
 
-.. figure:: ../images/train_tune_interop.jpg
+.. figure:: ../images/hyperparameter_optimization/train_tune_interop.png
     :align: center
 
     Example of Ray Train runs being launched from within Ray Tune trials.
 
 
-.. figure:: ../images/train_without_tune.jpg
+.. figure:: ../images/hyperparameter_optimization/train_without_tune.png
     :align: center
 
     A single Ray Train run to showcase how using Ray Tune just adds a layer of hierarchy to this tree of processes.
-
 
 
 Set ``max_concurrent_trials`` to limit the number of Ray Train driver processes
@@ -86,33 +86,35 @@ This is because the Ray Train driver process is responsible for handling fault t
 
 One way to achieve this behavior is to set custom resources on certain node types and configure the Tune functions to request those resources.
 
-.. .. literalinclude:: ../doc_code/tuner.py
-..     :language: python
-..     :start-after: __basic_start__
-..     :end-before: __basic_end__
+.. literalinclude:: ../doc_code/train_tune_interop.py
+    :language: python
+    :start-after: __trainable_resources_start__
+    :end-before: __trainable_resources_end__
 
 
 Checkpoints
 -----------
 
-Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the ray.train.report and ray.tune.report APIs. <Link to Ray Train checkpointing user guide.>
+Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the ray.train.report and ray.tune.report APIs. See the :ref:`train-checkpointing` user guide for more details.
 
 If the Ray Train workers report checkpoints, saving another Ray Tune checkpoint at the Train driver level is not needed because it does not hold any extra training state. The Ray Train driver process will already periodically snapshot its status to the configured storage_path, which is further described in the next section on fault tolerance.
 
-In order to access the checkpoints from the Tuner output, you can append the checkpoint path as a metric. The provided TuneReportCallback does this by propagating reported Ray Train results over to Ray Tune, where the checkpoint path is attached as a separate metric.
+In order to access the checkpoints from the Tuner output, you can append the checkpoint path as a metric. The provided :class:`~ray.tune.integration.ray_train.TuneReportCallback`
+does this by propagating reported Ray Train results over to Ray Tune, where the checkpoint path is attached as a separate metric.
+
 
 Advanced: Fault Tolerance
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the event that the Ray Tune trials running the Ray Train driver process crash, you can enable trial fault tolerance on the Ray Tune side to re-launch the Train jobs to automatically recover.
 
-If a Ray Train worker crashes, the Ray Train driver will handle that and restart training as long as fault tolerance is configured. <Link to the fault tolerance user guide.>
+If a Ray Train worker crashes, the Ray Train driver will handle that and restart training as long as fault tolerance is configured. See the :ref:`train-fault-tolerance` user guide for more details.
 
+.. literalinclude:: ../doc_code/train_tune_interop.py
+    :language: python
+    :start-after: __fault_tolerance_start__
+    :end-before: __fault_tolerance_end__
 
-.. .. literalinclude:: ../doc_code/tuner.py
-..     :language: python
-..     :start-after: __basic_start__
-..     :end-before: __basic_end__
 
 Advanced: Using Ray Tune Callbacks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -125,16 +127,37 @@ and passing in the callbacks to the Tuner.
 If any callback functionality depends on reported metrics, make sure to pass the :class:`ray.tune.integration.ray_train.TuneReportCallback` to the trainer callbacks,
 which propagates results to the Tuner. 
 
-.. .. literalinclude:: ../doc_code/tuner.py
-..     :language: python
-..     :start-after: __basic_start__
-..     :end-before: __basic_end__
+
+.. code-block:: python
+
+    import ray.tune
+    from ray.tune.integration.ray_train import TuneReportCallback
+    from ray.tune.logger import TBXLoggerCallback
+
+
+    def train_driver_fn(config: dict):
+        trainer = TorchTrainer(
+            ...,
+            run_config=ray.train.RunConfig(..., callbacks=[TuneReportCallback()])
+        )
+        trainer.fit()
+
+
+    tuner = ray.tune.Tuner(
+        train_driver_fn,
+        run_config=ray.tune.RunConfig(callbacks=[TBXLoggerCallback()])
+    )
+
+
+.. _train-tune-deprecation:
 
 Deprecation of the ``Tuner(trainer)`` API + Migration Guide
 -----------------------------------------------------------
 
-The old Tuner(trainer) API is deprecated in favor of the new usage pattern described in this user guide. The reasons for this change include (1) decoupling Ray Train and Ray Tune to have better separation of responsibilities and (2) improving the configuration user experience.
+The old ``Tuner(trainer)`` API is deprecated in favor of the new usage pattern described in this user guide.
+The reasons for this change include (1) decoupling Ray Train and Ray Tune to have better separation of responsibilities and (2) improving the configuration user experience.
 
-Find more context regarding this deprecation in the REP <link> and see the migration guide <link> for steps to migrate off the old API.
+Find more context regarding this deprecation in the `REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_
+and see the `migration guide <https://github.com/ray-project/ray/issues/49454>`_ for steps to migrate off the old API.
 
-Please see <link to old API user guide> for the old API user guide.
+Please see :ref:`train-tune-deprecated-api` for the old API user guide.
