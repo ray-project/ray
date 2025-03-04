@@ -1,30 +1,22 @@
 import asyncio
 import os
-from typing import AsyncGenerator, Optional, Type, Union, Dict, Any
+from abc import ABC, abstractmethod
+from typing import AsyncGenerator, Dict, Any, Optional, Type, Union
 
+# Third-party imports
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve
 from ray._private.utils import import_attr
 
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.observability.usage_telemetry.usage import (
-    push_telemetry_report_for_all_models,
-)
-from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
-    StreamingErrorHandler,
+# Local imports
+from ray.llm._internal.serve.configs.constants import (
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    ENGINE_START_TIMEOUT_S,
+    RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.configs.error_handling import (
     ValidationErrorWithPydantic,
-)
-from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
-from ray.llm._internal.serve.deployments.llm.llm_deployment import LLMDeployment
-from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
-    LoraModelLoader,
-)
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
-    VLLMGenerationRequest,
-    VLLMSamplingParams,
 )
 from ray.llm._internal.serve.configs.openai_api_models import (
     ChatCompletionLogProb,
@@ -49,25 +41,73 @@ from ray.llm._internal.serve.configs.openai_api_models import (
 from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
 )
+from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
     LLMRawResponse,
 )
-from ray.llm._internal.serve.configs.prompt_formats import Message, Prompt
+from ray.llm._internal.serve.deployments.llm.image_retriever import ImageRetriever
+from ray.llm._internal.serve.deployments.llm.multiplex.lora_model_loader import (
+    LoraModelLoader,
+)
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_engine import VLLMEngine
+from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
+    VLLMGenerationRequest,
+    VLLMSamplingParams,
+)
+from ray.llm._internal.serve.deployments.utils.error_handling_utils import (
+    StreamingErrorHandler,
+)
 from ray.llm._internal.serve.deployments.utils.server_utils import (
     get_model_request_id,
     get_response_for_error,
     get_serve_request_id,
 )
-from ray.llm._internal.serve.configs.constants import (
-    DEFAULT_HEALTH_CHECK_PERIOD_S,
-    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-    ENGINE_START_TIMEOUT_S,
-    RAYLLM_VLLM_ENGINE_CLS_ENV,
+from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.usage_telemetry.usage import (
+    push_telemetry_report_for_all_models,
 )
 
 logger = get_logger(__name__)
+
+
+class _LLMServerBase(ABC):
+    """
+    This is the common interface between all the llm deployment. All llm deployments
+    need to implement an async constructor, an async predict, and check_health method.
+    """
+
+    async def __init__(self, llm_config: LLMConfig):
+        """
+        Constructor takes in an LLMConfig object and start the underlying engine.
+        """
+        self._llm_config = llm_config
+
+    @abstractmethod
+    async def chat(self, request: ChatCompletionRequest) -> LLMChatResponse:
+        """
+        Inferencing to the engine for chat, and return the response as LLMChatResponse.
+        """
+        ...
+
+    @abstractmethod
+    async def completions(self, request: CompletionRequest) -> LLMCompletionsResponse:
+        """
+        Inferencing to the engine for completion api, and return the response as LLMCompletionsResponse.
+        """
+        ...
+
+    @abstractmethod
+    async def check_health(self) -> None:
+        """
+        Check the health of the replica. Does not return anything. Raise error when
+        the engine is dead and needs to be restarted.
+        """
+        ...
+
+    async def llm_config(self) -> LLMConfig:
+        return self._llm_config
 
 
 class ResponsePostprocessor:
@@ -372,7 +412,7 @@ class ResponsePostprocessor:
             )
 
 
-class VLLMServer(LLMDeployment):
+class LLMServer(_LLMServerBase):
     _default_engine_cls = VLLMEngine
     _default_image_retriever_cls = ImageRetriever
 
@@ -384,7 +424,7 @@ class VLLMServer(LLMDeployment):
         image_retriever_cls: Optional[Type[ImageRetriever]] = None,
         model_downloader: Optional[LoraModelLoader] = None,
     ):
-        """Constructor of VLLMDeployment.
+        """Constructor of LLMServer.
 
         Only the llm_config is public api, the other arguments are private
         and used for testing.
@@ -573,7 +613,7 @@ class VLLMServer(LLMDeployment):
     def as_deployment(
         cls, deployment_options: Dict[str, Any] = None
     ) -> serve.Deployment:
-        """Convert the VLLMServer to a Ray Serve deployment.
+        """Convert the LLMServer to a Ray Serve deployment.
 
         Args:
             deployment_options: A dictionary of deployment options.
@@ -582,7 +622,7 @@ class VLLMServer(LLMDeployment):
             A Ray Serve deployment.
         """
         deployment_options = deployment_options or {}
-        return VLLMDeployment.options(**deployment_options)
+        return LLMDeployment.options(**deployment_options)
 
 
 @serve.deployment(
@@ -604,9 +644,9 @@ class VLLMServer(LLMDeployment):
     health_check_period_s=DEFAULT_HEALTH_CHECK_PERIOD_S,
     health_check_timeout_s=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
 )
-class VLLMDeployment(VLLMServer):
-    # Note (genesu): We are separating the VLLMServer and VLLMDeployment just
+class LLMDeployment(LLMServer):
+    # Note (genesu): We are separating the LLMServer and LLMDeployment just
     # to give developers an ability to test the implementation outside the Ray Serve.
-    # But in practice we should always test the VLLMDeployment class as a Serve
+    # But in practice we should always test the LLMDeployment class as a Serve
     # deployment to ensure all functionalities can be run remotely asynchronously.
     ...
