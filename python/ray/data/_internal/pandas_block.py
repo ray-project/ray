@@ -64,8 +64,6 @@ class PandasRow(TableRow):
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        pd = lazy_import_pandas()
-
         def get_item(keys: List[str]) -> Any:
             col = self._row[keys]
             if len(col) == 0:
@@ -75,14 +73,16 @@ class PandasRow(TableRow):
             if isinstance(items.iloc[0], TensorArrayElement):
                 # Getting an item in a Pandas tensor column may return
                 # a TensorArrayElement, which we have to convert to an ndarray.
-                return pd.Series(item.to_numpy() for item in items)
+                return tuple(item.to_numpy() for item in items)
 
             try:
                 # Try to interpret this as a numpy-type value.
                 # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-                return pd.Series(item.as_py() for item in items)
+                return tuple(item for item in items)
 
-            except (AttributeError, ValueError):
+            except (AttributeError, ValueError) as e:
+                logger.warning(f"Failed to convert {items} to a tuple", exc_info=e)
+
                 # Fallback to the original form.
                 return items
 
@@ -94,7 +94,7 @@ class PandasRow(TableRow):
         if items is None:
             return None
         elif is_single_item:
-            return items.iloc[0]
+            return items[0]
         else:
             return items
 
@@ -447,8 +447,10 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return val
 
-    def count(self, on: str) -> Optional[U]:
-        return self._apply_agg(lambda col: col.count(), on)
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
+        return self._apply_agg(
+            lambda col: col.count() if ignore_nulls else len(col), on
+        )
 
     def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
         if on is not None and not isinstance(on, str):

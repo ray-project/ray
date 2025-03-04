@@ -3,6 +3,13 @@
 Fine-tune of Stable Diffusion with DreamBooth and Ray Train
 ===========================================================
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-dreambooth_finetuning" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=dreambooth_finetuning">
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
+
 This is an intermediate example that shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray Train.
 It demonstrates how to use :ref:`Ray Data <data>` with PyTorch Lightning in Ray Train.
 

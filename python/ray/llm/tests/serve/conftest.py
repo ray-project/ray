@@ -5,7 +5,6 @@ from ray.llm._internal.serve.configs.constants import RAYLLM_VLLM_ENGINE_CLS_ENV
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     ModelLoadingConfig,
-    DeploymentConfig,
 )
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
@@ -47,7 +46,7 @@ def llm_config(model_pixtral_12b):
             model_id=model_pixtral_12b,
         ),
         accelerator_type="L4",
-        deployment_config=DeploymentConfig(
+        deployment_config=dict(
             ray_actor_options={"resources": {"mock_resource": 0}},
         ),
     )
@@ -104,6 +103,22 @@ def get_rayllm_testing_model(
 @pytest.fixture
 def testing_model(shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b):
     test_model_path = get_test_model_path("mock_vllm_model.yaml")
+
+    with open(test_model_path, "r") as f:
+        loaded_llm_config = yaml.safe_load(f)
+
+    loaded_llm_config["model_loading_config"]["model_source"] = model_pixtral_12b
+    test_model_path = write_yaml_file(loaded_llm_config)
+
+    with get_rayllm_testing_model(test_model_path) as (client, model_id):
+        yield client, model_id
+
+
+@pytest.fixture
+def testing_model_no_accelerator(
+    shutdown_ray_and_serve, use_mock_vllm_engine, model_pixtral_12b
+):
+    test_model_path = get_test_model_path("mock_vllm_model_no_accelerator.yaml")
 
     with open(test_model_path, "r") as f:
         loaded_llm_config = yaml.safe_load(f)

@@ -34,6 +34,7 @@ class CircularBuffer:
         self.iterations_per_batch = iterations_per_batch
 
         self._NxK = self.num_batches * self.iterations_per_batch
+        self._num_added = 0
 
         self._buffer = deque([None for _ in range(self._NxK)], maxlen=self._NxK)
         self._indices = set()
@@ -57,12 +58,14 @@ class CircularBuffer:
         if dropped_entry is not None:
             dropped_ts = dropped_entry.env_steps()
 
+        self._num_added += 1
+
         return dropped_ts
 
     def sample(self):
         # Only initially, the buffer may be empty -> Just wait for some time.
         while not self._indices:
-            time.sleep(0.0001)
+            time.sleep(0.00001)
 
         # Sample a random buffer index.
         with self._lock:
@@ -74,6 +77,11 @@ class CircularBuffer:
 
         # Return the sampled batch.
         return batch
+
+    @property
+    def filled(self):
+        """Whether the buffer has been filled once with at least `self.num_batches`."""
+        return self._num_added >= self.num_batches
 
     def __len__(self) -> int:
         """Returns the number of actually valid (non-expired) batches in the buffer."""
