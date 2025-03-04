@@ -1712,7 +1712,7 @@ def test_stats_actor_iter_metrics():
 
 def test_dataset_name():
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds.set_name"test_ds")
+    ds.set_name("test_ds")
     assert ds.name== "test_ds"
     assert str(ds) == (
         "MapBatches(<lambda>)\n"
@@ -1748,7 +1748,7 @@ def test_dataset_name():
     assert update_fn.call_args_list[-1].args[0] == f"dataset_{mds._uuid}"
 
     ds = ray.data.range(100, override_num_blocks=20)
-    ds.set_name"very_loooooooong_name")
+    ds.set_name("very_loooooooong_name")
     assert (
         str(ds)
         == "Dataset(name=very_loooooooong_name, num_rows=100, schema={id: int64})"
