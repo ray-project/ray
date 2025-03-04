@@ -156,9 +156,9 @@ class DAGNode(DAGNodeBase):
                 automatically determined based on the sender and receiver,
                 either through NCCL or host memory.
             device: The target device to use for the tensor transport.
-                "default" means that device in the receiver will match the sender.
-                "cpu" means that device in the receiver will be cpu.
-                "gpu" and "cuda" means that device in the receiver will be gpu.
+                "default": The tensor will maintain its original device placement from the sender
+                "cpu": The tensor will be explicitly moved to CPU device in the receiver
+                "gpu" or "cuda": The tensor will be explicitly moved to GPU device in the receiver
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG. If this is True, the
