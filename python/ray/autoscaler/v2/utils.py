@@ -311,7 +311,7 @@ class ClusterStatusFormatter:
     @classmethod
     def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
         header = cls._header_info(data, verbose)
-        separator_len = max(0, min(len(header), header.index("\n")))
+        separator_len = max(0, min(len(header), header.find("\n")))
         separator = "-" * separator_len
 
         # Parse ClusterStatus information to reportable format
@@ -398,8 +398,7 @@ class ClusterStatusFormatter:
                         if node_id not in node_activities:
                             node_usage_report_lines.append("  (no activity)")
                         else:
-                            _, reasons = node_activities[node_id]
-                            for reason in reasons:
+                            for reason in node_activities[node_id]:
                                 node_usage_report_lines.append(f"  {reason}")
         else:
             node_usage_report_lines.append("")  # For the non-verbose case
@@ -469,16 +468,12 @@ class ClusterStatusFormatter:
     def _failed_node_report(data: ClusterStatus, verbose: bool) -> str:
         failure_lines = []
 
-        # Process failed nodes
-        for node in data.failed_nodes:
-            failure_lines.append(
-                f" {node.ray_node_type_name}: NodeTerminated (instance_id: {node.instance_id})"
-            )
-
         # Process failed launches
         if data.failed_launches:
             sorted_failed_launches = sorted(
-                data.failed_launches, key=lambda launch: launch.request_ts_s
+                data.failed_launches,
+                key=lambda launch: launch.request_ts_s,
+                reverse=True,
             )
 
             for failed_launch in sorted_failed_launches:
@@ -494,10 +489,14 @@ class ClusterStatusFormatter:
 
                 failure_lines.append(line)
 
+        # Process failed nodes
+        for node in data.failed_nodes:
+            failure_lines.append(
+                f" {node.ray_node_type_name}: NodeTerminated (instance_id: {node.instance_id})"
+            )
+
         # Limit the number of failures displayed
-        failure_lines = sorted(failure_lines)[
-            : constants.AUTOSCALER_MAX_FAILURES_DISPLAYED
-        ]
+        failure_lines = failure_lines[: constants.AUTOSCALER_MAX_FAILURES_DISPLAYED]
 
         # Build the failure report
         failure_report = "Recent failures:\n"
