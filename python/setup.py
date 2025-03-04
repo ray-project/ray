@@ -366,7 +366,7 @@ if setup_spec.type == SetupType.RAY:
             [
                 "vllm>=0.7.2",
                 "jsonref>=1.1.0",
-                "boto3",
+                "jsonschema",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
             ]

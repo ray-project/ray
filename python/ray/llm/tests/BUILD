@@ -30,6 +30,7 @@ py_test_module_list(
 # Small tests
 py_test_module_list(
   files = [
+    "serve/configs/test_json_mode_utils.py",
     "serve/configs/test_models.py",
     "serve/configs/test_prompt_formats.py",
     "serve/deployments/llm/multiplex/test_lora_model_loader.py",
@@ -63,6 +64,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "serve/integration/test_openai_compatibility.py",
+    "serve/integration/test_openai_compatibility_no_accelerator_type.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "large",
