@@ -11,6 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// TODO(hjiang): The util class should take a parameter like `allow_proceed_at_error` to
+// decide what to do when a non-internal error happens; at the moment we simply log and
+// return for these errors.
 
 #pragma once
 
@@ -32,24 +36,22 @@ bool IsCgroupV2MountedAsRw();
 
 class CgroupSetup : public BaseCgroupSetup {
  public:
-  // Util class to setup cgroups preparation for resource constraints.
-  // It's expected to call from raylet to setup node level cgroup configurations.
+  // Util class to setup cgroups to reserve resources on a ray node for ray system
+  // processes on linux, and it works for different environments (VM, bare metal machine
+  // and docker). It's expected to call from raylet to setup node level cgroup
+  // configurations.
   //
   // If error happens, error will be logged and return.
-  // Cgroup is not supported on non-linux platforms; for non-linux environment program
-  // proceeds with no warning.
   // NOTICE: This function is expected to be called once for each raylet instance.
   //
-  // Usage to setup and cleanup cgroup resource in raylet:
-  // const auto cgroup_setup = make_unique<CgroupSetup>(node_id);
-  //
-  // Impact:
+  // TODO(hjiang): Docker and VM/BM take different handlings, here we only implement the
+  // docker env. Impact:
   // - Application cgroup will be created, where later worker process will be placed
   // under;
-  // - Existing operating system processes and system components (GCS/raylet) will be
-  // placed under system cgroup. For more details, see
+  // - Existing operating system processes and system components will be placed under
+  // system cgroup. For more details, see
   // https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
-  CgroupSetup(std::string node_id);
+  explicit CgroupSetup(std::string node_id);
 
   // On destruction, all processes in the managed cgroup will be killed via SIGKILL.
   ~CgroupSetup() override;
@@ -63,8 +65,6 @@ class CgroupSetup : public BaseCgroupSetup {
   bool SetupCgroups(const std::string &node_id);
 
   // Util function to cleanup cgroup after raylet exits.
-  // If any error happens, it will be logged and early return.
-  //
   // NOTICE: This function is expected to be called once for each raylet instance at its
   // termination.
   //
