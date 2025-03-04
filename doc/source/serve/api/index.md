@@ -402,6 +402,65 @@ Content-Type: application/json
 ## LLM API
 
 ```{eval-rst}
-.. include:: ../llm/api.rst
-   :start-after: Ray Serve LLM API
+.. currentmodule:: ray
+``` 
+
+
+### Builders
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.build_vllm_deployment
+   serve.llm.build_openai_app
+```
+
+### Configs
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   serve.llm.LLMConfig
+   serve.llm.LLMServingArgs
+   serve.llm.ModelLoadingConfig
+   serve.llm.CloudMirrorConfig
+   serve.llm.LoraConfig
+```
+
+
+### Deployments
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.VLLMServer
+   serve.llm.LLMRouter
+```
+
+### OpenAI API Models
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic_show_json.rst
+
+   serve.llm.openai_api_models.ChatCompletionRequest
+   serve.llm.openai_api_models.CompletionRequest
+   serve.llm.openai_api_models.ChatCompletionStreamResponse
+   serve.llm.openai_api_models.ChatCompletionResponse
+   serve.llm.openai_api_models.CompletionStreamResponse
+   serve.llm.openai_api_models.CompletionResponse
+   serve.llm.openai_api_models.ErrorResponse
 ```
