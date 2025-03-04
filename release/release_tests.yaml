@@ -788,7 +788,7 @@
 
   run:
     timeout: 36000
-    script: python train/train_tensorflow_mnist_test.py
+    script: RAY_TRAIN_V2_ENABLED=1 python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
 
