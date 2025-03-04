@@ -158,10 +158,11 @@ def train_fn_driver(config: dict):
             # The easiest way to do this is to attach the trial ID in the name.
             # **Do not include any timestamps or random values in the name.**
             name=f"train-trial_id={ray.tune.get_context().get_trial_id()}",
-            # storage_path="s3://...",
             # [3] Enable worker-level fault tolerance to gracefully handle
             # Train worker failures.
             failure_config=ray.train.FailureConfig(max_failures=3),
+            # (If multi-node, configure S3 / NFS as the storage path.)
+            # storage_path="s3://...",
         ),
     )
     trainer.fit()
