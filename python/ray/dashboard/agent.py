@@ -405,7 +405,7 @@ if __name__ == "__main__":
     try:
         # Disable log rotation for windows platform.
         logging_rotation_bytes = (
-            args.logging_rotate_bytes if sys.platform != "win32" else sys.maxsize
+            args.logging_rotate_bytes if sys.platform != "win32" else 0
         )
         logging_rotation_backup_count = (
             args.logging_rotate_backup_count if sys.platform != "win32" else 1
