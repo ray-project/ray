@@ -558,10 +558,11 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
         error.value(),
         ". ",
         error.message(),
-        ". There are some potential root causes. (1) The process is killed by "
-        "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
-        "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
-        "unexpected errors."));
+        ". There are several potential root causes. (1) The process is killed by"
+        " SIGKILL due to the OOM killer triggering from high high memory usage."
+        " (2) ray stop --force was called."
+        " (3) The worker crashed unexpectedly due to SIGSEGV or other unforseen"
+        " errors."));
     protocol::DisconnectClientBuilder builder(fbb);
     builder.add_disconnect_type(static_cast<int>(ray::rpc::WorkerExitType::SYSTEM_ERROR));
     builder.add_disconnect_detail(disconnect_detail);
