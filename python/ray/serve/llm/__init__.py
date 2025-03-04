@@ -212,7 +212,7 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
 class LLMServer(_LLMServer):
     """The implementation of the vLLM engine deployment.
 
-    To build a Deployment object you should use `build_vllm_deployment` function.
+    To build a Deployment object you should use `build_llm_deployment` function.
     We also expose a lower level API for more control over the deployment class
     through `as_deployment` method.
 
@@ -279,7 +279,7 @@ class LLMRouter(_LLMRouter):
 
 
             from ray import serve
-            from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
+            from ray.serve.llm import LLMConfig, LLMServer, LLMRouter
             from ray.serve.llm.openai_api_models import ChatCompletionRequest
 
 
@@ -307,8 +307,8 @@ class LLMRouter(_LLMRouter):
             )
 
             # Deploy the application
-            vllm_deployment1 = VLLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
-            vllm_deployment2 = VLLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
+            vllm_deployment1 = LLMServer.as_deployment(llm_config1.get_serve_options()).bind(llm_config1)
+            vllm_deployment2 = LLMServer.as_deployment(llm_config2.get_serve_options()).bind(llm_config2)
             llm_app = LLMRouter.as_deployment().bind([vllm_deployment1, vllm_deployment2])
             serve.run(llm_app)
     """

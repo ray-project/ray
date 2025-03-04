@@ -29,10 +29,10 @@ Key Components
 
 The ``ray.serve.llm`` module provides two key deployment types for serving LLMs:
 
-VLLMServer
+LLMServer
 ~~~~~~~~~~~~~~~~~~
 
-The VLLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
+The LLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
 
 LLMRouter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
