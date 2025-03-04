@@ -214,7 +214,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     llm_engine: str = Field(
-        default=LLMEngine.VLLM.value,
+        default=LLMEngine.vLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -347,7 +347,7 @@ class LLMConfig(BaseModelExtended):
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
-        if self.llm_engine == LLMEngine.VLLM:
+        if self.llm_engine == LLMEngine.vLLM:
             from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
