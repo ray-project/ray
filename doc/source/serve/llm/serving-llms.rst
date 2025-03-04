@@ -203,7 +203,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                         autoscaling_config:
                             min_replicas: 1
                             max_replicas: 2
-              import_path: ray.serve.llm.builders:build_openai_app
+              import_path: ray.serve.llm:build_openai_app
               name: llm_app
               route_prefix: "/"
 
@@ -219,7 +219,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                 llm_configs:
                     - models/qwen-0.5b.yaml
                     - models/qwen-1.5b.yaml
-              import_path: ray.serve.llm.builders:build_openai_app
+              import_path: ray.serve.llm:build_openai_app
               name: llm_app
               route_prefix: "/"
 
