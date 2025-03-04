@@ -81,7 +81,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     """The configuration for the vLLM engine processor.
 
     Args:
-        model: The model to use for the vLLM engine.
+        model_source: The model source to use for the vLLM engine.
         batch_size: The batch size to send to the vLLM engine. Large batch sizes are
             likely to saturate the compute resources and could achieve higher throughput.
             On the other hand, small batch sizes are more fault-tolerant and could
@@ -120,7 +120,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
             from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
             config = vLLMEngineProcessorConfig(
-                model="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
                 engine_kwargs=dict(
                     enable_prefix_caching=True,
                     enable_chunked_prefill=True,
@@ -187,7 +187,7 @@ def build_llm_processor(
             from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor
 
             config = vLLMEngineProcessorConfig(
-                model="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                model_source="meta-llama/Meta-Llama-3.1-8B-Instruct",
                 engine_kwargs=dict(
                     enable_prefix_caching=True,
                     enable_chunked_prefill=True,

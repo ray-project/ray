@@ -1,5 +1,7 @@
-Overview
-========
+.. _serving_llms:
+
+Serving LLMs
+============
 
 Ray Serve LLM APIs allow users to deploy multiple LLM models together with a familiar Ray Serve API, while providing compatibility with the OpenAI API.
 
@@ -27,10 +29,10 @@ Key Components
 
 The ``ray.serve.llm`` module provides two key deployment types for serving LLMs:
 
-VLLMService
+VLLMServer
 ~~~~~~~~~~~~~~~~~~
 
-The VLLMService sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
+The VLLMServer sets up and manages the vLLM engine for model serving. It can be used standalone or combined with your own custom Ray Serve deployments.
 
 LLMRouter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -65,8 +67,7 @@ Deployment through ``LLMRouter``
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm.configs import LLMConfig
-    from ray.serve.llm.deployments import VLLMService, LLMRouter
+    from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
 
     llm_config = LLMConfig(
         model_loading_config=dict(
@@ -87,7 +88,7 @@ Deployment through ``LLMRouter``
     )
 
     # Deploy the application
-    deployment = VLLMService.as_deployment().bind(llm_config)
+    deployment = VLLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
 
@@ -121,7 +122,7 @@ You can query the deployed models using either cURL or the OpenAI Python client:
             # Basic chat completion with streaming
             response = client.chat.completions.create(
                 model="qwen-0.5b",
-                messages=[{"role": "user", "content": "Hello!"}]
+                messages=[{"role": "user", "content": "Hello!"}],
                 stream=True
             )
 
@@ -135,8 +136,7 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm.configs import LLMConfig
-    from ray.serve.llm.deployments import VLLMService, LLMRouter
+    from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
 
     llm_config1 = LLMConfig(
         model_loading_config=dict(
@@ -165,8 +165,8 @@ For deploying multiple models, you can pass a list of ``LLMConfig`` objects to t
     )
 
     # Deploy the application
-    deployment1 = VLLMService.as_deployment().bind(llm_config1)
-    deployment2 = VLLMService.as_deployment().bind(llm_config2)
+    deployment1 = VLLMServer.as_deployment(llm_config1.get_serve_options(name_prefix="vLLM:")).bind(llm_config1)
+    deployment2 = VLLMServer.as_deployment(llm_config2.get_serve_options(name_prefix="vLLM:")).bind(llm_config2)
     llm_app = LLMRouter.as_deployment().bind([deployment1, deployment2])
     serve.run(llm_app)
 
@@ -203,7 +203,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                         autoscaling_config:
                             min_replicas: 1
                             max_replicas: 2
-              import_path: ray.serve.llm.builders:build_openai_app
+              import_path: ray.serve.llm:build_openai_app
               name: llm_app
               route_prefix: "/"
 
@@ -219,7 +219,7 @@ For production deployments, Ray Serve LLM provides utilities for config-driven d
                 llm_configs:
                     - models/qwen-0.5b.yaml
                     - models/qwen-1.5b.yaml
-              import_path: ray.serve.llm.builders:build_openai_app
+              import_path: ray.serve.llm:build_openai_app
               name: llm_app
               route_prefix: "/"
 
@@ -274,8 +274,7 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.llm.configs import LLMConfig
-            from ray.serve.llm.builders import build_openai_app
+            from ray.serve.llm import LLMConfig, build_openai_app
 
             # Configure the model with LoRA
             llm_config = LLMConfig(
@@ -318,7 +317,8 @@ This allows the weights to be loaded on each replica on-the-fly and be cached vi
             # Make a request to the desired lora checkpoint
             response = client.chat.completions.create(
                 model="qwen-0.5b:lora_model_1_ckpt",
-                messages=[{"role": "user", "content": "Hello!"}]
+                messages=[{"role": "user", "content": "Hello!"}],
+                stream=True,
             )
 
             for chunk in response:
@@ -339,8 +339,7 @@ For structured output, you can use JSON mode similar to OpenAI's API:
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.llm.configs import LLMConfig
-            from ray.serve.llm.builders import build_openai_app
+            from ray.serve.llm import LLMConfig, build_openai_app
 
             # Configure the model with LoRA
             llm_config = LLMConfig(
@@ -414,8 +413,7 @@ For multimodal models that can process both text and images:
         .. code-block:: python
 
             from ray import serve
-            from ray.serve.llm.configs import LLMConfig
-            from ray.serve.llm.builders import build_openai_app
+            from ray.serve.llm import LLMConfig, build_openai_app
 
 
             # Configure a vision model
@@ -430,7 +428,11 @@ For multimodal models that can process both text and images:
                         max_replicas=2,
                     )
                 ),
-                accelerator_type="A10G",
+                accelerator_type="L40S",
+                engine_kwargs=dict(
+                    tensor_parallel_size=1,
+                    max_model_len=8192,
+                ),
             )
 
             # Build and deploy the model
@@ -466,7 +468,8 @@ For multimodal models that can process both text and images:
                             }
                         ]
                     }
-                ]
+                ],
+                stream=True,
             )
 
             for chunk in response:
@@ -485,8 +488,7 @@ To set the deployment options, you can use the ``get_serve_options`` method on t
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm.configs import LLMConfig
-    from ray.serve.llm.deployments import VLLMService, LLMRouter
+    from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
     import os
 
     llm_config = LLMConfig(
@@ -509,7 +511,7 @@ To set the deployment options, you can use the ``get_serve_options`` method on t
     )
 
     # Deploy the application
-    deployment = VLLMService.as_deployment(llm_config.get_serve_options(name_prefix="VLLM:")).bind(llm_config)
+    deployment = VLLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
 
@@ -523,8 +525,7 @@ If you are using huggingface models, you can enable fast download by setting `HF
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.llm.configs import LLMConfig
-    from ray.serve.llm.deployments import VLLMService, LLMRouter
+    from ray.serve.llm import LLMConfig, VLLMServer, LLMRouter
     import os
 
     llm_config = LLMConfig(
@@ -548,6 +549,6 @@ If you are using huggingface models, you can enable fast download by setting `HF
     )
 
     # Deploy the application
-    deployment = VLLMService.as_deployment(llm_config.get_serve_options(name_prefix="VLLM:")).bind(llm_config)
+    deployment = VLLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
