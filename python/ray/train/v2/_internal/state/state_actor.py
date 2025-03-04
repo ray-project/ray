@@ -23,8 +23,11 @@ class TrainStateActor:
         self._runs: Dict[str, TrainRun] = {}
         # {run_id: {attempt_id: TrainRunAttempt}}
         self._run_attempts: Dict[str, Dict[str, TrainRunAttempt]] = defaultdict(dict)
-
-        self._export_logger = self._init_export_logger()
+        (
+            self._export_logger,
+            self._is_train_run_export_api_enabled,
+            self._is_train_run_attempt_export_api_enabled,
+        ) = self._init_export_logger()
 
     def create_or_update_train_run(self, run: TrainRun) -> None:
         self._runs[run.id] = run
@@ -47,18 +50,23 @@ class TrainStateActor:
     def is_export_api_enabled(self) -> bool:
         return self._export_logger is not None
 
-    def _init_export_logger(self) -> Optional[logging.Logger]:
+    def _init_export_logger(self) -> tuple[Optional[logging.Logger], bool, bool]:
         # Proto schemas should be imported within the scope of TrainStateActor to
         # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent
 
-        # TODO: Should this be EventLogType.TRAIN_STATE?
-        export_api_enabled = check_export_api_enabled(
+        is_train_run_export_api_enabled = check_export_api_enabled(
             ExportEvent.SourceType.EXPORT_TRAIN_RUN
+        )
+        is_train_run_attempt_export_api_enabled = check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT
+        )
+        export_api_enabled = (
+            is_train_run_export_api_enabled or is_train_run_attempt_export_api_enabled
         )
 
         if not export_api_enabled:
-            return None
+            return None, False, False
 
         log_directory = os.path.join(
             ray._private.worker._global_node.get_session_dir_path(), "logs"
@@ -74,10 +82,18 @@ class TrainStateActor:
                 "Unable to initialize the export event logger, so no Train export "
                 "events will be written."
             )
-        return logger
+
+        if logger is None:
+            return None, False, False
+
+        return (
+            logger,
+            is_train_run_export_api_enabled,
+            is_train_run_attempt_export_api_enabled,
+        )
 
     def _maybe_export_train_run(self, run: TrainRun) -> None:
-        if not self.is_export_api_enabled():
+        if not self._is_train_run_export_api_enabled:
             return
 
         from ray.train.v2._internal.state.export import train_run_to_proto
@@ -86,7 +102,7 @@ class TrainStateActor:
         self._export_logger.send_event(run_proto)
 
     def _maybe_export_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        if not self.is_export_api_enabled():
+        if not self._is_train_run_attempt_export_api_enabled:
             return
 
         from ray.train.v2._internal.state.export import train_run_attempt_to_proto
