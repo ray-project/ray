@@ -18,7 +18,7 @@ concurrency:
 jobs:
   start-ecs-runner:
     name: Start ECS Runner
-    runs-on: ubuntu-latest
+    runs-on: longrun # this is only used to trigger ecs runner
     environment: aliyun
     concurrency:
       group: ${{ github.workflow }}
@@ -27,18 +27,10 @@ jobs:
       leased_instance_id: ${{ steps.lease_instance.outputs.instance_id }}
       leased_disk_id: ${{ steps.lease_instance.outputs.disk_id }}
     steps:
-      - name: Configure Aliyun CLI
-        run: |
-          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
-          tar -xvf aliyun-cli-linux-latest-amd64.tgz
-          ./aliyun configure set --profile default \
-            --access-key-id ${{ secrets.ALIYUN_ACCESS_KEY }} \
-            --access-key-secret ${{ secrets.ALIYUN_ACCESS_SECRET }} \
-            --region us-west-1
-
       - name: Lease and Start Instance
         id: lease_instance
         run: |
+          cd ~/actions-runner
           # Parse instance:disk pairs
           IFS=',' read -ra INSTANCE_PAIRS <<< "${{ secrets.ALIYUN_ECS_INSTANCE_IDS }}"
           
@@ -548,17 +540,11 @@ jobs:
       - build-base-images
       - core-tests
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: longrun
     steps:
       - name: Configure Aliyun CLI
         run: |
-          wget https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
-          tar -xvf aliyun-cli-linux-latest-amd64.tgz
-          ./aliyun configure set --profile default \
-            --access-key-id ${{ secrets.ALIYUN_ACCESS_KEY }} \
-            --access-key-secret ${{ secrets.ALIYUN_ACCESS_SECRET }} \
-            --region us-west-1
-          # Add retry logic for StopInstance
+          cd ~/actions-runner
           max_attempts=3
           for i in $(seq 1 $max_attempts); do
             if ./aliyun ecs StopInstance --InstanceId ${{ needs.start-ecs-runner.outputs.leased_instance_id }} --ForceStop true --region us-west-1; then
