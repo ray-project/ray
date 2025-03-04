@@ -43,7 +43,7 @@ OPERATOR_SCHEMA = [
 def test_get_datasets():
     ray.init()
     ds = ray.data.range(100, override_num_blocks=20).map_batches(lambda x: x)
-    ds.set_name"data_head_test")
+    ds.set_name("data_head_test")
     ds.materialize()
 
     client = JobSubmissionClient()
