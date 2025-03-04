@@ -27,6 +27,7 @@ from ray.air._internal.device_manager import (
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.session import get_accelerator, set_accelerator
+from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
 
 if Version(torch.__version__) < Version("1.11.0"):
@@ -277,7 +278,6 @@ def prepare_data_loader(
 def _log_amp_deprecation_warning():
     # Keep V2 imports out of top-level V1 imports.
     from ray.train.v2.torch.train_loop_utils import _TORCH_AMP_DEPRECATION_MESSAGE
-    from ray.train._internal.utils import _log_deprecation_warning
 
     _log_deprecation_warning(_TORCH_AMP_DEPRECATION_MESSAGE)
 
