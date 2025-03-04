@@ -431,7 +431,7 @@ class LLMConfig(BaseModelExtended):
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
                 serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                llm_app = LLMServer.options(**serve_options).bind(llm_config)
+                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
                 serve.run(llm_app)
 
         Keyword Args:
