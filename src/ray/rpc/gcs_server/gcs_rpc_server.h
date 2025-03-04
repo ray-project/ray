@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
@@ -156,9 +159,9 @@ namespace rpc {
 #define VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(VirtualClusterInfoGcsService, HANDLER, -1)
 
-#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
-  reply->mutable_status()->set_code((int)status.code());       \
-  reply->mutable_status()->set_message(status.message());      \
+#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
+  reply->mutable_status()->set_code(static_cast<int>(status.code())); \
+  reply->mutable_status()->set_message(status.message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
 
 class JobInfoGcsServiceHandler {

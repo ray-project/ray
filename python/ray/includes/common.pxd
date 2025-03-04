@@ -376,13 +376,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
-            object (*)(CRayStatus, c_vector[T] &&) nogil,
+            object (*)(CRayStatus, c_vector[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
     cdef cppclass OptionalItemPyCallback[T]:
         OptionalItemPyCallback(
-            object (*)(CRayStatus, const optional[T]&) nogil,
+            object (*)(CRayStatus, optional[T]) nogil,
             void (object, object) nogil,
             object) nogil
 
@@ -555,6 +555,10 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &serialized_reply
         )
 
+        CRayStatus AsyncGetClusterStatus(
+            int64_t timeout_ms,
+            const OptionalItemPyCallback[CGetClusterStatusReply] &callback)
+
         CRayStatus ReportAutoscalingState(
             int64_t timeout_ms,
             const c_string &serialized_state
@@ -725,6 +729,12 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CActorTableData "ray::rpc::ActorTableData":
         CAddress address() const
+        void ParseFromString(const c_string &serialized)
+        const c_string &SerializeAsString() const
+
+cdef extern from "src/ray/protobuf/autoscaler.pb.h" nogil:
+    cdef cppclass CGetClusterStatusReply "ray::rpc::autoscaler::GetClusterStatusReply":
+        c_string serialized_cluster_status() const
         void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString() const
 

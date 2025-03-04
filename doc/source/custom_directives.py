@@ -491,6 +491,8 @@ class Framework(ExampleEnum):
     HOROVOD = "Horovod"
     XGBOOST = "XGBoost"
     HUGGINGFACE = "Hugging Face"
+    DATAJUICER = "Data-Juicer"
+    VLLM = "vLLM"
     ANY = "Any"
 
     @classmethod
@@ -1298,7 +1300,7 @@ def generate_versions_json():
     for version in git_versions:
         version_json_data.append(
             {
-                "version": f"releases/{version}",
+                "version": f"releases-{version}",
                 "url": generate_version_url(f"releases-{version}"),
             }
         )

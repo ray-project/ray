@@ -4,6 +4,7 @@
 
 from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
+from libcpp.functional cimport function
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
 from libcpp.string cimport string as c_string
@@ -69,7 +70,6 @@ ctypedef void (*plasma_callback_function) \
 # "pair[shared_ptr[const CActorHandle], CRayStatus]".
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
-
 
 cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
@@ -379,8 +379,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int node_manager_port
         c_string raylet_ip_address
         c_string driver_name
-        c_string stdout_file
-        c_string stderr_file
         (CRayStatus(
             const CAddress &caller_address,
             CTaskType task_type,
@@ -406,6 +404,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t generator_backpressure_num_objects
         ) nogil) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
+        (function[void()]() nogil) initialize_thread_callback
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect
         (c_vector[c_string](
@@ -440,6 +439,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string entrypoint
         int64_t worker_launch_time_ms
         int64_t worker_launched_time_ms
+        c_string debug_source
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

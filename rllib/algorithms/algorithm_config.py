@@ -76,6 +76,7 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
+from ray.util import log_once
 
 Space = gym.Space
 
@@ -355,9 +356,9 @@ class AlgorithmConfig(_Config):
         # `self.learners()`
         self.num_learners = 0
         self.num_gpus_per_learner = 0
-        self.num_cpus_per_learner = 1
+        self.num_cpus_per_learner = "auto"
         self.num_aggregator_actors_per_learner = 0
-        self.max_requests_in_flight_per_aggregator_actor = 100
+        self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
@@ -996,16 +997,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = EnvToModulePipeline(
@@ -1078,16 +1079,16 @@ class AlgorithmConfig(_Config):
         if obs_space is None and self.is_multi_agent:
             obs_space = gym.spaces.Dict(
                 {
-                    aid: env.get_observation_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         act_space = getattr(env, "single_action_space", env.action_space)
         if act_space is None and self.is_multi_agent:
             act_space = gym.spaces.Dict(
                 {
-                    aid: env.get_action_space(aid)
-                    for aid in env.unwrapped.possible_agents
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
                 }
             )
         pipeline = ModuleToEnvPipeline(
@@ -2135,7 +2136,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         num_learners: Optional[int] = NotProvided,
-        num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        num_cpus_per_learner: Optional[Union[str, float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_aggregator_actors_per_learner: Optional[int] = NotProvided,
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
@@ -2153,14 +2154,16 @@ class AlgorithmConfig(_Config):
                 1 GPU: `num_learners=4; num_gpus_per_learner=1` OR 4 GPUs total and
                 model requires 2 GPUs: `num_learners=2; num_gpus_per_learner=2`).
             num_cpus_per_learner: Number of CPUs allocated per Learner worker.
+                If "auto" (default), use 1 if `num_gpus_per_learner=0`, otherwise 0.
                 Only necessary for custom processing pipeline inside each Learner
-                requiring multiple CPU cores. Ignored if `num_learners=0`.
+                requiring multiple CPU cores.
+                If `num_learners=0`, RLlib creates only one local Learner instance and
+                the number of CPUs on the main process is
+                `max(num_cpus_per_learner, num_cpus_for_main_process)`.
             num_gpus_per_learner: Number of GPUs allocated per Learner worker. If
                 `num_learners=0`, any value greater than 0 runs the
                 training on a single GPU on the main process, while a value of 0 runs
-                the training on main process CPUs. If `num_gpus_per_learner` is > 0,
-                then you shouldn't change `num_cpus_per_learner` (from its default
-                value of 1).
+                the training on main process CPUs.
             num_aggregator_actors_per_learner: The number of aggregator actors per
                 Learner (if num_learners=0, one local learner is created). Must be at
                 least 1. Aggregator actors perform the task of a) converting episodes
@@ -4555,20 +4558,7 @@ class AlgorithmConfig(_Config):
 
     def _validate_resources_settings(self):
         """Checks, whether resources related settings make sense."""
-
-        # TODO @Avnishn: This is a short-term work around due to
-        #  https://github.com/ray-project/ray/issues/35409
-        #  Remove this once we are able to specify placement group bundle index in RLlib
-        if self.num_cpus_per_learner > 1 and self.num_gpus_per_learner > 0:
-            self._value_error(
-                "Can't set both `num_cpus_per_learner` > 1 and "
-                " `num_gpus_per_learner` > 0! Either set "
-                "`num_cpus_per_learner` > 1 (and `num_gpus_per_learner`"
-                "=0) OR set `num_gpus_per_learner` > 0 (and leave "
-                "`num_cpus_per_learner` at its default value of 1). "
-                "This is due to issues with placement group fragmentation. See "
-                "https://github.com/ray-project/ray/issues/35409 for more details."
-            )
+        pass
 
     def _validate_multi_agent_settings(self):
         """Checks, whether multi-agent related settings make sense."""
@@ -4582,20 +4572,6 @@ class AlgorithmConfig(_Config):
                         f"policy ID ({pid}) that was not defined in "
                         f"`config.multi_agent(policies=..)`!"
                     )
-
-        # TODO (sven): For now, vectorization is not allowed on new EnvRunners with
-        #  multi-agent.
-        if (
-            self.is_multi_agent
-            and self.enable_env_runner_and_connector_v2
-            and self.num_envs_per_env_runner > 1
-        ):
-            self._value_error(
-                "For now, using env vectorization "
-                "(`config.num_envs_per_env_runner > 1`) in combination with "
-                "multi-agent AND the new EnvRunners is not supported! Try setting "
-                "`config.num_envs_per_env_runner = 1`."
-            )
 
     def _validate_evaluation_settings(self):
         """Checks, whether evaluation related settings make sense."""
@@ -4723,14 +4699,15 @@ class AlgorithmConfig(_Config):
             return
 
         # Warn about new API stack on by default.
-        logger.warning(
-            f"You are running {self.algo_class.__name__} on the new API stack! "
-            "This is the new default behavior for this algorithm. If you don't "
-            "want to use the new API stack, set `config.api_stack("
-            "enable_rl_module_and_learner=False,"
-            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-        )
+        if log_once(f"{self.algo_class.__name__}_on_new_api_stack"):
+            logger.warning(
+                f"You are running {self.algo_class.__name__} on the new API stack! "
+                "This is the new default behavior for this algorithm. If you don't "
+                "want to use the new API stack, set `config.api_stack("
+                "enable_rl_module_and_learner=False,"
+                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
 
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
