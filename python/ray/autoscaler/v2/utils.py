@@ -365,8 +365,7 @@ class ClusterStatusFormatter:
 
         # Create a dictionary for node activities
         node_activities = {
-            node.node_id: (node.instance_id, node.node_activity)
-            for node in data.active_nodes
+            node.node_id: node.node_activity for node in data.active_nodes
         }
 
         node_usage_report_lines = []
@@ -383,11 +382,7 @@ class ClusterStatusFormatter:
                     node_usage_report_lines.append(node_type_line)
 
                     # Idle time for the node
-                    if (
-                        idle_time_map
-                        and node_id in idle_time_map
-                        and idle_time_map[node_id] > 0
-                    ):
+                    if idle_time_map.get(node_id, 0) > 0:
                         node_usage_report_lines.append(
                             f" Idle: {idle_time_map[node_id]} ms"
                         )
@@ -500,8 +495,8 @@ class ClusterStatusFormatter:
                 failure_lines.append(line)
 
         # Limit the number of failures displayed
-        failure_lines = failure_lines[
-            : -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED - 1 : -1
+        failure_lines = sorted(failure_lines)[
+            : constants.AUTOSCALER_MAX_FAILURES_DISPLAYED
         ]
 
         # Build the failure report
