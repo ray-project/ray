@@ -405,7 +405,7 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
         // Invoke the `square` method 4 times remotely as Ray tasks.
@@ -511,7 +511,7 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ActorHandle<Counter>> counters = new ArrayList<>();
         // Create 4 actors from the `Counter` class.

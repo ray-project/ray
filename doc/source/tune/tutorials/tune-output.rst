@@ -272,7 +272,7 @@ You can save trial artifacts directly in the trainable, as shown below:
 
 In the code snippet above, ``logging_library`` refers to whatever 3rd party logging library you are using.
 Note that ``logging_library.set_log_path(os.getcwd())`` is an imaginary API that we are using
-for demonstation purposes, and it highlights that the third-party library
+for demonstration purposes, and it highlights that the third-party library
 should be configured to log to the Trainable's *working directory.* By default,
 the current working directory of both functional and class trainables is set to the
 corresponding trial directory once it's been launched as a remote Ray actor.

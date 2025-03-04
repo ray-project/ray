@@ -239,7 +239,7 @@ ray_serve_logger = logging.getLogger("ray.serve")
 ray_data_logger.setLevel(logging.WARNING)
 
 # Other loggers can be modified similarly.
-# Here's how to add an aditional file handler for Ray Tune:
+# Here's how to add an additional file handler for Ray Tune:
 ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ```
 
@@ -589,4 +589,4 @@ The max size of a log file, including its backup, is `RAY_ROTATION_MAX_BYTES * R
 
 ## Log persistence
 
-To process and export logs to external stroage or management systems, view {ref}`log persistence on Kubernetes <persist-kuberay-custom-resource-logs>` see {ref}`log persistence on VMs <vm-logging>` for more details.
+To process and export logs to external storage or management systems, view {ref}`log persistence on Kubernetes <persist-kuberay-custom-resource-logs>` see {ref}`log persistence on VMs <vm-logging>` for more details.

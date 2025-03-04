@@ -47,7 +47,7 @@ executed as root node while iterating, or used as input args or kwargs of other
 functions to form more complex DAGs.
 
 Any IR node can be executed directly ``dag_node.execute()`` that acts as root
-of the DAG, where all other non-reachable nodes from the root will be igored.
+of the DAG, where all other non-reachable nodes from the root will be ignored.
 
 .. tab-set::
 

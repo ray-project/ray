@@ -114,7 +114,7 @@ For example, you can continue logging new values under the ``loss`` key:
     logger.log_value("loss", 0.05)
 
 Because you specified a window of 2, :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` only uses the last 2 values to compute the reduced result.
-You can ``peek()`` at the currently reduced result throug the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method:
+You can ``peek()`` at the currently reduced result through the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method:
 
 .. testcode::
 

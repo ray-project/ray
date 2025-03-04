@@ -218,7 +218,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
-        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+        `S3 Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
     .. tab-item:: GCS
 
@@ -256,7 +256,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
-        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+        `GCS Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
     .. tab-item:: ABS
 
