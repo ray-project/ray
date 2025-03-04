@@ -116,7 +116,7 @@ class TorchTensorWorker:
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return t1, t2
     
-    def return_tensors_tuple(self, args, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def return_two_tensor_tuple(self, args, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
         tup = (torch.ones(args[2*i][0], dtype=args[2*i][1], device=self.device) * args[2*i][2],
                 torch.ones(args[2*i+1][0], dtype=args[2*i+1][1], device=self.device) * args[2*i+1][2])
         return tup
@@ -1311,7 +1311,7 @@ def test_torch_tensor_nccl_all_reduce_two_tensors(ray_start_regular):
 
     with InputNode() as inp:
         computes = [
-            worker.return_tensors_tuple.bind(inp, i)
+            worker.return_two_tensor_tuple.bind(inp, i)
             for i, worker in enumerate(workers)
         ]
         collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
@@ -1334,6 +1334,13 @@ def test_torch_tensor_nccl_all_reduce_two_tensors(ray_start_regular):
         reduced_val_1 = sum(i + idx for idx in range(0, 2*num_workers, 2))
         reduced_val_2 = sum(i + idx for idx in range(1, 2*num_workers, 2))
         assert result == [((reduced_val_1, shape, dtype), (reduced_val_2, shape, dtype)) for _ in workers]
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_all_reduce_two_tensors_wrong_shape(ray_start_regular):
+    """
+    Test an error is thrown when an all-reduce takes tensors of wrong shapes.
+    """
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
