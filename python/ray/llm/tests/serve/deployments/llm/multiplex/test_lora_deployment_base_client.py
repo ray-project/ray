@@ -20,7 +20,7 @@ VLLM_APP_DEF = """
 model_loading_config:
   model_id: meta-llama/Llama-2-7b-hf
 
-llm_engine: VLLM
+llm_engine: vLLM
 
 engine_kwargs:
   trust_remote_code: True

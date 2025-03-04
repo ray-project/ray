@@ -153,7 +153,7 @@ class TestBuildVllmDeployment:
         shutdown_ray_and_serve,
         use_mock_vllm_engine,
     ):
-        """Test `build_vllm_deployment` can build a VLLM deployment."""
+        """Test `build_vllm_deployment` can build a vLLM deployment."""
 
         app = build_vllm_deployment(llm_config)
         assert isinstance(app, serve.Application)

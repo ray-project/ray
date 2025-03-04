@@ -11,7 +11,7 @@ from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
-from ray.llm._internal.serve.configs.base import BaseModelExtended
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig

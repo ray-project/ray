@@ -12,7 +12,7 @@ from ray.util.placement_group import (
 from ray.llm._internal.utils import try_import
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.configs.base import BaseModelExtended
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     CloudMirrorConfig,

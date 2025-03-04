@@ -25,7 +25,7 @@ def build_vllm_deployment(
         deployment_kwargs = {}
 
     deployment_options = llm_config.get_serve_options(
-        name_prefix="VLLMDeployment:",
+        name_prefix="vLLMDeployment:",
     )
 
     return VLLMDeployment.options(**deployment_options).bind(
@@ -39,7 +39,7 @@ def _get_llm_deployments(
 ) -> List[DeploymentHandle]:
     llm_deployments = []
     for llm_config in llm_base_models:
-        if llm_config.llm_engine == LLMEngine.VLLM:
+        if llm_config.llm_engine == LLMEngine.vLLM:
             llm_deployments.append(build_vllm_deployment(llm_config, deployment_kwargs))
         else:
             # Note (genesu): This should never happen because we validate the engine
