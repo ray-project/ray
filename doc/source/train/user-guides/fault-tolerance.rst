@@ -65,21 +65,34 @@ to download the checkpoint from the :class:`RunConfig(storage_path) <ray.train.R
 Illustrated Example
 ~~~~~~~~~~~~~~~~~~~
 
+Consider the following example of a cluster containing a CPU head node and 2 GPU worker nodes.
+There are 4 GPU training workers running on the 2 worker nodes.
+The :ref:`storage path has been configured <persistent-storage-guide>` to use cloud storage, which is where checkpoints are saved.
 
 .. figure:: ../images/fault_tolerance/worker_node_failure.png
-    :align: center
+    :align: left
 
-    ABCDEFG
+    (Left) Training has been running for some time, and the latest checkpoint has been saved to cloud storage.
+
+    (Right) One of the worker GPU nodes fails due to a hardware fault. Ray Train detects this failure and shuts down all the workers.
+    Since the number of failures detected so far is less than the configured ``max_failures``, Ray Train will attempt to restart training,
+    rather than exiting and raising an error.
 
 .. figure:: ../images/fault_tolerance/worker_node_replacement.png
-    :align: center
+    :align: left
 
-    ABCDEFG
+    (Left) Same as the previous figure.
+
+    (Right) Ray Train has requested a new worker node to join the cluster and is waiting for it to come up.
 
 .. figure:: ../images/fault_tolerance/resume_from_checkpoint.png
-    :align: center
+    :align: left
 
-    ABCDEFG
+    (Left) Same as the previous figure.
+
+    (Right) The new worker node has joined the cluster.
+    Ray Train restarts all the worker processes and provides them with the latest checkpoint.
+    The workers download the checkpoint from storage and use it to resume training.
 
 
 .. _train-restore-guide:
