@@ -157,7 +157,7 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
     ConnectionErrorHandler error_handler = [this](
                                                std::shared_ptr<ClientConnection> client,
                                                const boost::system::error_code &error) {
-      node_manager_.HandleWorkerConnectionError(client, error);
+      node_manager_.HandleClientConnectionError(client, error);
     };
 
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
@@ -167,13 +167,11 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
     };
 
     // Accept a new local client and dispatch it to the node manager.
-    auto conn = ClientConnection::Create(
-        message_handler,
-        error_handler,
-        std::move(socket_),
-        "worker",
-        node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient));
+    auto conn = ClientConnection::Create(message_handler,
+                                         error_handler,
+                                         std::move(socket_),
+                                         "worker",
+                                         node_manager_message_enum);
 
     // Begin processing messages. The message handler above is expected to call this to
     // continue processing messages.

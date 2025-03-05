@@ -1183,7 +1183,7 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
-void NodeManager::HandleWorkerConnectionError(
+void NodeManager::HandleClientConnectionError(
     const std::shared_ptr<ClientConnection> &client,
     const boost::system::error_code &error) {
   const std::string err_msg = absl::StrCat(
