@@ -68,6 +68,49 @@ void CheckNoError(std::shared_ptr<ClientConnection> conn,
   RAY_CHECK(FALSE) << "Unexpected connection error: " << error.message();
 }
 
+/*
+Check that the ConnectionErrorHandler is called when an unexpected connection
+error occurs.
+*/
+TEST_F(ClientConnectionTest, UnexpectedConnectionError) {
+  const uint8_t arr[5] = {1, 2, 3, 4, 5};
+  int num_messages = 0;
+  MessageHandler message_handler = [&arr, &num_messages](
+                                       std::shared_ptr<ClientConnection> client,
+                                       int64_t message_type,
+                                       const std::vector<uint8_t> &message) {
+    ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+    num_messages += 1;
+  };
+
+  bool err_handler_called = false;
+  ConnectionErrorHandler connection_error_handler =
+      [&err_handler_called](std::shared_ptr<ClientConnection> client,
+                            const boost::system::error_code &error) {
+        err_handler_called = true;
+      };
+
+  auto conn1 = ClientConnection::Create(
+      message_handler, CheckNoError, std::move(in_), "conn1", {});
+
+  auto conn2 = ClientConnection::Create(
+      message_handler, connection_error_handler, std::move(out_), "conn2", {});
+
+  RAY_CHECK_OK(conn1->WriteMessage(0, 5, arr));
+  conn2->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(num_messages, 1);
+  ASSERT_FALSE(err_handler_called);
+
+  io_service_.restart();
+
+  conn1->Close();
+  conn2->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(num_messages, 1);
+  ASSERT_TRUE(err_handler_called);
+}
+
 TEST_F(ClientConnectionTest, SimpleSyncWrite) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
