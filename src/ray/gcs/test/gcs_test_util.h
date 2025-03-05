@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <utility>
 
@@ -66,7 +68,8 @@ struct Mocker {
                               required_placement_resources,
                               "",
                               0,
-                              TaskID::Nil());
+                              TaskID::Nil(),
+                              "");
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
     builder.SetActorCreationTaskSpec(actor_id,
@@ -79,7 +82,7 @@ struct Mocker {
                                      detached,
                                      name,
                                      ray_namespace);
-    return builder.Build();
+    return std::move(builder).ConsumeAndBuild();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(
@@ -169,6 +172,7 @@ struct Mocker {
                                   strategy,
                                   /* is_detached */ false,
                                   /* max_cpu_fraction_per_node */ 1.0,
+                                  /* soft_target_node_id */ NodeID::Nil(),
                                   job_id,
                                   actor_id,
                                   /* is_creator_detached */ false);
@@ -337,7 +341,8 @@ struct Mocker {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      bool is_draining = false) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -347,6 +352,7 @@ struct Mocker {
     }
     resources_data.set_idle_duration_ms(idle_ms);
     resources_data.set_is_draining(is_draining);
+    resources_data.set_draining_deadline_timestamp_ms(draining_deadline_timestamp_ms);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,
@@ -416,12 +422,22 @@ struct Mocker {
     for (size_t i = 0; i < request_resources.size(); i++) {
       auto &resource = request_resources[i];
       auto count = count_array[i];
-      auto bundle = constraint.add_min_bundles();
+      auto bundle = constraint.add_resource_requests();
       bundle->set_count(count);
       bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
                                                                     resource.end());
     }
     return constraint;
+  }
+  // Read all lines of a file into vector vc
+  static void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file) {
+    std::string line;
+    std::ifstream read_file;
+    read_file.open(log_file, std::ios::binary);
+    while (std::getline(read_file, line)) {
+      vc.push_back(line);
+    }
+    read_file.close();
   }
 };
 

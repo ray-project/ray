@@ -2,10 +2,11 @@ import time
 import json
 import pytest
 import ray
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock
 import random
 import sys
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor
 
 from ray.util.state import (
     summarize_tasks,
@@ -17,6 +18,7 @@ from ray._raylet import ActorID, TaskID, ObjectID
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.tests.test_state_api import (
     generate_task_data,
     generate_task_event,
@@ -31,7 +33,7 @@ from ray.util.state.common import (
     TaskSummaries,
     DRIVER_TASK_ID_PREFIX,
 )
-from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
+from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply, GetAllNodeInfoReply
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
 from ray.util.state.state_cli import summary_state_cli_group
@@ -42,7 +44,9 @@ from ray.util.state.state_manager import StateDataSourceClient
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 
@@ -55,8 +59,6 @@ def create_summary_options(
 @pytest.mark.asyncio
 async def test_api_manager_summary_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
     first_task_name = "1"
     second_task_name = "2"
@@ -195,8 +197,13 @@ async def test_api_manager_summary_actors(state_api_manager):
 async def test_api_manager_summary_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     object_ids = [ObjectID((f"{i}" * 28).encode()) for i in range(9)]
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+    data_source_client.get_all_node_info = AsyncMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(node_id=b"1" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE),
+            GcsNodeInfo(node_id=b"2" * 28, state=GcsNodeInfo.GcsNodeState.ALIVE),
+        ]
+    )
     first_callsite = "first.py"
     second_callsite = "second.py"
 
@@ -280,9 +287,10 @@ async def test_api_manager_summary_objects(state_api_manager):
     assert first_summary.total_size_mb == 4.0
     assert first_summary.total_num_workers == 3
     assert first_summary.total_num_nodes == 2
-    assert first_summary.task_state_counts["PENDING_NODE_ASSIGNMENT"] == 1
-    assert first_summary.task_state_counts["Attempt #2: PENDING_NODE_ASSIGNMENT"] == 1
+    assert first_summary.task_state_counts["PENDING_NODE_ASSIGNMENT"] == 2
     assert first_summary.task_state_counts["RUNNING"] == 2
+    assert first_summary.task_attempt_number_counts["1"] == 3
+    assert first_summary.task_attempt_number_counts["2"] == 1
     assert first_summary.ref_type_counts["PINNED_IN_MEMORY"] == 3
     assert first_summary.ref_type_counts["USED_BY_PENDING_TASK"] == 1
 
@@ -292,6 +300,7 @@ async def test_api_manager_summary_objects(state_api_manager):
     assert second_summary.total_num_workers == 1
     assert second_summary.total_num_nodes == 1
     assert second_summary.task_state_counts["RUNNING"] == 1
+    assert second_summary.task_attempt_number_counts["1"] == 1
     assert second_summary.ref_type_counts["PINNED_IN_MEMORY"] == 1
 
     """

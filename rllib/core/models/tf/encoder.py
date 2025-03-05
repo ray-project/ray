@@ -1,13 +1,12 @@
-from typing import Optional
+from typing import Dict
 
 import tree  # pip install dm_tree
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
     Encoder,
     ActorCriticEncoder,
     StatefulActorCriticEncoder,
-    STATE_IN,
-    STATE_OUT,
     ENCODER_OUT,
     tokenize,
 )
@@ -20,14 +19,9 @@ from ray.rllib.core.models.configs import (
 )
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
-from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.models.utils import get_initializer_fn
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
 
@@ -87,40 +81,8 @@ class TfCNNEncoder(TfModel, Encoder):
         self.net = tf.keras.Sequential(layers)
 
     @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                SampleBatch.OBS: TensorSpec(
-                    "b, w, h, c",
-                    w=self.config.input_dims[0],
-                    h=self.config.input_dims[1],
-                    c=self.config.input_dims[2],
-                    framework="tf2",
-                ),
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: (
-                    TensorSpec("b, d", d=self.config.output_dims[0], framework="tf2")
-                    if self.config.flatten_at_end
-                    else TensorSpec(
-                        "b, w, h, c",
-                        w=self.config.output_dims[0],
-                        h=self.config.output_dims[1],
-                        d=self.config.output_dims[2],
-                        framework="tf2",
-                    )
-                )
-            }
-        )
-
-    @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+        return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
 class TfMLPEncoder(Encoder, TfModel):
@@ -155,28 +117,8 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                SampleBatch.OBS: TensorSpec(
-                    "b, d", d=self.config.input_dims[0], framework="tf2"
-                ),
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, d", d=self.config.output_dims[0], framework="tf2"
-                ),
-            }
-        )
-
-    @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
+        return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
 class TfGRUEncoder(TfModel, Encoder):
@@ -185,7 +127,6 @@ class TfGRUEncoder(TfModel, Encoder):
     This encoder has...
     - Zero or one tokenizers.
     - One or more GRU layers.
-    - One linear output layer.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
@@ -241,50 +182,13 @@ class TfGRUEncoder(TfModel, Encoder):
             self.grus.append(layer)
 
     @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TensorSpec(
-                    "b, t, d", d=self.config.input_dims[0], framework="tf2"
-                ),
-                STATE_IN: {
-                    "h": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="tf2",
-                    ),
-                },
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, t, d", d=self.config.output_dims[0], framework="tf2"
-                ),
-                STATE_OUT: {
-                    "h": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="tf2",
-                    ),
-                },
-            }
-        )
-
-    @override(Model)
     def get_initial_state(self):
         return {
             "h": tf.zeros((self.config.num_layers, self.config.hidden_dim)),
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
         outputs = {}
 
         if self.tokenizer is not None:
@@ -292,12 +196,12 @@ class TfGRUEncoder(TfModel, Encoder):
             out = tokenize(self.tokenizer, inputs, framework="tf2")
         else:
             # Otherwise, just use the raw observations.
-            out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+            out = tf.cast(inputs[Columns.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
             lambda s: tf.transpose(s, perm=[1, 0] + list(range(2, len(s.shape)))),
-            inputs[STATE_IN],
+            inputs[Columns.STATE_IN],
         )
 
         states_out = []
@@ -307,7 +211,7 @@ class TfGRUEncoder(TfModel, Encoder):
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[STATE_OUT] = {"h": tf.stack(states_out, 1)}
+        outputs[Columns.STATE_OUT] = {"h": tf.stack(states_out, 1)}
         return outputs
 
 
@@ -317,7 +221,6 @@ class TfLSTMEncoder(TfModel, Encoder):
     This encoder has...
     - Zero or one tokenizers.
     - One or more LSTM layers.
-    - One linear output layer.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
@@ -373,55 +276,6 @@ class TfLSTMEncoder(TfModel, Encoder):
             self.lstms.append(layer)
 
     @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TensorSpec(
-                    "b, t, d", d=self.config.input_dims[0], framework="tf2"
-                ),
-                STATE_IN: {
-                    "h": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="tf2",
-                    ),
-                    "c": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="tf2",
-                    ),
-                },
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, t, d", d=self.config.output_dims[0], framework="tf2"
-                ),
-                STATE_OUT: {
-                    "h": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="tf2",
-                    ),
-                    "c": TensorSpec(
-                        "b, l, h",
-                        h=self.config.hidden_dim,
-                        l=self.config.num_layers,
-                        framework="tf2",
-                    ),
-                },
-            }
-        )
-
-    @override(Model)
     def get_initial_state(self):
         return {
             "h": tf.zeros((self.config.num_layers, self.config.hidden_dim)),
@@ -429,7 +283,7 @@ class TfLSTMEncoder(TfModel, Encoder):
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
         outputs = {}
 
         if self.tokenizer is not None:
@@ -437,12 +291,12 @@ class TfLSTMEncoder(TfModel, Encoder):
             out = tokenize(self.tokenizer, inputs, framework="tf2")
         else:
             # Otherwise, just use the raw observations.
-            out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+            out = tf.cast(inputs[Columns.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
             lambda s: tf.transpose(s, perm=[1, 0, 2]),
-            inputs[STATE_IN],
+            inputs[Columns.STATE_IN],
         )
 
         states_out_h = []
@@ -454,7 +308,7 @@ class TfLSTMEncoder(TfModel, Encoder):
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[STATE_OUT] = {
+        outputs[Columns.STATE_OUT] = {
             "h": tf.stack(states_out_h, 1),
             "c": tf.stack(states_out_c, 1),
         }

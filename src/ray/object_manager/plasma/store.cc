@@ -113,7 +113,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
-  ray::SetCloseOnFork(acceptor_);
+  ray::SetCloseOnExec(acceptor_);
 
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
       RayConfig::instance().event_stats()) {
@@ -246,6 +246,9 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
                                     int64_t timeout_ms,
                                     bool is_from_worker) {
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Adding get request " << object_id;
+  }
   get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
 }
 
@@ -481,6 +484,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   default:
     // This code should be unreachable.
+    RAY_LOG(FATAL) << "Invalid Plasma message type. type=" << static_cast<long>(type)
+                   << ". " << kCorruptedRequestErrorMessage;
     RAY_CHECK(0);
   }
   return Status::OK();
@@ -579,7 +584,7 @@ void PlasmaStore::ScheduleRecordMetrics() const {
 
 std::string PlasmaStore::GetDebugDump() const {
   std::stringstream buffer;
-  buffer << "========== Plasma store: =================\n";
+  buffer << "Plasma store debug dump: \n";
   buffer << "Current usage: " << (allocator_.Allocated() / 1e9) << " / "
          << (allocator_.GetFootprintLimit() / 1e9) << " GB\n";
   buffer << "- num bytes created total: "

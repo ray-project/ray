@@ -8,10 +8,9 @@ import pytest
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data import Dataset
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -97,13 +96,10 @@ class OnesSource(Datasource):
 
 
 def test_memory_release(shutdown_only):
-    context = DataContext.get_current()
-    # Ensure that stage fusion is enabled.
-    context.optimize_fuse_stages = True
     info = ray.init(num_cpus=1, object_store_memory=1500e6)
     ds = ray.data.range(10)
 
-    # Should get fused into single stage.
+    # Should get fused into single operator.
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
     ds = ds.map(lambda x: {"data": np.ones(100 * 1024 * 1024, dtype=np.uint8)})
@@ -153,7 +149,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
     # Test that fan-out of a lazy dataset results in re-execution up to the datasource,
     # due to block move semantics.
-    ds = ray.data.read_datasource(source, parallelism=1)
+    ds = ray.data.read_datasource(source, override_num_blocks=1)
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -218,18 +214,7 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
-def _assert_has_stages(stages, stage_names):
-    assert len(stages) == len(stage_names)
-    for stage, name in zip(stages, stage_names):
-        assert stage.name == name
-
-
 def test_optimize_reorder(ray_start_regular_shared):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-    context.optimize_fuse_read_stages = True
-    context.optimize_reorder_stages = True
-
     ds = ray.data.range(10).randomize_block_order().map_batches(dummy_map).materialize()
     print("Stats", ds.stats())
     expect_stages(
@@ -253,11 +238,6 @@ def test_optimize_reorder(ray_start_regular_shared):
 
 
 def test_write_fusion(ray_start_regular_shared, tmp_path):
-    context = DataContext.get_current()
-    context.optimize_fuse_stages = True
-    context.optimize_fuse_read_stages = True
-    context.optimize_fuse_shuffle_stages = True
-
     path = os.path.join(tmp_path, "out")
     ds = ray.data.range(100).map_batches(lambda x: x)
     ds.write_csv(path)
@@ -302,7 +282,7 @@ def test_optimize_lazy_reuse_base_data(
         df.to_csv(path, index=False)
     counter = Counter.remote()
     source = MySource(paths, counter)
-    ds = ray.data.read_datasource(source, parallelism=4)
+    ds = ray.data.read_datasource(source, override_num_blocks=4)
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
     ds = ds.map(column_udf("id", lambda x: x))
@@ -314,7 +294,7 @@ def test_optimize_lazy_reuse_base_data(
 
 
 def test_require_preserve_order(ray_start_regular_shared):
-    ds = ray.data.range(100).map_batches(lambda x: x).sort()
+    ds = ray.data.range(100).map_batches(lambda x: x).sort("id")
     assert ds._plan.require_preserve_order()
     ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
     assert ds2._plan.require_preserve_order()

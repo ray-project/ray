@@ -19,7 +19,8 @@ def test_install_ray() -> None:
         "os.environ",
         {
             "BUILDKITE_BAZEL_CACHE_URL": "http://hi.com",
-            "BUILDKITE_PIPELINE_ID": "w00t",
+            "BUILDKITE_CACHE_READONLY": "true",
+            "BUILDKITE_PIPELINE_ID": "woot",
         },
     ):
         WindowsContainer("hi").install_ray()
@@ -34,7 +35,9 @@ def test_install_ray() -> None:
             "--build-arg",
             "BUILDKITE_BAZEL_CACHE_URL=http://hi.com",
             "--build-arg",
-            "BUILDKITE_PIPELINE_ID=w00t",
+            "BUILDKITE_PIPELINE_ID=woot",
+            "--build-arg",
+            "BUILDKITE_CACHE_READONLY=true",
             "-t",
             image,
             "-f",
@@ -44,7 +47,7 @@ def test_install_ray() -> None:
 
 
 def test_get_run_command() -> None:
-    container = WindowsContainer("test")
+    container = WindowsContainer("test", volumes=["/hi:/hello"])
     envs = []
     for env in _DOCKER_ENV:
         envs.extend(["--env", env])
@@ -56,8 +59,12 @@ def test_get_run_command() -> None:
         "-i",
         "--rm",
         "--volume",
-        f"{artifact_mount_host}:" f"{artifact_mount_container}",
+        f"{artifact_mount_host}:{artifact_mount_container}",
     ] + envs + [
+        "--volume",
+        "/hi:/hello",
+        "--workdir",
+        "C:\\rayci",
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-test",
         "bash",
         "-c",

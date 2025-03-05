@@ -22,8 +22,7 @@ def generate_randomize_blocks_fn(
         nonlocal op
         blocks_with_metadata = []
         for ref_bundle in refs:
-            for block, meta in ref_bundle.blocks:
-                blocks_with_metadata.append((block, meta))
+            blocks_with_metadata.extend(ref_bundle.blocks)
 
         if len(blocks_with_metadata) == 0:
             return refs, {op._name: []}
@@ -33,9 +32,9 @@ def generate_randomize_blocks_fn(
             input_owned = all(b.owns_blocks for b in refs)
             random.shuffle(blocks_with_metadata)
             output = []
-            meta_list = []
+            stats_list = []
             for block, meta in blocks_with_metadata:
-                meta_list.append(meta)
+                stats_list.append(meta.to_stats())
                 output.append(
                     RefBundle(
                         [
@@ -47,6 +46,6 @@ def generate_randomize_blocks_fn(
                         owns_blocks=input_owned,
                     )
                 )
-            return output, {op._name: meta_list}
+            return output, {op._name: stats_list}
 
     return fn

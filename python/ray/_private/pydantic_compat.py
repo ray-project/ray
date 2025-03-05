@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 import packaging.version
 
 # Pydantic is a dependency of `ray["default"]` but not the minimal installation,
@@ -21,6 +21,8 @@ if not PYDANTIC_INSTALLED:
     NonNegativeInt = None
     PositiveFloat = None
     PositiveInt = None
+    PrivateAttr = None
+    StrictInt = None
     ValidationError = None
     root_validator = None
     validator = None
@@ -40,6 +42,8 @@ elif not hasattr(pydantic, "__version__") or packaging.version.parse(
         NonNegativeInt,
         PositiveFloat,
         PositiveInt,
+        PrivateAttr,
+        StrictInt,
         ValidationError,
         root_validator,
         validator,
@@ -58,6 +62,8 @@ else:
         NonNegativeInt,
         PositiveFloat,
         PositiveInt,
+        PrivateAttr,
+        StrictInt,
         ValidationError,
         root_validator,
         validator,

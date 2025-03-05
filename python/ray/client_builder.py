@@ -33,15 +33,17 @@ CLIENT_DOCS_URL = (
 class ClientContext(BaseContext):
     """
     Basic context manager for a ClientBuilder connection.
+
+    `protocol_version` is no longer used.
     """
 
     dashboard_url: Optional[str]
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
     _num_clients: int
     _context_to_restore: Optional[ray.util.client.RayAPIStub]
+    protocol_version: Optional[str] = None  # Deprecated
 
     def __enter__(self) -> "ClientContext":
         self._swap_context()
@@ -185,7 +187,6 @@ class ClientBuilder:
             python_version=client_info_dict["python_version"],
             ray_version=client_info_dict["ray_version"],
             ray_commit=client_info_dict["ray_commit"],
-            protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"],
             _context_to_restore=ray.util.client.ray.get_context(),
         )
@@ -308,7 +309,6 @@ class _LocalClientBuilder(ClientBuilder):
             ),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=None,
             _num_clients=1,
             _context_to_restore=None,
         )

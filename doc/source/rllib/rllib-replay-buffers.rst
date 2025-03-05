@@ -1,3 +1,7 @@
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _replay-buffer-reference-docs:
 
 ##############
@@ -24,7 +28,7 @@ to learn from these items. Experiences with a higher priority are more likely to
 Eviction Strategy
 -----------------
 
-A buffer is naturally limited in its capacity to hold experiences. In the course of running an algorith, a buffer will eventually reach
+A buffer is naturally limited in its capacity to hold experiences. In the course of running an algorithm, a buffer will eventually reach
 its capacity and in order to make room for new experiences, we need to delete (evict) older ones. This is generally done on a first-in-first-out basis.
 For your algorithms this means that buffers with a high capacity give the opportunity to learn from older samples, while smaller buffers
 make the learning process more on-policy. An exception from this strategy is made in buffers that implement reservoir sampling.
@@ -67,7 +71,7 @@ Here are three ways of specifying a type:
 .. dropdown:: **Changing a replay buffer configuration**
     :animate: fade-in-slide-down
 
-    .. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
+    .. literalinclude:: doc_code/replay_buffer_demo.py
         :language: python
         :start-after: __sphinx_doc_replay_buffer_type_specification__begin__
         :end-before: __sphinx_doc_replay_buffer_type_specification__end__
@@ -98,7 +102,7 @@ Advanced buffer types add functionality while trying to retain compatibility thr
 The following is an example of the most basic scheme of interaction with a :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer`.
 
 
-.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: doc_code/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_basic_interaction__begin__
     :end-before: __sphinx_doc_replay_buffer_basic_interaction__end__
@@ -109,7 +113,7 @@ Building your own ReplayBuffer
 
 Here is an example of how to implement your own toy example of a ReplayBuffer class and make SimpleQ use it:
 
-.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: doc_code/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_own_buffer__begin__
     :end-before: __sphinx_doc_replay_buffer_own_buffer__end__
@@ -128,7 +132,7 @@ When later calling the ``sample()`` method, num_items will relate to said storag
 
 Here is a full example of how to modify the storage_unit and interact with a custom buffer:
 
-.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: doc_code/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__begin__
     :end-before: __sphinx_doc_replay_buffer_advanced_usage_storage_unit__end__
@@ -141,7 +145,7 @@ the same way as the parent's config.
 Here is an example of how to create an :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` with an alternative underlying :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer`.
 The :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` can stay the same. We only need to specify our own buffer along with a default call argument:
 
-.. literalinclude:: ../../../rllib/examples/documentation/replay_buffer_demo.py
+.. literalinclude:: doc_code/replay_buffer_demo.py
     :language: python
     :start-after: __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
     :end-before: __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__end__

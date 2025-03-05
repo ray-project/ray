@@ -16,11 +16,8 @@ Use individual libraries for ML workloads. Click on the dropdowns for your workl
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Scale offline inference and training ingest with [Ray Data](data_key_concepts) --
+Scale offline inference and training ingest with [Ray Data](data_quickstart) --
 a data processing library designed for ML.
-
-To learn more, see [Offline batch inference](batch_inference_overview) and
-[Data preprocessing and ingest for ML training](ml_ingest_overview).
 
 ````{note}
 To run this example, install Ray Data:
@@ -112,7 +109,7 @@ This training function can be executed with:
 :language: python
 :start-after: __torch_single_run_begin__
 :end-before: __torch_single_run_end__
-:dedent: 0
+:dedent: 4
 ```
 
 Convert this to a distributed multi-worker training function.
@@ -136,9 +133,19 @@ with 4 workers, and use it to run the new training function.
 :language: python
 :start-after: __torch_trainer_begin__
 :end-before: __torch_trainer_end__
-:dedent: 0
+:dedent: 4
 ```
+
+To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
+
+<div class="anyscale-cta">
+    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-torch">
+        <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
+    </a>
+</div>
+
 ````
+
 
 ````{tab-item} TensorFlow
 
@@ -200,6 +207,14 @@ with 4 workers, and use it to run the new training function.
 :end-before: __tf_trainer_end__
 :dedent: 0
 ```
+
+To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
+
+<div class="anyscale-cta">
+    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-tf">
+        <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
+    </a>
+</div>
 
 ```{button-ref}  ../train/train
 :color: primary
@@ -303,7 +318,7 @@ pip install -U "ray[rllib]" tensorflow  # or torch
 ```
 ````
 
-```{literalinclude} ../../../rllib/examples/documentation/rllib_on_ray_readme.py
+```{literalinclude} ../rllib/doc_code/rllib_on_ray_readme.py
 :end-before: __quick_start_end__
 :language: python
 :start-after: __quick_start_begin__
@@ -320,6 +335,11 @@ Learn more about Ray RLlib
 `````
 
 ## Ray Core Quickstart
+
+<a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro">
+    <img src="../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
+</a>
+<br></br>
 
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications.
@@ -385,7 +405,7 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
         // Invoke the `square` method 4 times remotely as Ray tasks.
@@ -491,7 +511,7 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ActorHandle<Counter>> counters = new ArrayList<>();
         // Create 4 actors from the `Counter` class.
@@ -545,7 +565,7 @@ To run this example install the following:
 pip install -U "ray[default]" boto3
 ```
 
-If you haven't already, configure your credentials as described in the https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials[documentation for boto3].
+If you haven't already, configure your credentials as described in the [documentation for boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials).
 :::
 
 Take this simple example that waits for individual nodes to join the cluster.
@@ -583,6 +603,36 @@ ray submit cluster.yaml example.py --start
 :expand:
 
 Learn more about launching Ray Clusters on AWS, GCP, Azure, and more
+```
+
+`````
+
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Kubernetes
+:animate: fade-in-slide-down
+
+Ray programs can run on a single node Kubernetes cluster, or seamlessly scale to larger clusters.
+
+```{button-ref}  kuberay-index
+:color: primary
+:outline:
+:expand:
+
+Learn more about launching Ray Clusters on Kubernetes
+```
+
+`````
+
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Anyscale 
+:animate: fade-in-slide-down
+
+Anyscale is the company behind Ray. The Anyscale platform provides an enterprise-grade Ray deployment on top of your AWS, GCP, Azure, or on-prem Kubernetes clusters.
+
+```{button-link} https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-launch-ray-cluster
+:color: primary
+:outline:
+:expand:
+
+Try Ray on Anyscale
 ```
 
 `````
@@ -636,56 +686,50 @@ pip install -U "ray[default]"
 Run the following code.
 
 ```{code-block} python
+import ray
+import time
 
-    import ray
-    import time
+ray.init(num_cpus=4)
 
-    ray.init(num_cpus=4)
+@ray.remote
+def task_running_300_seconds():
+    print("Start!")
+    time.sleep(300)
 
-    @ray.remote
-    def task_running_300_seconds():
-        print("Start!")
-        time.sleep(300)
+@ray.remote
+class Actor:
+    def __init__(self):
+        print("Actor created")
 
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            print("Actor created")
+# Create 2 tasks
+tasks = [task_running_300_seconds.remote() for _ in range(2)]
 
-    # Create 2 tasks
-    tasks = [task_running_300_seconds.remote() for _ in range(2)]
+# Create 2 actors
+actors = [Actor.remote() for _ in range(2)]
 
-    # Create 2 actors
-    actors = [Actor.remote() for _ in range(2)]
-
-    ray.get(tasks)
-
+ray.get(tasks)
 ```
 
 See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```{code-block} bash
-
-    ray summary tasks
-
+ray summary tasks
 ```
 
 ```{code-block} text
+======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
+Stats:
+------------------------------------
+total_actor_scheduled: 2
+total_actor_tasks: 0
+total_tasks: 2
 
-    ======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
-    Stats:
-    ------------------------------------
-    total_actor_scheduled: 2
-    total_actor_tasks: 0
-    total_tasks: 2
 
-
-    Table (group by func_name):
-    ------------------------------------
-        FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
-    0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
-    1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
-
+Table (group by func_name):
+------------------------------------
+FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
+0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
+1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
 ```
 
 ```{button-ref}  observability-programmatic

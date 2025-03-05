@@ -1,47 +1,46 @@
 import asyncio
+import logging
 import time
 from typing import List
 
 import pytest
 
+import ray
 from ray import serve
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve.batching import _BatchQueue
 from ray.serve.exceptions import RayServeException
 
+# Setup the global replica context for the test.
+default_deployment_config = DeploymentConfig()
+ray.serve.context._set_internal_replica_context(
+    replica_id=ReplicaID(unique_id="test", deployment_id=DeploymentID(name="test")),
+    servable_object=None,
+    _deployment_config=default_deployment_config,
+)
 
-@pytest.mark.asyncio
-async def test_batching_magic_attributes():
-    class BatchingExample:
-        def __init__(self):
-            self.count = 0
-            self.batch_sizes = set()
 
-        @property
-        def _ray_serve_max_batch_size(self):
-            return self.count + 1
+class FakeStream:
+    def __init__(self):
+        self.messages = []
 
-        @property
-        def _ray_serve_batch_wait_timeout_s(self):
-            return 0.1
+    def write(self, buf):
+        self.messages.append(buf)
 
-        @serve.batch
-        async def handle_batch(self, requests):
-            self.count += 1
-            batch_size = len(requests)
-            self.batch_sizes.add(batch_size)
-            return [batch_size] * batch_size
+    def reset_message(self):
+        self.messages = []
 
-    batching_example = BatchingExample()
 
-    for batch_size in range(1, 7):
-        tasks = [
-            get_or_create_event_loop().create_task(batching_example.handle_batch(1))
-            for _ in range(batch_size)
-        ]
-
-        done, _ = await asyncio.wait(tasks, return_when="ALL_COMPLETED")
-        assert set({task.result() for task in done}) == {batch_size}
-        time.sleep(0.05)
+# We use a single event loop for the entire test session. Without this
+# fixture, the event loop is sometimes prematurely terminated by pytest.
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = get_or_create_event_loop()
+    yield loop
+    loop.close()
 
 
 @pytest.mark.asyncio
@@ -127,14 +126,14 @@ async def test_batch_size_one_long_timeout(use_class):
     @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=1, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()
@@ -159,7 +158,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     async def zero_timeout(requests):
         await block_execution_event.wait()
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class ZeroTimeout:
@@ -167,7 +166,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
         async def zero_timeout(self, requests):
             await block_execution_event.wait()
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = ZeroTimeout()
@@ -263,14 +262,14 @@ async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
     async def long_timeout(requests):
         if "raise" in requests:
-            1 / 0
+            _ = 1 / 0
         return requests
 
     class LongTimeout:
         @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
         async def long_timeout(self, requests):
             if "raise" in requests:
-                1 / 0
+                _ = 1 / 0
             return requests
 
     cls = LongTimeout()
@@ -395,14 +394,17 @@ async def test_batch_cancellation(use_class, use_gen):
 
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted requests.")
 
     # The requests should be blocked on the long request_timeout
-    done, pending = await asyncio.wait(coros, timeout=0.01)
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 0
     assert len(pending) == 2
 
@@ -410,16 +412,16 @@ async def test_batch_cancellation(use_class, use_gen):
 
     # Cancel the first request. The second request should still be blocked on
     # the long request_timeout
-    coros[0].close()
-    pending, done = await asyncio.wait(coros, timeout=0.01)
+    tasks[0].cancel()
+    pending, done = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 1
     assert len(pending) == 1
 
     print("Cancelled first request.")
 
     # Cancel the second request. Both requests should be done.
-    coros[1].close()
-    done, pending = await asyncio.wait(coros, timeout=0.01)
+    tasks[1].cancel()
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
     assert len(done) == 2
     assert len(pending) == 0
 
@@ -433,11 +435,14 @@ async def test_batch_cancellation(use_class, use_gen):
 
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
-    result = await asyncio.gather(*coros)
+    result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
 
@@ -497,14 +502,17 @@ async def test_cancellation_after_error(use_class, use_gen):
     # Submit requests and then cancel them.
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted initial batch of requests.")
 
-    for coro in coros:
-        coro.close()
+    for task in tasks:
+        task.cancel()
 
     print("Closed initial batch of requests.")
 
@@ -513,13 +521,16 @@ async def test_cancellation_after_error(use_class, use_gen):
     # Submit requests and check that they still work.
     if use_gen:
         gens = [func("hi1", "hi2"), func("hi3", "hi4")]
-        coros = [gen.__anext__() for gen in gens]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
     else:
-        coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
 
     print("Submitted new batch of requests.")
 
-    result = await asyncio.gather(*coros)
+    result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
 
@@ -788,6 +799,50 @@ async def test_batch_generator_setters():
             await coro.__anext__() == expected_result
         with pytest.raises(StopAsyncIteration):
             await coro.__anext__()
+
+
+def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
+    """Test warn_if_max_batch_size_exceeds_max_ongoing_requests() logged the warning
+     message correctly.
+
+    When the queue starts with or updated `max_batch_size` to be larger than
+    max_ongoing_requests, log the warning to suggest configuring `max_ongoing_requests`.
+    When the queue starts with or updated `max_batch_size` to be smaller or equal than
+    max_ongoing_requests, no warning should be logged.
+    """
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    stream = FakeStream()
+    stream_handler = logging.StreamHandler(stream)
+    logger.addHandler(stream_handler)
+    bound = default_deployment_config.max_ongoing_requests
+    over_bound = bound + 1
+    under_bound = bound - 1
+    over_bound_warning_message = (
+        f"`max_batch_size` ({over_bound}) is larger than "
+        f"`max_ongoing_requests` ({bound}). This means "
+        "the replica will never receive a full batch. Please update "
+        "`max_ongoing_requests` to be >= `max_batch_size`.\n"
+    )
+
+    # Start queue above the bound will log warning. Start at under or at the bound will
+    # not log warning
+    for max_batch_size in [over_bound, under_bound, bound]:
+        queue = _BatchQueue(max_batch_size=max_batch_size, batch_wait_timeout_s=1000)
+        if max_batch_size > bound:
+            assert over_bound_warning_message in stream.messages
+        else:
+            assert over_bound_warning_message not in stream.messages
+        stream.reset_message()
+
+    # Update queue above the bound will log warning. Update at under or at the bound
+    # will not log warning
+    for max_batch_size in [over_bound, under_bound, bound]:
+        queue.set_max_batch_size(max_batch_size)
+        if max_batch_size > bound:
+            assert over_bound_warning_message in stream.messages
+        else:
+            assert over_bound_warning_message not in stream.messages
+        stream.reset_message()
 
 
 if __name__ == "__main__":

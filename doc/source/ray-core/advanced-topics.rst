@@ -15,3 +15,4 @@ This section covers extended topics on how to use Ray.
     ray-dag
     miscellaneous
     runtime_env_auth
+    user-spawn-processes

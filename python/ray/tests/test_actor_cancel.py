@@ -222,7 +222,7 @@ def test_async_actor_server_side_cancel(shutdown_only):
             list_tasks(
                 filters=[
                     ("name", "=", "Actor.g"),
-                    ("STATE", "=", "SUBMITTED_TO_WORKER"),
+                    ("STATE", "=", "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY"),
                 ]
             )
         )
@@ -238,9 +238,8 @@ def test_async_actor_server_side_cancel(shutdown_only):
             ray.get(ref)
 
     # Verify the task is submitted to the worker and never executed
-    # assert task.state == "SUBMITTED_TO_WORKER"
     for task in tasks:
-        assert task.state == "SUBMITTED_TO_WORKER"
+        assert task.state == "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY"
 
 
 def test_async_actor_cancel_after_task_finishes(shutdown_only):

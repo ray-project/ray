@@ -13,9 +13,9 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
     client_test_enabled,
-    get_error_message,
     run_string_as_driver,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,47 @@ assert ray.get(f.remote()) == 1
 
     env = start_http_proxy
     run_string_as_driver(script, dict(os.environ, **env))
+
+
+def test_release_cpu_resources(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    def child():
+        return 3
+
+    @ray.remote(num_cpus=1)
+    def parent():
+        # Parent should release the CPU resource
+        # to run child.
+        return ray.get(child.remote())
+
+    assert ray.get(parent.remote()) == 3
+
+    # Make sure CPU resource inside PG can also be released properly.
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    assert (
+        ray.get(
+            parent.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_capture_child_tasks=True
+                )
+            ).remote()
+        )
+        == 3
+    )
+    assert (
+        ray.get(
+            parent.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=0,
+                    placement_group_capture_child_tasks=True,
+                )
+            ).remote()
+        )
+        == 3
+    )
 
 
 # https://github.com/ray-project/ray/issues/16025
@@ -383,7 +424,7 @@ def test_invalid_arguments():
             ValueError,
             match=f"The keyword '{keyword}' only accepts None, "
             "a non-negative integer, "
-            "'streaming' \(for generators\), or 'dynamic'",
+            r"'streaming' \(for generators\), or 'dynamic'",
         ):
             ray.remote(**{keyword: v})(f)
 
@@ -540,7 +581,7 @@ def test_options():
     # TODO(suquark): The current implementation of `.options()` is so bad that we
     # cannot even access its options from outside. Here we hack the closures to
     # achieve our goal. Need futher efforts to clean up the tech debt.
-    assert f2.remote.__closure__[1].cell_contents == {
+    assert f2.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
@@ -552,7 +593,7 @@ def test_options():
 
     f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
 
-    assert f3.remote.__closure__[1].cell_contents == {
+    assert f3.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
@@ -614,22 +655,6 @@ def test_put_get(shutdown_only):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
-
-
-def test_wait_timing(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote
-    def f():
-        time.sleep(1)
-
-    future = f.remote()
-
-    start = time.time()
-    ready, not_ready = ray.wait([future], timeout=0.2)
-    assert 0.2 < time.time() - start < 0.3
-    assert len(ready) == 0
-    assert len(not_ready) == 1
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal _raylet")
@@ -825,9 +850,9 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     assert ray.get(f.remote(s)) == s
 
     # Test types.
-    assert ray.get(f.remote(int)) == int
-    assert ray.get(f.remote(float)) == float
-    assert ray.get(f.remote(str)) == str
+    assert ray.get(f.remote(int)) is int
+    assert ray.get(f.remote(float)) is float
+    assert ray.get(f.remote(str)) is str
 
     class Foo:
         def __init__(self):
@@ -847,7 +872,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
             self.val = ray.put(0)
 
         def method(self):
-            f
+            _ = f
 
     f = Foo()
     ray.put(f)
@@ -1090,16 +1115,8 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     def throw_exception_fct3(x):
         raise Exception("Test function 3 intentionally failed.")
 
-    p = error_pubsub
-
     throw_exception_fct1.remote()
     throw_exception_fct1.remote()
-
-    if ray._private.worker.global_worker.mode != ray._private.worker.LOCAL_MODE:
-        msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
-        assert len(msgs) == 2
-        for msg in msgs:
-            assert "Test function 1 intentionally failed." in msg["error_message"]
 
     x = throw_exception_fct2.remote()
     try:

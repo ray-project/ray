@@ -7,13 +7,13 @@ Requires the HpBandSter and ConfigSpace libraries to be installed
 """
 
 import json
-import time
 import os
+import time
 
 import numpy as np
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune import Trainable
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search.bohb import TuneBOHB
@@ -50,6 +50,12 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
+    import sys
+
+    if sys.version_info >= (3, 12):
+        # TuneBOHB is not compatible with Python 3.12
+        sys.exit(0)
+
     ray.init(num_cpus=8)
 
     config = {
@@ -85,7 +91,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="bohb_test", stop={"training_iteration": max_iterations}
         ),
         tune_config=tune.TuneConfig(

@@ -1,11 +1,9 @@
-import mock
 import subprocess
 import sys
 
 import pytest
 
 import ray
-from ray._raylet import check_health
 from ray._private.test_utils import (
     Semaphore,
     client_test_enabled,
@@ -114,28 +112,6 @@ def test_jemalloc_env_var_propagate():
     assert actual == expected
 
 
-def test_check_health(shutdown_only):
-    assert not check_health("127.0.0.1:8888")
-    # Should not raise error: https://github.com/ray-project/ray/issues/38785
-    assert not check_health("ip:address:with:colon:name:8265")
-
-    with pytest.raises(ValueError):
-        check_health("bad_address_no_port")
-
-    conn = ray.init()
-    addr = conn.address_info["address"]
-    assert check_health(addr)
-
-
-def test_check_health_version_check(shutdown_only):
-    with mock.patch("ray.__version__", "FOO-VERSION"):
-        conn = ray.init()
-        addr = conn.address_info["address"]
-        assert check_health(addr, skip_version_check=True)
-        with pytest.raises(RuntimeError):
-            check_health(addr)
-
-
 def test_back_pressure(shutdown_only_with_initialization_check):
     ray.init()
 
@@ -201,11 +177,6 @@ def function_entry_num(job_id):
 
     return (
         len(
-            _internal_kv_list(
-                b"IsolatedExports:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
-            )
-        )
-        + len(
             _internal_kv_list(
                 b"RemoteFunction:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
             )

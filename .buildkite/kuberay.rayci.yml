@@ -20,10 +20,12 @@ steps:
       - raycpubase
 
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
+    key: kuberay_tests
     tags:
       - python
       - docker
       - oss
+      - skip-on-microcheck
     instance_type: medium
     commands:
       - bash ci/k8s/run-chaos-test.sh {{matrix.fault}} {{matrix.workload}}

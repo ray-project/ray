@@ -1,4 +1,1 @@
-flaky_tests:
-  - //python/ray/serve/tests:test_util
-  - //python/ray/serve/tests:test_model_composition
-  - //python/ray/serve/tests:test_api
+flaky_tests: []

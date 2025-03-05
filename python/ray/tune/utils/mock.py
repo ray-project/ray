@@ -1,8 +1,8 @@
-from collections import defaultdict
 import logging
 import os
 import random
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Dict
 
@@ -37,6 +37,7 @@ class FailureInjectorCallback(Callback):
             return
         self.last_fail_check = time.monotonic()
         import click
+
         from ray.autoscaler._private.commands import kill_node
 
         failures = 0

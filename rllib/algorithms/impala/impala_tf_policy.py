@@ -8,7 +8,6 @@ import gymnasium as gym
 from typing import Dict, List, Optional, Type, Union
 
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_bootstrap_value
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
@@ -178,12 +177,7 @@ class VTraceClipGradients:
         self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         # Supporting more than one loss/optimizer.
-        if self.config.get("_enable_new_api_stack", False):
-            # In order to access the variables for rl modules, we need to
-            # use the underlying keras api model.trainable_variables.
-            trainable_variables = self.model.trainable_variables
-        else:
-            trainable_variables = self.model.trainable_variables()
+        trainable_variables = self.model.trainable_variables()
         if self.config["_tf_policy_handles_more_than_one_loss"]:
             optimizers = force_list(optimizer)
             losses = force_list(loss)
@@ -302,14 +296,13 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # However, we also would like to avoid creating special Policy-subclasses
             # for this as the entire Policy concept will soon not be used anymore with
             # the new Learner- and RLModule APIs.
-            if not self.config.get("_enable_new_api_stack"):
-                GradStatsMixin.__init__(self)
-                VTraceClipGradients.__init__(self)
-                VTraceOptimizer.__init__(self)
-                LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-                EntropyCoeffSchedule.__init__(
-                    self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-                )
+            GradStatsMixin.__init__(self)
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+            )
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
@@ -422,7 +415,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             self,
             sample_batch: SampleBatch,
             other_agent_batches: Optional[SampleBatch] = None,
-            episode: Optional["Episode"] = None,
+            episode=None,
         ):
             # Call super's postprocess_trajectory first.
             # sample_batch = super().postprocess_trajectory(

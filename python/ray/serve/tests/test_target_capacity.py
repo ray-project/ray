@@ -13,7 +13,6 @@ from ray.exceptions import RayActorError
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
@@ -22,7 +21,11 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
 INGRESS_DEPLOYMENT_NAME = "ingress"
 INGRESS_DEPLOYMENT_NUM_REPLICAS = 6
@@ -280,13 +283,14 @@ def test_controller_recover_target_capacity(
     autoscaling_config={
         "min_replicas": 0,
         "max_replicas": SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS,
-        "target_num_ongoing_requests_per_replicas": 1,
+        "target_ongoing_requests": 1,
         "upscale_delay_s": 1,
         "downscale_delay_s": 1,
-        "smoothing_factor": 4,
+        "upscaling_factor": 4,
+        "downscaling_factor": 4,
         "metrics_interval_s": 1,
     },
-    max_concurrent_queries=2,
+    max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,
 )
 class ScaleToZeroDeployment:
@@ -367,11 +371,6 @@ def test_autoscaling_scale_to_zero(
         },
     )
 
-    # TODO(edoakes): for some reason, the deployment does not actually scale down to
-    # zero here, so skipping this part for now. Instead it repeatedly scales down and
-    # then back up. Seems to have something to do with the handle-side queue metric.
-    return
-
     # Cancel all of the requests, should scale down to zero.
     [r.cancel() for r in responses]
     wait_for_condition(
@@ -445,11 +444,11 @@ def create_autoscaling_controlled_app(
             min_replicas=min_replicas,
             initial_replicas=initial_replicas,
             max_replicas=max_replicas,
-            target_num_ongoing_requests_per_replica=1,
-            metrics_interval_s=0.01,
-            look_back_period_s=0.01,
-            upscale_delay_s=0.01,
-            downscale_delay_s=0.01,
+            target_ongoing_requests=1,
+            metrics_interval_s=0.1,
+            look_back_period_s=0.2,
+            upscale_delay_s=0.1,
+            downscale_delay_s=0.1,
         ),
         graceful_shutdown_timeout_s=0,
     ).bind()
@@ -505,53 +504,24 @@ class TestTargetCapacityUpdateAndServeStatus:
         config = deepcopy(config)
         config.target_capacity = target_capacity
         client.deploy_apps(config)
-        wait_for_condition(
-            lambda: serve.status().target_capacity == target_capacity, timeout=timeout
-        )
 
-        if expected_app_status is not None:
+        def check():
+            status = serve.status()
+            assert status.target_capacity == target_capacity
 
-            def check_app_status():
-                assert (
-                    serve.status().applications[app_name].status == expected_app_status
-                )
-                return True
+            if expected_app_status is not None:
+                assert status.applications[app_name].status == expected_app_status
 
-            wait_for_condition(
-                check_app_status,
-                timeout=timeout,
-            )
+            dep_status = status.applications[app_name].deployments[deployment_name]
+            if expected_deployment_status is not None:
+                assert dep_status.status == expected_deployment_status
 
-        if expected_deployment_status is not None:
+            if expected_deployment_status_trigger is not None:
+                assert dep_status.status_trigger == expected_deployment_status_trigger
 
-            def check_deployment_status():
-                assert (
-                    serve.status()
-                    .applications[app_name]
-                    .deployments[deployment_name]
-                    .status
-                    == expected_deployment_status
-                )
-                return True
+            return True
 
-            wait_for_condition(check_deployment_status, timeout=timeout)
-
-        if expected_deployment_status_trigger is not None:
-
-            def check_status_trigger():
-                assert (
-                    serve.status()
-                    .applications[app_name]
-                    .deployments[deployment_name]
-                    .status_trigger
-                    == expected_deployment_status_trigger
-                )
-                return True
-
-            wait_for_condition(
-                check_status_trigger,
-                timeout=timeout,
-            )
+        wait_for_condition(check, timeout=timeout)
 
     def unblock_replica_creation_and_deletion(self, lifecycle_signal, app_name: str):
         """Unblocks creating and deleting ControlledLifecycleDeployment replicas.
@@ -880,7 +850,7 @@ class TestTargetCapacityUpdateAndServeStatus:
 
 @serve.deployment(
     ray_actor_options={"num_cpus": 0},
-    max_concurrent_queries=2,
+    max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,
 )
 class HangDeployment:
@@ -900,7 +870,7 @@ def create_hang_app(config: Dict) -> Application:
             "min_replicas": min_replicas,
             "initial_replicas": initial_replicas,
             "max_replicas": max_replicas,
-            "target_num_ongoing_requests_per_replicas": 1,
+            "target_ongoing_requests": 1,
             "metrics_interval_s": 0.01,
             "downscale_delay_s": 0.01,
         },

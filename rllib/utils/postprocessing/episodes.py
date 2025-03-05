@@ -3,8 +3,10 @@ from typing import List, Tuple
 import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
     """Adds an artificial timestep to an episode at the end.
 
@@ -33,8 +35,6 @@ def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
     """
     orig_truncateds = []
     for episode in episodes:
-        # Make sure the episode is already in numpy format.
-        assert episode.is_finalized
         orig_truncateds.append(episode.is_truncated)
 
         # Add timestep.
@@ -45,7 +45,7 @@ def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
         episode.infos.append(episode.infos[-1])
         episode.actions.append(episode.actions[-1])
         episode.rewards.append(0.0)
-        for v in list(episode.extra_model_outputs.values()):
+        for v in episode.extra_model_outputs.values():
             v.append(v[-1])
         # Artificially make this episode truncated for the upcoming GAE
         # computations.
@@ -57,6 +57,7 @@ def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
     return orig_truncateds
 
 
+@DeveloperAPI
 def remove_last_ts_from_data(
     episode_lens: List[int],
     *data: Tuple[np._typing.NDArray],
@@ -111,9 +112,10 @@ def remove_last_ts_from_data(
     ret = []
     for d in data:
         ret.append(np.concatenate([d[s] for s in slices]))
-    return tuple(ret)
+    return tuple(ret) if len(ret) > 1 else ret[0]
 
 
+@DeveloperAPI
 def remove_last_ts_from_episodes_and_restore_truncateds(
     episodes: List[SingleAgentEpisode],
     orig_truncateds: List[bool],

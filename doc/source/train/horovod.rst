@@ -99,5 +99,3 @@ If you are implementing your own Horovod-based training routine without using an
 the training libraries, read through the
 :ref:`User Guides <train-user-guides>`, as you can apply much of the content
 to generic use cases and adapt them easily.
-
-

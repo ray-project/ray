@@ -1,9 +1,28 @@
 import gymnasium as gym
 from gymnasium.spaces import Tuple, Dict
+from gymnasium.core import ActType, ObsType
 import numpy as np
 from ray.rllib.utils.annotations import DeveloperAPI
 import tree  # pip install dm_tree
 from typing import Any, List, Optional, Union
+
+
+@DeveloperAPI
+class BatchedNdArray(np.ndarray):
+    """A ndarray-wrapper the usage of which indicates that there a batch dim exists.
+
+    This is such that our `batch()` utility can distinguish between having to
+    stack n individual batch items (each one w/o any batch dim) vs having to
+    concatenate n already batched items (each one possibly with a different batch
+    dim, but definitely with some batch dim).
+
+    TODO (sven): Maybe replace this by a list-override instead.
+    """
+
+    def __new__(cls, input_array):
+        # Use __new__ to create a new instance of our subclass.
+        obj = np.asarray(input_array).view(cls)
+        return obj
 
 
 @DeveloperAPI
@@ -23,6 +42,79 @@ def get_original_space(space: gym.Space) -> gym.Space:
         return get_original_space(space.original_space)
     else:
         return space
+
+
+@DeveloperAPI
+def is_composite_space(space: gym.Space) -> bool:
+    """Returns true, if the space is composite.
+
+    Note, we follow here the glossary of `gymnasium` by which any spoace
+    that holds other spaces is defined as being 'composite'.
+
+    Args:
+        space: The space to be checked for being composed of other spaces.
+
+    Returns:
+        True, if the space is composed of other spaces, otherwise False.
+    """
+    if type(space) in [
+        gym.spaces.Dict,
+        gym.spaces.Graph,
+        gym.spaces.Sequence,
+        gym.spaces.Tuple,
+    ]:
+        return True
+    else:
+        return False
+
+
+@DeveloperAPI
+def to_jsonable_if_needed(
+    sample: Union[ActType, ObsType], space: gym.Space
+) -> Union[ActType, ObsType, List]:
+    """Returns a jsonabled space sample, if the space is composite.
+
+    Checks, if the space is composite and converts the sample to a jsonable
+    struct in this case. Otherwise return the sample as is.
+
+    Args:
+        sample: Any action or observation type possible in `gymnasium`.
+        space: Any space defined in `gymnasium.spaces`.
+
+    Returns:
+        The `sample` as-is, if the `space` is composite, otherwise converts the
+        composite sample to a JSONable data type.
+    """
+
+    if is_composite_space(space):
+        return space.to_jsonable([sample])
+    else:
+        return sample
+
+
+@DeveloperAPI
+def from_jsonable_if_needed(
+    sample: Union[ActType, ObsType], space: gym.Space
+) -> Union[ActType, ObsType, List]:
+    """Returns a jsonabled space sample, if the space is composite.
+
+    Checks, if the space is composite and converts the sample to a JSONable
+    struct in this case. Otherwise return the sample as is.
+
+    Args:
+        sample: Any action or observation type possible in `gymnasium`, or a
+            JSONable data type.
+        space: Any space defined in `gymnasium.spaces`.
+
+    Returns:
+        The `sample` as-is, if the `space` is not composite, otherwise converts the
+        composite sample jsonable to an actual `space` sample..
+    """
+
+    if is_composite_space(space):
+        return space.from_jsonable(sample)[0]
+    else:
+        return sample
 
 
 @DeveloperAPI
@@ -233,7 +325,8 @@ def flatten_to_single_ndarray(input_):
 @DeveloperAPI
 def batch(
     list_of_structs: List[Any],
-    individual_items_already_have_batch_1: bool = False,
+    *,
+    individual_items_already_have_batch_dim: Union[bool, str] = False,
 ):
     """Converts input from a list of (nested) structs to a (nested) struct of batches.
 
@@ -254,11 +347,12 @@ def batch(
     Args:
         list_of_structs: The list of (possibly nested) structs. Each item
             in this list represents a single batch item.
-        individual_items_already_have_batch_1: True, if the individual items in
-            `list_of_structs` already have a batch dim (of 1). In this case, we will
+        individual_items_already_have_batch_dim: True, if the individual items in
+            `list_of_structs` already have a batch dim. In this case, we will
             concatenate (instead of stack) at the end. In the example above, this would
             look like this: Input: [{"a": [1], "b": ([4], [7.0])}, ...] -> Output: same
             as in above example.
+            If the special value "auto" is used,
 
     Returns:
         The struct of component batches. Each leaf item in this struct represents the
@@ -266,25 +360,20 @@ def batch(
         simple list of primitive items, e.g. a list of floats, a np.array of floats
         will be returned.
     """
-    flat = item = None
-
     if not list_of_structs:
         raise ValueError("Input `list_of_structs` does not contain any items.")
 
-    for item in list_of_structs:
-        flattened_item = tree.flatten(item)
-        # Create the main list, in which each slot represents one leaf in the (nested)
-        # struct. Each slot holds a list of batch values.
-        if flat is None:
-            flat = [[] for _ in range(len(flattened_item))]
-        for i, value in enumerate(flattened_item):
-            flat[i].append(value)
+    # TODO (sven): Maybe replace this by a list-override (usage of which indicated
+    #  this method that concatenate should be used (not stack)).
+    if individual_items_already_have_batch_dim == "auto":
+        flat = tree.flatten(list_of_structs[0])
+        individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
 
-    # Unflatten everything into the
-    out = tree.unflatten_as(item, flat)
-    np_func = np.stack if not individual_items_already_have_batch_1 else np.concatenate
-    out = tree.map_structure_up_to(item, lambda s: np_func(s, axis=0), out)
-    return out
+    np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
+    ret = tree.map_structure(
+        lambda *s: np.ascontiguousarray(np_func(s, axis=0)), *list_of_structs
+    )
+    return ret
 
 
 @DeveloperAPI

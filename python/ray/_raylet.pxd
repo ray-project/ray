@@ -76,6 +76,16 @@ cdef extern from "Python.h":
     int Py_GetRecursionLimit()
     void Py_SetRecursionLimit(int)
 
+# Note that `functional.pxd` in the Cython repository supports only a limited subset of
+# <functional>. Therefore, `from libcpp.functional cimport function` is not enough, and we
+# still need to expose some functions here.
+cdef extern from "<functional>" namespace "std" nogil:
+    T bind[T, Args](T callable, Args args)
+    # Reference: https://github.com/scipy/scipy/blob/6b56162fa6880b0182faea44af88d6a1587f35a8/scipy/stats/_qmc_cy.pyx#L31-L34
+    cdef cppclass reference_wrapper[T]:
+        pass
+    cdef reference_wrapper[T] ref[T](T&)
+
 cdef class Buffer:
     cdef:
         shared_ptr[CBuffer] buffer
@@ -126,7 +136,7 @@ cdef class CoreWorker:
         object fd_to_cgname_dict
         object _task_id_to_future_lock
         dict _task_id_to_future
-        object thread_pool_for_async_event_loop
+        object event_loop_executor
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
@@ -135,7 +145,7 @@ cdef class CoreWorker:
                             c_bool created_by_worker,
                             owner_address=*,
                             c_bool inline_small_object=*,
-                            c_bool is_experimental_mutable_object=*)
+                            c_bool is_experimental_channel=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_output(
             self, serialized_object,
@@ -150,9 +160,10 @@ cdef class CoreWorker:
             worker, outputs,
             const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-            CObjectID ref_generator_id=*)
-    cdef yield_current_fiber(self, CFiberEvent &fiber_event)
-    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
+            ref_generator_id=*, # CObjectID
+        )
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
+                           c_bool weak_ref)
     cdef c_function_descriptors_to_python(
         self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
     cdef initialize_eventloops_for_actor_concurrency_group(

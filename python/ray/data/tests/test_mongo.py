@@ -76,15 +76,11 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         schema=schema,
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=5,\n"
-        "   schema={float_field: double, int_field: int32}\n"
-        ")"
+        "Dataset(num_rows=5, schema={float_field: double, int_field: int32})"
     )
     assert df.equals(ds.to_pandas())
 
@@ -94,17 +90,16 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [3, 2]
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert ds.count() == 5
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
+    # We are not testing the datatype of _id here, because it varies per platform
+    assert ds.schema().types[1:] == [
+        pa.float64(),
+        pa.int32(),
+    ]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read a subset of the collection.
@@ -113,17 +108,11 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         pipeline=[{"$match": {"int_field": {"$gte": 0, "$lt": 3}}}],
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [2, 1]
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=2,\n"
-        "   num_rows=3,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert ds.count() == 3
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read with auto-tuned parallelism.
@@ -132,14 +121,14 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
     )
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=200,\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+
+    assert ds.count() == 5
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
+    # We are not testing the datatype of _id here, because it varies per platform
+    assert ds.schema().types[1:] == [
+        pa.float64(),
+        pa.int32(),
+    ]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read with a parallelism larger than number of rows.
@@ -147,16 +136,16 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=1000,
+        override_num_blocks=1000,
     )
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_blocks=1000,\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+
+    assert ds.count() == 5
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
+    # We are not testing the datatype of _id here, because it varies per platform
+    assert ds.schema().types[1:] == [
+        pa.float64(),
+        pa.int32(),
+    ]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Add a column and then write back to MongoDB.
@@ -208,7 +197,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         schema=schema,
-        parallelism=2,
+        override_num_blocks=2,
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -226,7 +215,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=2,
+        override_num_blocks=2,
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
@@ -260,11 +249,10 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         uri=mongo_url,
         database=foo_db,
         collection=foo_collection,
-        parallelism=1000,
+        override_num_blocks=1000,
     )
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=1000,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -278,12 +266,11 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
         pipeline=[{"$match": {"int_field": {"$gte": 0, "$lt": 3}}}],
-        parallelism=2,
+        override_num_blocks=2,
     )
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (
         "Dataset(\n"
-        "   num_blocks=2,\n"
         "   num_rows=3,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"

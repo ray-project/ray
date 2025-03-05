@@ -1,6 +1,7 @@
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
@@ -8,8 +9,10 @@ from ray.data._internal.planner.exchange.interfaces import (
 )
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import convert_bytes_to_human_readable_str
+from ray.data.block import to_stats
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
@@ -29,19 +32,35 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
-        ctx: TaskContext,
+        task_ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-        _debug_limit_execution_to_num_blocks: int = None,
+        _debug_limit_execution_to_num_blocks: Optional[int] = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
+
         # TODO: eagerly delete the input and map output block references in order to
         # eagerly release the blocks' memory.
         input_blocks_list = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
-                input_blocks_list.append(block)
+            input_blocks_list.extend(ref_bundle.block_refs)
         input_num_blocks = len(input_blocks_list)
         input_owned = all(b.owns_blocks for b in refs)
+
+        caller_memory_usage = (
+            input_num_blocks * output_num_blocks * CALLER_MEMORY_USAGE_PER_OBJECT_REF
+        )
+        self.warn_on_driver_memory_usage(
+            caller_memory_usage,
+            "Execution is estimated to use at least "
+            f"{convert_bytes_to_human_readable_str(caller_memory_usage)} "
+            "of driver memory. Ensure that the driver machine has at least "
+            "this much memory to ensure job completion.\n\n"
+            "To reduce the "
+            "amount of driver memory needed, enable push-based shuffle using "
+            "RAY_DATA_PUSH_BASED_SHUFFLE=1 "
+            "(https://docs.ray.io/en/latest/data/performance-tips.html"
+            ").",
+        )
 
         if map_ray_remote_args is None:
             map_ray_remote_args = {}
@@ -54,16 +73,14 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_map = cached_remote_fn(self._exchange_spec.map)
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
 
-        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        sub_progress_bar_dict = task_ctx.sub_progress_bar_dict
         bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
         map_bar = sub_progress_bar_dict[bar_name]
 
         if _debug_limit_execution_to_num_blocks is not None:
             input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
-            logger.get_logger().info(
-                f"Limiting execution to {len(input_blocks_list)} map tasks"
-            )
+            logger.debug(f"Limiting execution to {len(input_blocks_list)} map tasks")
         shuffle_map_out = [
             shuffle_map.options(
                 **map_ray_remote_args,
@@ -85,15 +102,15 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
 
+        self.warn_on_high_local_memory_store_usage()
+
         bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
         reduce_bar = sub_progress_bar_dict[bar_name]
 
         if _debug_limit_execution_to_num_blocks is not None:
             output_num_blocks = _debug_limit_execution_to_num_blocks
-            logger.get_logger().info(
-                f"Limiting execution to {output_num_blocks} reduce tasks"
-            )
+            logger.debug(f"Limiting execution to {output_num_blocks} reduce tasks")
         shuffle_reduce_out = [
             shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2).remote(
                 *self._exchange_spec._reduce_args,
@@ -110,6 +127,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             new_blocks, new_metadata = zip(*shuffle_reduce_out)
         new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
 
+        self.warn_on_high_local_memory_store_usage()
+
         output = []
         for block, meta in zip(new_blocks, new_metadata):
             output.append(
@@ -124,8 +143,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
                 )
             )
         stats = {
-            "map": shuffle_map_metadata,
-            "reduce": new_metadata,
+            "map": to_stats(shuffle_map_metadata),
+            "reduce": to_stats(new_metadata),
         }
 
         return (output, stats)

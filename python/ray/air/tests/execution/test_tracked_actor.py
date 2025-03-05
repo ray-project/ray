@@ -1,7 +1,7 @@
+import gc
 import threading
 import time
 from collections import Counter
-import gc
 from typing import Any, Optional, Type
 
 import pytest

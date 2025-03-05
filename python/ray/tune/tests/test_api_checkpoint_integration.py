@@ -1,22 +1,20 @@
 import os
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
-import sys
 
 import ray
-from ray import train
-from ray.air import ScalingConfig
-from ray.train import CheckpointConfig
-from ray.air.execution import FixedResourceManager
 from ray.air.constants import TRAINING_ITERATION
+from ray.air.execution import FixedResourceManager
+from ray.tune import CheckpointConfig
+from ray.train import ScalingConfig
 from ray.train._internal.storage import StorageContext
+from ray.train.tests.util import mock_storage_context
 from ray.tune import Trainable, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-
-from ray.train.tests.util import mock_storage_context
 
 STORAGE = mock_storage_context()
 
@@ -41,13 +39,14 @@ def test_checkpoint_freq_dir_name(
 
     def num_checkpoints(trial):
         return sum(
-            item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
+            item.startswith("checkpoint_")
+            for item in os.listdir(trial.storage.trial_fs_path)
         )
 
     def last_checkpoint_dir(trial):
         return max(
             item
-            for item in os.listdir(trial.local_path)
+            for item in os.listdir(trial.storage.trial_fs_path)
             if item.startswith("checkpoint_")
         )
 
@@ -77,12 +76,14 @@ def test_checkpoint_freq_dir_name(
                 if step > 0 and step % 3 == 0:
                     with tempfile.TemporaryDirectory() as checkpoint_dir:
                         (Path(checkpoint_dir) / "data.ckpt").write_text(str(step))
-                        train.report(
+                        ray.tune.report(
                             {"step": step},
-                            checkpoint=train.Checkpoint.from_directory(checkpoint_dir),
+                            checkpoint=ray.train.Checkpoint.from_directory(
+                                checkpoint_dir
+                            ),
                         )
                 else:
-                    train.report({"step": step})
+                    ray.tune.report({"step": step})
 
         if trainable_type == "function":
             register_trainable("test_checkpoint_freq", train_fn)
@@ -108,12 +109,11 @@ def test_checkpoint_freq_dir_name(
                 )
 
         storage = mock_storage_context(
-            delete_syncer=False,
             storage_context_cls=CustomStorageContext,
             storage_path=tmp_path,
         )
     else:
-        storage = mock_storage_context(delete_syncer=False, storage_path=tmp_path)
+        storage = mock_storage_context(storage_path=tmp_path)
 
     trial = Trial(
         "test_checkpoint_freq",

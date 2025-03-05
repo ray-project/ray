@@ -1,11 +1,1 @@
-byod:
-  ray_ecr: rayproject
-  ray_cr_repo: ray
-  ray_ml_cr_repo: ray-ml
-  byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
-  aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
-  gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
-state_machine:
-  aws_bucket: ray-ci-results
-credentials:
-  aws2gce: release/aws2gce_iam.json
+../../../ci/ray_ci/oss_config.yaml

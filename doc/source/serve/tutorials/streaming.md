@@ -1,3 +1,6 @@
+---
+orphan: true
+---
 (serve-streaming-tutorial)=
 
 # Serve a Chatbot with Request and Response Streaming
@@ -17,7 +20,7 @@ This tutorial should help you with following use cases:
 This tutorial serves the [DialoGPT](https://huggingface.co/microsoft/DialoGPT-small) language model. Install the Hugging Face library to access it:
 
 ```
-pip install transformers
+pip install "ray[serve]" transformers torch
 ```
 
 ## Create a streaming deployment

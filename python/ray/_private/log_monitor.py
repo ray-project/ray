@@ -23,9 +23,9 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are job id, and pid.
-WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
+WORKER_LOG_PATTERN = re.compile(r".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
-RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
+RUNTIME_ENV_SETUP_PATTERN = re.compile(r".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
 # We need it because log name update is CPU intensive and uses 100%
 # of cpu when there are many log files.
@@ -391,13 +391,6 @@ class LogMonitor:
                         file_info.job_id = next_line.split(
                             ray_constants.LOG_PREFIX_JOB_ID, 1
                         )[1]
-                    elif next_line.startswith(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_START
-                    ) or next_line.startswith(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END
-                    ):
-                        # Ignore these magic tokens for task logs.
-                        pass
                     elif next_line.startswith(
                         "Windows fatal exception: access violation"
                     ):

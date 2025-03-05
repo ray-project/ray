@@ -1,5 +1,7 @@
 import asyncio
 import binascii
+import random
+import string
 from collections import defaultdict
 import contextlib
 import errno
@@ -75,6 +77,18 @@ PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
 )
 PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+
+
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
+
+
+def get_random_alphanumeric_string(length: int):
+    """Generates random string of length consisting exclusively of
+    - Lower-case ASCII chars
+    - Digits
+    """
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
 
 def get_user_temp_dir():
@@ -240,7 +254,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
     if isinstance(s, str):
         return s
     else:
-        assert isinstance(s, bytes)
+        assert isinstance(s, bytes), f"Expected str or bytes, got {type(s)}"
         return s.decode(encoding, errors)
 
 
@@ -365,6 +379,11 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             "The resources dictionary must not "
             "contain the key 'memory' or 'object_store_memory'"
+        )
+    elif ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
+        raise ValueError(
+            "The resource should not include `bundle` which "
+            f"is reserved for Ray. resources: {resources}"
         )
 
     num_cpus = options_dict.get("num_cpus")
@@ -602,45 +621,38 @@ def get_num_cpus(
 
 
 # TODO(clarng): merge code with c++
-def get_cgroupv1_used_memory(filename):
-    with open(filename, "r") as f:
-        lines = f.readlines()
-        cache_bytes = -1
-        rss_bytes = -1
-        inactive_file_bytes = -1
-        working_set = -1
-        for line in lines:
-            if "total_rss " in line:
-                rss_bytes = int(line.split()[1])
-            elif "cache " in line:
-                cache_bytes = int(line.split()[1])
-            elif "inactive_file" in line:
-                inactive_file_bytes = int(line.split()[1])
-        if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
-            working_set = rss_bytes + cache_bytes - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
-        return None
-
-
-def get_cgroupv2_used_memory(stat_file, usage_file):
-    # Uses same calculation as libcontainer, that is:
-    # memory.current - memory.stat[inactive_file]
-    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+def get_cgroup_used_memory(
+    memory_stat_filename: str,
+    memory_usage_filename: str,
+    inactive_file_key: str,
+    active_file_key: str,
+):
+    """
+    The calculation logic is the same with `GetCGroupMemoryUsedBytes`
+    in `memory_monitor.cc` file.
+    """
     inactive_file_bytes = -1
-    current_usage = -1
-    with open(usage_file, "r") as f:
-        current_usage = int(f.read().strip())
-    with open(stat_file, "r") as f:
+    active_file_bytes = -1
+    with open(memory_stat_filename, "r") as f:
         lines = f.readlines()
         for line in lines:
-            if "inactive_file" in line:
+            if f"{inactive_file_key} " in line:
                 inactive_file_bytes = int(line.split()[1])
-        if current_usage >= 0 and inactive_file_bytes >= 0:
-            working_set = current_usage - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
+            elif f"{active_file_key} " in line:
+                active_file_bytes = int(line.split()[1])
+
+    with open(memory_usage_filename, "r") as f:
+        lines = f.readlines()
+        cgroup_usage_in_bytes = int(lines[0].strip())
+
+    if (
+        inactive_file_bytes == -1
+        or cgroup_usage_in_bytes == -1
+        or active_file_bytes == -1
+    ):
         return None
+
+    return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
 def get_used_memory():
@@ -653,17 +665,28 @@ def get_used_memory():
     # container.
     docker_usage = None
     # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
+    memory_usage_filename_v1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    memory_stat_filename_v1 = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
     memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
-    if os.path.exists(memory_usage_filename):
-        docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
+    if os.path.exists(memory_usage_filename_v1) and os.path.exists(
+        memory_stat_filename_v1
+    ):
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v1,
+            memory_usage_filename_v1,
+            "total_inactive_file",
+            "total_active_file",
+        )
     elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
         memory_stat_filename_v2
     ):
-        docker_usage = get_cgroupv2_used_memory(
-            memory_stat_filename_v2, memory_usage_filename_v2
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v2,
+            memory_usage_filename_v2,
+            "inactive_file",
+            "active_file",
         )
 
     if docker_usage is not None:
@@ -1290,11 +1313,7 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     import grpc
-
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     from ray._private.tls_utils import load_certs_from_env
 
@@ -1516,11 +1535,34 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     return total_size_bytes
 
 
-def check_version_info(cluster_metadata):
+def check_version_info(
+    cluster_metadata,
+    this_process_address,
+    raise_on_mismatch=True,
+    python_version_match_level="patch",
+):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
         cluster_metadata: Ray cluster metadata from GCS.
+        this_process_address: Informational only. The address of this process.
+            e.g. "node address:port" or "Ray Client".
+        raise_on_mismatch: Raise an exception on True, log a warning otherwise.
+        python_version_match_level: "minor" or "patch". To which python version level we
+            try to match. Note if "minor" and the patch is different, we will still log
+            a warning.
 
+    Behavior:
+        - We raise or log a warning, based on raise_on_mismatch, if:
+            - Ray versions do not match; OR
+            - Python (major, minor) versions do not match,
+                if python_version_match_level == 'minor'; OR
+            - Python (major, minor, patch) versions do not match,
+                if python_version_match_level == 'patch'.
+        - We also log a warning if:
+            - Python (major, minor) versions match, AND
+            - Python patch versions do not match, AND
+            - python_version_match_level == 'minor' AND
+            - raise_on_mismatch == False.
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
@@ -1528,18 +1570,41 @@ def check_version_info(cluster_metadata):
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
     )
-    version_info = compute_version_info()
-    if version_info != cluster_version_info:
-        node_ip_address = ray._private.services.get_node_ip_address()
-        error_message = (
-            "Version mismatch: The cluster was started with:\n"
-            "    Ray: " + cluster_version_info[0] + "\n"
-            "    Python: " + cluster_version_info[1] + "\n"
-            "This process on node " + node_ip_address + " was started with:" + "\n"
-            "    Ray: " + version_info[0] + "\n"
-            "    Python: " + version_info[1] + "\n"
+    my_version_info = compute_version_info()
+
+    # Calculate: ray_matches, python_matches, python_full_matches
+    ray_matches = cluster_version_info[0] == my_version_info[0]
+    python_full_matches = cluster_version_info[1] == my_version_info[1]
+    if python_version_match_level == "patch":
+        python_matches = cluster_version_info[1] == my_version_info[1]
+    elif python_version_match_level == "minor":
+        my_python_versions = my_version_info[1].split(".")
+        cluster_python_versions = cluster_version_info[1].split(".")
+        python_matches = my_python_versions[:2] == cluster_python_versions[:2]
+    else:
+        raise ValueError(
+            f"Invalid python_version_match_level: {python_version_match_level}, "
+            "want: 'minor' or 'patch'"
         )
-        raise RuntimeError(error_message)
+
+    mismatch_msg = (
+        "The cluster was started with:\n"
+        f"    Ray: {cluster_version_info[0]}\n"
+        f"    Python: {cluster_version_info[1]}\n"
+        f"This process on {this_process_address} was started with:\n"
+        f"    Ray: {my_version_info[0]}\n"
+        f"    Python: {my_version_info[1]}\n"
+    )
+
+    if ray_matches and python_matches:
+        if not python_full_matches:
+            logger.warning(f"Python patch version mismatch: {mismatch_msg}")
+    else:
+        error_message = f"Version mismatch: {mismatch_msg}"
+        if raise_on_mismatch:
+            raise RuntimeError(error_message)
+        else:
+            logger.warning(error_message)
 
 
 def get_runtime_env_info(
@@ -1553,7 +1618,8 @@ def get_runtime_env_info(
     In the user interface, the argument `runtime_env` contains some fields
     which not contained in `ProtoRuntimeEnv` but in `ProtoRuntimeEnvInfo`,
     such as `eager_install`. This function will extract those fields from
-    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it.
+    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it
+    into json format.
     """
     from ray.runtime_env import RuntimeEnvConfig
 
@@ -1651,7 +1717,7 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
     """Get a running async event loop if one exists, otherwise create one.
 
     This function serves as a proxy for the deprecating get_event_loop().
@@ -1671,7 +1737,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
         # This follows the implementation of the deprecating `get_event_loop`
         # in python3.10's asyncio. See python3.10/asyncio/events.py
         # _get_event_loop()
-        loop = None
         try:
             loop = asyncio.get_running_loop()
             assert loop is not None
@@ -1785,15 +1850,15 @@ def _get_pyarrow_version() -> Optional[str]:
 
 
 class DeferSigint(contextlib.AbstractContextManager):
-    """Context manager that defers SIGINT signals until the the context is left."""
+    """Context manager that defers SIGINT signals until the context is left."""
 
     # This is used by Ray's task cancellation to defer cancellation interrupts during
     # problematic areas, e.g. task argument deserialization.
     def __init__(self):
-        # Whether the task has been cancelled while in the context.
-        self.task_cancelled = False
-        # The original SIGINT handler.
-        self.orig_sigint_handler = None
+        # Whether a SIGINT signal was received during the context.
+        self.signal_received = False
+        # The overridden SIGINT handler
+        self.overridden_sigint_handler = None
         # The original signal method.
         self.orig_signal = None
 
@@ -1807,32 +1872,29 @@ class DeferSigint(contextlib.AbstractContextManager):
         else:
             return contextlib.nullcontext()
 
-    def _set_task_cancelled(self, signum, frame):
+    def _set_signal_received(self, signum, frame):
         """SIGINT handler that defers the signal."""
-        self.task_cancelled = True
+        self.signal_received = True
 
     def _signal_monkey_patch(self, signum, handler):
-        """Monkey patch for signal.signal that raises an error if a SIGINT handler is
-        registered within the DeferSigint context.
-        """
-        # Only raise an error if setting a SIGINT handler in the main thread; if setting
-        # a handler in a non-main thread, signal.signal will raise an error anyway
-        # indicating that Python does not allow that.
+        """Monkey patch for signal.signal that defers the setting of new signal
+        handler after the DeferSigint context exits."""
+        # Only handle it in the main thread because if setting a handler in a non-main
+        # thread, signal.signal will raise an error because Python doesn't allow it.
         if (
             threading.current_thread() == threading.main_thread()
             and signum == signal.SIGINT
         ):
-            raise ValueError(
-                "Can't set signal handler for SIGINT while SIGINT is being deferred "
-                "within a DeferSigint context."
-            )
+            orig_sigint_handler = self.overridden_sigint_handler
+            self.overridden_sigint_handler = handler
+            return orig_sigint_handler
         return self.orig_signal(signum, handler)
 
     def __enter__(self):
         # Save original SIGINT handler for later restoration.
-        self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
+        self.overridden_sigint_handler = signal.getsignal(signal.SIGINT)
         # Set SIGINT signal handler that defers the signal.
-        signal.signal(signal.SIGINT, self._set_task_cancelled)
+        signal.signal(signal.SIGINT, self._set_signal_received)
         # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
         # within the context.
         self.orig_signal = signal.signal
@@ -1840,16 +1902,16 @@ class DeferSigint(contextlib.AbstractContextManager):
         return self
 
     def __exit__(self, exc_type, exc, exc_tb):
-        assert self.orig_sigint_handler is not None
+        assert self.overridden_sigint_handler is not None
         assert self.orig_signal is not None
         # Restore original signal.signal function.
         signal.signal = self.orig_signal
-        # Restore original SIGINT handler.
-        signal.signal(signal.SIGINT, self.orig_sigint_handler)
-        if exc_type is None and self.task_cancelled:
-            # No exception raised in context but task has been cancelled, so we raise
-            # KeyboardInterrupt to go through the task cancellation path.
-            raise KeyboardInterrupt
+        # Restore overridden SIGINT handler.
+        signal.signal(signal.SIGINT, self.overridden_sigint_handler)
+        if exc_type is None and self.signal_received:
+            # No exception raised in context, call the original SIGINT handler.
+            # By default, this means raising KeyboardInterrupt.
+            self.overridden_sigint_handler(signal.SIGINT, None)
         else:
             # If exception was raised in context, returning False will cause it to be
             # reraised.
@@ -1898,6 +1960,15 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
             importlib.import_module(module_to_preload)
         except ImportError:
             logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def remove_ray_internal_flags_from_env(env: dict):
+    """
+    Remove Ray internal flags from `env`.
+    Defined in ray/common/ray_internal_flag_def.h
+    """
+    for flag in ray_constants.RAY_INTERNAL_FLAGS:
+        env.pop(flag, None)
 
 
 def update_envs(env_vars: Dict[str, str]):
@@ -1952,18 +2023,29 @@ def validate_node_labels(labels: Dict[str, str]):
             )
 
 
-def pasre_pg_formatted_resources_to_original(
+def parse_pg_formatted_resources_to_original(
     pg_formatted_resources: Dict[str, float]
 ) -> Dict[str, float]:
     original_resources = {}
 
     for key, value in pg_formatted_resources.items():
-        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 2:
-            original_resources[result.group(1)] = value
-            continue
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 3:
+            # Filter out resources that have bundle_group_[pg_id] since
+            # it is an implementation detail.
+            # This resource is automatically added to the resource
+            # request for all tasks that require placement groups.
+            if result.group(1) == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
+                continue
+
+            original_resources[result.group(1)] = value
+            continue
+
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            if result.group(1) == "bundle":
+                continue
+
             original_resources[result.group(1)] = value
             continue
         original_resources[key] = value

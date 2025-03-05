@@ -1,3 +1,4 @@
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 from typing import Optional
@@ -5,6 +6,7 @@ from typing import Optional
 torch, nn = try_import_torch()
 
 
+@OldAPIStack
 class SkipConnection(nn.Module):
     """Skip connection layer.
 

@@ -12,22 +12,21 @@ from threading import Thread
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
 import numpy as np
-import psutil
+
 import ray
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.air._internal.json import SafeFallbackEncoder  # noqa
-from ray.air._internal.util import (  # noqa: F401
-    is_nan,
-    is_nan_or_inf,
-)
 from ray._private.dict import (  # noqa: F401
-    merge_dicts,
     deep_update,
     flatten_dict,
+    merge_dicts,
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
 )
+from ray.air._internal.json import SafeFallbackEncoder  # noqa
+from ray.air._internal.util import is_nan, is_nan_or_inf  # noqa: F401
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ class UtilMonitor(Thread):
                     float(psutil.cpu_percent(interval=None))
                 )
                 self.values["ram_util_percent"].append(
-                    float(getattr(psutil.virtual_memory(), "percent"))
+                    float(psutil.virtual_memory().percent)
                 )
             if self.GPUtil is not None:
                 gpu_list = []
@@ -335,7 +334,7 @@ def diagnose_serialization(trainable: Callable):
         assert diagnose_serialization(test) is True
 
     """
-    from ray.tune.registry import register_trainable, _check_serializability
+    from ray.tune.registry import _check_serializability, register_trainable
 
     def check_variables(objects, failure_set, printer):
         for var_name, variable in objects.items():

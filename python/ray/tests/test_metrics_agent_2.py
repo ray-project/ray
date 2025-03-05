@@ -12,6 +12,7 @@ from opencensus.stats.view_manager import ViewManager
 from opencensus.stats.stats_recorder import StatsRecorder
 from opencensus.stats import execution_context
 from prometheus_client.core import REGISTRY
+from opencensus.metrics.export.metric_descriptor import MetricDescriptorType
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record, RAY_WORKER_TIMEOUT_S
 from ray._private.services import new_port
 from ray.core.generated.metrics_pb2 import (
@@ -61,6 +62,7 @@ def generate_protobuf_metric(
     name: str,
     desc: str,
     unit: str,
+    type: MetricDescriptorType,
     label_keys: List[str] = None,
     timeseries: List[TimeSeries] = None,
 ):
@@ -74,6 +76,7 @@ def generate_protobuf_metric(
             name=name,
             description=desc,
             unit=unit,
+            type=type,
             label_keys=[LabelKey(key="a"), LabelKey(key="b")],
         ),
         timeseries=timeseries,
@@ -199,7 +202,12 @@ def test_metrics_agent_proxy_record_and_export_basic(get_agent):
 
     # Test the basic case.
     m = generate_protobuf_metric(
-        "test", "desc", "", label_keys=["a", "b"], timeseries=[]
+        "test",
+        "desc",
+        "",
+        MetricDescriptorType.GAUGE_DOUBLE,
+        label_keys=["a", "b"],
+        timeseries=[],
     )
     m.timeseries.append(generate_timeseries(["a", "b"], [1, 2, 3]))
     agent.proxy_export_metrics([m])
@@ -211,7 +219,12 @@ def test_metrics_agent_proxy_record_and_export_basic(get_agent):
 
     # Test new metric has proxyed.
     m = generate_protobuf_metric(
-        "test", "desc", "", label_keys=["a", "b"], timeseries=[]
+        "test",
+        "desc",
+        "",
+        MetricDescriptorType.GAUGE_DOUBLE,
+        label_keys=["a", "b"],
+        timeseries=[],
     )
     m.timeseries.append(generate_timeseries(["a", "b"], [4]))
     agent.proxy_export_metrics([m])
@@ -223,7 +236,12 @@ def test_metrics_agent_proxy_record_and_export_basic(get_agent):
 
     # Test new metric with different tag is reported.
     m = generate_protobuf_metric(
-        "test", "desc", "", label_keys=["a", "b"], timeseries=[]
+        "test",
+        "desc",
+        "",
+        MetricDescriptorType.GAUGE_DOUBLE,
+        label_keys=["a", "b"],
+        timeseries=[],
     )
     m.timeseries.append(generate_timeseries(["a", "c"], [5]))
     agent.proxy_export_metrics([m])
@@ -247,7 +265,12 @@ def test_metrics_agent_proxy_record_and_export_from_workers(get_agent):
     worker_id = WorkerID.from_random()
 
     m = generate_protobuf_metric(
-        "test", "desc", "", label_keys=["a", "b"], timeseries=[]
+        "test",
+        "desc",
+        "",
+        MetricDescriptorType.GAUGE_DOUBLE,
+        label_keys=["a", "b"],
+        timeseries=[],
     )
     m.timeseries.append(generate_timeseries(["a", "b"], [1, 2, 3]))
     agent.proxy_export_metrics([m], worker_id_hex=worker_id.hex())
@@ -284,7 +307,12 @@ def test_metrics_agent_proxy_record_and_export_from_workers_complicated(
     metrics = []
     for i in range(8):
         m = generate_protobuf_metric(
-            f"test_{i}", "desc", "", label_keys=["a", "b"], timeseries=[]
+            f"test_{i}",
+            "desc",
+            "",
+            MetricDescriptorType.GAUGE_DOUBLE,
+            label_keys=["a", "b"],
+            timeseries=[],
         )
         m.timeseries.append(generate_timeseries(["a", str(i)], [3]))
         metrics.append(m)
@@ -322,8 +350,8 @@ def test_metrics_agent_proxy_record_and_export_from_workers_complicated(
 
         # Make sure the rest of metrics are still there because new metrics
         # are reported.
-        for i in range(i + 2, len(metrics)):
-            assert get_metric(f"{namespace}_test_{i}", agent_port) is not None, i
+        for j in range(i + 2, len(metrics)):
+            assert get_metric(f"{namespace}_test_{j}", agent_port) is not None, j
         i += 2
 
 
@@ -341,7 +369,12 @@ def test_metrics_agent_proxy_record_and_export_from_workers_delay(get_agent):  #
     worker_id = WorkerID.from_random()
 
     m = generate_protobuf_metric(
-        "test", "desc", "", label_keys=["a", "b"], timeseries=[]
+        "test",
+        "desc",
+        "",
+        MetricDescriptorType.GAUGE_DOUBLE,
+        label_keys=["a", "b"],
+        timeseries=[],
     )
     m.timeseries.append(generate_timeseries(["a", "b"], [1, 2, 3]))
     agent.proxy_export_metrics([m], worker_id_hex=worker_id.hex())

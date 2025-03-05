@@ -19,6 +19,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private import api as _private_api
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -26,11 +27,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve._private.deployment_graph_build import (
-    get_and_validate_ingress_deployment,
-)
-from ray.serve._private.publish_provider import get_publish_provider
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -38,7 +34,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
-    _skip_validating_runtime_env_uris,
 )
 
 APP_DIR_HELP_STR = (
@@ -48,13 +43,12 @@ APP_DIR_HELP_STR = (
     "from an installed module."
 )
 RAY_INIT_ADDRESS_HELP_STR = (
-    "Address to use for ray.init(). Can also be specified "
-    "using the RAY_ADDRESS environment variable."
+    "Address to use for ray.init(). Can also be set using "
+    "the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard head (defaults to "
-    "http://localhost:8265). Can also be specified using the "
-    "RAY_DASHBOARD_ADDRESS environment variable."
+    "Address for the Ray dashboard. Defaults to http://localhost:8265. "
+    "Can also be set using the RAY_DASHBOARD_ADDRESS environment variable."
 )
 
 
@@ -117,8 +111,8 @@ def process_dict_for_yaml_dump(data):
 def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     args_dict = dict()
     for arg in args:
-        split = arg.split("=")
-        if len(split) != 2:
+        split = arg.split("=", maxsplit=1)
+        if len(split) != 2 or len(split[1]) == 0:
             raise click.ClickException(
                 f"Invalid application argument '{arg}', "
                 "must be of the form '<key>=<val>'."
@@ -232,19 +226,89 @@ def start(
     )
 
 
+def _generate_config_from_file_or_import_path(
+    config_or_import_path: str,
+    *,
+    name: Optional[str],
+    arguments: Dict[str, str],
+    runtime_env: Optional[Dict[str, Any]],
+) -> ServeDeploySchema:
+    """Generates a deployable config schema for the passed application(s)."""
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
+        cli_logger.print(f"Deploying from config file: '{config_path}'.")
+        if len(arguments) > 0:
+            raise click.ClickException(
+                "Application arguments cannot be specified for a config file."
+            )
+
+        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
+        with open(config_path, "r") as config_file:
+            config_dict = yaml.safe_load(config_file)
+            config = ServeDeploySchema.parse_obj(config_dict)
+    else:
+        # TODO(edoakes): should we default to --working-dir="." for this?
+        import_path = config_or_import_path
+        cli_logger.print(f"Deploying from import path: '{import_path}'.")
+
+        app = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env=runtime_env,
+            args=arguments,
+        )
+        if name is not None:
+            app.name = name
+        config = ServeDeploySchema(applications=[app])
+
+    return config
+
+
 @cli.command(
-    short_help="Deploy Serve applications from a YAML config file.",
+    short_help="Deploy an application or group of applications.",
     help=(
-        "This supported config format is ServeDeploySchema. "
-        "This call is async; a successful response only indicates that the "
-        "request was sent to the Ray cluster successfully. It does not mean "
-        "the the deployments have been deployed/updated.\n\n"
-        "Existing deployments with no code changes will not be redeployed.\n\n"
-        "Use `serve config` to fetch the current config(s) and `serve status` to "
-        "check the status of the application(s) and deployments after deploying."
+        "Deploy an application from an import path (e.g., main:app) "
+        "or a group of applications from a YAML config file.\n\n"
+        "Passed import paths must point to an Application object or "
+        "a function that returns one. If a function is used, arguments can be "
+        "passed to it in 'key=val' format after the import path, for example:\n\n"
+        "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
+        "This command makes a REST API request to a running Ray cluster."
     ),
 )
-@click.argument("config_file_name")
+@click.argument("config_or_import_path")
+@click.argument("arguments", nargs=-1, required=False)
+@click.option(
+    "--runtime-env",
+    type=str,
+    default=None,
+    required=False,
+    help="Path to a local YAML file containing a runtime_env definition.",
+)
+@click.option(
+    "--runtime-env-json",
+    type=str,
+    default=None,
+    required=False,
+    help="JSON-serialized runtime_env dictionary.",
+)
+@click.option(
+    "--working-dir",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Directory containing files that your application(s) will run in. This must "
+        "be a remote URI to a .zip file (e.g., S3 bucket). This overrides the "
+        "working_dir in --runtime-env if both are specified."
+    ),
+)
+@click.option(
+    "--name",
+    required=False,
+    default=None,
+    type=str,
+    help="Custom name for the application. Ignored when deploying from a config file.",
+)
 @click.option(
     "--address",
     "-a",
@@ -253,15 +317,32 @@ def start(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-def deploy(config_file_name: str, address: str):
-    warn_if_agent_address_set()
+def deploy(
+    config_or_import_path: str,
+    arguments: Tuple[str],
+    runtime_env: str,
+    runtime_env_json: str,
+    working_dir: str,
+    name: Optional[str],
+    address: str,
+):
+    args_dict = convert_args_to_dict(arguments)
+    final_runtime_env = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
 
-    with open(config_file_name, "r") as config_file:
-        config = yaml.safe_load(config_file)
+    config = _generate_config_from_file_or_import_path(
+        config_or_import_path,
+        name=name,
+        arguments=args_dict,
+        runtime_env=final_runtime_env,
+    )
 
-    ServeDeploySchema.parse_obj(config)
-    ServeSubmissionClient(address).deploy_applications(config)
-
+    ServeSubmissionClient(address).deploy_applications(
+        config.dict(exclude_unset=True),
+    )
     cli_logger.success(
         "\nSent deploy request successfully.\n "
         "* Use `serve status` to check applications' statuses.\n "
@@ -270,11 +351,11 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    short_help="Run Serve applications.",
+    short_help="Run an application or group of applications.",
     help=(
-        "Runs an application from the specified import path (e.g., my_script:"
-        "app) or application(s) from a YAML config.\n\n"
-        "If passing an import path, it must point to a Serve Application or "
+        "Run an application from an import path (e.g., my_script:"
+        "app) or a group of applications from a YAML config file.\n\n"
+        "Passed import paths must point to an Application object or "
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
@@ -343,8 +424,8 @@ def deploy(config_file_name: str, address: str):
     "-r",
     is_flag=True,
     help=(
-        "Listens for changes to files in the working directory, --working-dir "
-        "or the working_dir in the --runtime-env, and automatically redeploys "
+        "This is an experimental feature - Listens for changes to files in the working directory, "
+        "--working-dir or the working_dir in the --runtime-env, and automatically redeploys "
         "the application. This will block until Ctrl-C'd, then clean up the "
         "app."
     ),
@@ -352,8 +433,8 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--route-prefix",
     required=False,
-    default="/",
     type=str,
+    default="/",
     help=(
         "Route prefix for the application. This should only be used "
         "when running an application specified by import path and "
@@ -411,7 +492,7 @@ def run(
         is_config = False
         import_path = config_or_import_path
         cli_logger.print(f"Running import path: '{import_path}'.")
-        app = _private_api.call_app_builder_with_args_if_necessary(
+        app = _private_api.call_user_app_builder_with_args_if_necessary(
             import_attr(import_path), args_dict
         )
 
@@ -452,9 +533,14 @@ def run(
         if is_config:
             client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
+            if blocking:
+                while True:
+                    # Block, letting Ray print logs to the terminal.
+                    time.sleep(10)
         else:
-            serve.run(app, name=name, route_prefix=route_prefix)
-            cli_logger.success("Deployed app successfully.")
+            # This should not block if reload is true so the watchfiles can be triggered
+            should_block = blocking and not reload
+            serve.run(app, blocking=should_block, name=name, route_prefix=route_prefix)
 
         if reload:
             if not blocking:
@@ -472,21 +558,23 @@ def run(
                 yield_on_timeout=True,
             ):
                 if changes:
-                    cli_logger.info(
-                        f"Detected file change in path {watch_dir}. Redeploying app."
-                    )
-                    # The module needs to be reloaded with `importlib` in order to pick
-                    # up any changes.
-                    app = _private_api.call_app_builder_with_args_if_necessary(
-                        import_attr(import_path, reload_module=True), args_dict
-                    )
-                    serve.run(app, name=name, route_prefix=route_prefix)
-                    cli_logger.success("Redeployed app successfully.")
-
-        if blocking:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
+                    try:
+                        # The module needs to be reloaded with `importlib` in order to
+                        # pick up any changes.
+                        app = _private_api.call_user_app_builder_with_args_if_necessary(
+                            import_attr(import_path, reload_module=True), args_dict
+                        )
+                        serve.run(
+                            target=app,
+                            blocking=False,
+                            name=name,
+                            route_prefix=route_prefix,
+                        )
+                    except Exception:
+                        traceback.print_exc()
+                        cli_logger.error(
+                            "Deploying the latest version of the application failed."
+                        )
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
@@ -706,16 +794,13 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        deployments = pipeline_build(app, name)
-        ingress = get_and_validate_ingress_deployment(deployments)
+        built_app: BuiltApplication = build_app(app, name=name)
         schema = ServeApplicationSchema(
             name=name,
-            route_prefix=ingress.route_prefix,
+            route_prefix="/" if len(import_paths) == 1 else f"/{name}",
             import_path=import_path,
             runtime_env={},
-            deployments=[
-                deployment_to_schema(d, include_route_prefix=False) for d in deployments
-            ],
+            deployments=[deployment_to_schema(d) for d in built_app.deployments],
         )
 
         return schema.dict(exclude_unset=True)
@@ -762,143 +847,6 @@ def build(
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)
-
-
-def _generate_config_from_file_or_import_path(
-    config_or_import_path: str,
-    *,
-    arguments: Dict[str, str],
-    runtime_env: Optional[Dict[str, Any]],
-) -> Tuple[ServeDeploySchema, str]:
-    """Generates a deployable config schema and name for the passed applications(s).
-
-    NOTE: the returned name must not contain any "." or ":" characters.
-    """
-    if pathlib.Path(config_or_import_path).is_file():
-        config_path = config_or_import_path
-        cli_logger.print(f"Publishing from config file: '{config_path}'.")
-        if len(arguments) > 0:
-            raise click.ClickException(
-                "Application arguments cannot be specified for a config file."
-            )
-
-        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
-        name = os.path.basename(config_path).split(".")[0]
-        with open(config_path, "r") as config_file:
-            config_dict = yaml.safe_load(config_file)
-            config = ServeDeploySchema.parse_obj(config_dict)
-    else:
-        # TODO(edoakes): should we default to --working-dir="." for this?
-        import_path = config_or_import_path
-        cli_logger.print(f"Publishing import path: '{import_path}'.")
-
-        if import_path.count(":") != 1:
-            raise click.ClickException(
-                "Import path must be of the form 'module.submodule:app_or_builder', "
-                f"got: '{import_path}'."
-            )
-        name = import_path.split(":")[1]
-        app = ServeApplicationSchema(
-            import_path=import_path,
-            runtime_env=runtime_env,
-            args=arguments,
-        )
-        config = ServeDeploySchema(applications=[app])
-
-    assert isinstance(config, ServeDeploySchema)
-    assert isinstance(name, str) and name
-    return config, name
-
-
-@cli.command(
-    short_help="Publish an application to a remote provider.",
-    # TODO(edoakes): un-hide this at some point.
-    hidden=True,
-)
-@click.argument("config_or_import_path")
-@click.argument("arguments", nargs=-1, required=False)
-@click.option(
-    "--runtime-env",
-    type=str,
-    default=None,
-    required=False,
-    help="Path to a local YAML file containing a runtime_env definition.",
-)
-@click.option(
-    "--runtime-env-json",
-    type=str,
-    default=None,
-    required=False,
-    help="JSON-serialized runtime_env dictionary.",
-)
-@click.option(
-    "--working-dir",
-    type=str,
-    default=None,
-    required=False,
-    help=(
-        "Directory containing files that your application(s) will run in. Can be a "
-        "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
-        "This overrides the working_dir in --runtime-env if both are "
-        "specified."
-    ),
-)
-@click.option(
-    "--name",
-    required=False,
-    default=None,
-    type=str,
-    help="Optional custom name for the application.",
-)
-@click.option(
-    "--base-image",
-    required=False,
-    default=None,
-    type=str,
-    help="Optional container image to use for the application.",
-)
-@click.option(
-    "--provider",
-    required=False,
-    default="anyscale",
-    type=str,
-    help="Publish provider to use. Defaults to anyscale.",
-)
-def publish(
-    config_or_import_path: str,
-    arguments: Tuple[str],
-    runtime_env: str,
-    runtime_env_json: str,
-    working_dir: str,
-    name: Optional[str],
-    base_image: Optional[str],
-    provider: str,
-):
-    args_dict = convert_args_to_dict(arguments)
-    final_runtime_env = parse_runtime_env_args(
-        runtime_env=runtime_env,
-        runtime_env_json=runtime_env_json,
-        working_dir=working_dir,
-    )
-
-    # Skip validating runtime_env URIs so publishers can enable local URI usage.
-    with _skip_validating_runtime_env_uris():
-        config, default_name = _generate_config_from_file_or_import_path(
-            config_or_import_path,
-            arguments=args_dict,
-            runtime_env=final_runtime_env,
-        )
-
-    if name is None:
-        name = default_name
-
-    publish_provider = get_publish_provider(provider)
-    publish_provider.publish(
-        config.dict(exclude_unset=True),
-        name=name,
-        ray_version=ray.__version__,
-        base_image=base_image,
-    )
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):

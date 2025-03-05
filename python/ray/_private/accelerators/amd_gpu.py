@@ -1,8 +1,6 @@
 import os
-import sys
 import logging
-import subprocess
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -54,33 +52,30 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
+        import ray._private.thirdparty.pyamdsmi as pyamdsmi
+
         num_gpus = 0
 
-        if sys.platform.startswith("linux"):
+        try:
+            pyamdsmi.smi_initialize()
+            num_gpus = pyamdsmi.smi_get_device_count()
+        except Exception:
+            pass
+        finally:
             try:
-                num_gpus = (
-                    len(
-                        subprocess.check_output(["rocm-smi", "-i", "--csv"])
-                        .decode("utf-8")
-                        .strip()
-                        .split("\n")
-                    )
-                    - 1
-                )
+                pyamdsmi.smi_shutdown()
             except Exception:
                 pass
+
         return num_gpus
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
         try:
-            if sys.platform.startswith("linux"):
-                amd_pci_ids = AMDGPUAcceleratorManager._get_amd_pci_ids()
-                if amd_pci_ids is None:
-                    return None
-                return AMDGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                    amd_pci_ids["card0"]["GPU ID"]
-                )
+            device_ids = AMDGPUAcceleratorManager._get_amd_device_ids()
+            if device_ids is None:
+                return None
+            return AMDGPUAcceleratorManager._gpu_name_to_accelerator_type(device_ids[0])
         except Exception:
             return None
 
@@ -112,21 +107,31 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
         ] = ",".join([str(i) for i in visible_amd_devices])
 
     @staticmethod
-    def _get_amd_pci_ids() -> Dict[str, Any]:
-        """Get the list of GPUs IDs in JSON format
+    def _get_amd_device_ids() -> List[str]:
+        """Get the list of GPUs IDs
         Example:
             On a node with 2x MI210 GPUs
-            return: {"card0": {"GPU ID": "0x740f"}, "card1": {"GPU ID": "0x740f"}}
+            pyamdsmi library python bindings
+            return: ['0x740f', '0x740f']
         Returns:
-            A json string contain a list of GPU IDs
+            A list of strings containing GPU IDs
         """
+        import ray._private.thirdparty.pyamdsmi as pyamdsmi
 
+        device_ids = []
         try:
-            amd_pci_ids = subprocess.check_output(
-                ["rocm-smi", "--showid", "--json"]
-            ).decode("utf-8")
+            pyamdsmi.smi_initialize()
+            num_devices = pyamdsmi.smi_get_device_count()
+            for i in range(num_devices):
+                did = pyamdsmi.smi_get_device_id(i)
+                if did >= 0:
+                    device_ids.append(hex(did))
         except Exception:
-            logger.exception("Could not parse gpu information.")
             return None
+        finally:
+            try:
+                pyamdsmi.pyamdsmi_shutdown()
+            except Exception:
+                pass
 
-        return eval(amd_pci_ids)
+        return device_ids

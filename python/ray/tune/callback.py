@@ -1,14 +1,14 @@
-from abc import ABCMeta
 import glob
-import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import warnings
+from abc import ABCMeta
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
+import ray.tune
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train import Checkpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
 
@@ -30,14 +30,12 @@ class _CallbackMeta(ABCMeta):
     def need_check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> bool:
-
         return attrs.get("IS_CALLBACK_CONTAINER", False)
 
     @classmethod
     def check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> None:
-
         methods = set()
         for base in bases:
             methods.update(
@@ -83,7 +81,7 @@ class Callback(metaclass=_CallbackMeta):
 
     .. testcode::
 
-        from ray import train, tune
+        from ray import tune
         from ray.tune import Callback
 
 
@@ -99,7 +97,7 @@ class Callback(metaclass=_CallbackMeta):
 
         tuner = tune.Tuner(
             train_func,
-            run_config=train.RunConfig(
+            run_config=tune.RunConfig(
                 callbacks=[MyCallback()]
             )
         )
@@ -131,7 +129,7 @@ class Callback(metaclass=_CallbackMeta):
 
         Arguments:
             stop: Stopping criteria.
-                If ``time_budget_s`` was passed to ``train.RunConfig``, a
+                If ``time_budget_s`` was passed to ``tune.RunConfig``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
             num_samples: Number of times to sample from the
@@ -282,7 +280,7 @@ class Callback(metaclass=_CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: "Checkpoint",
+        checkpoint: "ray.tune.Checkpoint",
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.
@@ -503,8 +501,8 @@ class CallbackList(Callback):
             can_restore: True if the checkpoint_dir contains a file of the
                 format `CKPT_FILE_TMPL`. False otherwise.
         """
-        return bool(
-            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
+        return any(
+            glob.iglob(Path(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")).as_posix())
         )
 
     def __len__(self) -> int:

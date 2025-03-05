@@ -1,5 +1,6 @@
-import pytest
 from typing import Dict, Optional
+
+import pytest
 
 from ray.tune.callback import Callback, CallbackList
 

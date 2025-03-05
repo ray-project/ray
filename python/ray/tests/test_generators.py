@@ -11,15 +11,24 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
+from ray._private.test_utils import (
+    wait_for_condition,
+)
 
 
 def assert_no_leak():
-    gc.collect()
-    core_worker = ray._private.worker.global_worker.core_worker
-    ref_counts = core_worker.get_all_reference_counts()
-    for rc in ref_counts.values():
-        assert rc["local"] == 0
-        assert rc["submitted"] == 0
+    def check():
+        gc.collect()
+        core_worker = ray._private.worker.global_worker.core_worker
+        ref_counts = core_worker.get_all_reference_counts()
+        for k, rc in ref_counts.items():
+            if rc["local"] != 0:
+                return False
+            if rc["submitted"] != 0:
+                return False
+        return True
+
+    wait_for_condition(check)
 
 
 @pytest.mark.skipif(
@@ -358,6 +367,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -420,6 +430,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -509,6 +520,7 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_t
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     cluster.add_node(
@@ -579,6 +591,7 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
+        "local_gc_min_interval_s": 1,
     }
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -629,6 +642,79 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
 
     del gen, refs, exec_counter
     assert_no_leak()
+
+
+def test_yield_exception(ray_start_cluster):
+    @ray.remote
+    def f():
+        yield 1
+        yield 2
+        yield Exception("value")
+        yield 3
+        raise Exception("raise")
+        yield 5
+
+    gen = f.remote()
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    yield_exc = ray.get(next(gen))
+    assert isinstance(yield_exc, Exception)
+    assert str(yield_exc) == "value"
+    assert ray.get(next(gen)) == 3
+    with pytest.raises(Exception, match="raise"):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+
+
+def test_actor_yield_exception(ray_start_cluster):
+    @ray.remote
+    class A:
+        def f(self):
+            yield 1
+            yield 2
+            yield Exception("value")
+            yield 3
+            raise Exception("raise")
+            yield 5
+
+    a = A.remote()
+    gen = a.f.remote()
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    yield_exc = ray.get(next(gen))
+    assert isinstance(yield_exc, Exception)
+    assert str(yield_exc) == "value"
+    assert ray.get(next(gen)) == 3
+    with pytest.raises(Exception, match="raise"):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
+
+
+def test_async_actor_yield_exception(ray_start_cluster):
+    @ray.remote
+    class A:
+        async def f(self):
+            yield 1
+            yield 2
+            yield Exception("value")
+            yield 3
+            raise Exception("raise")
+            yield 5
+
+    a = A.remote()
+    gen = a.f.remote()
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    yield_exc = ray.get(next(gen))
+    assert isinstance(yield_exc, Exception)
+    assert str(yield_exc) == "value"
+    assert ray.get(next(gen)) == 3
+    with pytest.raises(Exception, match="raise"):
+        ray.get(next(gen))
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
 
 
 # Client server port of the shared Ray instance

@@ -41,7 +41,6 @@ There are multiple ways to disable usage stats collection before starting a clus
 
 Currently there is no way to enable or disable collection for a running cluster; you have to stop and restart the cluster.
 
-
 How does it work?
 -----------------
 

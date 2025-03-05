@@ -6,31 +6,25 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import get_trainable_cls
 
-tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
-
-# Keep a set of all RLlib algos that support the RLModule API.
-# For these algos we need to disable the RLModule API in the config for the purpose of
-# this test. This test is made for the ModelV2 API which is not the same as RLModule.
-RLMODULE_SUPPORTED_ALGOS = {"APPO", "IMPALA", "PPO"}
 
 
 def export_test(
     alg_name,
     framework="tf",
     multi_agent=False,
-    tf_expected_to_work=True,
 ):
     cls = get_trainable_cls(alg_name)
     config = cls.get_default_config()
-    if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.experimental(_enable_new_api_stack=False)
+    config.api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
     config.checkpointing(export_native_model_files=True)
@@ -83,20 +77,6 @@ def export_test(
         assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
         assert results[1] == [torch.tensor(0)]  # dummy
 
-    # Only if keras model gets properly saved by the Policy's export_model() method.
-    # NOTE: This is not the case (yet) for TF Policies like SAC, which use ModelV2s
-    # that have more than one keras "base_model" properties in them. For example,
-    # SACTfModel contains `q_net` and `action_model`, both of which have their own
-    # `base_model`.
-    elif tf_expected_to_work:
-        model = tf.saved_model.load(os.path.join(export_dir, "model"))
-        assert model
-        results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
-        assert len(results) == 2
-        assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
-        # TODO (sven): Make non-RNN models NOT return states (empty list).
-        assert results[1].shape == (1, 1), results[1].shape  # dummy state-out
-
     shutil.rmtree(export_dir)
 
     print("Exporting policy (`default_policy`) model ", alg_name, export_dir)
@@ -124,20 +104,6 @@ def export_test(
         assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
         assert results[1] == [torch.tensor(0)]  # dummy
 
-    # Only if keras model gets properly saved by the Policy's export_model() method.
-    # NOTE: This is not the case (yet) for TF Policies like SAC, which use ModelV2s
-    # that have more than one keras "base_model" properties in them. For example,
-    # SACTfModel contains `q_net` and `action_model`, both of which have their own
-    # `base_model`.
-    elif tf_expected_to_work:
-        model = tf.saved_model.load(export_dir)
-        assert model
-        results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
-        assert len(results) == 2
-        assert results[0].shape in [(1, 2), (1, 3), (1, 256)], results[0].shape
-        # TODO (sven): Make non-RNN models NOT return states (empty list).
-        assert results[1].shape == (1, 1), results[1].shape  # dummy state-out
-
     if os.path.exists(export_dir):
         shutil.rmtree(export_dir)
         if multi_agent:
@@ -156,20 +122,13 @@ class TestExportCheckpointAndModel(unittest.TestCase):
         ray.shutdown()
 
     def test_export_appo(self):
-        for fw in framework_iterator():
-            export_test("APPO", fw)
+        export_test("APPO", "torch")
 
     def test_export_ppo(self):
-        for fw in framework_iterator():
-            export_test("PPO", fw)
+        export_test("PPO", "torch")
 
     def test_export_ppo_multi_agent(self):
-        for fw in framework_iterator():
-            export_test("PPO", fw, multi_agent=True)
-
-    def test_export_sac(self):
-        for fw in framework_iterator():
-            export_test("SAC", fw, tf_expected_to_work=False)
+        export_test("PPO", "torch", multi_agent=True)
 
 
 if __name__ == "__main__":

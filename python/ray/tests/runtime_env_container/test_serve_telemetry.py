@@ -4,25 +4,36 @@ import subprocess
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition, get_ray_default_worker_file_path
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
 from ray.serve._private.test_utils import (
     TelemetryStorage,
     check_ray_started,
+    check_ray_stopped,
 )
 
 parser = argparse.ArgumentParser(
     description="Example Python script taking command line arguments."
 )
+parser.add_argument(
+    "--use-image-uri-api",
+    action="store_true",
+    help="Whether to use the new `image_uri` API instead of the old `container` API.",
+)
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
-worker_pth = get_ray_default_worker_file_path()
 
 os.environ["RAY_USAGE_STATS_ENABLED"] = "1"
 os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000/telemetry"
 os.environ["RAY_USAGE_STATS_REPORT_INTERVAL_S"] = "1"
+
+
+if args.use_image_uri_api:
+    runtime_env = {"image_uri": args.image}
+else:
+    runtime_env = {"container": {"image": args.image}}
 
 
 def check_app(app_name: str, expected: str):
@@ -88,25 +99,30 @@ config["applications"].append(
     {
         "name": "app1",
         "import_path": "serve_application:app",
-        "runtime_env": {"container": {"image": args.image, "worker_path": worker_pth}},
+        "route_prefix": "/app1",
+        "runtime_env": runtime_env,
     },
 )
 client.deploy_apps(ServeDeploySchema.parse_obj(config))
 wait_for_condition(check_app, app_name="app1", expected="helloworldalice", timeout=300)
 wait_for_condition(check_telemetry_app)
 
-# Deploy with container runtime env set at application level
+deployment_runtime_env = dict(runtime_env)
+deployment_runtime_env["working_dir"] = None
+# Deploy with container runtime env set at deployment level
 config["applications"].append(
     {
         "name": "app2",
-        "import_path": "serve_application:app",
+        "import_path": "read_file:app",
+        "route_prefix": "/app2",
+        "runtime_env": {
+            "working_dir": "https://github.com/ray-project/test_dag/archive/4d2c9a59d9eabfd4c8a9e04a7aae44fc8f5b416f.zip"  # noqa
+        },
         "deployments": [
             {
                 "name": "Model",
                 "ray_actor_options": {
-                    "runtime_env": {
-                        "container": {"image": args.image, "worker_path": worker_pth}
-                    },
+                    "runtime_env": deployment_runtime_env,
                 },
             }
         ],
@@ -116,3 +132,7 @@ client.deploy_apps(ServeDeploySchema.parse_obj(config))
 wait_for_condition(check_app, app_name="app2", expected="helloworldalice", timeout=300)
 wait_for_condition(check_telemetry_deployment)
 print("Telemetry checks passed!")
+
+# Stop ray
+subprocess.check_output(["ray", "stop", "--force"])
+wait_for_condition(check_ray_stopped, timeout=15)

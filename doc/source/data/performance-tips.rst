@@ -18,24 +18,24 @@ If your transformation isn't vectorized, there's no performance benefit.
 Optimizing reads
 ----------------
 
-.. _read_parallelism:
+.. _read_output_blocks:
 
-Tuning read parallelism
-~~~~~~~~~~~~~~~~~~~~~~~
+Tuning output blocks for read
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, Ray Data automatically selects the read ``parallelism`` according to the following procedure:
+By default, Ray Data automatically selects the number of output blocks for read according to the following procedure:
 
-The ``parallelism`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of read tasks to create.
-Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``parallelism`` also determines the number of map tasks.
+- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
+- Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``override_num_blocks`` also determines the number of map tasks.
 
-Ray Data decides the default value for ``parallelism`` based on the following heuristics, applied in order:
+Ray Data decides the default value for number of output blocks based on the following heuristics, applied in order:
 
-1. Start with the default parallelism of 200. You can overwrite this by setting :class:`DataContext.min_parallelism <ray.data.context.DataContext>`.
-2. Min block size (default=1 MiB). If the parallelism would make blocks smaller than this threshold, reduce parallelism to avoid the overhead of tiny blocks. You can override by setting :class:`DataContext.target_min_block_size <ray.data.context.DataContext>` (bytes).
-3. Max block size (default=128 MiB). If the parallelism would make blocks larger than this threshold, increase parallelism to avoid out-of-memory errors during processing. You can override by setting :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` (bytes).
-4. Available CPUs. Increase parallelism to utilize all of the available CPUs in the cluster. Ray Data chooses the number of read tasks to be at least 2x the number of available CPUs.
+1. Start with the default value of 200. You can overwrite this by setting :class:`DataContext.read_op_min_num_blocks <ray.data.context.DataContext>`.
+2. Min block size (default=1 MiB). If number of blocks would make blocks smaller than this threshold, reduce number of blocks to avoid the overhead of tiny blocks. You can override by setting :class:`DataContext.target_min_block_size <ray.data.context.DataContext>` (bytes).
+3. Max block size (default=128 MiB). If number of blocks would make blocks larger than this threshold, increase number of blocks to avoid out-of-memory errors during processing. You can override by setting :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` (bytes).
+4. Available CPUs. Increase number of blocks to utilize all of the available CPUs in the cluster. Ray Data chooses the number of read tasks to be at least 2x the number of available CPUs.
 
-Occasionally, it's advantageous to manually tune the parallelism to optimize the application.
+Occasionally, it's advantageous to manually tune the number of blocks to optimize the application.
 For example, the following code batches multiple files into the same read task to avoid creating blocks that are too large.
 
 .. testcode::
@@ -57,7 +57,6 @@ For example, the following code batches multiple files into the same read task t
 .. testoutput::
     :options: +MOCK
 
-    2023-11-20 14:28:47,597 INFO plan.py:760 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
     MaterializedDataset(
        num_blocks=4,
        num_rows=2400,
@@ -65,9 +64,9 @@ For example, the following code batches multiple files into the same read task t
     )
 
 But suppose that you knew that you wanted to read all 16 files in parallel.
-This could be, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream stage to transform each file's contents in parallel.
-You can get this behavior by setting the ``parallelism`` parameter.
-Notice how the number of output blocks is equal to ``parallelism`` in the following code:
+This could be, for example, because you know that additional CPUs should get added to the cluster by the autoscaler or because you want the downstream operator to transform each file's contents in parallel.
+You can get this behavior by setting the ``override_num_blocks`` parameter.
+Notice how the number of output blocks is equal to ``override_num_blocks`` in the following code:
 
 .. testcode::
     :hide:
@@ -82,7 +81,7 @@ Notice how the number of output blocks is equal to ``parallelism`` in the follow
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_csv(["example://iris.csv"] * 16, parallelism=16)
+    ds = ray.data.read_csv(["example://iris.csv"] * 16, override_num_blocks=16)
     print(ds.materialize())
 
 .. testoutput::
@@ -95,10 +94,10 @@ Notice how the number of output blocks is equal to ``parallelism`` in the follow
     )
 
 
-When using the default auto-detected ``parallelism``, Ray Data attempts to cap each task's output to :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` many bytes.
+When using the default auto-detected number of blocks, Ray Data attempts to cap each task's output to :class:`DataContext.target_max_block_size <ray.data.context.DataContext>` many bytes.
 Note however that Ray Data can't perfectly predict the size of each task's output, so it's possible that each task produces one or more output blocks.
-Thus, the total blocks in the final :class:`~ray.data.Dataset` may differ from the specified ``parallelism``.
-Here's an example where we manually specify ``parallelism=1``, but the one task still produces multiple blocks in the materialized Dataset:
+Thus, the total blocks in the final :class:`~ray.data.Dataset` may differ from the specified ``override_num_blocks``.
+Here's an example where we manually specify ``override_num_blocks=1``, but the one task still produces multiple blocks in the materialized Dataset:
 
 .. testcode::
     :hide:
@@ -113,7 +112,7 @@ Here's an example where we manually specify ``parallelism=1``, but the one task 
     ray.init(num_cpus=2)
 
     # Generate ~400MB of data.
-    ds = ray.data.range_tensor(5_000, shape=(10_000, ), parallelism=1)
+    ds = ray.data.range_tensor(5_000, shape=(10_000, ), override_num_blocks=1)
     print(ds.materialize())
 
 .. testoutput::
@@ -127,8 +126,8 @@ Here's an example where we manually specify ``parallelism=1``, but the one task 
 
 
 Currently, Ray Data can assign at most one read task per input file.
-Thus, if the number of input files is smaller than ``parallelism``, the number of read tasks is capped to the number of input files.
-To ensure that downstream transforms can still execute with the desired parallelism, Ray Data splits the read tasks' outputs into a total of ``parallelism`` blocks and prevents fusion with the downstream transform.
+Thus, if the number of input files is smaller than ``override_num_blocks``, the number of read tasks is capped to the number of input files.
+To ensure that downstream transforms can still execute with the desired number of blocks, Ray Data splits the read tasks' outputs into a total of ``override_num_blocks`` blocks and prevents fusion with the downstream transform.
 In other words, each read task's output blocks are materialized to Ray's object store before the consuming map task executes.
 For example, the following code executes :func:`~ray.data.read_csv` with only one task, but its output is split into 4 blocks before executing the :func:`~ray.data.Dataset.map`:
 
@@ -150,17 +149,15 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
 .. testoutput::
     :options: +MOCK
 
-    2023-11-20 15:47:02,404 INFO split_read_output_blocks.py:101 -- Using autodetected parallelism=4 for stage ReadCSV to satisfy parallelism at least twice the available number of CPUs (2).
-    2023-11-20 15:47:02,405 INFO split_read_output_blocks.py:106 -- To satisfy the requested parallelism of 4, each read task output is split into 4 smaller blocks.
     ...
     Operator 1 ReadCSV->SplitBlocks(4): 1 tasks executed, 4 blocks produced in 0.01s
     ...
-    
+
     Operator 2 Map(<lambda>): 4 tasks executed, 4 blocks produced in 0.3s
     ...
 
-To turn off this behavior and allow the read and map stages to be fused, set ``parallelism`` manually.
-For example, this code sets ``parallelism`` to equal the number of files:
+To turn off this behavior and allow the read and map operators to be fused, set ``override_num_blocks`` manually.
+For example, this code sets the number of files equal to ``override_num_blocks``:
 
 .. testcode::
     :hide:
@@ -174,7 +171,7 @@ For example, this code sets ``parallelism`` to equal the number of files:
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.read_csv("example://iris.csv", parallelism=1).map(lambda row: row)
+    ds = ray.data.read_csv("example://iris.csv", override_num_blocks=1).map(lambda row: row)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -194,28 +191,29 @@ By default, Ray requests 1 CPU per read task, which means one read task per CPU 
 For datasources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
-Parquet column pruning
-~~~~~~~~~~~~~~~~~~~~~~
+.. _parquet_column_pruning:
 
-Current Dataset reads all Parquet columns into memory.
+Parquet column pruning (projection pushdown)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, :func:`ray.data.read_parquet` reads all columns in the Parquet files into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
-explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
-avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", columns=["sepal.length", "variety"])`` to read
-just two of the five columns of Iris dataset.
+explicitly when calling :func:`ray.data.read_parquet` to
+avoid loading unnecessary data (projection pushdown). Note that this is more efficient than
+calling :func:`~ray.data.Dataset.select_columns`, since column selection is pushed down to the file scan.
 
-.. _parquet_row_pruning:
+.. testcode::
 
-Parquet row pruning
-~~~~~~~~~~~~~~~~~~~
+    import ray
+    # Read just two of the five columns of the Iris dataset.
+    ray.data.read_parquet(
+        "s3://anonymous@ray-example-data/iris.parquet",
+        columns=["sepal.length", "variety"],
+    )
 
-Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
-which is applied at the file scan so only rows that match the filter predicate
-are returned.
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
-(where ``pyarrow`` has to be imported)
-to read rows with sepal.length greater than 5.0.
-This can be used in conjunction with column pruning when appropriate to get the benefits of both.
+.. testoutput::
+
+    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
 
 
 .. _data_memory:
@@ -244,7 +242,7 @@ To avoid these issues:
 
 1. Make sure no single item in your dataset is too large. Aim for rows that are <10 MB each.
 2. Always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with a batch size small enough such that the output batch can comfortably fit into heap memory. Or, if vectorized execution is not necessary, use :meth:`ds.map() <ray.data.Dataset.map>`.
-3. If neither of these is sufficient, manually increase the :ref:`read parallelism <read_parallelism>` or modify your application code to ensure that each task reads a smaller amount of data.
+3. If neither of these is sufficient, manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
 
 As an example of tuning batch size, the following code uses one task to load a 1 GB :class:`~ray.data.Dataset` with 1000 1 MB rows and applies an identity function using :func:`~ray.data.Dataset.map_batches`.
 Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 1024 rows, this code produces only one very large batch, causing the heap memory usage to increase to 4 GB.
@@ -262,7 +260,7 @@ Because the default ``batch_size`` for :func:`~ray.data.Dataset.map_batches` is 
     ray.init(num_cpus=2)
 
     # Force Ray Data to use one task to show the memory issue.
-    ds = ray.data.range_tensor(1000, shape=(125_000, ), parallelism=1)
+    ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
     # The default batch size is 1024 rows.
     ds = ds.map_batches(lambda batch: batch)
     print(ds.materialize().stats())
@@ -291,7 +289,7 @@ Setting a lower batch size produces lower peak heap memory usage:
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.range_tensor(1000, shape=(125_000, ), parallelism=1)
+    ds = ray.data.range_tensor(1000, shape=(125_000, ), override_num_blocks=1)
     ds = ds.map_batches(lambda batch: batch, batch_size=32)
     print(ds.materialize().stats())
 
@@ -331,15 +329,15 @@ There are some cases where spilling is expected. In particular, if the total Dat
 2. There is a call to :meth:`ds.materialize() <ray.data.Dataset.materialize>`.
 
 Otherwise, it's best to tune your application to avoid spilling.
-The recommended strategy is to manually increase the :ref:`read parallelism <read_parallelism>` or modify your application code to ensure that each task reads a smaller amount of data.
+The recommended strategy is to manually increase the :ref:`read output blocks <read_output_blocks>` or modify your application code to ensure that each task reads a smaller amount of data.
 
 .. note:: This is an active area of development. If your Dataset is causing spilling and you don't know why, `file a Ray Data issue on GitHub`_.
 
 Handling too-small blocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When different stages of your Dataset produce different-sized outputs, you may end up with very small blocks, which can hurt performance and even cause crashes from excessive metadata.
-Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each stage's output blocks are each at least 1 MB and ideally 100 MB.
+When different operators of your Dataset produce different-sized outputs, you may end up with very small blocks, which can hurt performance and even cause crashes from excessive metadata.
+Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are each at least 1 MB and ideally 100 MB.
 
 If your blocks are smaller than this, consider repartitioning into larger blocks.
 There are two ways to do this:
@@ -365,11 +363,11 @@ To illustrate these, the following code uses both strategies to coalesce the 10 
     ray.init(num_cpus=2)
 
     # 1. Use ds.repartition().
-    ds = ray.data.range(10, parallelism=10).repartition(1)
+    ds = ray.data.range(10, override_num_blocks=10).repartition(1)
     print(ds.materialize().stats())
 
     # 2. Use ds.map_batches().
-    ds = ray.data.range(10, parallelism=10).map_batches(lambda batch: batch, batch_size=10)
+    ds = ray.data.range(10, override_num_blocks=10).map_batches(lambda batch: batch, batch_size=10)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -395,136 +393,6 @@ To illustrate these, the following code uses both strategies to coalesce the 10 
     Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 1 blocks produced in 0s
     ...
     * Output num rows: 10 min, 10 max, 10 mean, 10 total
-
-
-.. _optimizing_shuffles:
-
-Optimizing shuffles
--------------------
-
-*Shuffle* operations are all-to-all operations where the entire Dataset must be materialized in memory before execution can proceed.
-Currently, these are:
-
-* :meth:`Dataset.groupby <ray.data.Dataset.groupby>`
-* :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`
-* :meth:`Dataset.repartition <ray.data.Dataset.repartition>`
-* :meth:`Dataset.sort <ray.data.Dataset.sort>`
-
-.. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle, `file a Ray Data issue on GitHub`_
-
-When should you use global per-epoch shuffling?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Use global per-epoch shuffling only if your model is sensitive to the
-randomness of the training data. Based on a
-`theoretical foundation <https://arxiv.org/abs/1709.10432>`__ all
-gradient-descent-based model trainers benefit from improved (global) shuffle quality.
-In practice, the benefit is particularly pronounced for tabular data/models.
-However, the more global the shuffle is, the more expensive the shuffling operation.
-The increase compounds with distributed data-parallel training on a multi-node cluster due
-to data transfer costs. This cost can be prohibitive when using very large datasets.
-
-The best route for determining the best tradeoff between preprocessing time and cost and
-per-epoch shuffle quality is to measure the precision gain per training step for your
-particular model under different shuffling policies:
-
-* no shuffling,
-* local (per-shard) limited-memory shuffle buffer,
-* local (per-shard) shuffling,
-* windowed (pseudo-global) shuffling, and
-* fully global shuffling.
-
-As long as your data loading and shuffling throughput is higher than your training throughput, your GPU should
-be saturated. If you have shuffle-sensitive models, push the
-shuffle quality higher until this threshold is hit.
-
-.. _shuffle_performance_tips:
-
-Enabling push-based shuffle
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
-These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
-:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
-Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size can't fit into memory.
-
-Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
-Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
-
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
-To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10 TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64 GB RAM).
-
-.. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
-   :align: center
-
-To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASED_SHUFFLE=1`` when running your application:
-
-.. code-block:: bash
-
-    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
-    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
-
-    # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
-    # [dataset]: Run `pip install tqdm` to enable progress reporting.
-    # 2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
-    # Finished in 9.571171760559082
-    # ...
-
-You can also specify the shuffle implementation during program execution by
-setting the ``DataContext.use_push_based_shuffle`` flag:
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.use_push_based_shuffle = True
-
-    ds = (
-        ray.data.range(1000)
-        .random_shuffle()
-    )
-
-Large-scale shuffles can take a while to finish.
-For debugging purposes, shuffle operations support executing only part of the shuffle, so that you can collect an execution profile more quickly.
-Here is an example that shows how to limit a random shuffle operation to two output blocks:
-
-.. testcode::
-    :hide:
-
-    import ray
-    ray.shutdown()
-
-.. testcode::
-
-    import ray
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.set_config(
-        "debug_limit_shuffle_execution_to_num_blocks", 2
-    )
-
-    ds = (
-        ray.data.range(1000, parallelism=10)
-        .random_shuffle()
-        .materialize()
-    )
-    print(ds.stats())
-
-.. testoutput::
-    :options: +MOCK
-
-    Stage 1 ReadRange->RandomShuffle: executed in 0.08s
-
-        Substage 0 ReadRange->RandomShuffleMap: 2/2 blocks executed
-        ...
-
 
 Configuring execution
 ---------------------

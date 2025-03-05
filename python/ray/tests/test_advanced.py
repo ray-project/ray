@@ -10,12 +10,16 @@ import pytest
 
 import ray._private.profiling as profiling
 import ray.cluster_utils
-from ray._private.internal_api import memory_summary
+from ray._private.internal_api import (
+    memory_summary,
+    get_local_ongoing_lineage_reconstruction_tasks,
+)
 from ray._private.test_utils import (
     client_test_enabled,
     wait_for_condition,
 )
 from ray.exceptions import ObjectFreedError
+from ray.core.generated import common_pb2
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -114,6 +118,91 @@ def test_internal_free_edge_case(shutdown_only):
     # object deletion events. Check that we at least hit the fetch timeout.
     with pytest.raises(ray.exceptions.ObjectFetchTimedOutError):
         ray.get(x)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
+    ray_start_cluster_enabled,
+):
+    cluster = ray_start_cluster_enabled
+    cluster.add_node(resources={"head": 2})
+    ray.init(address=cluster.address)
+    worker1 = cluster.add_node(resources={"worker": 2})
+
+    @ray.remote(num_cpus=0, resources={"head": 1})
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count = self.count + 1
+            return self.count
+
+    @ray.remote(
+        max_retries=-1, num_cpus=0, resources={"worker": 1}, _labels={"key1": "value1"}
+    )
+    def task(counter):
+        count = ray.get(counter.inc.remote())
+        if count > 1:
+            # lineage reconstruction
+            time.sleep(100000)
+        return [1] * 1024 * 1024
+
+    @ray.remote(
+        max_restarts=-1,
+        max_task_retries=-1,
+        num_cpus=0,
+        resources={"worker": 1},
+        _labels={"key2": "value2"},
+    )
+    class Actor:
+        def run(self, counter):
+            count = ray.get(counter.inc.remote())
+            if count > 1:
+                # lineage reconstruction
+                time.sleep(100000)
+            return [1] * 1024 * 1024
+
+    counter1 = Counter.remote()
+    obj1 = task.remote(counter1)
+    # Wait for task to finish
+    ray.wait([obj1], fetch_local=False)
+
+    counter2 = Counter.remote()
+    actor = Actor.remote()
+    obj2 = actor.run.remote(counter2)
+    # Wait for actor task to finish
+    ray.wait([obj2], fetch_local=False)
+
+    assert len(get_local_ongoing_lineage_reconstruction_tasks()) == 0
+
+    # Trigger lineage reconstruction of obj
+    cluster.remove_node(worker1)
+
+    def verify(expected_task_status):
+        lineage_reconstruction_tasks = get_local_ongoing_lineage_reconstruction_tasks()
+        lineage_reconstruction_tasks.sort(key=lambda task: task[0].name)
+        assert len(lineage_reconstruction_tasks) == 2
+        assert [
+            lineage_reconstruction_tasks[0][0].name,
+            lineage_reconstruction_tasks[1][0].name,
+        ] == ["Actor.run", "task"]
+        assert (
+            lineage_reconstruction_tasks[0][0].labels == {"key2": "value2"}
+            and lineage_reconstruction_tasks[0][0].status == expected_task_status
+            and lineage_reconstruction_tasks[0][1] == 1
+        )
+        assert (
+            lineage_reconstruction_tasks[1][0].labels == {"key1": "value1"}
+            and lineage_reconstruction_tasks[1][0].status == expected_task_status
+            and lineage_reconstruction_tasks[1][1] == 1
+        )
+
+        return True
+
+    wait_for_condition(lambda: verify(common_pb2.TaskStatus.PENDING_NODE_ASSIGNMENT))
+    cluster.add_node(resources={"worker": 2})
+    wait_for_condition(lambda: verify(common_pb2.TaskStatus.SUBMITTED_TO_WORKER))
 
 
 def test_multiple_waits_and_gets(shutdown_only):

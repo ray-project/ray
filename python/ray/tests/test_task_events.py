@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Dict
 
+import conda
 import os
 import pytest
 import sys
@@ -203,7 +204,8 @@ ray.get(x)
         verify_failed_task,
         name="node-killed",
         error_type="NODE_DIED",
-        error_message="Task failed due to the node dying",
+        error_message="Task failed due to the node (where this task was running) "
+        " was dead or unavailable",
     )
 
 
@@ -282,11 +284,17 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     ):
         ray.get(f.options(runtime_env=bad_env, name="task-runtime-env-failed").remote())
 
+    conda_major_version = int(conda.__version__.split(".")[0])
+    error_message = (
+        "PackagesNotFoundError"
+        if conda_major_version >= 24
+        else "ResolvePackageNotFound"
+    )
     wait_for_condition(
         verify_failed_task,
         name="task-runtime-env-failed",
         error_type="RUNTIME_ENV_SETUP_FAILED",
-        error_message="ResolvePackageNotFound",
+        error_message=error_message,
     )
 
 

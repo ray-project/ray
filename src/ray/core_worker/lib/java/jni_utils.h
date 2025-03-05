@@ -243,6 +243,8 @@ extern jclass java_gcs_client_options_class;
 extern jfieldID java_gcs_client_options_ip;
 /// port field of GcsClientOptions class
 extern jfieldID java_gcs_client_options_port;
+/// username field of GcsClientOptions class
+extern jfieldID java_gcs_client_options_username;
 /// password field of GcsClientOptions class
 extern jfieldID java_gcs_client_options_password;
 

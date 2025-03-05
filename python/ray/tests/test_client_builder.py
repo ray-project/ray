@@ -51,7 +51,7 @@ def test_client(address):
     if address in ("local", None):
         assert isinstance(builder, client_builder._LocalClientBuilder)
     else:
-        assert type(builder) == client_builder.ClientBuilder
+        assert type(builder) is client_builder.ClientBuilder
         assert builder.address == address.replace("ray://", "")
 
 
@@ -114,8 +114,6 @@ def test_connect_to_cluster(ray_start_regular_shared):
         assert client_context.python_version == python_version
         assert client_context.ray_version == ray.__version__
         assert client_context.ray_commit == ray.__commit__
-        protocol_version = ray.util.client.CURRENT_PROTOCOL_VERSION
-        assert client_context.protocol_version == protocol_version
 
     server.stop(0)
     subprocess.check_output("ray stop --force", shell=True)

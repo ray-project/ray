@@ -6,9 +6,9 @@ from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
 from ray.serve import metrics
-from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
+from ray.serve._private.common import MultiplexedReplicaInfo
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
+    MODEL_LOAD_LATENCY_BUCKETS_MS,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
@@ -58,15 +58,17 @@ class _ModelMultiplexWrapper:
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
 
+        # log MODEL_LOAD_LATENCY_BUCKET_MS
+        logger.debug(f"MODEL_LOAD_LATENCY_BUCKET_MS: {MODEL_LOAD_LATENCY_BUCKETS_MS}")
         self.model_load_latency_ms = metrics.Histogram(
             "serve_multiplexed_model_load_latency_ms",
             description="The time it takes to load a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
         )
         self.model_unload_latency_ms = metrics.Histogram(
             "serve_multiplexed_model_unload_latency_ms",
             description="The time it takes to unload a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
         )
         self.num_models_gauge = metrics.Gauge(
             "serve_num_multiplexed_models",
@@ -94,12 +96,13 @@ class _ModelMultiplexWrapper:
         context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
-                "Fail to retrieve serve replica context, the model multiplexer ",
-                "can only be used within `Deployment`.",
+                "`@serve.multiplex` can only be used within a deployment "
+                "(failed to retrieve Serve replica context)."
             )
+
         self._app_name: str = context.app_name
         self._deployment_name: str = context.deployment
-        self._replica_tag: str = context.replica_tag
+        self._replica_id: str = context.replica_id
 
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
@@ -140,8 +143,7 @@ class _ModelMultiplexWrapper:
             if self._push_multiplexed_replica_info:
                 _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
-                        DeploymentID(self._deployment_name, self._app_name),
-                        self._replica_tag,
+                        self._replica_id,
                         self._get_loading_and_loaded_model_ids(),
                     )
                 )
@@ -173,7 +175,7 @@ class _ModelMultiplexWrapper:
             The user-constructed model object.
         """
 
-        if type(model_id) != str:
+        if type(model_id) is not str:
             raise TypeError("The model ID must be a string.")
 
         if not model_id:
@@ -219,14 +221,13 @@ class _ModelMultiplexWrapper:
                         self.models[model_id] = await self._func(
                             self.self_arg, model_id
                         )
-                    loaded_time = time.time() - load_start_time
+                    load_latency_ms = (time.time() - load_start_time) * 1000.0
                     logger.info(
-                        f"Successfully loaded model '{model_id}' in {loaded_time}s."
+                        f"Successfully loaded model '{model_id}' in "
+                        f"{load_latency_ms:.1f}ms."
                     )
                     self._model_load_tasks.discard(model_id)
-                    self.model_load_latency_ms.observe(
-                        (time.time() - load_start_time) * 1000.0
-                    )
+                    self.model_load_latency_ms.observe(load_latency_ms)
                     return self.models[model_id]
                 except Exception as e:
                     logger.error(
@@ -250,8 +251,10 @@ class _ModelMultiplexWrapper:
                 await asyncio.get_running_loop().run_in_executor(None, model.__del__)
             else:
                 await model.__del__()
-            setattr(model, "__del__", lambda _: None)
-        unloaded_time = time.time() - unload_start_time
-        self.model_unload_latency_ms.observe(unloaded_time * 1000.0)
-        logger.info(f"Successfully unloaded model '{model_id}' in {unloaded_time}s.")
+            model.__del__ = lambda _: None
+        unload_latency_ms = (time.time() - unload_start_time) * 1000.0
+        self.model_unload_latency_ms.observe(unload_latency_ms)
+        logger.info(
+            f"Successfully unloaded model '{model_id}' in {unload_latency_ms:.1f}ms."
+        )
         self.registered_model_gauge.set(0, tags={"model_id": model_id})

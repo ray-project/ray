@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import traceback
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import pyarrow.fs
@@ -149,7 +150,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
         If no metadata is stored, an empty dict is returned.
         """
-        metadata_path = os.path.join(self.path, _METADATA_FILE_NAME)
+        metadata_path = Path(self.path, _METADATA_FILE_NAME).as_posix()
         if not _exists_at_fs_path(self.filesystem, metadata_path):
             return {}
 
@@ -161,7 +162,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
 
         This will overwrite any existing metadata stored with this checkpoint.
         """
-        metadata_path = os.path.join(self.path, _METADATA_FILE_NAME)
+        metadata_path = Path(self.path, _METADATA_FILE_NAME).as_posix()
         with self.filesystem.open_output_stream(metadata_path) as f:
             f.write(json.dumps(metadata).encode("utf-8"))
 
@@ -341,7 +342,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
                     "Couldn't create checkpoint directory due to length "
                     "constraints. Try specifying a shorter checkpoint path."
                 )
-        return os.path.join(tmp_dir_path, checkpoint_dir_name)
+        return Path(tmp_dir_path, checkpoint_dir_name).as_posix()
 
     def __fspath__(self):
         raise TypeError(

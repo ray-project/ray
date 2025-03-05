@@ -15,6 +15,9 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 #include <boost/algorithm/string.hpp>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
@@ -23,8 +26,8 @@
 namespace ray {
 
 ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
-    : timer_(io_service) {
-  timer_.RunFnPeriodically(
+    : timer_(PeriodicalRunner::Create(io_service)) {
+  timer_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(
             RayConfig::instance().ray_syncer_message_refresh_interval_ms());
@@ -59,8 +62,6 @@ void ClusterResourceManager::AddOrUpdateNode(
 
 void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
                                              const NodeResources &node_resources) {
-  RAY_LOG(DEBUG) << "Update node info, node_id: " << node_id.ToInt()
-                 << ", node_resources: " << node_resources.DebugString();
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
@@ -97,6 +98,8 @@ bool ClusterResourceManager::UpdateNode(
   local_view.last_resource_update_time = absl::Now();
 
   local_view.is_draining = resource_view_sync_message.is_draining();
+  local_view.draining_deadline_timestamp_ms =
+      resource_view_sync_message.draining_deadline_timestamp_ms();
 
   AddOrUpdateNode(node_id, local_view);
   received_node_resources_[node_id] = std::move(local_view);
@@ -198,7 +201,17 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
   return true;
 }
 
-bool ClusterResourceManager::HasSufficientResource(
+bool ClusterResourceManager::HasFeasibleResources(
+    scheduling::NodeID node_id, const ResourceRequest &resource_request) const {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  return it->second.GetLocalView().IsFeasible(resource_request);
+}
+
+bool ClusterResourceManager::HasAvailableResources(
     scheduling::NodeID node_id,
     const ResourceRequest &resource_request,
     bool ignore_object_store_memory_requirement) const {
@@ -207,14 +220,8 @@ bool ClusterResourceManager::HasSufficientResource(
     return false;
   }
 
-  const NodeResources &resources = it->second.GetLocalView();
-
-  if (!ignore_object_store_memory_requirement && resources.object_pulls_queued &&
-      resource_request.RequiresObjectStoreMemory()) {
-    return false;
-  }
-
-  return resources.available >= resource_request.GetResourceSet();
+  return it->second.GetLocalView().IsAvailable(resource_request,
+                                               ignore_object_store_memory_requirement);
 }
 
 bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,

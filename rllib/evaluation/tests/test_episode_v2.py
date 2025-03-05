@@ -4,7 +4,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.examples.env.mock_env import MockEnv3
+from ray.rllib.examples.envs.classes.mock_env import MockEnv3
 from ray.rllib.policy import Policy
 from ray.rllib.utils import override
 
@@ -31,7 +31,6 @@ class EchoPolicy(Policy):
 class EpisodeEnv(MultiAgentEnv):
     def __init__(self, episode_length, num):
         super().__init__()
-        self._skip_env_checking = True
         self.agents = [MockEnv3(episode_length) for _ in range(num)]
         self.terminateds = set()
         self.truncateds = set()
@@ -78,17 +77,14 @@ class TestEpisodeV2(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv3(NUM_STEPS),
             default_policy_class=EchoPolicy,
-            config=AlgorithmConfig().rollouts(
-                enable_connectors=True,
-                num_rollout_workers=0,
-            ),
+            config=AlgorithmConfig().env_runners(num_env_runners=0),
         )
-        sample_batch = ev.sample()
-        self.assertEqual(sample_batch.count, 200)
+        ma_batch = ev.sample()
+        self.assertEqual(ma_batch.count, 200)
         # EnvRunnerV2 always returns MultiAgentBatch, even for single-agent envs.
-        for agent_id, sample_batch in sample_batch.policy_batches.items():
+        for agent_id, sa_batch in ma_batch.policy_batches.items():
             # A batch of 100. 4 episodes, each 25.
-            self.assertEqual(len(set(sample_batch["eps_id"])), 8)
+            self.assertEqual(len(set(sa_batch["eps_id"])), 8)
 
     def test_multi_agent_env(self):
         temp_env = EpisodeEnv(NUM_STEPS, NUM_AGENTS)
@@ -102,7 +98,7 @@ class TestEpisodeV2(unittest.TestCase):
                     str(agent_id)
                 ),
             )
-            .rollouts(enable_connectors=True, num_rollout_workers=0),
+            .env_runners(num_env_runners=0),
         )
         sample_batches = ev.sample()
         self.assertEqual(len(sample_batches.policy_batches), 4)

@@ -7,6 +7,7 @@ import ray
 from pyspark.sql import SparkSession
 from ray.util.spark import setup_ray_cluster
 import ray.util.spark.databricks_hook
+from ray._private.test_utils import wait_for_condition
 
 
 pytestmark = pytest.mark.skipif(
@@ -56,18 +57,23 @@ class TestDatabricksHook:
             "ray.util.spark.databricks_hook.get_db_entry_point", lambda: db_api_entry
         )
         monkeypatch.setattr(
-            "ray.util.spark.databricks_hook.get_databricks_function",
-            lambda *args, **kwargs: None,
+            "ray.util.spark.databricks_hook.get_databricks_display_html_function",
+            lambda: lambda x: print(x),
         )
         try:
             setup_ray_cluster(
                 max_worker_nodes=2,
+                num_cpus_worker_node=1,
+                num_gpus_worker_node=0,
                 head_node_options={"include_dashboard": False},
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster
-            assert db_api_entry.registered_job_groups == [cluster.spark_job_group_id]
             assert not cluster.is_shutdown
-            time.sleep(35)
+            wait_for_condition(
+                lambda: cluster.is_shutdown,
+                timeout=45,
+                retry_interval_ms=10000,
+            )
             assert cluster.is_shutdown
             assert ray.util.spark.cluster_init._active_ray_cluster is None
         finally:

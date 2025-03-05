@@ -27,7 +27,7 @@ TEST(NodeInfoAccessorTest, TestHandleNotification) {
   node_info.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
   NodeID node_id = NodeID::FromRandom();
   node_info.set_node_id(node_id.Binary());
-  accessor.HandleNotification(node_info);
+  accessor.HandleNotification(std::move(node_info));
   ASSERT_EQ(accessor.Get(node_id, false)->node_id(), node_id.Binary());
 }
 

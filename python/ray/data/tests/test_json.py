@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 import shutil
@@ -10,6 +11,7 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.data import Schema
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -63,25 +65,25 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
-    # Two files, parallelism=2.
+    # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "test2.json")
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json([path1, path2], parallelism=2, filesystem=fs)
+    ds = ray.data.read_json([path1, path2], override_num_blocks=2, filesystem=fs)
     dsdf = ds.to_pandas()
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
-    # Three files, parallelism=2.
+    # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     path3 = os.path.join(data_path, "test3.json")
     df3.to_json(path3, orient="records", lines=True, storage_options=storage_options)
-    ds = ray.data.read_json([path1, path2, path3], parallelism=2, filesystem=fs)
+    ds = ray.data.read_json([path1, path2, path3], override_num_blocks=2, filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -186,7 +188,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
 
     ds = ray.data.read_json(path, filesystem=fs)
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -229,15 +231,15 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     assert ds.count() == 3
     assert ds.input_files() == [path1]
 
-    # Two files, parallelism=2.
+    # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(tmp_path, "test2.json.gz")
     df2.to_json(path2, compression="gzip", orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2], parallelism=2)
+    ds = ray.data.read_json([path1, path2], override_num_blocks=2)
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -307,7 +309,7 @@ def test_json_read_meta_provider(
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_json(
@@ -353,7 +355,7 @@ def test_json_read_with_read_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
 @pytest.mark.parametrize(
@@ -396,7 +398,7 @@ def test_json_read_with_parse_options(
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("two", pa.string())]))
 
 
 @pytest.mark.parametrize(
@@ -488,7 +490,7 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df1])
+    ds = ray.data.from_blocks([df1])
     ds._set_uuid("data")
     ds.write_json(data_path, filesystem=fs)
     file_path = os.path.join(data_path, "data_000000_000000.json")
@@ -500,7 +502,7 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 
     # Two blocks.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     ds._set_uuid("data")
     ds.write_json(data_path, filesystem=fs)
     file_path2 = os.path.join(data_path, "data_000001_000000.json")
@@ -544,7 +546,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -567,71 +569,12 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
                 new_file_path = old_file_path.replace(".json", ".jsonl")
                 os.rename(old_file_path, new_file_path)
         else:
-            ds2 = ray.data.read_json(data_path, parallelism=2, filesystem=fs)
+            ds2 = ray.data.read_json(data_path, override_num_blocks=2, filesystem=fs)
         ds2df = ds2.to_pandas()
         assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
         # Test metadata ops.
-        for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+        for block, meta in ds2._plan.execute().blocks:
             BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_json_write_block_path_provider(
-    ray_start_regular_shared,
-    fs,
-    data_path,
-    endpoint_url,
-    mock_block_write_path_provider,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    # Single block.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df1])
-    ds._set_uuid("data")
-    ds.write_json(
-        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    file_path = os.path.join(data_path, "000000_000000_data.test.json")
-    assert df1.equals(
-        pd.read_json(
-            file_path, orient="records", lines=True, storage_options=storage_options
-        )
-    )
-
-    # Two blocks.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    ds._set_uuid("data")
-    ds.write_json(
-        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    file_path2 = os.path.join(data_path, "000001_000000_data.test.json")
-    df = pd.concat([df1, df2])
-    ds_df = pd.concat(
-        [
-            pd.read_json(
-                file_path, orient="records", lines=True, storage_options=storage_options
-            ),
-            pd.read_json(
-                file_path2,
-                orient="records",
-                lines=True,
-                storage_options=storage_options,
-            ),
-        ]
-    )
-    assert df.equals(ds_df)
 
 
 @pytest.mark.parametrize(
@@ -660,7 +603,7 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Single large file, default block_size
     num_chars = 2500000
@@ -679,7 +622,9 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
     # Test metadata ops.
     assert ds.count() == num_rows
     assert ds.input_files() == [_unwrap_protocol(path2)]
-    assert "{one: string, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(
+        pa.schema([("one", pa.string()), ("two", pa.string())])
+    )
 
     # Single file, negative and zero block_size (expect failure)
     df3 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -698,6 +643,51 @@ def test_json_read_across_blocks(ray_start_regular_shared, fs, data_path, endpoi
             path3, filesystem=fs, read_options=pajson.ReadOptions(block_size=0)
         )
         dsdf = ds.to_pandas()
+
+
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+    ray.data.range(100, override_num_blocks=20).write_json(
+        tmp_path, min_rows_per_file=min_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        with open(os.path.join(tmp_path, filename), "r") as file:
+            num_rows_written = len(file.read().splitlines())
+            assert num_rows_written == min_rows_per_file
+
+
+def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
+    # Create a non-empty gzipped JSON file
+    non_empty_file_path = os.path.join(tmp_path, "non_empty.json.gz")
+    data = [{"col1": "value1", "col2": "value2", "col3": "value3"}]
+    with gzip.open(non_empty_file_path, "wt", encoding="utf-8") as f:
+        for record in data:
+            json.dump(record, f)
+            f.write("\n")
+
+    # Create an empty gzipped JSON file
+    empty_file_path = os.path.join(tmp_path, "empty.json.gz")
+    with gzip.open(empty_file_path, "wt", encoding="utf-8"):
+        pass  # Write nothing to create an empty file
+
+    # Attempt to read both files with Ray
+    ds = ray.data.read_json(
+        [non_empty_file_path, empty_file_path],
+        arrow_open_stream_args={"compression": "gzip"},
+    )
+
+    # The dataset should only contain data from the non-empty file
+    assert ds.count() == 1
+    # Iterate through each row in the dataset and compare with the expected data
+    for row in ds.iter_rows():
+        assert row == data[0], f"Row {row} does not match expected {data[0]}"
+
+    # Verify the data content using take
+    retrieved_data = ds.take(1)[0]
+    assert (
+        retrieved_data == data[0]
+    ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
 if __name__ == "__main__":

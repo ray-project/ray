@@ -1,6 +1,5 @@
 import json
 import logging
-from abc import ABC
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from zlib import crc32
@@ -79,8 +78,8 @@ class DeploymentVersion:
         changed.
         """
         return (
-            self.deployment_config.max_concurrent_queries
-            != new_version.deployment_config.max_concurrent_queries
+            self.deployment_config.max_ongoing_requests
+            != new_version.deployment_config.max_ongoing_requests
         )
 
     def compute_hashes(self):
@@ -176,6 +175,10 @@ class DeploymentVersion:
                 reconfigure_dict[option_name] = getattr(
                     self.deployment_config, option_name
                 )
+                # If autoscaling config was changed, only broadcast to
+                # replicas if metrics_interval_s or look_back_period_s
+                # was changed, because the rest of the fields are only
+                # used in deployment state manager
                 if isinstance(reconfigure_dict[option_name], AutoscalingConfig):
                     reconfigure_dict[option_name] = reconfigure_dict[option_name].dict(
                         include={"metrics_interval_s", "look_back_period_s"}
@@ -195,12 +198,3 @@ class DeploymentVersion:
 
 def _serialize(json_object):
     return str.encode(json.dumps(json_object, sort_keys=True))
-
-
-class VersionedReplica(ABC):
-    @property
-    def version(self) -> DeploymentVersion:
-        pass
-
-    def update_state(self, state):
-        pass

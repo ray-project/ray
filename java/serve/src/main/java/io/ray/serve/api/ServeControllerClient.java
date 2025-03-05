@@ -15,7 +15,6 @@ import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ApplicationStatus;
 import io.ray.serve.generated.DeploymentArgs;
-import io.ray.serve.generated.DeploymentRouteList;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.StatusOverview;
 import io.ray.serve.handle.DeploymentHandle;
@@ -23,8 +22,6 @@ import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -156,36 +153,6 @@ public class ServeControllerClient {
                 .get());
   }
 
-  /**
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   * @return
-   */
-  @Deprecated
-  public Map<String, DeploymentRoute> listDeployments() {
-    DeploymentRouteList deploymentRouteList =
-        ServeProtoUtil.bytesToProto(
-            (byte[])
-                ((PyActorHandle) controller)
-                    .task(PyActorMethod.of("list_deployments_v1"))
-                    .remote()
-                    .get(),
-            DeploymentRouteList::parseFrom);
-
-    if (deploymentRouteList == null || deploymentRouteList.getDeploymentRoutesList() == null) {
-      return Collections.emptyMap();
-    }
-
-    Map<String, DeploymentRoute> deploymentRoutes =
-        new HashMap<>(deploymentRouteList.getDeploymentRoutesList().size());
-    for (io.ray.serve.generated.DeploymentRoute deploymentRoute :
-        deploymentRouteList.getDeploymentRoutesList()) {
-      deploymentRoutes.put(
-          deploymentRoute.getDeploymentInfo().getName(),
-          DeploymentRoute.fromProto(deploymentRoute));
-    }
-    return deploymentRoutes;
-  }
-
   public BaseActorHandle getController() {
     return controller;
   }
@@ -193,11 +160,19 @@ public class ServeControllerClient {
   /**
    * Deployment an application with deployment list.
    *
-   * @param name application name
-   * @param deployments deployment list
+   * @param name application name.
+   * @param routePrefix route prefix for the application.
+   * @param deployments deployment list.
+   * @param ingressDeploymentName name of the ingress deployment (the one that is exposed over
+   *     HTTP).
    * @param blocking Wait for the applications to be deployed or not.
    */
-  public void deployApplication(String name, List<Deployment> deployments, boolean blocking) {
+  public void deployApplication(
+      String name,
+      String routePrefix,
+      List<Deployment> deployments,
+      String ingressDeploymentName,
+      boolean blocking) {
 
     Object[] deploymentArgsArray = new Object[deployments.size()];
 
@@ -211,8 +186,8 @@ public class ServeControllerClient {
                   ByteString.copyFrom(deployment.getDeploymentConfig().toProtoBytes()))
               .setIngress(deployment.isIngress())
               .setDeployerJobId(Ray.getRuntimeContext().getCurrentJobId().toString());
-      if (deployment.getRoutePrefix() != null) {
-        deploymentArgs.setRoutePrefix(deployment.getRoutePrefix());
+      if (deployment.getName() == ingressDeploymentName) {
+        deploymentArgs.setRoutePrefix(routePrefix);
       }
       deploymentArgsArray[i] = deploymentArgs.build().toByteArray();
     }
@@ -228,7 +203,6 @@ public class ServeControllerClient {
         logDeploymentReady(
             deployment.getName(),
             deployment.getVersion(),
-            deployment.getUrl(),
             "component=serve deployment=" + deployment.getName());
       }
     }
@@ -271,13 +245,11 @@ public class ServeControllerClient {
             "Application {} did not become RUNNING after {}s.", name, timeoutS));
   }
 
-  private void logDeploymentReady(String name, String version, String url, String tag) {
-    String urlPart = url != null ? MessageFormatter.format(" at `{}`", url) : "";
+  private void logDeploymentReady(String name, String version, String tag) {
     LOGGER.info(
-        "Deployment '{}{}' is ready {}. {}",
+        "Deployment '{}{}' is ready. {}",
         name,
         StringUtils.isNotBlank(version) ? "':'" + version : "",
-        urlPart,
         tag);
   }
 

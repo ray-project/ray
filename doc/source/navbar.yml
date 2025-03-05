@@ -3,7 +3,7 @@
 - file: ray-overview/use-cases
   title: "Use Cases"
 - file: ray-overview/examples
-  title: "Example gallery"
+  title: "Example Gallery"
 - file: ray-overview/installation
   title: "Library"
   sections:

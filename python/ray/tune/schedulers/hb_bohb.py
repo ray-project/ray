@@ -1,9 +1,9 @@
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
-from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.experiment import Trial
+from ray.tune.schedulers.hyperband import HyperBandScheduler
+from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
