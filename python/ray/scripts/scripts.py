@@ -447,16 +447,6 @@ def debug(address: str, verbose: bool):
     "but can be set higher.",
 )
 @click.option(
-    "--redis-max-memory",
-    required=False,
-    hidden=True,
-    type=int,
-    help="The max amount of memory (in bytes) to allow redis to use. Once the "
-    "limit is exceeded, redis will start LRU eviction of entries. This only "
-    "applies to the sharded redis tables (task, object, and profile tables). "
-    "By default this is capped at 10GB but can be set higher.",
-)
-@click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
 )
 @click.option(
