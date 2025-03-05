@@ -14,6 +14,10 @@
 
 #include "ray/object_manager/chunk_object_reader.h"
 
+#include <algorithm>
+#include <utility>
+#include <string>
+
 #include "ray/util/logging.h"
 
 namespace ray {

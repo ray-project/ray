@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
@@ -30,7 +31,7 @@ namespace ray {
 
 /// Connection information for remote object managers.
 struct RemoteConnectionInfo {
-  RemoteConnectionInfo(const NodeID &id) : node_id(id) {}
+  explicit RemoteConnectionInfo(const NodeID &id) : node_id(id) {}
 
   // Returns whether there is enough information to connect to the remote
   // object manager.

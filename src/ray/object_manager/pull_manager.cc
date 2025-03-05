@@ -14,6 +14,12 @@
 
 #include "ray/object_manager/pull_manager.h"
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+#include <unordered_set>
+#include <string>
+
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
 

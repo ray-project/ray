@@ -20,6 +20,8 @@
 #include <list>
 #include <memory>
 #include <vector>
+#include <utility>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
