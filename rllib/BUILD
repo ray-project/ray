@@ -299,6 +299,16 @@ py_test(
     srcs = ["tuned_examples/appo/pendulum_appo.py"],
     args = ["--as-test", "--num-cpus=6", "--num-env-runners=4"]
 )
+# MultiAgentPong (multi-GPU smoke test)
+py_test(
+    name = "learning_tests_multi_agent_pong_appo_multi_gpu",
+    main = "tuned_examples/appo/multi_agent_pong_appo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only", "multi_gpu"],
+    size = "large",
+    srcs = ["tuned_examples/appo/multi_agent_pong_appo.py"],
+    args = ["--stop-iters=3", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1", "--num-aggregator-actors-per-learner=1"]
+)
+
 
 #@OldAPIStack
 py_test(
@@ -2288,16 +2298,16 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/custom_evaluation_parallel_to_training",
+    name = "examples/evaluation/custom_evaluation_parallel_to_training_10_episodes",
     main = "examples/evaluation/custom_evaluation.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/custom_evaluation.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=0.75", "--evaluation-parallel-to-training", "--num-cpus=5"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=0.75", "--evaluation-parallel-to-training", "--num-cpus=5", "--evaluation-duration=10", "--evaluation-duration-unit=episodes"]
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2306,7 +2316,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_duration_auto_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_duration_auto",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
     size = "large",
@@ -2333,7 +2343,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2342,7 +2352,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_10_episodes_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_10_episodes",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2352,17 +2362,17 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch_old_api_stack",
+    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--evaluation-parallel-to-training", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
+    args = ["--as-test", "--evaluation-parallel-to-training", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto", "--evaluation-duration-unit=timesteps"]
 )
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_torch_old_api_stack",
+    name = "examples/evaluation/evaluation_parallel_to_training_211_ts_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",

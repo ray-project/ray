@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import uuid
 import time
 import timeit
 import traceback
@@ -21,7 +22,6 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import uuid
 from dataclasses import dataclass
 
 import requests
@@ -194,7 +194,6 @@ def start_redis_instance(
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     password: Optional[str] = None,
-    redis_max_memory: Optional[int] = None,
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
@@ -225,9 +224,6 @@ def start_redis_instance(
             no redirection should happen, then this should be None.
         password: Prevents external clients without the password
             from connecting to Redis if provided.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries.
         port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
         listen_to_localhost_only: Redis server only listens to
@@ -2166,9 +2162,10 @@ def safe_write_to_results_json(
     if the job gets interrupted in the middle of writing.
     """
     test_output_json = os.environ.get(env_var, default_file_name)
-    test_output_json_tmp = test_output_json + ".tmp"
+    test_output_json_tmp = f"{test_output_json}.tmp.{str(uuid.uuid4())}"
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
+        f.flush()
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))

@@ -135,7 +135,17 @@ with 4 workers, and use it to run the new training function.
 :end-before: __torch_trainer_end__
 :dedent: 4
 ```
+
+To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
+
+<div class="anyscale-cta">
+    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-torch">
+        <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
+    </a>
+</div>
+
 ````
+
 
 ````{tab-item} TensorFlow
 
@@ -197,6 +207,14 @@ with 4 workers, and use it to run the new training function.
 :end-before: __tf_trainer_end__
 :dedent: 0
 ```
+
+To accelerate the training job using GPU, make sure you have GPU configured, then set `use_gpu` to `True`. If you don't have a GPU environment, Anyscale provides a development workspace integrated with an autoscaling GPU cluster for this purpose.
+
+<div class="anyscale-cta">
+    <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-train-tf">
+        <img src="../_static/img/try-ray-on-anyscale.svg" alt="Try Ray on Anyscale">
+    </a>
+</div>
 
 ```{button-ref}  ../train/train
 :color: primary
@@ -319,7 +337,7 @@ Learn more about Ray RLlib
 ## Ray Core Quickstart
 
 <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro">
-    <img src="../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
+    <img src="../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
 </a>
 <br></br>
 
@@ -387,7 +405,7 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
         // Invoke the `square` method 4 times remotely as Ray tasks.
@@ -493,7 +511,7 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ActorHandle<Counter>> counters = new ArrayList<>();
         // Create 4 actors from the `Counter` class.
@@ -600,6 +618,21 @@ Ray programs can run on a single node Kubernetes cluster, or seamlessly scale to
 :expand:
 
 Learn more about launching Ray Clusters on Kubernetes
+```
+
+`````
+
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Anyscale 
+:animate: fade-in-slide-down
+
+Anyscale is the company behind Ray. The Anyscale platform provides an enterprise-grade Ray deployment on top of your AWS, GCP, Azure, or on-prem Kubernetes clusters.
+
+```{button-link} https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-doc-upsell&utm_content=get-started-launch-ray-cluster
+:color: primary
+:outline:
+:expand:
+
+Try Ray on Anyscale
 ```
 
 `````

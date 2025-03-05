@@ -40,7 +40,7 @@ py_test(
 )
 py_test(
     name = "test_data_parallel_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
@@ -132,6 +132,15 @@ py_test(
     name = "test_state",
     size = "small",
     srcs = ["tests/test_state.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
+    name = "test_state_export",
+    size = "small",
+    srcs = ["tests/test_state_export.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},

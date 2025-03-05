@@ -15,14 +15,21 @@
 #include "ray/object_manager/plasma/object_store.h"
 
 #include <limits>
+#include <string>
+#include <utility>
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-using namespace ray;
-using namespace testing;
+using ray::NodeID;
+using ray::ObjectID;
+using ray::ObjectInfo;
+using ray::WorkerID;
+using testing::_;
+using testing::Invoke;
+using testing::Test;
 
 namespace plasma {
 namespace {

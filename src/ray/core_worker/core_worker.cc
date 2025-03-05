@@ -422,6 +422,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         task_execution_service_,
         *task_event_buffer_,
         execute_task,
+        options_.initialize_thread_callback,
         [this] { return local_raylet_client_->ActorCreationTaskDone(); });
   }
 
@@ -964,9 +965,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       "CoreWorker.RecordMetrics");
 
   periodical_runner_->RunFnPeriodically(
-      [this] { TryDeleteObjectRefStreams(); },
+      [this] { TryDelPendingObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
-      "CoreWorker.GCStreamingGeneratorMetadata");
+      "CoreWorker.TryDelPendingObjectRefStreams");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -1171,8 +1172,7 @@ void CoreWorker::Exit(
     exiting_detail_ = std::optional<std::string>{detail};
   }
   // Release the resources early in case draining takes a long time.
-  auto status =
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << "Failed to notify Raylet. It is either the raylet is already dead or the "
@@ -2061,16 +2061,15 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   int64_t start_time = current_time_ms();
-  std::pair<absl::flat_hash_set<ObjectID>, absl::flat_hash_set<ObjectID>>
-      ready_and_plasma_object_ids;
-  RAY_ASSIGN_OR_RETURN(
-      ready_and_plasma_object_ids,
-      memory_store_->Wait(
-          memory_object_ids,
-          std::min(static_cast<int>(memory_object_ids.size()), num_objects),
-          timeout_ms,
-          worker_context_));
-  auto &[ready, plasma_object_ids] = ready_and_plasma_object_ids;
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+  ready.reserve(num_objects);
+  RAY_RETURN_NOT_OK(memory_store_->Wait(
+      memory_object_ids,
+      std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+      timeout_ms,
+      worker_context_,
+      &ready,
+      &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =
@@ -3472,21 +3471,28 @@ void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
   if (task_manager_->TryDelObjectRefStream(generator_id)) {
     return;
   }
-  deleted_generator_ids_.insert(generator_id);
+
+  {
+    // TryDelObjectRefStream is thread safe so no need to hold the lock above.
+    absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
+    generator_ids_pending_deletion_.insert(generator_id);
+  }
 }
 
-void CoreWorker::TryDeleteObjectRefStreams() {
-  std::vector<ObjectID> out_of_scope_generator_ids;
-  for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
-       it++) {
-    const auto &generator_id = *it;
+void CoreWorker::TryDelPendingObjectRefStreams() {
+  absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
+
+  std::vector<ObjectID> deleted;
+  for (const auto &generator_id : generator_ids_pending_deletion_) {
+    RAY_LOG(DEBUG).WithField(generator_id)
+        << "TryDelObjectRefStream from generator_ids_pending_deletion_";
     if (task_manager_->TryDelObjectRefStream(generator_id)) {
-      out_of_scope_generator_ids.push_back(generator_id);
+      deleted.push_back(generator_id);
     }
   }
 
-  for (const auto &generator_id : out_of_scope_generator_ids) {
-    deleted_generator_ids_.erase(generator_id);
+  for (const auto &generator_id : deleted) {
+    generator_ids_pending_deletion_.erase(generator_id);
   }
 }
 

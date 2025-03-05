@@ -48,8 +48,8 @@ class FeatureHasher(Preprocessor):
         :class:`FeatureHasher` hashes each token to determine its index. For example,
         the index of ``"I"`` is :math:`hash(\\texttt{"I"}) \pmod 8 = 5`.
 
-        >>> hasher = FeatureHasher(columns=["I", "like", "dislike", "Python"], num_features=8)
-        >>> hasher.fit_transform(ds).to_pandas().to_numpy()  # doctest: +SKIP
+        >>> hasher = FeatureHasher(columns=["I", "like", "dislike", "Python"], num_features=8, output_column = "hashed")
+        >>> hasher.fit_transform(ds)["hashed"].to_pandas().to_numpy()  # doctest: +SKIP
         array([[0, 0, 0, 2, 0, 1, 0, 0],
                [0, 0, 0, 1, 0, 1, 1, 0]])
 
@@ -63,6 +63,7 @@ class FeatureHasher(Preprocessor):
         num_features: The number of features used to represent the vocabulary. You
             should choose a value large enough to prevent hash collisions between
             distinct tokens.
+        output_column: The name of the column that contains the hashed features.
 
     .. seealso::
         :class:`~ray.data.preprocessors.CountVectorizer`
@@ -75,11 +76,17 @@ class FeatureHasher(Preprocessor):
 
     _is_fittable = False
 
-    def __init__(self, columns: List[str], num_features: int):
+    def __init__(
+        self,
+        columns: List[str],
+        num_features: int,
+        output_column: str,
+    ):
         self.columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
         self.num_features = num_features
+        self.output_column = output_column
 
     def _transform_pandas(self, df: pd.DataFrame):
         # TODO(matt): Use sparse matrix for efficiency.
@@ -93,14 +100,19 @@ class FeatureHasher(Preprocessor):
         feature_columns = df.loc[:, self.columns].apply(
             row_feature_hasher, axis=1, result_type="expand"
         )
-        df = df.join(feature_columns)
 
-        # Drop original unhashed columns.
-        df.drop(columns=self.columns, inplace=True)
+        # Concatenate the hash columns
+        hash_columns = [f"hash_{i}" for i in range(self.num_features)]
+        concatenated = feature_columns[hash_columns].to_numpy()
+        # Use a Pandas Series for column assignment to get more consistent
+        # behavior across Pandas versions.
+        df.loc[:, self.output_column] = pd.Series(list(concatenated))
+
         return df
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"num_features={self.num_features!r})"
+            f"num_features={self.num_features!r}, "
+            f"output_column={self.output_column!r})"
         )
