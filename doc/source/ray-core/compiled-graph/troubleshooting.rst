@@ -10,7 +10,7 @@ you could possibly run into issues if a NumPy array output from a previous Compi
 of a following execution of the same Compiled Graph. This is because the NumPy array stays in the buffer of the Compiled Graph until you or Python delete it. 
 It's recommended to explicitly delete the NumPy array as Python may not always garbage collect the NumPy array immediately as you may expect.
 
-For example, the following code sample could result in a RayChannelTimeoutError because Compiled Graph execution could hang if the NumPy array isn't deleted:
+For example, the following code sample could result in a hang or RayChannelTimeoutError if the NumPy array isn't deleted:
 
 .. literalinclude:: ../doc_code/cgraph_troubleshooting.py
     :language: python
