@@ -26,7 +26,7 @@ Explicitly teardown before reusing the same actors
 If you want to reuse the actors of a Compiled Graph, it's important to explicitly teardown the Compiled Graph before reusing the actors. 
 Without explicitly tearing down the Compiled Graph, the resources created for actors in a Compiled Graph may have conflicts with further usage of those actors.
 
-For example, in the following code, Python could delay garbage collection which triggers the implicit teardown of the first Compiled Graph. This could lead to a segfault due to the resource conflicts mentioned:
+For example, in the following code, Python could delay garbage collection, which triggers the implicit teardown of the first Compiled Graph. This could lead to a segfault due to the resource conflicts mentioned:
 
 .. literalinclude:: ../doc_code/cgraph_troubleshooting.py
     :language: python
