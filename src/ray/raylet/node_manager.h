@@ -705,7 +705,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that sent the message.
   /// \param graceful Indicates if this was a graceful disconnect initiated by the
-  ///        worker or a non-graceful disconnect initiated by the raylet. One graceful
+  ///        worker or a non-graceful disconnect initiated by the raylet. On graceful
   ///        disconnect, a DisconnectClientReply will be sent to the worker prior to
   ///        closing the connection.
   /// \param disconnect_type The reason to disconnect the specified client.
