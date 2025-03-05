@@ -416,11 +416,11 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
     const std::vector<std::string> &message_type_enum_names,
     int64_t error_message_type) {
   return std::make_shared<ClientConnection>(PrivateTag{},
-                                                 message_handler,
-                                                 std::move(socket),
-                                                 debug_label,
-                                                 message_type_enum_names,
-                                                 error_message_type);
+                                            message_handler,
+                                            std::move(socket),
+                                            debug_label,
+                                            message_type_enum_names,
+                                            error_message_type);
 }
 
 ClientConnection::ClientConnection(
