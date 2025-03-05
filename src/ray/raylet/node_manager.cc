@@ -1196,8 +1196,8 @@ void NodeManager::HandleClientConnectionError(
       "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
       "unexpected errors.");
 
+  // Disconnect the client and don't process more messages.
   DisconnectClient(client, ray::rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
-  return;
 }
 
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
