@@ -566,11 +566,14 @@ def setup(app):
         def filter(self, record):
             # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
             # once in Ray Core API and once in Compiled Graph API
-            if "duplicate object description of ray.actor.ActorMethod.bind" in record.getMessage():
+            if (
+                "duplicate object description of ray.actor.ActorMethod.bind"
+                in record.getMessage()
+            ):
                 return False  # Don't log this specific warning
             return True  # Log all other warnings
-    
-    logging.getLogger('sphinx').addFilter(DuplicateObjectFilter())
+
+    logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
 
 
 redoc = [
