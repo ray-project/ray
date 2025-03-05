@@ -41,7 +41,7 @@ Then, write a builder function that constructs the Gradio app `io`.
 ```
 
 ### Deploying Gradio Server
-In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests.
+To deploy your Gradio app onto Ray Serve, you need to wrap the Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests.
 
 By wrapping your application in `GradioServer`, you can increase the number of CPUs and/or GPUs available to the application.
 :::{note}
