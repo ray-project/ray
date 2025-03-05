@@ -50,7 +50,8 @@ static const std::vector<std::string> object_store_message_enum =
                       static_cast<int>(MessageType::MAX));
 }  // namespace
 
-Client::Client(const ray::MessageHandler &message_handler,
+Client::Client(PrivateTag,
+               const ray::MessageHandler &message_handler,
                const ray::ConnectionErrorHandler &connection_error_handler,
                ray::local_stream_socket &&socket)
     : ray::ClientConnection(message_handler,
@@ -89,10 +90,9 @@ std::shared_ptr<Client> Client::Create(
             error);
       };
 
-  // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot invoke
-  // private constructors.
-  std::shared_ptr<Client> self(
-      new Client(ray_message_handler, ray_connection_error_handler, std::move(socket)));
+  auto self =
+      std::make_shared<Client>(PrivateTag{}, ray_message_handler, std::move(socket));
+
   // Let our manager process our new connection.
   self->ProcessMessages();
   return self;

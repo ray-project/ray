@@ -33,11 +33,23 @@ class ClientInterface {
 
 /// Contains all information that is associated with a Plasma store client.
 class Client : public ray::ClientConnection, public ClientInterface {
+ private:
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
+
  public:
+  Client(PrivateTag,
+         const PlasmaStoreMessageHandler &message_handler,
+         const PlasmaStoreConnectionErrorHandler &connection_error_handler,
+         ray::local_stream_socket &&socket);
+
   static std::shared_ptr<Client> Create(
       const PlasmaStoreMessageHandler &message_handler,
       const PlasmaStoreConnectionErrorHandler &connection_error_handler,
       ray::local_stream_socket &&socket);
+
+  static std::shared_ptr<Client> Create(PlasmaStoreMessageHandler message_handler,
+                                        ray::local_stream_socket &&socket);
 
   ray::Status SendFd(MEMFD_TYPE fd) override;
 
@@ -112,9 +124,6 @@ class Client : public ray::ClientConnection, public ClientInterface {
   std::string name = "anonymous_client";
 
  private:
-  Client(const ray::MessageHandler &message_handler,
-         const ray::ConnectionErrorHandler &connection_error_handler,
-         ray::local_stream_socket &&socket);
   /// File descriptors that are used by this client.
   /// TODO(ekl) we should also clean up old fds that are removed.
   absl::flat_hash_set<MEMFD_TYPE> used_fds_;
