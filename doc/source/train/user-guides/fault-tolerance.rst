@@ -137,8 +137,22 @@ Here's an example training script that highlights best practices regarding job d
     :end-before: __job_driver_fault_tolerance_end__
 
 
+Then, the entrypoint script can be launched with the following command:
+
+.. code-block:: bash
+
+    python entrypoint.py --storage_path s3://my_bucket/ --run_name unique_run_name-id=da823d5
+
+
+If the job is interrupted, the same command can be used to resume training.
+The ``da823d5`` id in this example should be determined by the one launching the job, which can often be used for other purposes such as setting the ``wandb`` or ``mlflow`` run id.
+
+
 Illustrated Example
 ~~~~~~~~~~~~~~~~~~~
+
+Consider the following example of a cluster containing a CPU head node and 2 GPU worker nodes. There are 4 GPU training workers running on the 2 worker nodes. The storage path has been configured to use cloud storage, which is where checkpoints are saved.
+
 
 .. figure:: ../images/fault_tolerance/head_node_failure.png
     :align: left
@@ -164,4 +178,3 @@ Illustrated Example
     The Ray Train driver process runs on a new head node.
     Ray Train fetches the run state information from storage at ``{storage_path}/{name}`` (e.g., ``s3://my_bucket/my_run_name``)
     and passes the latest checkpoint to the newly launched worker processes to resume training.
-
