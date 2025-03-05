@@ -9,8 +9,11 @@ Ray Train provides fault tolerance at three levels:
 
 1. **Worker process fault tolerance** handles errors that happen to one or more Train worker processes while they are executing the user defined training function.
 2. **Worker node fault tolerance** handles node failures that may occur during training.
-3. **Cluster fault tolerance** handles the case where the entire Ray cluster crashes, and training needs to be kicked off again.
+3. **Job driver fault tolerance** handles the case where Ray Train driver process crashes, and training needs to be kicked off again, possibly from a new cluster.
 
+This user guide covers how to configure and use these fault tolerance mechanisms.
+
+.. _train-worker-fault-tolerance:
 
 Worker Process and Node Fault Tolerance
 ---------------------------------------
@@ -98,97 +101,33 @@ The :ref:`storage path has been configured <persistent-storage-guide>` to use cl
 .. _train-restore-guide:
 .. _train-cluster-fault-tolerance:
 
-Restore a Ray Train Experiment
-------------------------------
 
-At the experiment level, Trainer restoration
-allows you to resume a previously interrupted experiment from where it left off.
+Job Driver Fault Tolerance
+--------------------------
 
-A Train experiment may be interrupted due to one of the following reasons:
+Job driver fault tolerance is to handle cases where the Ray Train driver process is interrupted.
+The Ray Train driver process is the process that calls ``trainer.fit()`` and is usually located on the head node of the cluster.
 
-- The experiment was manually interrupted (e.g., Ctrl+C, or pre-empted head node instance).
-- The head node crashed (e.g., OOM or some other runtime error).
-- The entire cluster went down (e.g., network error affecting all nodes).
+The driver process may be interrupted due to one of the following reasons:
 
-Trainer restoration is possible for all of Ray Train's built-in trainers,
-but we use ``TorchTrainer`` in the examples for demonstration.
-We also use ``<Framework>Trainer`` to refer to methods that are shared across all
-built-in trainers.
+- The run is manually interrupted by a user (e.g., Ctrl+C).
+- The node where the driver process is running (head node) crashes (e.g., out of memory, out of disk).
+- The entire cluster goes down (e.g., network error affecting all nodes).
 
-Let's say your initial Train experiment is configured as follows.
-The actual training loop is just for demonstration purposes: the important detail is that
-:ref:`saving <train-dl-saving-checkpoints>` *and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`
-has been implemented.
+In these cases, the Ray Train driver (which calls ``trainer.fit()``) needs to be launched again.
+The relaunched Ray Train driver needs to find a minimal amount of run state in order to pick up where the previous run left off.
+This state includes the latest reported checkpoints, which are located at the :ref:`storage path <persistent-storage-guide>`.
+Ray Train fetches the latest checkpoint information from storage and passes it to the newly launched worker processes to resume training.
 
-.. literalinclude:: ../doc_code/dl_guide.py
-    :language: python
-    :start-after: __ft_initial_run_start__
-    :end-before: __ft_initial_run_end__
+To find this run state, Ray Train relies on passing in the **same** :ref:`RunConfig(storage_path, name) <ray.train.RunConfig>` pair as the previous run.
+If the ``storage_path`` or ``name`` do not match, Ray Train will not be able to find the previous run state and will start a new run from scratch.
 
-The results and checkpoints of the experiment are saved to the path configured by :class:`~ray.train.RunConfig`.
-If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
-
-.. literalinclude:: ../doc_code/dl_guide.py
-    :language: python
-    :start-after: __ft_restored_run_start__
-    :end-before: __ft_restored_run_end__
-
-.. tip::
-
-    You can also restore from a remote path (e.g., from an experiment directory stored in a s3 bucket).
-
-    .. literalinclude:: ../doc_code/dl_guide.py
-        :language: python
-        :dedent:
-        :start-after: __ft_restore_from_cloud_initial_start__
-        :end-before: __ft_restore_from_cloud_initial_end__
-
-    .. literalinclude:: ../doc_code/dl_guide.py
-        :language: python
-        :dedent:
-        :start-after: __ft_restore_from_cloud_restored_start__
-        :end-before: __ft_restore_from_cloud_restored_end__
+.. warning::
+    If ``name`` is reused unintentionally, Ray Train will fetch the previous run state, even if the user is trying to start a new run.
+    Therefore, always pass a unique run name when launching a new run. In other words, ``name`` should be a unique identifier for a training job
 
 .. note::
-
-    Different trainers may allow more parameters to be optionally re-specified on restore.
-    Only **datasets** are required to be re-specified on restore, if they were supplied originally.
-
-    `TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
-    can take in the same parameters as their parent class's
-    :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
-
-    Unless otherwise specified, other trainers will accept the same parameters as
-    :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
-
-
-Auto-resume
-~~~~~~~~~~~
-
-Adding the branching logic below will allow you to run the same script after the interrupt,
-picking up training from where you left on the previous run. Notice that we use the
-:meth:`<Framework>Trainer.can_restore <ray.train.trainer.BaseTrainer.can_restore>` utility method
-to determine the existence and validity of the given experiment directory.
-
-.. literalinclude:: ../doc_code/dl_guide.py
-    :language: python
-    :start-after: __ft_autoresume_start__
-    :end-before: __ft_autoresume_end__
-
-.. seealso::
-
-    See the :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>` docstring
-    for a full example.
-
-.. note::
-
-    `<Framework>Trainer.restore` is different from
-    :class:`<Framework>Trainer(..., resume_from_checkpoint=...) <ray.train.trainer.BaseTrainer>`.
-    `resume_from_checkpoint` is meant to be used to start a *new* Train experiment,
-    which writes results to a new directory and starts over from iteration 0.
-
-    `<Framework>Trainer.restore` is used to continue an existing experiment, where
-    new results will continue to be appended to existing logs.
+    Job driver crashes and interrupts do NOT count toward the ``max_failures`` limit of :ref:`worker fault tolerance <train-worker-fault-tolerance>`.
 
 
 Illustrated Example
