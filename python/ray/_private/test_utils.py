@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import uuid
 import time
 import timeit
 import traceback
@@ -21,7 +22,6 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import uuid
 from dataclasses import dataclass
 
 import requests
@@ -194,7 +194,6 @@ def start_redis_instance(
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     password: Optional[str] = None,
-    redis_max_memory: Optional[int] = None,
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
@@ -225,9 +224,6 @@ def start_redis_instance(
             no redirection should happen, then this should be None.
         password: Prevents external clients without the password
             from connecting to Redis if provided.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries.
         port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
         listen_to_localhost_only: Redis server only listens to
@@ -1521,11 +1517,13 @@ class ResourceKillerActor:
         self,
         head_node_id,
         kill_interval_s: float = 60,
+        kill_delay_s: float = 0,
         max_to_kill: int = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
+        self.kill_delay_s = kill_delay_s
         self.is_running = False
         self.head_node_id = head_node_id
         self.killed = set()
@@ -1542,6 +1540,9 @@ class ResourceKillerActor:
 
     async def run(self):
         self.is_running = True
+
+        time.sleep(self.kill_delay_s)
+
         while self.is_running:
             to_kills = await self._find_resources_to_kill()
 
@@ -1677,21 +1678,8 @@ class EC2InstanceTerminator(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
-    def __init__(
-        self,
-        head_node_id,
-        kill_interval_s: float = 60,
-        max_to_kill: int = 2,
-        batch_size_to_kill: int = 1,
-        kill_filter_fn: Optional[Callable] = None,
-    ):
-        super().__init__(
-            head_node_id,
-            kill_interval_s,
-            max_to_kill,
-            batch_size_to_kill,
-            kill_filter_fn,
-        )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1788,6 +1776,7 @@ def get_and_run_resource_killer(
     ).remote(
         head_node_id,
         kill_interval_s=kill_interval_s,
+        kill_delay_s=kill_delay_s,
         max_to_kill=max_to_kill,
         batch_size_to_kill=batch_size_to_kill,
         kill_filter_fn=kill_filter_fn,
@@ -1796,7 +1785,6 @@ def get_and_run_resource_killer(
     ray.get(resource_killer.ready.remote())
     print("ResourceKiller is ready now.")
     if not no_start:
-        time.sleep(kill_delay_s)
         resource_killer.run.remote()
     return resource_killer
 
@@ -2174,9 +2162,10 @@ def safe_write_to_results_json(
     if the job gets interrupted in the middle of writing.
     """
     test_output_json = os.environ.get(env_var, default_file_name)
-    test_output_json_tmp = test_output_json + ".tmp"
+    test_output_json_tmp = f"{test_output_json}.tmp.{str(uuid.uuid4())}"
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
+        f.flush()
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))

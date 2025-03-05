@@ -36,6 +36,14 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
     the target networks of the RLModule(s).
     """
 
+    def build(self) -> None:
+        super().build()
+
+        # Store loss tensors here temporarily inside the loss function for (exact)
+        # consumption later by the compute gradients function.
+        # Keys=(module_id, optimizer_name), values=loss tensors (in-graph).
+        self._temp_losses = {}
+
     # TODO (simon): Set different learning rates for optimizers.
     @override(DQNTorchLearner)
     def configure_optimizers_for_module(
@@ -215,16 +223,20 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
+
+        self._temp_losses[(module_id, POLICY_LOSS_KEY)] = actor_loss
+        self._temp_losses[(module_id, QF_LOSS_KEY)] = critic_loss
+        self._temp_losses[(module_id, "alpha_loss")] = alpha_loss
+
         # If twin Q networks should be used add a critic loss for the twin Q network.
         # Note, we need this in the `self.compute_gradients()` to optimize.
         if config.twin_q:
-            self.metrics.log_dict(
-                {
-                    QF_TWIN_LOSS_KEY: critic_twin_loss,
-                },
-                key=module_id,
+            self.metrics.log_value(
+                key=(module_id, QF_TWIN_LOSS_KEY),
+                value=critic_twin_loss,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
+            self._temp_losses[(module_id, QF_TWIN_LOSS_KEY)] = critic_twin_loss
 
         return total_loss
 
@@ -241,9 +253,8 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
                 optim.zero_grad(set_to_none=True)
 
                 # Compute the gradients for the component and module.
-                self.metrics.peek((module_id, optim_name + "_loss")).backward(
-                    retain_graph=True
-                )
+                loss_tensor = self._temp_losses.pop((module_id, optim_name + "_loss"))
+                loss_tensor.backward(retain_graph=True)
                 # Store the gradients for the component and module.
                 grads.update(
                     {
@@ -254,4 +265,5 @@ class SACTorchLearner(DQNTorchLearner, SACLearner):
                     }
                 )
 
+        assert not self._temp_losses
         return grads

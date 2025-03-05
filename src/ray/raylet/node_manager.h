@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
@@ -43,8 +45,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/throttler.h"
 
-namespace ray {
-namespace raylet {
+namespace ray::raylet {
 
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
@@ -130,12 +131,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
-
-  /// Process a new client connection.
-  ///
-  /// \param client The client to process.
-  /// \return Void.
-  void ProcessNewClient(ClientConnection &client);
 
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
@@ -227,6 +222,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
  private:
+  FRIEND_TEST(NodeManagerTest, TestHandleReportWorkerBacklog);
+
   // Removes the worker from node_manager's leased_workers_ map.
   // Warning: this does NOT release the worker's resources, or put the leased worker
   // back to the worker pool, or destroy the worker. The caller must handle the worker's
@@ -346,8 +343,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
-                                   bool release_resources);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -415,13 +411,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param job_data Data associated with the finished job.
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
-
-  /// Process client message of NotifyDirectCallTaskBlocked
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
-                                    const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -532,6 +521,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetResourceLoadReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `CancelTasksWithResourceShapes` request.
+  void HandleCancelTasksWithResourceShapes(
+      rpc::CancelTasksWithResourceShapesRequest request,
+      rpc::CancelTasksWithResourceShapesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(rpc::PrepareBundleResourcesRequest request,
                                     rpc::PrepareBundleResourcesReply *reply,
@@ -560,6 +555,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                  rpc::ReportWorkerBacklogReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
+
+  /// This is created for unit test purpose so that we don't need to create
+  /// a node manager in order to test HandleReportWorkerBacklog.
+  static void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
+                                        rpc::ReportWorkerBacklogReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback,
+                                        WorkerPoolInterface &worker_pool,
+                                        ILocalTaskManager &local_task_manager);
 
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(rpc::ReturnWorkerRequest request,
@@ -920,5 +923,4 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
 };
 
-}  // namespace raylet
-}  // namespace ray
+}  // namespace ray::raylet

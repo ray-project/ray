@@ -484,6 +484,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   default:
     // This code should be unreachable.
+    RAY_LOG(FATAL) << "Invalid Plasma message type. type=" << static_cast<long>(type)
+                   << ". " << kCorruptedRequestErrorMessage;
     RAY_CHECK(0);
   }
   return Status::OK();

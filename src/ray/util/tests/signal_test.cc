@@ -16,6 +16,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
@@ -30,12 +31,12 @@ void Sleep() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
 void TestSendSignal(const std::string &test_name, int signal) {
   pid_t pid;
   pid = fork();
-  ASSERT_TRUE(pid >= 0);
+  ASSERT_GE(pid, 0);
   if (pid == 0) {
     while (true) {
       int n = 1000;
-      while (n--)
-        ;
+      while (n--) {
+      }
     }
   } else {
     Sleep();
@@ -52,7 +53,7 @@ TEST(SignalTest, SendBusSignalTest) { TestSendSignal("SendBusSignalTest", SIGBUS
 TEST(SignalTest, SIGABRT_Test) {
   pid_t pid;
   pid = fork();
-  ASSERT_TRUE(pid >= 0);
+  ASSERT_GE(pid, 0);
   if (pid == 0) {
     // This code will cause SIGABRT sent.
     std::abort();
@@ -67,7 +68,7 @@ TEST(SignalTest, SIGABRT_Test) {
 TEST(SignalTest, SIGSEGV_Test) {
   pid_t pid;
   pid = fork();
-  ASSERT_TRUE(pid >= 0);
+  ASSERT_GE(pid, 0);
   if (pid == 0) {
     int *pointer = reinterpret_cast<int *>(0x1237896);
     *pointer = 100;
@@ -82,7 +83,7 @@ TEST(SignalTest, SIGSEGV_Test) {
 TEST(SignalTest, SIGILL_Test) {
   pid_t pid;
   pid = fork();
-  ASSERT_TRUE(pid >= 0);
+  ASSERT_GE(pid, 0);
   if (pid == 0) {
     raise(SIGILL);
   } else {
@@ -104,6 +105,8 @@ int main(int argc, char **argv) {
       ray::RayLogLevel::INFO,
       /*log_filepath=*/
       ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      /*err_log_filepath=*/
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
