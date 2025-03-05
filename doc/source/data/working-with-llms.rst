@@ -40,7 +40,7 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
     import numpy as np
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
             "enable_chunked_prefill": True,
             "max_num_batched_tokens": 4096,
@@ -82,7 +82,7 @@ Some models may require a Hugging Face token to be specified. You can specify th
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
         concurrency=1,
         batch_size=64,
@@ -100,7 +100,7 @@ Use the `vLLMEngineProcessorConfig` to configure the vLLM engine.
     from ray.data.llm import vLLMEngineProcessorConfig
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={"max_model_len": 20000},
         concurrency=1,
         batch_size=64,
@@ -111,7 +111,7 @@ For handling larger models, specify model parallelism.
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
             "max_model_len": 16384,
             "tensor_parallel_size": 2,
@@ -132,7 +132,7 @@ To optimize model loading, you can configure the `load_format` to `runai_streame
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={"load_format": "runai_streamer"},
         concurrency=1,
         batch_size=64,
@@ -143,7 +143,7 @@ To do multi-LoRA batch inference, you need to set LoRA related parameters in `en
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
             enable_lora=True,
             max_lora_rank=32,
