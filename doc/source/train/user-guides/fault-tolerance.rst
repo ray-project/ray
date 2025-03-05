@@ -5,37 +5,82 @@
 Handling Failures and Node Preemption
 =====================================
 
-Automatically Recover from Train Worker Failures
-------------------------------------------------
+Ray Train provides fault tolerance at three levels:
 
-Ray Train has built-in fault tolerance to recover from worker failures (i.e.
-``RayActorError``\s). When a failure is detected, the workers will be shut
-down and new workers will be added in.
+1. Worker process fault tolerance handles errors that happen to one or more Train worker processes while they are executing the user defined training function.
+2. Worker node fault tolerance handles node failures that may occur during training.
+3. Cluster fault tolerance handles the case where the entire Ray cluster crashes, and training needs to be kicked off again.
 
-The training function will be restarted, but progress from the previous execution can
-be resumed through checkpointing.
 
-.. tip::
-    In order to retain progress when recovery, your training function
-    **must** implement logic for both :ref:`saving <train-dl-saving-checkpoints>`
-    *and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`.
+Worker Process and Node Fault Tolerance
+---------------------------------------
 
-Each instance of recovery from a worker failure is considered a retry. The
+**Worker process failures** are errors that occur within the user defined training function of a training worker,
+such as GPU out-of-memory (OOM) errors, cloud storage access errors, or other runtime errors.
+
+**Node failures** are errors that bring down the entire node, including node preemption, OOM, network partitions, or other hardware failures.
+This section covers worker node failures. Recovery from head node failures is discussed in the next section. <TODO: link>
+
+Ray Train can be configured to automatically recover from worker process and worker node failures.
+When a failure is detected, all the workers are shut down, new nodes are added if necessary, and a new set of workers is started.
+The restarted training worker processes can resume training by loading the latest checkpoint.
+
+**In order to retain progress upon recovery, your training function
+must implement logic for both :ref:`saving <train-dl-saving-checkpoints>`
+*and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`.**
+Otherwise, the training will just start from scratch.
+
+Each recovery from a worker process or node failure is considered a retry. The
 number of retries is configurable through the ``max_failures`` attribute of the
 :class:`~ray.train.FailureConfig` argument set in the :class:`~ray.train.RunConfig`
-passed to the ``Trainer``:
+passed to the ``Trainer``. By default, worker fault tolerance is disabled with ``max_failures=0``.
 
-.. literalinclude:: ../doc_code/key_concepts.py
+.. literalinclude:: ../doc_code/fault_tolerance.py
     :language: python
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
 
+Altogether, this is what an example Torch training script with worker fault tolerance looks like:
+
+.. literalinclude:: ../doc_code/fault_tolerance.py
+    :language: python
+    :start-after: __worker_fault_tolerance_start__
+    :end-before: __worker_fault_tolerance_end__
+
+
 Which checkpoint will be restored?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray Train will automatically resume training from the latest available
-:ref:`checkpoint reported to Ray Train <train-checkpointing>`.
 
-This will be the last checkpoint passed to :func:`train.report() <ray.train.report>`.
+Ray Train will populate :func:`ray.train.get_checkpoint() <ray.train.get_checkpoint>` with the latest available
+:ref:`checkpoint reported to Ray Train <train-checkpointing>`.
+The :class:`~ray.train.Checkpoint` object returned by this method has the
+:meth:`~ray.train.Checkpoint.as_directory` and :meth:`~ray.train.Checkpoint.to_directory` methods
+to download the checkpoint from the :class:`RunConfig(storage_path) <ray.train.RunConfig>` to local disk.
+
+.. note::
+    :meth:`~ray.train.Checkpoint.as_directory` and :meth:`~ray.train.Checkpoint.to_directory`
+    will only download the checkpoint once per node even if there are multiple workers on the node.
+    The workers share the same checkpoint directory on local disk.
+
+Illustrated Example
+~~~~~~~~~~~~~~~~~~~
+
+
+.. figure:: ../images/fault_tolerance/worker_node_failure.png
+    :align: center
+
+    ABCDEFG
+
+.. figure:: ../images/fault_tolerance/worker_node_replacement.png
+    :align: center
+
+    ABCDEFG
+
+.. figure:: ../images/fault_tolerance/resume_from_checkpoint.png
+    :align: center
+
+    ABCDEFG
+
 
 .. _train-restore-guide:
 
@@ -130,3 +175,22 @@ to determine the existence and validity of the given experiment directory.
 
     `<Framework>Trainer.restore` is used to continue an existing experiment, where
     new results will continue to be appended to existing logs.
+
+
+Illustrated Example
+~~~~~~~~~~~~~~~~~~~
+
+.. figure:: ../images/fault_tolerance/head_node_failure.png
+    :align: center
+
+    ABCDEFG
+
+.. figure:: ../images/fault_tolerance/cluster_failure.png
+    :align: center
+
+    ABCDEFG
+
+.. figure:: ../images/fault_tolerance/cluster_restart.png
+    :align: center
+
+    ABCDEFG
