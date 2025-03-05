@@ -27,7 +27,7 @@ If you want to reuse actors after using them in a Compiled Graph, it's important
 If you don't explicitly teardown the Compiled Graph, the actors may not behave as expected in future use because Ray opens channels on 
 actors for Compiled Graph execution.
 
-For example, the following code could result in a segfault because Python could delay teardown until after the attempt to reuse the actor for a second Compiled Graph:
+For example, the following code could result in a segfault because Python could delay garbage collection (which triggers implicit teardown of the first Compiled Graph) until the point the second Compiled Graph is being created:
 
 .. literalinclude:: ../doc_code/cgraph_troubleshooting.py
     :language: python
