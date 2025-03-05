@@ -158,7 +158,7 @@ py_test(
     main = "source/ray-core/doc_code/cgraph_profiling.py",
     tags = [
         "exclusive",
-        "multi-gpu",
+        "multi_gpu",
         "team:core",
     ],
 )
@@ -170,7 +170,7 @@ py_test(
     main = "source/ray-core/doc_code/cgraph_nccl.py",
     tags = [
         "exclusive",
-        "multi-gpu",
+        "multi_gpu",
         "team:core",
     ],
 )
@@ -182,7 +182,7 @@ py_test(
     main = "source/ray-core/doc_code/cgraph_overlap.py",
     tags = [
         "exclusive",
-        "multi-gpu",
+        "multi_gpu",
         "team:core",
     ],
 )
