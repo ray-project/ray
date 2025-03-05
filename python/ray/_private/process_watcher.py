@@ -96,13 +96,13 @@ def report_raylet_error_logs(log_dir: str, gcs_address: str):
                 logger.info(msg)
             else:
                 msg += (
-                    "Termination is unexpected. Possible reasons "
-                    "include: (1) SIGKILL by the user or system "
-                    "OOM killer, (2) Invalid memory access from "
-                    "Raylet causing SIGSEGV or SIGBUS, "
+                    "Termination was unexpected. Possible reasons "
+                    "include: (1) a SIGKILL by the user or the system's "
+                    "OOM killer; (2) invalid memory access by the "
+                    "Raylet, causing SIGSEGV or SIGBUS; "
                     "(3) Other termination signals. "
-                    f"Last {_RAYLET_LOG_MAX_PUBLISH_LINES} lines "
-                    "of the Raylet logs:\n"
+                    f"The last {_RAYLET_LOG_MAX_PUBLISH_LINES} lines "
+                    "of the Raylet logs are:\n"
                 )
                 msg += "    " + "    ".join(
                     raylet_logs[-_RAYLET_LOG_MAX_PUBLISH_LINES:]
