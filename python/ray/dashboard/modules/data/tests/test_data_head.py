@@ -16,11 +16,13 @@ DATA_SCHEMA = [
     "state",
     "progress",
     "total",
+    "total_rows",
     "ray_data_output_rows",
     "ray_data_spilled_bytes",
     "ray_data_current_bytes",
     "ray_data_cpu_usage_cores",
     "ray_data_gpu_usage_cores",
+
 ]
 
 RESPONSE_SCHEMA = [
