@@ -4464,12 +4464,6 @@ cdef class CoreWorker:
                 # Replace with OBJECT_IN_ACTOR metadata, so that the driver can
                 # see that this object is actually stored on the actor.
                 metadata_str = str(ray.core.generated.common_pb2.ErrorType.OBJECT_IN_ACTOR)
-                # TODO:
-                # - Skip serialization
-                # - store in Python actor store.
-                # - Return OBJECT_IN_ACTOR value.
-                #   - Metadata: OBJECT_IN_ACTOR value
-                #   - Data: RayActorObjectMetadata(tensor shape, tensor dtype, actor address?)
             else:
                 serialized_object = context.serialize(output)
                 metadata_str = serialized_object.metadata
