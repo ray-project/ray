@@ -605,7 +605,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), false, disconnect_type, disconnect_detail);
+  DisconnectClient(worker->Connection(), /*graceful=*/false, disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -1197,7 +1197,7 @@ void NodeManager::HandleClientConnectionError(
       "unexpected errors.");
 
   // Disconnect the client and don't process more messages.
-  DisconnectClient(client, ray::rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
+  DisconnectClient(client, /*graceful=*/false, ray::rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
 }
 
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
@@ -1345,7 +1345,7 @@ Status NodeManager::ProcessRegisterClientRequestMessageImpl(
           [this, client](const ray::Status &status) {
             if (!status.ok()) {
               DisconnectClient(client,
-                               false,
+                               /*graceful=*/false,
                                rpc::WorkerExitType::SYSTEM_ERROR,
                                "Worker is failed because the raylet couldn't reply the "
                                "registration request: " +
@@ -1480,7 +1480,7 @@ void NodeManager::SendPortAnnouncementResponse(
         if (!status.ok()) {
           DisconnectClient(
               client,
-              false,
+              /*graceful=*/false,
               rpc::WorkerExitType::SYSTEM_ERROR,
               "Failed to send AnnounceWorkerPortReply to client: " + status.ToString());
         }
@@ -1520,7 +1520,7 @@ void NodeManager::SendRegisterClientAndAnnouncePortResponse(
       [this, client](const ray::Status &status) {
         if (!status.ok()) {
           DisconnectClient(client,
-                           false,
+                           /*graceful=*/false,
                            rpc::WorkerExitType::SYSTEM_ERROR,
                            "Failed to send RegisterWorkerWithPortReply to client: " +
                                status.ToString());
@@ -1719,7 +1719,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::DisconnectClientRequest>(message_data);
-  bool graceful = message->graceful();
   auto disconnect_type = static_cast<rpc::WorkerExitType>(message->disconnect_type());
   const auto &disconnect_detail = message->disconnect_detail()->str();
   const flatbuffers::Vector<uint8_t> *exception_pb =
@@ -1732,7 +1731,7 @@ void NodeManager::ProcessDisconnectClientMessage(
         reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
   }
   DisconnectClient(client,
-                   graceful,
+                   /*graceful=*/true,
                    disconnect_type,
                    disconnect_detail,
                    creation_task_exception.get());
@@ -1818,7 +1817,7 @@ void NodeManager::ProcessWaitRequestMessage(
       std::ostringstream stream;
       stream << "Failed to write WaitReply to the client. Status " << status
              << ", message: " << status.message();
-      DisconnectClient(client, false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+      DisconnectClient(client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
     }
     return;
   }
@@ -1850,7 +1849,7 @@ void NodeManager::ProcessWaitRequestMessage(
           stream << "Failed to write WaitReply to the client. Status " << status
                  << ", message: " << status.message();
           DisconnectClient(
-              client, false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
+              client, /*graceful=*/false, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
         }
       });
 }
@@ -2161,7 +2160,7 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
       // The worker should be destroyed.
       DisconnectClient(
           worker->Connection(),
-          false,
+          /*graceful=*/false,
           rpc::WorkerExitType::SYSTEM_ERROR,
           absl::StrCat("The leased worker has unrecoverable failure. Worker is requested "
                        "to be destroyed when it is returned. ",
