@@ -6,6 +6,7 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.batch.utils import maybe_pull_model_tokenizer_from_s3
 
 
 class ChatTemplateUDF(StatefulStageUDF):
@@ -33,6 +34,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         # because tokenizers of VLM models may not have chat template attribute.
         # However, this may not be a reliable solution, because processors and
         # tokenizers are not standardized across different models.
+        model = maybe_pull_model_tokenizer_from_s3(model)
         self.processor = AutoProcessor.from_pretrained(model, trust_remote_code=True)
         self.chat_template = chat_template
 
