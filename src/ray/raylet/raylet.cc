@@ -154,23 +154,23 @@ void Raylet::DoAccept() {
 
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
-    // TODO: typedef these handlers.
-    ClientHandler client_handler = [this](ClientConnection &client) {
-      node_manager_.ProcessNewClient(client);
-    };
     MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
                                             int64_t message_type,
                                             const std::vector<uint8_t> &message) {
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
+
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = ClientConnection::Create(
-        client_handler,
+    auto conn = ClientConnection::Create(
         message_handler,
         std::move(socket_),
         "worker",
         node_manager_message_enum,
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
+
+    // Begin processing messages. The message handler above is expected to call this to
+    // continue processing messages.
+    conn->ProcessMessages();
   } else {
     RAY_LOG(ERROR) << "Raylet failed to accept new connection: " << error.message();
     if (error == boost::asio::error::operation_aborted) {
