@@ -1,7 +1,7 @@
 # TODO(hjiang): All existing pythons are not using bazel as build system, which leads to missing BUILD file and targets.
 # Revisit if we decide to support bazel build in the future.
 
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@rules_python//python:defs.bzl", "py_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -33,10 +33,10 @@ py_library(
 
 py_library(
     name = "uv",
-    srcs= ["uv.py"],
+    srcs = ["uv.py"],
     deps = [
+        ":dependency_utils",
         ":utils",
         ":virtualenv_utils",
-        ":dependency_utils",
     ],
 )
