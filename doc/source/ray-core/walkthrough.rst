@@ -26,7 +26,7 @@ This walk-through introduces you to these core concepts with simple examples tha
 Getting Started
 ---------------
 
-To get started, install Ray using ``pip install -U ray``. For additional installation options, refer to :ref:`Installing Ray <installation>`.
+To get started, install Ray using ``pip install -U ray``. For additional installation options, see :ref:`Installing Ray <installation>`.
 
 The first step is to import and initialize Ray:
 
