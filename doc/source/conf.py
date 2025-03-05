@@ -503,6 +503,12 @@ def add_custom_assets(
     elif pagename == "ray-overview/use-cases":
         app.add_css_file("css/use_cases.css")
 
+def skip_indexing_for_actor_bind(app, domain, objtype, contentnode):
+    # Check if this is the specific object we want to not index
+    if domain == 'py' and contentnode.get('fullname') == 'ray.actor.ActorMethod.bind':
+        # Set the noindex option for just this object
+        contentnode['noindex'] = True
+    return None
 
 def _autogen_apis(app: sphinx.application.Sphinx):
     """
@@ -561,6 +567,12 @@ def setup(app):
 
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
+
+    # Skip indexing for ray.actor.ActorMethod.bind
+    # Need this to:
+    # 1) show the API in both Ray Core API and Compiled Graph API sections
+    # 2) avoid indexing it twice which result in a doc compilation failure
+    app.connect('object-description-transform', skip_indexing_for_actor_bind)
 
 
 redoc = [
