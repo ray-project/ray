@@ -132,7 +132,7 @@ If the ``storage_path`` or ``name`` do not match, Ray Train will not be able to 
 
 .. warning::
     If ``name`` is reused unintentionally, Ray Train will fetch the previous run state, even if the user is trying to start a new run.
-    Therefore, always pass a unique run name when launching a new run. In other words, ``name`` should be a unique identifier for a training job
+    Therefore, always pass a unique run name when launching a new run. In other words, ``name`` should be a unique identifier for a training job.
 
 .. note::
     Job driver crashes and interrupts do not count toward the ``max_failures`` limit of :ref:`worker fault tolerance <train-worker-fault-tolerance>`.
