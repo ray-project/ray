@@ -523,6 +523,12 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 
 def setup(app):
+    # Skip indexing for ray.actor.ActorMethod.bind
+    # Need this to:
+    # 1) show the API in both Ray Core API and Compiled Graph API sections
+    # 2) avoid indexing it twice which result in a doc compilation failure
+    app.connect("object-description-transform", skip_indexing_for_actor_bind)
+
     # Only generate versions JSON during RTD build
     if os.getenv("READTHEDOCS") == "True":
         generate_versions_json()
@@ -569,12 +575,6 @@ def setup(app):
 
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
-
-    # Skip indexing for ray.actor.ActorMethod.bind
-    # Need this to:
-    # 1) show the API in both Ray Core API and Compiled Graph API sections
-    # 2) avoid indexing it twice which result in a doc compilation failure
-    app.connect("object-description-transform", skip_indexing_for_actor_bind)
 
 
 redoc = [
