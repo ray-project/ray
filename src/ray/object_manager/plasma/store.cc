@@ -313,8 +313,8 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = Client::Create(
         // NOLINTNEXTLINE : handler must be of boost::AcceptHandler type.
-        boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
-        boost::bind(&PlasmaStore::HandleConnectionError, this, ph::_1, ph::_2),
+        boost::bind(&PlasmaStore::ProcessClientMessage, this, ph::_1, ph::_2, ph::_3),
+        boost::bind(&PlasmaStore::HandleClientConnectionError, this, ph::_1, ph::_2),
         std::move(socket_));
   }
 
@@ -356,17 +356,17 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   create_request_queue_.RemoveDisconnectedClientRequests(client);
 }
 
-void PlasmaStore::HandleConnectionError(const std::shared_ptr<Client> &client,
-                                        const boost::system::error_code &error) {
+void PlasmaStore::HandleClientConnectionError(const std::shared_ptr<Client> &client,
+                                              const boost::system::error_code &error) {
   absl::MutexLock lock(&mutex_);
   RAY_LOG(WARNING) << "Disconnecting client due to connection error with code "
                    << error.value() << ": " << error.message();
   DisconnectClient(client);
 }
 
-Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
-                                   fb::MessageType type,
-                                   const std::vector<uint8_t> &message) {
+Status PlasmaStore::ProcessClientMessage(const std::shared_ptr<Client> &client,
+                                         fb::MessageType type,
+                                         const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
   uint8_t *input = (uint8_t *)message.data();
