@@ -33,6 +33,7 @@ Actors
     ray.actor.ActorClass
     ray.actor.ActorClass.options
     ray.actor.ActorMethod
+        :noindex:
     ray.actor.ActorHandle
     ray.actor.ActorClassInheritanceException
     ray.actor.exit_actor

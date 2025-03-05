@@ -19,7 +19,6 @@ DAG Construction
     :toctree: doc/
 
     ray.actor.ActorMethod.bind
-        :noindex:
     ray.dag.DAGNode.with_tensor_transport
 
 Compiled Graph Operations
