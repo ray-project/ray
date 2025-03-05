@@ -7,9 +7,9 @@ Handling Failures and Node Preemption
 
 Ray Train provides fault tolerance at three levels:
 
-1. Worker process fault tolerance handles errors that happen to one or more Train worker processes while they are executing the user defined training function.
-2. Worker node fault tolerance handles node failures that may occur during training.
-3. Cluster fault tolerance handles the case where the entire Ray cluster crashes, and training needs to be kicked off again.
+1. **Worker process fault tolerance** handles errors that happen to one or more Train worker processes while they are executing the user defined training function.
+2. **Worker node fault tolerance** handles node failures that may occur during training.
+3. **Cluster fault tolerance** handles the case where the entire Ray cluster crashes, and training needs to be kicked off again.
 
 
 Worker Process and Node Fault Tolerance
@@ -19,15 +19,15 @@ Worker Process and Node Fault Tolerance
 such as GPU out-of-memory (OOM) errors, cloud storage access errors, or other runtime errors.
 
 **Node failures** are errors that bring down the entire node, including node preemption, OOM, network partitions, or other hardware failures.
-This section covers worker node failures. Recovery from head node failures is discussed in the next section. <TODO: link>
+This section covers worker node failures. Recovery from head node failures is discussed in the :ref:`next section <train-cluster-fault-tolerance>`.
 
 Ray Train can be configured to automatically recover from worker process and worker node failures.
 When a failure is detected, all the workers are shut down, new nodes are added if necessary, and a new set of workers is started.
 The restarted training worker processes can resume training by loading the latest checkpoint.
 
-**In order to retain progress upon recovery, your training function
-must implement logic for both :ref:`saving <train-dl-saving-checkpoints>`
-*and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`.**
+In order to retain progress upon recovery, your training function
+should implement logic for both :ref:`saving <train-dl-saving-checkpoints>`
+*and* :ref:`loading checkpoints <train-dl-loading-checkpoints>`.
 Otherwise, the training will just start from scratch.
 
 Each recovery from a worker process or node failure is considered a retry. The
@@ -83,6 +83,7 @@ Illustrated Example
 
 
 .. _train-restore-guide:
+.. _train-cluster-fault-tolerance:
 
 Restore a Ray Train Experiment
 ------------------------------
