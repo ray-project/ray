@@ -49,7 +49,7 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
-from ray.llm._internal.serve.configs.base import BaseModelExtended
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 transformers = try_import("transformers")
 
@@ -124,7 +124,7 @@ class InputModality(str, Enum):
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
-    VLLM = "VLLM"
+    vLLM = "vLLM"
 
 
 class JSONModeOptions(BaseModelExtended):
@@ -214,7 +214,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     llm_engine: str = Field(
-        default=LLMEngine.VLLM.value,
+        default=LLMEngine.vLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -228,7 +228,8 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
-    accelerator_type: str = Field(
+    accelerator_type: Optional[str] = Field(
+        default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
@@ -331,13 +332,6 @@ class LLMConfig(BaseModelExtended):
 
         return value
 
-    def ray_accelerator_type(self) -> str:
-        """Converts the accelerator type to the Ray Core format."""
-
-        # Ray uses a hyphen instead of an underscore for
-        # accelerator_type.
-        return f"accelerator_type:{self.accelerator_type.replace('_', '-')}"
-
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
         if self.lora_config:
@@ -353,7 +347,7 @@ class LLMConfig(BaseModelExtended):
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
-        if self.llm_engine == LLMEngine.VLLM:
+        if self.llm_engine == LLMEngine.vLLM:
             from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
@@ -429,18 +423,16 @@ class LLMConfig(BaseModelExtended):
                 :skipif: True
 
                 from ray import serve
-                from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
-                from ray.serve.llm.deployments import VLLMDeployment
-
+                from ray.serve.llm import LLMConfig, LLMServer
 
                 llm_config = LLMConfig(
-                    model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                    model_loading_config=dict(model_id="test_model"),
                     accelerator_type="L4",
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
                 serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                vllm_app = VLLMDeployment.options(**serve_options).bind(llm_config)
-                serve.run(vllm_app)
+                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
+                serve.run(llm_app)
 
         Keyword Args:
             name_prefix: The prefix to use for the deployment name.

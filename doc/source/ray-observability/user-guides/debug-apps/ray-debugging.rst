@@ -176,7 +176,7 @@ Now step into the next remote call again with
 ``remote`` and print `n`. You an now either continue recursing into
 the function by calling ``remote`` a few more times, or you can jump
 to the location where ``ray.get`` is called on the result by using the
-``get`` debugger comand. Use ``get`` again to jump back to the original
+``get`` debugger command. Use ``get`` again to jump back to the original
 call site and use ``p(result)`` to print the result:
 
 .. code-block:: shell

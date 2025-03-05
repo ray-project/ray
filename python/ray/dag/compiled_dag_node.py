@@ -30,6 +30,7 @@ from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.communicator import Communicator
 from ray.dag.constants import (
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
+    RAY_CGRAPH_ENABLE_TORCH_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
 import ray
@@ -212,6 +213,9 @@ def do_exec_tasks(
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            assert (
+                not RAY_CGRAPH_ENABLE_TORCH_PROFILING
+            ), "NVTX and torch profiling cannot be enabled at the same time."
             try:
                 import nvtx
             except ImportError:
@@ -221,6 +225,26 @@ def do_exec_tasks(
                 )
             nvtx_profile = nvtx.Profile()
             nvtx_profile.enable()
+
+        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+            assert (
+                not RAY_CGRAPH_ENABLE_NVTX_PROFILING
+            ), "NVTX and torch profiling cannot be enabled at the same time."
+
+            import torch
+
+            torch_profile = torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                with_stack=True,
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                    "compiled_graph_torch_profiles"
+                ),
+            )
+            torch_profile.start()
+            logger.info("Torch profiling started")
 
         done = False
         while True:
@@ -235,6 +259,10 @@ def do_exec_tasks(
 
         if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
             nvtx_profile.disable()
+
+        if RAY_CGRAPH_ENABLE_TORCH_PROFILING:
+            torch_profile.stop()
+            logger.info("Torch profiling stopped")
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise

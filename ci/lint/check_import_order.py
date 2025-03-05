@@ -57,7 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("path", help="File path to check. e.g. '.' or './src'")
     # TODO(simon): For the future, consider adding a feature to explicitly
     # white-list the path instead of skipping them.
-    parser.add_argument("-s", "--skip", action="append", help="Skip certian directory")
+    parser.add_argument("-s", "--skip", action="append", help="Skip certain directory")
     args = parser.parse_args()
 
     file_path = Path(args.path)
