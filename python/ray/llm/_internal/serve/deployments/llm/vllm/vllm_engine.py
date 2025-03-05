@@ -97,6 +97,31 @@ def _get_vllm_engine_config(
     return async_engine_args, vllm_config
 
 
+def _clear_current_platform_cache():
+    """Clear the cache of the current platform.
+
+    vllm current has an lru cache for getting device compatibility
+    that will not have the correct returned value if
+    CUDA_VISIBLE_DEVICES is not set properly. In RayLLM eventually
+    when we want to create the engine the env will be set properly,
+    but till then, upon the import of vllm somewhere
+    (which is a mystery) the lru cache will have the wrong value.
+    This function will clear the cache so that the next time the
+    cache is accessed, it will be re-evaluated.
+
+    Related issues:
+    https://github.com/vllm-project/vllm/issues/8402
+    https://github.com/vllm-project/vllm/issues/7890
+    """
+    from vllm.platforms import current_platform
+
+    # This check is just to future proof this implementation
+    # in case vllm removes their lru_cache decorator
+    if hasattr(current_platform.get_device_capability, "cache_clear"):
+        logger.info("Clearing the current platform cache ...")
+        current_platform.get_device_capability.cache_clear()
+
+
 class BatchLLMRawResponses:
     """This class batches multiple LLMRawResponses from a generator into a
     single response, at some time interval.
@@ -198,6 +223,9 @@ class _EngineBackgroundProcess:
         # ray distributed executor for all cases so it's always compatible with Ray.
         from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
+        # Clear the cache of the current platform.
+        _clear_current_platform_cache()
+
         self.engine = MQLLMEngine(
             ipc_path=ipc_path,
             use_async_sockets=engine_config.model_config.use_async_output_proc,
@@ -224,7 +252,7 @@ class VLLMEngine:
         self,
         llm_config: LLMConfig,
     ):
-        """Create a VLLM Engine class
+        """Create a vLLM Engine class
 
         Args:
             llm_config: The llm configuration for this engine
@@ -256,7 +284,7 @@ class VLLMEngine:
         return await initialize_node_util(llm_config)
 
     async def start(self):
-        """Start the VLLM engine.
+        """Start the vLLM engine.
 
         If the engine is already running, do nothing.
         """
@@ -360,12 +388,15 @@ class VLLMEngine:
         placement_group: PlacementGroup,
     ) -> "EngineClient":
         """Creates an async LLM engine from the engine arguments."""
+        from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
         vllm_config.parallel_config.placement_group = placement_group
 
+        _clear_current_platform_cache()
+
         return vllm.engine.async_llm_engine.AsyncLLMEngine(
             vllm_config=vllm_config,
-            executor_class=vllm.executor.ray_distributed_executor.RayDistributedExecutor,
+            executor_class=RayDistributedExecutor,
             log_stats=not engine_args.disable_log_stats,
         )
 
@@ -391,7 +422,7 @@ class VLLMEngine:
     ) -> AsyncGenerator[LLMRawResponse, None]:
         """Generate an LLMRawResponse stream
 
-        The VLLM generation request will be passed into VLLM, and the resulting output
+        The vLLM generation request will be passed into vLLM, and the resulting output
         will be wrapped in an LLMRawResponse and yielded back to the user.
 
         Error handling:
@@ -408,7 +439,7 @@ class VLLMEngine:
                 f"Request {vllm_generation_request.request_id} started. "
                 f"Prompt: {vllm_generation_request.prompt}"
             )
-        # Construct a results generator from VLLM
+        # Construct a results generator from vLLM
         results_generator: AsyncGenerator["RequestOutput", None] = self.engine.generate(
             prompt=vllm.inputs.TextPrompt(
                 prompt=vllm_generation_request.prompt,
