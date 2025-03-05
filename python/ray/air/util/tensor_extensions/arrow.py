@@ -516,7 +516,7 @@ if _arrow_extension_scalars_are_subclassable():
     # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
     @PublicAPI(stability="beta")
     class ArrowTensorScalar(pa.ExtensionScalar):
-        def as_py(self) -> np.ndarray:
+        def as_py(self, **kwargs) -> np.ndarray:
             return self.type._extension_scalar_to_ndarray(self)
 
         def __array__(self) -> np.ndarray:
