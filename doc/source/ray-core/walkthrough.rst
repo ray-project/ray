@@ -72,7 +72,7 @@ Here's a simple Counter example:
     :start-after: __calling_actor_start__
     :end-before: __calling_actor_end__
 
-The preceding example demonstrates basic actor usage. For a more comprehensive example that combines both tasks and actors, check out the :ref:`Monte Carlo Pi estimation example <monte-carlo-pi>`.
+The preceding example demonstrates basic actor usage. For a more comprehensive example that combines both tasks and actors, see the :ref:`Monte Carlo Pi estimation example <monte-carlo-pi>`.
 
 Passing Objects
 ---------------
