@@ -410,21 +410,17 @@ void ServerConnection::DoAsyncWrites() {
 }
 
 std::shared_ptr<ClientConnection> ClientConnection::Create(
-    ClientHandler &client_handler,
     MessageHandler &message_handler,
     local_stream_socket &&socket,
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names,
     int64_t error_message_type) {
-  auto self = std::make_shared<ClientConnection>(Tag{},
-                                                 message_handler,
-                                                 std::move(socket),
-                                                 debug_label,
-                                                 message_type_enum_names,
-                                                 error_message_type);
-  // Let our manager process our new connection.
-  client_handler(*self);
-  return self;
+  return std::make_shared<ClientConnection>(Tag{},
+                                            message_handler,
+                                            std::move(socket),
+                                            debug_label,
+                                            message_type_enum_names,
+                                            error_message_type);
 }
 
 ClientConnection::ClientConnection(

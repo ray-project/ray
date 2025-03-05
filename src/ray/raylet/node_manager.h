@@ -132,12 +132,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
-  /// Process a new client connection.
-  ///
-  /// \param client The client to process.
-  /// \return Void.
-  void ProcessNewClient(ClientConnection &client);
-
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
   /// still alive.
