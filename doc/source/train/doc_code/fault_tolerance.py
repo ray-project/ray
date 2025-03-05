@@ -39,6 +39,7 @@ def train_fn_per_worker(train_loop_config: dict):
 
 trainer = ray.train.torch.TorchTrainer(
     train_fn_per_worker,
+    scaling_config=ray.train.ScalingConfig(num_workers=4),
     run_config=ray.train.RunConfig(
         # (If multi-node, configure S3 / NFS as the storage path.)
         # storage_path="s3://...",
@@ -90,6 +91,7 @@ if __name__ == "__main__":
 
     trainer = ray.train.torch.TorchTrainer(
         train_fn_per_worker,
+        scaling_config=ray.train.ScalingConfig(num_workers=4),
         run_config=ray.train.RunConfig(
             # [3] Enable worker-level fault tolerance to gracefully handle
             # Train worker failures.
