@@ -1591,16 +1591,17 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       // The client is a driver.
       is_driver = true;
     } else {
-      RAY_LOG(INFO) << "Not disconnecting client disconnect it has already been disconnected.";
+      RAY_LOG(INFO)
+          << "Not disconnecting client disconnect it has already been disconnected.";
       return;
     }
   }
 
   RAY_LOG(INFO).WithField(worker->WorkerId())
-                << "Disconnecting client, graceful=" << std::boolalpha << graceful
-                << ", disconnect_type=" << disconnect_type
-                << ", has_creation_task_exception=" << std::boolalpha
-                << bool(creation_task_exception != nullptr);
+      << "Disconnecting client, graceful=" << std::boolalpha << graceful
+      << ", disconnect_type=" << disconnect_type
+      << ", has_creation_task_exception=" << std::boolalpha
+      << bool(creation_task_exception != nullptr);
 
   RAY_CHECK(worker != nullptr);
   RAY_CHECK(!(is_worker && is_driver));
