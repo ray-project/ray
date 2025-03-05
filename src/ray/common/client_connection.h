@@ -188,7 +188,6 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
 class ClientConnection;
 
-using ClientHandler = std::function<void(ClientConnection &)>;
 using MessageHandler = std::function<void(
     std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &)>;
 
@@ -217,7 +216,6 @@ class ClientConnection : public ServerConnection {
 
   /// Allocate a new node client connection.
   ///
-  /// \param new_client_handler A reference to the client handler.
   /// \param message_handler A reference to the message handler.
   /// \param socket The client socket.
   /// \param debug_label Label that is printed in debug messages, to identify
@@ -227,7 +225,6 @@ class ClientConnection : public ServerConnection {
   /// \param error_message_type the type of error message
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection> Create(
-      ClientHandler &new_client_handler,
       MessageHandler &message_handler,
       local_stream_socket &&socket,
       const std::string &debug_label,
