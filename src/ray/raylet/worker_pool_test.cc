@@ -262,16 +262,15 @@ class WorkerPoolMock : public WorkerPool {
     local_stream_socket socket(instrumented_io_service_);
     auto conn = ClientConnection::Create(
         message_handler, std::move(socket), "worker", {}, error_message_type_);
-    HandleNewClient(conn) std::shared_ptr<Worker> worker_ =
-        std::make_shared<Worker>(job_id,
-                                 runtime_env_hash,
-                                 WorkerID::FromRandom(),
-                                 language,
-                                 worker_type,
-                                 "127.0.0.1",
-                                 conn,
-                                 client_call_manager_,
-                                 worker_startup_token);
+    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
+                                                               runtime_env_hash,
+                                                               WorkerID::FromRandom(),
+                                                               language,
+                                                               worker_type,
+                                                               "127.0.0.1",
+                                                               conn,
+                                                               client_call_manager_,
+                                                               worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     auto rpc_client = std::make_shared<MockWorkerClient>();
@@ -393,7 +392,6 @@ class WorkerPoolMock : public WorkerPool {
   rpc::ClientCallManager client_call_manager_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       &mock_worker_rpc_clients_;
-  void HandleNewClient(ClientConnection &){};
   void HandleMessage(std::shared_ptr<ClientConnection>,
                      int64_t,
                      const std::vector<uint8_t> &){};
