@@ -115,7 +115,7 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 }
 
 std::shared_ptr<ServerConnection> ServerConnection::Create(local_stream_socket &&socket) {
-  return std::make_shared<ServerConnection>(Tag{}, std::move(socket));
+  return std::make_shared<ServerConnection>(PrivateTag{}, std::move(socket));
 }
 
 ServerConnection::ServerConnection(Tag, local_stream_socket &&socket)
@@ -416,7 +416,7 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names,
     int64_t error_message_type) {
-  auto self = std::make_shared<ClientConnection>(Tag{},
+  auto self = std::make_shared<ClientConnection>(PrivateTag{},
                                                  message_handler,
                                                  std::move(socket),
                                                  debug_label,
