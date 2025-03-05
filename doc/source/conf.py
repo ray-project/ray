@@ -504,14 +504,6 @@ def add_custom_assets(
         app.add_css_file("css/use_cases.css")
 
 
-def skip_indexing_for_actor_bind(app, domain, objtype, contentnode):
-    # Check if this is the specific object we want to not index
-    if domain == "py" and contentnode.get("fullname") == "ray.actor.ActorMethod.bind":
-        # Set the noindex option for just this object
-        contentnode["noindex"] = True
-    return None
-
-
 def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
@@ -523,12 +515,6 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 
 def setup(app):
-    # Skip indexing for ray.actor.ActorMethod.bind
-    # Need this to:
-    # 1) show the API in both Ray Core API and Compiled Graph API sections
-    # 2) avoid indexing it twice which result in a doc compilation failure
-    app.connect("object-description-transform", skip_indexing_for_actor_bind)
-
     # Only generate versions JSON during RTD build
     if os.getenv("READTHEDOCS") == "True":
         generate_versions_json()
@@ -575,6 +561,16 @@ def setup(app):
 
     # Hook into the auto generation of public apis
     app.connect("builder-inited", _autogen_apis)
+
+    class DuplicateObjectFilter(logging.Filter):
+        def filter(self, record):
+            # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
+            # once in Ray Core API and once in Compiled Graph API
+            if "duplicate object description of ray.actor.ActorMethod.bind" in record.getMessage():
+                return False  # Don't log this specific warning
+            return True  # Log all other warnings
+    
+    logging.getLogger('sphinx').addFilter(DuplicateObjectFilter())
 
 
 redoc = [
