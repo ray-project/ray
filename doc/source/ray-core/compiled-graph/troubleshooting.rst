@@ -3,7 +3,7 @@ Troubleshooting
 
 This page contains common issues and solutions for Compiled Graph execution.
 
-Multiple executions with NumPy arrays
+Returning NumPy arrays
 -------------------------------------
 Ray zero-copy deserializes NumPy arrays when possible. If you execute compiled graph with a NumPy array output multiple times, 
 you could possibly run into issues if a NumPy array output from a previous Compiled Graph execution isn't deleted before attempting to get the result 
@@ -18,7 +18,7 @@ For example, the following code sample could result in a RayChannelTimeoutError 
     :end-before: __numpy_troubleshooting_end__
 
 In the preceding code snippet, Python may not garbage collect the NumPy array in `result` on each iteration of the loop. 
-Therefore, you should explicitly delete or copy and delete the NumPy array before you try to get the result of subsequent Compiled Graph executions.
+Therefore, you should explicitly delete the NumPy array before you try to get the result of subsequent Compiled Graph executions.
 
 
 Explicitly teardown before reusing the same actors
