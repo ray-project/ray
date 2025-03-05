@@ -197,6 +197,8 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/cgraph_profiling.py",
         "source/ray-core/doc_code/cgraph_nccl.py",
         "source/ray-core/doc_code/cgraph_overlap.py",
+        # not testing this as it purposefully segfaults
+        "source/ray-core/doc_code/cgraph_troubleshooting.py",
     ],
     extra_srcs = [],
     tags = [

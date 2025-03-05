@@ -78,4 +78,5 @@ Learn more details about Ray Compiled Graph from the following links.
     quickstart
     profiling
     overlap
+    troubleshooting
     compiled-graph-api

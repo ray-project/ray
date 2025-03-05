@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from typing import Optional, List, Type, Callable, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ray.data.block import UserDefinedFunction
 from ray.data import Dataset
@@ -12,9 +12,10 @@ from ray.llm._internal.batch.stages import (
     wrap_preprocess,
     wrap_postprocess,
 )
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 
-class ProcessorConfig(BaseModel):
+class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
     batch_size: int = Field(
