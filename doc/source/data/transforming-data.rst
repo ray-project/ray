@@ -232,6 +232,10 @@ Note that setting this flag may negatively impact performance on larger cluster 
 
 .. testcode::
 
+   import ray
+   
+   ctx = ray.data.DataContext().get_current()
+   
    # By default, this is set to False.
    ctx.execution_options.preserve_order = True
 
