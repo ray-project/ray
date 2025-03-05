@@ -1,4 +1,4 @@
-// Copyright 2024 The Ray Authors.
+// Copyright 2025 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,27 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#include "ray/common/task/task_util.h"
 
+#include <atomic>
 #include <cstdint>
-#include <string>
 
-#include "ray/util/compat.h"
+#include "absl/strings/str_format.h"
 
 namespace ray {
 
-// Context used to setup cgroupv2 for a task / actor.
-struct AppProcCgroupMetadata {
-  // A unique id to uniquely identity a certain task / actor attempt.
-  std::string id;
-  // PID for the process.
-  pid_t pid;
-
-  // Memory-related spec.
-  //
-  // Unit: bytes. Corresponds to cgroup V2 `memory.max`, which enforces hard cap on max
-  // memory consumption. 0 means no limit.
-  uint64_t max_memory = 0;
-};
+std::string GetTaskAttemptId(const TaskID &task_id) {
+  static std::atomic<uint64_t> global_attempt_id = 0;  // Global attempt id.
+  return absl::StrFormat("%s_%u", task_id.Hex(), global_attempt_id++);
+}
 
 }  // namespace ray

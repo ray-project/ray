@@ -18,6 +18,9 @@
 
 #include <boost/range/join.hpp>
 
+#include "ray/common/cgroup/cgroup_context.h"
+#include "ray/common/cgroup/cgroup_manager.h"
+#include "ray/common/task/task_util.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
@@ -354,7 +357,12 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         // confident we're ready to dispatch the task after all checks have
         // passed.
         sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
-        sched_cls_info.running_tasks.insert(spec.TaskId());
+        auto new_task_iter =
+            sched_cls_info.running_tasks
+                .emplace(spec.TaskId(), std::make_unique<ScopedCgroupHandler>())
+                .first;
+        auto *scoped_cgroup_handler = new_task_iter->second.get();
+
         // The local node has the available resources to run the task, so we should run
         // it.
         work->allocated_instances = allocated_instances;
@@ -365,19 +373,29 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         // task might be hanging.
         worker_pool_.PopWorker(
             spec,
-            [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
-                const std::shared_ptr<WorkerInterface> worker,
-                PopWorkerStatus status,
-                const std::string &runtime_env_setup_error_message) -> bool {
-              // TODO(hjiang): After getting the ready-to-use worker and task id, we're
-              // able to get physical execution context.
-              //
+            [this,
+             scoped_cgroup_handler,
+             task_id,
+             scheduling_class,
+             work,
+             is_detached_actor,
+             owner_address](const std::shared_ptr<WorkerInterface> worker,
+                            PopWorkerStatus status,
+                            const std::string &runtime_env_setup_error_message) -> bool {
               // ownership chain: raylet has-a node manager, node manager has-a local task
               // manager.
               //
               // - PID: could get from available worker
               // - Attempt id: could pass a global attempt id generator from raylet
               // - Cgroup application folder: could pass from raylet
+
+              if (worker != nullptr) {
+                AppProcCgroupMetadata cgroup_metadata;
+                cgroup_metadata.id = GetTaskAttemptId(task_id);
+                cgroup_metadata.pid = worker->GetProcess().GetId();
+                *scoped_cgroup_handler =
+                    GetCgroupSetup().ApplyCgroupContext(cgroup_metadata);
+              }
 
               return PoppedWorkerHandler(worker,
                                          status,
@@ -721,8 +739,6 @@ void LocalTaskManager::RemoveFromRunningTasksIfExists(const RayTask &task) {
   auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
   auto it = info_by_sched_cls_.find(sched_cls);
   if (it != info_by_sched_cls_.end()) {
-    // TODO(hjiang): After remove the task id from `running_tasks`, corresponding cgroup
-    // will be updated.
     it->second.running_tasks.erase(task.GetTaskSpecification().TaskId());
     if (it->second.running_tasks.size() == 0) {
       info_by_sched_cls_.erase(it);
