@@ -4,7 +4,15 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool
 from ray.air._internal.usage import tag_train_v2_trainer
-from ray.train import BackendConfig, Checkpoint, DataConfig
+from ray.train import (
+    BackendConfig,
+    Checkpoint,
+    DataConfig,
+    ScalingConfig,
+    RunConfig,
+    Result,
+    UserCallback,
+)
 from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
     _TRAINER_RESTORE_DEPRECATION_WARNING,
@@ -36,9 +44,6 @@ from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
-from ray.train.v2.api.callback import UserCallback
-from ray.train.v2.api.config import RunConfig, ScalingConfig
-from ray.train.v2.api.result import Result
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
