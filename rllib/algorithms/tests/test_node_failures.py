@@ -13,15 +13,10 @@ from ray.rllib.utils.metrics import (
 )
 
 
-num_redis_shards = 5
-redis_max_memory = 10**8
 object_store_memory = 10**8
 num_nodes = 3
 
-assert (
-    num_nodes * object_store_memory + num_redis_shards * redis_max_memory
-    < ray._private.utils.get_system_memory() / 2
-), (
+assert num_nodes * object_store_memory < ray._private.utils.get_system_memory() / 2, (
     "Make sure there is enough memory on this machine to run this "
     "workload. We divide the system memory by 2 to provide a buffer."
 )
@@ -35,11 +30,9 @@ class TestNodeFailures(unittest.TestCase):
         for i in range(num_nodes):
             self.cluster.add_node(
                 redis_port=6379 if i == 0 else None,
-                num_redis_shards=num_redis_shards if i == 0 else None,
                 num_cpus=2,
                 num_gpus=0,
                 object_store_memory=object_store_memory,
-                redis_max_memory=redis_max_memory,
                 dashboard_host="0.0.0.0",
             )
         self.cluster.wait_for_nodes()
@@ -183,11 +176,9 @@ class TestNodeFailures(unittest.TestCase):
                 print("Bringing back node ...")
                 self.cluster.add_node(
                     redis_port=None,
-                    num_redis_shards=None,
                     num_cpus=2,
                     num_gpus=0,
                     object_store_memory=object_store_memory,
-                    redis_max_memory=redis_max_memory,
                     dashboard_host="0.0.0.0",
                 )
 

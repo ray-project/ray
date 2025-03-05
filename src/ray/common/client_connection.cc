@@ -115,13 +115,10 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 }
 
 std::shared_ptr<ServerConnection> ServerConnection::Create(local_stream_socket &&socket) {
-  // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot invoke
-  // protected constructors.
-  std::shared_ptr<ServerConnection> self(new ServerConnection(std::move(socket)));
-  return self;
+  return std::make_shared<ServerConnection>(PrivateTag{}, std::move(socket));
 }
 
-ServerConnection::ServerConnection(local_stream_socket &&socket)
+ServerConnection::ServerConnection(PrivateTag, local_stream_socket &&socket)
     : socket_(std::move(socket)),
       async_write_max_messages_(1),
       async_write_queue_(),
@@ -413,25 +410,21 @@ void ServerConnection::DoAsyncWrites() {
 }
 
 std::shared_ptr<ClientConnection> ClientConnection::Create(
-    ClientHandler &client_handler,
     MessageHandler &message_handler,
     local_stream_socket &&socket,
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names,
     int64_t error_message_type) {
-  // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot invoke
-  // protected constructors.
-  std::shared_ptr<ClientConnection> self(new ClientConnection(message_handler,
-                                                              std::move(socket),
-                                                              debug_label,
-                                                              message_type_enum_names,
-                                                              error_message_type));
-  // Let our manager process our new connection.
-  client_handler(*self);
-  return self;
+  return std::make_shared<ClientConnection>(PrivateTag{},
+                                            message_handler,
+                                            std::move(socket),
+                                            debug_label,
+                                            message_type_enum_names,
+                                            error_message_type);
 }
 
 ClientConnection::ClientConnection(
+    PrivateTag,
     MessageHandler &message_handler,
     local_stream_socket &&socket,
     const std::string &debug_label,

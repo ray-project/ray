@@ -86,7 +86,7 @@ For more details on Ray Tasks and Actors, see :ref:`Ray Core Concepts <core-key-
 
 .. note:: A dataset's execution plan only runs when you materialize or consume the dataset through operations like :meth:`~ray.data.Dataset.show`.
 
-.. _streaming_execution_model:
+.. _streaming-execution:
 
 Streaming execution model
 -------------------------
@@ -146,3 +146,4 @@ To summarize, Ray Data's streaming execution model can efficiently process datas
 .. note::
    Operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and :meth:`ds.groupby() <ray.data.Dataset.groupby>` require materializing data, which may impact memory usage for very large datasets.
 
+You can read more about the streaming execution model in this `blog post <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__.

@@ -10,7 +10,6 @@ from ray.data.block import (
     CallableClass,
     DataBatch,
     UserDefinedFunction,
-    _get_block_boundaries,
 )
 from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
@@ -199,20 +198,19 @@ class GroupedData:
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
 
-            # Get the list of boundaries including first start and last end indices
-            if self._key:
-                projected_block = block_accessor.to_numpy(self._key)
-
-                # get_block_boundaries() expects a list of arrays
-                if isinstance(self._key, str):
-                    projected_block = [projected_block]
-                else:
-                    # projected_block is a dict of arrays
-                    projected_block = list(projected_block.values())
-
-                boundaries = _get_block_boundaries(projected_block)
+            if self._key is None:
+                keys = []
+            elif isinstance(self._key, str):
+                keys = [self._key]
+            elif isinstance(self._key, List):
+                keys = self._key
             else:
-                boundaries = [0, block_accessor.num_rows()]
+                raise ValueError(
+                    f"Group-by keys are expected to either be a single column (str) "
+                    f"or a list of columns (got '{self._key}')"
+                )
+
+            boundaries = block_accessor._get_group_boundaries_sorted(keys)
 
             for start, end in zip(boundaries[:-1], boundaries[1:]):
                 group_block = block_accessor.slice(start, end, copy=False)
@@ -292,14 +290,14 @@ class GroupedData:
             >>> import ray
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3)  # doctest: +SKIP
             ...     .sum(lambda x: x[2]) # doctest: +SKIP
             >>> ray.data.range(100).groupby("id").sum() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .sum(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -330,15 +328,15 @@ class GroupedData:
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped min aggregation.
+        r"""Compute grouped min aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -369,15 +367,15 @@ class GroupedData:
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped max aggregation.
+        r"""Compute grouped max aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -408,15 +406,15 @@ class GroupedData:
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped mean aggregation.
+        r"""Compute grouped mean aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -450,15 +448,15 @@ class GroupedData:
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Dataset:
-        """Compute grouped standard deviation aggregation.
+        r"""Compute grouped standard deviation aggregation.
 
         Examples:
             >>> import ray
             >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)])  # doctest: +SKIP
+            ...     .groupby("A")  # doctest: +SKIP
             ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style
