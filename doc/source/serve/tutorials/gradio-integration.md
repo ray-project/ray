@@ -22,7 +22,7 @@ $ pip install "ray[serve]" gradio==3.50.2 torch transformers
 
 ## Example 1: Scaling up your Gradio app with `GradioServer`
 
-The first example summarizes text using the [T5 Small](https://huggingface.co/t5-small) model and uses [Hugging Face's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access that model. It demonstrates one easy way to deploy Gradio apps onto Ray Serve: using the simple `GradioServer` wrapper. Later, in example 2, we will show how to use `GradioIngress` for more customized use-cases.
+The first example summarizes text using the [T5 Small](https://huggingface.co/t5-small) model and uses [Hugging Face's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access that model. It demonstrates one easy way to deploy Gradio apps onto Ray Serve: using the simple `GradioServer` wrapper. Example 2 shows how to use `GradioIngress` for more customized use-cases.
 
 
 First, create a new Python file named `demo.py`. Second, import `GradioServer` from Ray Serve to deploy your Gradio app later, `gradio`, and `transformers.pipeline` to load text summarization models.
