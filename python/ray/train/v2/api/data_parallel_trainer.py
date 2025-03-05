@@ -4,8 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool
 from ray.air._internal.usage import tag_train_v2_trainer
-from ray.train import BackendConfig, Checkpoint
-from ray.train._internal.data_config import DataConfig
+from ray.train import BackendConfig, Checkpoint, DataConfig
 from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
     _TRAINER_RESTORE_DEPRECATION_WARNING,
@@ -70,13 +69,14 @@ class DataParallelTrainer:
         metadata: Optional[Dict[str, Any]] = None,
     ):
         self.run_config = run_config or RunConfig()
-        self.train_run_context = TrainRunContext(self.run_config)
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
-        self.scaling_config = scaling_config
+        self.scaling_config = scaling_config or ScalingConfig()
         self.backend_config = backend_config or BackendConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
+
+        self.train_run_context = TrainRunContext(self.run_config)
 
         if resume_from_checkpoint is not None:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
