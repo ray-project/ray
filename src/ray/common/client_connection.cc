@@ -118,7 +118,7 @@ std::shared_ptr<ServerConnection> ServerConnection::Create(local_stream_socket &
   return std::make_shared<ServerConnection>(PrivateTag{}, std::move(socket));
 }
 
-ServerConnection::ServerConnection(Tag, local_stream_socket &&socket)
+ServerConnection::ServerConnection(PrivateTag, local_stream_socket &&socket)
     : socket_(std::move(socket)),
       async_write_max_messages_(1),
       async_write_queue_(),
@@ -428,7 +428,7 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
 }
 
 ClientConnection::ClientConnection(
-    Tag,
+    PrivateTag,
     MessageHandler &message_handler,
     local_stream_socket &&socket,
     const std::string &debug_label,
