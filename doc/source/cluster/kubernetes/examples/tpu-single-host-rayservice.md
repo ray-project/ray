@@ -4,7 +4,7 @@
 
 This guide showcases how to serve LLMs using Tensor Processing Units (TPUs) with the [vLLM](https://docs.vllm.ai/en/latest/) serving framework. A single-host TPU slice is a node pool that contains one or more independent TPU VMs. This tutorial uses one TPU Trillium node, which is Google's sixth generation TPU. For more information about TPUs, see [Use TPUs with KubeRay](kuberay-tpu). This example showcases serving and inference with Llama-3.1-70B on a 2x4 Trillium (v6e) TPU node, or with 8 TPU chips total.
 
-* This example uses vLLM with KubeRay. However, Ray provides a native [Serve LLM API](_serving_llms) to enable users to deploy multiple LLM models together with the Ray Serve API. This API is the recommended path for running LLMs through Ray Serve.
+* This example uses vLLM with KubeRay. However, Ray provides a native [Serve LLM API](https://docs.ray.io/en/latest/serve/llm/overview.html) to enable users to deploy multiple LLM models together with the Ray Serve API. This API is the recommended path for running LLMs through Ray Serve.
 
 ## Step 1: Create a Kubernetes Cluster with TPUs and the Ray Operator Enabled
 
