@@ -18,7 +18,12 @@
 
 namespace ray {
 
-TEST(InvokeOnceToken, CallOnce) {
+TEST(InvokeOnceToken, InvokeOnce) {
+  InvokeOnceToken token;
+  token.CheckInvokeOnce();  // First invocation passes through.
+};
+
+TEST(InvokeOnceToken, InvokeTwice) {
   InvokeOnceToken token;
   token.CheckInvokeOnce();  // First invocation passes through.
   // Second invocation fails.
