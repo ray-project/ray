@@ -3665,7 +3665,7 @@ class Dataset:
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
     ) -> None:
-        """Writes the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
         files will contain
@@ -3926,7 +3926,7 @@ class Dataset:
             This method supports only a subset of the PyArrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
             types fails on type checking. See all the supported types at:
-            https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
+            https://mongo-arrow.readthedocs.io/en/stable/api/types.html.
 
         .. note::
             The records are inserted into MongoDB as new documents. If a record has
@@ -4951,7 +4951,7 @@ class Dataset:
     @PublicAPI(api_group=IOC_API_GROUP)
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
-        `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
+        `Spark DataFrame <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.html>`_.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4961,7 +4961,7 @@ class Dataset:
         Returns:
             A `Spark DataFrame`_ created from this dataset.
 
-        .. _SparkSession: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.SparkSession.html
+        .. _SparkSession: https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.SparkSession.html
         """  # noqa: E501
         import raydp
 

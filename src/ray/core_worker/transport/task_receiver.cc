@@ -169,15 +169,19 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       }
 
       if (task_spec.IsActorCreationTask()) {
-        /// The default max concurrency for creating PoolManager should
-        /// be 0 if this is an asyncio actor.
-        const int default_max_concurrency =
-            task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
-        pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
-            task_spec.ConcurrencyGroups(), default_max_concurrency);
         if (task_spec.IsAsyncioActor()) {
           fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-              task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+              task_spec.ConcurrencyGroups(),
+              fiber_max_concurrency_,
+              initialize_thread_callback_);
+        } else {
+          // If the actor is an asyncio actor, then this concurrency group manager
+          // for BoundedExecutor will never be used, so we don't need to initialize it.
+          const int default_max_concurrency = task_spec.MaxActorConcurrency();
+          pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+              task_spec.ConcurrencyGroups(),
+              default_max_concurrency,
+              initialize_thread_callback_);
         }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
