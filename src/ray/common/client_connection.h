@@ -49,11 +49,11 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 /// can be used to write messages synchronously to the server.
 class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
  private:
-  // Tag to allow `make_shared` inside of the class.
-  struct Tag {};
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
 
  public:
-  ServerConnection(Tag, local_stream_socket &&socket);
+  ServerConnection(PrivateTag, local_stream_socket &&socket);
   ServerConnection(const ServerConnection &) = delete;
   ServerConnection &operator=(const ServerConnection &) = delete;
 
@@ -141,7 +141,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
  protected:
   /// A private constructor for a server connection.
   explicit ServerConnection(local_stream_socket &&socket)
-      : ServerConnection(Tag{}, std::move(socket)) {}
+      : ServerConnection(PrivateTag{}, std::move(socket)) {}
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
@@ -198,13 +198,13 @@ using MessageHandler = std::function<void(
 /// also be used to process messages asynchronously from client.
 class ClientConnection : public ServerConnection {
  private:
-  // Tag to allow `make_shared` inside of the class.
-  struct Tag {};
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
 
  public:
   using std::enable_shared_from_this<ServerConnection>::shared_from_this;
 
-  ClientConnection(Tag,
+  ClientConnection(PrivateTag,
                    MessageHandler &message_handler,
                    local_stream_socket &&socket,
                    const std::string &debug_label,
@@ -252,7 +252,7 @@ class ClientConnection : public ServerConnection {
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names,
                    int64_t error_message_type)
-      : ClientConnection(Tag{},
+      : ClientConnection(PrivateTag{},
                          message_handler,
                          std::move(socket),
                          debug_label,
