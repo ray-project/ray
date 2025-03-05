@@ -28,8 +28,7 @@ namespace raylet {
 
 class ClientConnectionTest : public ::testing::Test {
  public:
-  ClientConnectionTest()
-      : io_service_(), in_(io_service_), out_(io_service_), error_message_type_(1) {
+  ClientConnectionTest() : io_service_(), in_(io_service_), out_(io_service_) {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
     boost::asio::local::stream_protocol::socket input(io_service_), output(io_service_);
     boost::asio::local::connect_pair(input, output);
@@ -62,8 +61,12 @@ class ClientConnectionTest : public ::testing::Test {
   instrumented_io_context io_service_;
   local_stream_socket in_;
   local_stream_socket out_;
-  int64_t error_message_type_;
 };
+
+void CheckNoError(std::shared_ptr<ClientConnection> conn,
+                  const boost::system::error_code &error) {
+  RAY_CHECK(FALSE) << "Unexpected connection error: " << error.message();
+}
 
 TEST_F(ClientConnectionTest, SimpleSyncWrite) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
@@ -78,10 +81,10 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
   };
 
   auto conn1 = ClientConnection::Create(
-      message_handler, std::move(in_), "conn1", {}, error_message_type_);
+      message_handler, CheckNoError, std::move(in_), "conn1", {});
 
   auto conn2 = ClientConnection::Create(
-      message_handler, std::move(out_), "conn2", {}, error_message_type_);
+      message_handler, CheckNoError, std::move(out_), "conn2", {});
 
   RAY_CHECK_OK(conn1->WriteMessage(0, 5, arr));
   RAY_CHECK_OK(conn2->WriteMessage(0, 5, arr));
@@ -120,11 +123,11 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
     }
   };
 
-  auto writer = ClientConnection::Create(
-      noop_handler, std::move(in_), "writer", {}, error_message_type_);
+  auto writer =
+      ClientConnection::Create(noop_handler, CheckNoError, std::move(in_), "writer", {});
 
   reader = ClientConnection::Create(
-      message_handler, std::move(out_), "reader", {}, error_message_type_);
+      message_handler, CheckNoError, std::move(out_), "reader", {});
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     RAY_CHECK_OK(status);
@@ -175,8 +178,8 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
                                    int64_t message_type,
                                    const std::vector<uint8_t> &message) {};
 
-  auto writer = ClientConnection::Create(
-      noop_handler, std::move(in_), "writer", {}, error_message_type_);
+  auto writer =
+      ClientConnection::Create(noop_handler, CheckNoError, std::move(in_), "writer", {});
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     ASSERT_TRUE(!status.ok());
@@ -194,8 +197,8 @@ TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
                                    int64_t message_type,
                                    const std::vector<uint8_t> &message) {};
 
-  auto writer = ClientConnection::Create(
-      noop_handler, std::move(in_), "writer", {}, error_message_type_);
+  auto writer =
+      ClientConnection::Create(noop_handler, CheckNoError, std::move(in_), "writer", {});
 
   std::function<void(const ray::Status &)> callback =
       [writer](const ray::Status &status) {
@@ -219,10 +222,10 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   };
 
   auto writer = ClientConnection::Create(
-      message_handler, std::move(in_), "writer", {}, error_message_type_);
+      message_handler, CheckNoError, std::move(in_), "writer", {});
 
   auto reader = ClientConnection::Create(
-      message_handler, std::move(out_), "reader", {}, error_message_type_);
+      message_handler, CheckNoError, std::move(out_), "reader", {});
 
   // If client ID is set, bad message would crash the test.
   // reader->SetClientID(UniqueID::FromRandom());

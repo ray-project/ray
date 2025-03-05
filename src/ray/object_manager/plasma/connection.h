@@ -17,6 +17,9 @@ class Client;
 using PlasmaStoreMessageHandler = std::function<ray::Status(
     std::shared_ptr<Client>, flatbuf::MessageType, const std::vector<uint8_t> &)>;
 
+using PlasmaStoreConnectionErrorHandler =
+    std::function<void(std::shared_ptr<Client>, const boost::system::error_code &)>;
+
 class ClientInterface {
  public:
   virtual ~ClientInterface() {}
@@ -31,8 +34,10 @@ class ClientInterface {
 /// Contains all information that is associated with a Plasma store client.
 class Client : public ray::ClientConnection, public ClientInterface {
  public:
-  static std::shared_ptr<Client> Create(PlasmaStoreMessageHandler message_handler,
-                                        ray::local_stream_socket &&socket);
+  static std::shared_ptr<Client> Create(
+      const PlasmaStoreMessageHandler &message_handler,
+      const PlasmaStoreConnectionErrorHandler &connection_error_handler,
+      ray::local_stream_socket &&socket);
 
   ray::Status SendFd(MEMFD_TYPE fd) override;
 
@@ -107,7 +112,9 @@ class Client : public ray::ClientConnection, public ClientInterface {
   std::string name = "anonymous_client";
 
  private:
-  Client(ray::MessageHandler &message_handler, ray::local_stream_socket &&socket);
+  Client(const ray::MessageHandler &message_handler,
+         const ray::ConnectionErrorHandler &connection_error_handler,
+         ray::local_stream_socket &&socket);
   /// File descriptors that are used by this client.
   /// TODO(ekl) we should also clean up old fds that are removed.
   absl::flat_hash_set<MEMFD_TYPE> used_fds_;

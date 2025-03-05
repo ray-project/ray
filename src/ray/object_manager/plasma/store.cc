@@ -314,6 +314,7 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
     auto new_connection = Client::Create(
         // NOLINTNEXTLINE : handler must be of boost::AcceptHandler type.
         boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
+        boost::bind(&PlasmaStore::HandleConnectionError, this, ph::_1, ph::_2),
         std::move(socket_));
   }
 
@@ -353,6 +354,14 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   }
 
   create_request_queue_.RemoveDisconnectedClientRequests(client);
+}
+
+void PlasmaStore::HandleConnectionError(const std::shared_ptr<Client> &client,
+                                        const boost::system::error_code &error) {
+  absl::MutexLock lock(&mutex_);
+  RAY_LOG(WARNING) << "Disconnecting client due to connection error with code "
+                   << error.value() << ": " << error.message();
+  DisconnectClient(client);
 }
 
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
