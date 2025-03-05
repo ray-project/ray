@@ -85,7 +85,7 @@ Suppose you want to run the following program.
 
 The following is a comparison of an unparallelized approach using vanilla Gradio to a parallelized approach using Ray Serve.
 
-### Unparallelized approach
+### Vanilla Gradio
 
 
 This code is a typical implementation:
