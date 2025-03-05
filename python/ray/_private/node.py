@@ -582,7 +582,6 @@ class Node:
                     else object_store_memory
                 ),
                 resources,
-                self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
 
