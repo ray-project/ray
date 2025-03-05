@@ -21,6 +21,7 @@
 #include <atomic>
 #include <cstring>
 
+#include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
 #endif
 
@@ -28,10 +29,8 @@ namespace ray {
 
 #if defined(__APPLE__) || defined(__linux__)
 void SpawnSubprocessAndCleanup(std::function<void()> cleanup) {
-  static std::atomic<bool> cleanup_proc_registered{false};
-  bool expected = false;
-  RAY_CHECK(cleanup_proc_registered.compare_exchange_strong(expected, /*desired=*/true))
-      << "Cleanup callback should be only called once per process";
+  static InvokeOnceToken token;
+  token.CheckInvokeOnce();
 
   std::array<int, 2> pipe_fd;  // Intentionally no initialization.
   RAY_CHECK_NE(pipe(pipe_fd.data()), -1)
