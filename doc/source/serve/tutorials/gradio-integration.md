@@ -63,7 +63,7 @@ Using either the Gradio app `io`, which the builder function constructed, or you
 :end-before: __doc_app_end__
 ```
 
-Finally, deploy your Gradio Server. Run the following in your terminal (assuming that you saved the file as `demo.py`):
+Finally, deploy your Gradio Server. Run the following in your terminal, assuming that you saved the file as `demo.py`:
 ```console
 $ serve run demo:app
 ```
