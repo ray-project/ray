@@ -21,6 +21,8 @@ namespace ray {
 TEST(InvokeOnceToken, CallOnce) {
   InvokeOnceToken token;
   token.CheckInvokeOnce();  // First invocation passes through.
+  // Second invocation fails.
+  EXPECT_DEATH(token.CheckInvokeOnce(), "Invoke once token has been visited before.");
 };
 
 }  // namespace ray

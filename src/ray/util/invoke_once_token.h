@@ -41,6 +41,6 @@ class InvokeOnceToken {
 };
 
 static_assert(std::is_trivially_destructible<InvokeOnceToken>::value,
-              "CallOnceToken must be trivially destructible");
+              "InvokeOnceToken must be trivially destructible");
 
 }  // namespace ray
