@@ -184,8 +184,7 @@ bool CgroupSetup::SetupCgroups(const std::string &node_id) {
   // Cgroup folder for the current ray node.
   cgroup_v2_folder_ = absl::StrFormat("/sys/fs/cgroup/ray_node_%s", node_id);
 
-  cgroup_v2_app_folder_ =
-      absl::StrFormat("%s/ray_application_%s", cgroup_v2_folder_, node_id);
+  cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
   cgroup_v2_system_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
   const std::string cgroup_v2_app_procs =
       ray::JoinPaths(cgroup_v2_app_folder_, "cgroup.procs");
