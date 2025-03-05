@@ -124,7 +124,7 @@ To launch a full fine-tuning you can use the following command:
 
 ### Launching LoRA fine-tuning
 
-You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve more resource efficient fine-tuning results than full-parameter fine-tuning, but unlocking smaller instance types and more effecient model serving.
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve more resource efficient fine-tuning results than full-parameter fine-tuning, but unlocking smaller instance types and more efficient model serving.
 To launch a LoRA fine-tuning, you can use the following command or similar commands for other model sizes:
 
 ```
@@ -211,13 +211,13 @@ So availability of enough CPU RAM is very important when using optimizer state o
 
 2. CPU RAM requirement during checkpointing
 
-During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard indepedently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho. 
+During checkpointing in the middle of training, we have to aggregate the weights from all the shards back to rank 0 so that it can save the model. We can also save the weights of each shard independently and aggregate the weights later offline. The extra CPU memory requirement would not get solved tho. 
 
 Emprically the implementation that `accelerate` provides needs `O(4M)` CPU RAM on rank 0 machine where M is the model size. This would mean that for 70B we need 280GB of CPU on top of what we needed before (e.g. due to CPU offloading). This requirement is only for rank 0 though and not any other machine. So it's important to schedule this process on a machine with this much of RAM while the other processes can get scheduled on machines with lower RAM requirements. 
 
 For example, for 70B model, with 32-way sharding on a machine with 8xA10Gs (g5.48xlarge), you need 280G (because of checkpointing) and 315 GB (because of optimizer state offloading) making the total memory requirement ~595 GB.
 
-Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom lable for those machines that satisifies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requiremnet for the `trainer` actor which is in the same machine that rank zero process will get executed on.
+Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom label for those machines that satisfies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requirement for the `trainer` actor which is in the same machine that rank zero process will get executed on.
 
 ```
 scaling_config=air.ScalingConfig(

@@ -64,7 +64,7 @@ Proximal Policy Optimization (PPO)
     **PPO architecture:** In a training iteration, PPO performs three major steps:
     1. Sampling a set of episodes or episode fragments
     1. Converting these into a train batch and updating the model using a clipped objective and multiple SGD passes over this batch
-    1. Synching the weights from the Learners back to the EnvRunners
+    1. Syncing the weights from the Learners back to the EnvRunners
     PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
 
