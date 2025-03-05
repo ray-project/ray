@@ -40,7 +40,7 @@ it raises an exception with one of the following error messages (which indicates
 
 .. code-block:: bash
 
-  Worker exit type: UNEXPECTED_SY STEM_EXIT Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. There are some potential root causes. (1) The process is killed by SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is called. (3) The worker is crashed unexpectedly due to SIGSEGV or other unexpected errors.
+  Worker exit type: UNEXPECTED_SY STEM_EXIT Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. There are several potential root causes. (1) The process is killed by SIGKILL due to the OOM killer triggering from high memory usage. (2) ray stop --force was called. (3) The worker crashed unexpectedly due to SIGSEGV or other unforseen errors.
 
 .. code-block:: bash
 
