@@ -168,7 +168,9 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
         node_manager_message_enum,
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
 
-    node_manager_.ProcessNewClient(conn);
+    // Begin processing messages. The message handler above is expected to call this to
+    // continue processing messages.
+    conn->ProcessMessages();
   } else {
     RAY_LOG(ERROR) << "Raylet failed to accept new connection: " << error.message();
     if (error == boost::asio::error::operation_aborted) {
