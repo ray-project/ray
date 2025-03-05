@@ -113,19 +113,20 @@ void Metric::Record(double value, const TagsType &tags) {
     return;
   }
 
-  std::call_once(measure_init_flag_, [this]() {
+  absl::MutexLock lock(&registration_mutex_);
+  if (measure_ == nullptr) {
     // Measure could be registered before, so we try to get it first.
     MeasureDouble registered_measure =
         opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
 
     if (registered_measure.IsValid()) {
-      measure_ = std::make_unique<MeasureDouble>(registered_measure);
+      measure_.reset(new MeasureDouble(registered_measure));
     } else {
-      measure_ = std::make_unique<MeasureDouble>(
-          MeasureDouble::Register(name_, description_, unit_));
+      measure_.reset(
+          new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
     }
     RegisterView();
-  });
+  }
 
   // Do record.
   TagsType combined_tags(tags);

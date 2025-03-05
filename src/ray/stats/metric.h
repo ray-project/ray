@@ -145,7 +145,9 @@ class Metric {
 
  private:
   const std::regex &name_regex_;
-  std::once_flag measure_init_flag_;
+
+  // For making sure thread-safe to all of metric registrations.
+  inline static absl::Mutex registration_mutex_;
 };  // class Metric
 
 class Gauge : public Metric {
