@@ -5,6 +5,14 @@
 Handling Failures and Node Preemption
 =====================================
 
+.. important::
+    This user guide shows how to configure fault tolerance for the revamped Ray Train V2
+    available starting from Ray 2.43 by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
+    **This user guide assumes that the environment variable has been enabled.**
+
+    Please see :ref:`here <train-fault-tolerance-deprecation-info>` for information about the deprecation and migration.
+
+
 Ray Train provides fault tolerance at three levels:
 
 1. **Worker process fault tolerance** handles errors that happen to one or more Train worker processes while they are executing the user defined training function.
@@ -178,3 +186,17 @@ Consider the following example of a cluster containing a CPU head node and 2 GPU
     The Ray Train driver process runs on a new head node.
     Ray Train fetches the run state information from storage at ``{storage_path}/{name}`` (e.g., ``s3://my_bucket/my_run_name``)
     and passes the latest checkpoint to the newly launched worker processes to resume training.
+
+
+.. _train-fault-tolerance-deprecation-info:
+
+Deprecation of the ``<Framework>Trainer.restore`` API + Migration Guide
+-----------------------------------------------------------------------
+
+The ``<Framework>Trainer.restore`` API is deprecated in favor of the new usage pattern described in this user guide.
+The reasons for this change include (1) avoiding saving user code to pickled files and (2) improving the previously convoluted user experience.
+
+Find more context regarding this deprecation in the `REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_
+and see the `migration guide <https://github.com/ray-project/ray/issues/49454>`_ for steps to migrate off the old API.
+
+Please see :ref:`train-fault-tolerance-deprecated-api` for the old API user guide.
