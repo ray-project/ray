@@ -69,8 +69,6 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
-
   MessageHandler message_handler = [&arr, &num_messages](
                                        std::shared_ptr<ClientConnection> client,
                                        int64_t message_type,
@@ -80,10 +78,10 @@ TEST_F(ClientConnectionTest, SimpleSyncWrite) {
   };
 
   auto conn1 = ClientConnection::Create(
-      client_handler, message_handler, std::move(in_), "conn1", {}, error_message_type_);
+      message_handler, std::move(in_), "conn1", {}, error_message_type_);
 
   auto conn2 = ClientConnection::Create(
-      client_handler, message_handler, std::move(out_), "conn2", {}, error_message_type_);
+      message_handler, std::move(out_), "conn2", {}, error_message_type_);
 
   RAY_CHECK_OK(conn1->WriteMessage(0, 5, arr));
   RAY_CHECK_OK(conn2->WriteMessage(0, 5, arr));
@@ -98,8 +96,6 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   const uint8_t msg2[5] = {4, 4, 4, 4, 4};
   const uint8_t msg3[5] = {8, 8, 8, 8, 8};
   int num_messages = 0;
-
-  ClientHandler client_handler = [](ClientConnection &client) {};
 
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
@@ -125,14 +121,10 @@ TEST_F(ClientConnectionTest, SimpleAsyncWrite) {
   };
 
   auto writer = ClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
+      noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
-  reader = ClientConnection::Create(client_handler,
-                                    message_handler,
-                                    std::move(out_),
-                                    "reader",
-                                    {},
-                                    error_message_type_);
+  reader = ClientConnection::Create(
+      message_handler, std::move(out_), "reader", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     RAY_CHECK_OK(status);
@@ -179,14 +171,12 @@ TEST_F(ClientConnectionTest, SimpleAsyncReadWriteBuffers) {
 TEST_F(ClientConnectionTest, SimpleAsyncError) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
-
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
                                    const std::vector<uint8_t> &message) {};
 
   auto writer = ClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
+      noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback = [](const ray::Status &status) {
     ASSERT_TRUE(!status.ok());
@@ -200,14 +190,12 @@ TEST_F(ClientConnectionTest, SimpleAsyncError) {
 TEST_F(ClientConnectionTest, CallbackWithSharedRefDoesNotLeakConnection) {
   const uint8_t msg1[5] = {1, 2, 3, 4, 5};
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
-
   MessageHandler noop_handler = [](std::shared_ptr<ClientConnection> client,
                                    int64_t message_type,
                                    const std::vector<uint8_t> &message) {};
 
   auto writer = ClientConnection::Create(
-      client_handler, noop_handler, std::move(in_), "writer", {}, error_message_type_);
+      noop_handler, std::move(in_), "writer", {}, error_message_type_);
 
   std::function<void(const ray::Status &)> callback =
       [writer](const ray::Status &status) {
@@ -222,8 +210,6 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
   int num_messages = 0;
 
-  ClientHandler client_handler = [](ClientConnection &client) {};
-
   MessageHandler message_handler = [&arr, &num_messages](
                                        std::shared_ptr<ClientConnection> client,
                                        int64_t message_type,
@@ -233,14 +219,10 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   };
 
   auto writer = ClientConnection::Create(
-      client_handler, message_handler, std::move(in_), "writer", {}, error_message_type_);
+      message_handler, std::move(in_), "writer", {}, error_message_type_);
 
-  auto reader = ClientConnection::Create(client_handler,
-                                         message_handler,
-                                         std::move(out_),
-                                         "reader",
-                                         {},
-                                         error_message_type_);
+  auto reader = ClientConnection::Create(
+      message_handler, std::move(out_), "reader", {}, error_message_type_);
 
   // If client ID is set, bad message would crash the test.
   // reader->SetClientID(UniqueID::FromRandom());
