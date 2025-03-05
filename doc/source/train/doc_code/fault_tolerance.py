@@ -50,3 +50,10 @@ trainer = ray.train.torch.TorchTrainer(
 )
 trainer.fit()
 # __worker_fault_tolerance_end__
+
+# __job_driver_fault_tolerance_start__
+import ray.train
+import ray.train.torch
+
+
+# __job_driver_fault_tolerance_end__

@@ -22,7 +22,7 @@ Worker Process and Node Fault Tolerance
 such as GPU out-of-memory (OOM) errors, cloud storage access errors, or other runtime errors.
 
 **Node failures** are errors that bring down the entire node, including node preemption, OOM, network partitions, or other hardware failures.
-This section covers worker node failures. Recovery from head node failures is discussed in the :ref:`next section <train-cluster-fault-tolerance>`.
+This section covers worker node failures. Recovery from head node failures is discussed in the :ref:`next section <train-job-driver-fault-tolerance>`.
 
 Ray Train can be configured to automatically recover from worker process and worker node failures.
 When a failure is detected, all the workers are shut down, new nodes are added if necessary, and a new set of workers is started.
@@ -99,7 +99,7 @@ The :ref:`storage path has been configured <persistent-storage-guide>` to use cl
 
 
 .. _train-restore-guide:
-.. _train-cluster-fault-tolerance:
+.. _train-job-driver-fault-tolerance:
 
 
 Job Driver Fault Tolerance
@@ -119,7 +119,7 @@ The relaunched Ray Train driver needs to find a minimal amount of run state in o
 This state includes the latest reported checkpoints, which are located at the :ref:`storage path <persistent-storage-guide>`.
 Ray Train fetches the latest checkpoint information from storage and passes it to the newly launched worker processes to resume training.
 
-To find this run state, Ray Train relies on passing in the **same** :ref:`RunConfig(storage_path, name) <ray.train.RunConfig>` pair as the previous run.
+To find this run state, Ray Train relies on passing in the **same** :class:`RunConfig(storage_path, name) <ray.train.RunConfig>` pair as the previous run.
 If the ``storage_path`` or ``name`` do not match, Ray Train will not be able to find the previous run state and will start a new run from scratch.
 
 .. warning::
@@ -127,23 +127,41 @@ If the ``storage_path`` or ``name`` do not match, Ray Train will not be able to 
     Therefore, always pass a unique run name when launching a new run. In other words, ``name`` should be a unique identifier for a training job
 
 .. note::
-    Job driver crashes and interrupts do NOT count toward the ``max_failures`` limit of :ref:`worker fault tolerance <train-worker-fault-tolerance>`.
+    Job driver crashes and interrupts do not count toward the ``max_failures`` limit of :ref:`worker fault tolerance <train-worker-fault-tolerance>`.
+
+Here's an example training script that highlights best practices regarding job driver fault tolerance:
+
+.. literalinclude:: ../doc_code/fault_tolerance.py
+    :language: python
+    :start-after: __job_driver_fault_tolerance_start__
+    :end-before: __job_driver_fault_tolerance_end__
 
 
 Illustrated Example
 ~~~~~~~~~~~~~~~~~~~
 
 .. figure:: ../images/fault_tolerance/head_node_failure.png
-    :align: center
+    :align: left
 
-    ABCDEFG
+    (Left) Training has been running for some time, and the latest checkpoints and run state has been saved to storage.
+
+    (Right) The head node crashes for some reason (e.g., an out-of-memory error), and the Ray Train driver process is interrupted.
+
 
 .. figure:: ../images/fault_tolerance/cluster_failure.png
-    :align: center
+    :align: left
 
-    ABCDEFG
+    (Left) Same as the previous figure.
+
+    (Right) The entire cluster goes down due to the head node failure.
 
 .. figure:: ../images/fault_tolerance/cluster_restart.png
-    :align: center
+    :align: left
 
-    ABCDEFG
+    (Left) Same as the previous figure.
+
+    (Right) A manual cluster restart or some job submission system brings up a new Ray cluster.
+    The Ray Train driver process runs on a new head node.
+    Ray Train fetches the run state information from storage at ``{storage_path}/{name}`` (e.g., ``s3://my_bucket/my_run_name``)
+    and passes the latest checkpoint to the newly launched worker processes to resume training.
+
