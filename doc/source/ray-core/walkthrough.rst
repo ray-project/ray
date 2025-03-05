@@ -21,7 +21,7 @@ This walk-through introduces you to these core concepts with simple examples tha
     Ray has introduced an experimental API for high-performance workloads that's
     especially well suited for applications using multiple GPUs.
     See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
-    
+
 
 Getting Started
 ---------------

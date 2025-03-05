@@ -4,16 +4,16 @@ from ray import serve
 from ray.llm._internal.serve.configs.server_models import (
     LLMServingArgs,
     LLMConfig,
-    AutoscalingConfig,
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.builders.application_builders import (
     build_openai_app,
-    build_vllm_deployment,
+    build_llm_deployment,
 )
 from ray.llm._internal.serve.configs.constants import (
     RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS,
 )
+from ray.serve.config import AutoscalingConfig
 import subprocess
 import yaml
 import os
@@ -139,7 +139,7 @@ class TestBuildOpenaiApp:
         )
         assert router_autoscaling_config.min_replicas == 8  # (1 + 1 + 2) * 2
         assert router_autoscaling_config.initial_replicas == 10  # (1 + 1 + 3) * 2
-        assert router_autoscaling_config.max_replicas == 408  # (100 + 100 + 4) * 2
+        assert router_autoscaling_config.max_replicas == 12  # (1 + 1 + 4) * 2
         assert (
             router_autoscaling_config.target_ongoing_requests
             == RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS
@@ -147,15 +147,15 @@ class TestBuildOpenaiApp:
 
 
 class TestBuildVllmDeployment:
-    def test_build_vllm_deployment(
+    def test_build_llm_deployment(
         self,
         llm_config,
         shutdown_ray_and_serve,
         use_mock_vllm_engine,
     ):
-        """Test `build_vllm_deployment` can build a VLLM deployment."""
+        """Test `build_llm_deployment` can build a vLLM deployment."""
 
-        app = build_vllm_deployment(llm_config)
+        app = build_llm_deployment(llm_config)
         assert isinstance(app, serve.Application)
         serve.run(app)
 
