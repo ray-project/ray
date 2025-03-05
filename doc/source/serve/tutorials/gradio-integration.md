@@ -83,7 +83,7 @@ Suppose you want to run the following program.
 2. Run the two models on the same input text, so that the generated text has a minimum length of 20 and maximum length of 100.
 3. Display the outputs of both models using Gradio.
 
-Let's compare an unparallelized approach using vanilla Gradio to a parallelized approach using Ray Serve.
+The following is a comparison of an unparallelized approach using vanilla Gradio to a parallelized approach using Ray Serve.
 
 ### Unparallelized approach
 
