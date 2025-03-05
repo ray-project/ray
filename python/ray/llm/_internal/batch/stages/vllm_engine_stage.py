@@ -202,29 +202,20 @@ class vLLMEngineWrapper:
             return params.tolist()
         return params
 
-    async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
-        """Prepare the inputs for LLM inference.
+    async def _maybe_get_lora_request(
+        self,
+        row: Dict[str, Any],
+    ) -> Optional[vllm.lora.request.LoRARequest]:
+        """Get the LoRA request for the given row.
+        Specifically, if the model name is given and is different from the model
+        set in the config, then this request has LoRA.
 
         Args:
             row: The row.
 
         Returns:
-            A single vLLMEngineRequest.
+            The LoRA request, or None if there is no LoRA.
         """
-        prompt = row.pop("prompt")
-
-        if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt").tolist()
-        else:
-            tokenized_prompt = None
-
-        if "image" in row:
-            image = row.pop("image")
-        else:
-            image = []
-
-        # If the model name is given and is different from the model
-        # set in the config, then this is a LoRA.
         lora_request = None
         if "model" in row and row["model"] != self.model:
             if self.vllm_use_v1:
@@ -253,6 +244,30 @@ class vLLMEngineWrapper:
                         )
                         self.lora_name_to_request[lora_name] = lora_request
             lora_request = self.lora_name_to_request[lora_name]
+        return lora_request
+
+    async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
+        """Prepare the inputs for LLM inference.
+
+        Args:
+            row: The row.
+
+        Returns:
+            A single vLLMEngineRequest.
+        """
+        prompt = row.pop("prompt")
+
+        if "tokenized_prompt" in row:
+            tokenized_prompt = row.pop("tokenized_prompt").tolist()
+        else:
+            tokenized_prompt = None
+
+        if "image" in row:
+            image = row.pop("image")
+        else:
+            image = []
+
+        lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
         if self.task_type == vLLMTaskType.GENERATE:
