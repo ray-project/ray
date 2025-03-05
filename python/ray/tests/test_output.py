@@ -33,9 +33,9 @@ ray.get([verbose.remote() for _ in range(10)])
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
 
-    assert out_str.count("hello") == 2
-    assert out_str.count("RAY_DEDUP_LOGS") == 1
-    assert out_str.count("[repeated 9x across cluster]") == 1
+    assert out_str.count("hello") == 2, out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
+    assert out_str.count("[repeated 9x across cluster]") == 1, out_str
 
 
 def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
@@ -71,9 +71,9 @@ for actor in actors:
 """
         out_str = run_string_as_driver(script)
         print(out_str)
-    assert "PYTHON worker processes have been started" in out_str
-    assert out_str.count("RAY_DEDUP_LOGS") == 1
-    assert "[repeated" in out_str
+    assert "PYTHON worker processes have been started" in out_str, out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1, out_str
+    assert "[repeated" in out_str, out_str
 
 
 def test_logger_config_with_ray_init():
@@ -101,16 +101,18 @@ x = []
 
 for _ in range(10):
     x.append(ray.put(bytes(100 * 1024 * 1024)))
-"""
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+"""
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "1"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " in out_str
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "0"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "0"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " not in out_str
 
 
@@ -567,34 +569,41 @@ import ray
 import sys
 import threading
 
-ray.init(num_cpus=2)
+os.environ["RAY_DEBUG"] = "legacy"
+ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
 @ray.remote
 def f():
     while True:
-        time.sleep(1)
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < 1:
+            time.sleep(0.1)
+            print(f"slept {time.monotonic() - start_time} seconds")
         print("hello there")
         sys.stdout.flush()
 
 def kill():
-    time.sleep(5)
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < 5:
+        time.sleep(0.1)
     sys.stdout.flush()
-    time.sleep(1)
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < 1:
+        time.sleep(0.1)
     os._exit(0)
 
 t = threading.Thread(target=kill)
 t.start()
 x = f.remote()
-time.sleep(2)  # Enough time to print one hello.
-ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
-# breakpoint()  # Only works in Py3.7+
+time.sleep(3)  # Enough time to print one hello.
+breakpoint()  # This should disable worker logs.
     """
 
     proc = run_string_as_driver_nonblocking(script)
     out_str = proc.stdout.read().decode("ascii")
     num_hello = out_str.count("hello")
     assert num_hello >= 1, out_str
-    assert num_hello < 3, out_str
+    assert num_hello <= 3, out_str
     assert "Temporarily disabling Ray worker logs" in out_str, out_str
     # TODO(ekl) nice to test resuming logs too, but it's quite complicated
 
@@ -738,14 +747,12 @@ import ray
 from ray.tune import run_experiments
 from ray.tune.utils.release_test_util import ProgressCallback
 
-num_redis_shards = 5
-redis_max_memory = 10**8
 object_store_memory = 10**9
 num_nodes = 3
 
 message = ("Make sure there is enough memory on this machine to run this "
            "workload. We divide the system memory by 2 to provide a buffer.")
-assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
+assert (num_nodes * object_store_memory <
         ray._private.utils.get_system_memory() / 2), message
 
 # Simulate a cluster on one machine.

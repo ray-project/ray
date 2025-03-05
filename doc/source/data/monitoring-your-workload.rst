@@ -5,10 +5,40 @@ Monitoring Your Workload
 
 This section helps you debug and monitor the execution of your :class:`~ray.data.Dataset` by viewing the:
 
+* :ref:`Ray Data progress bars <ray-data-progress-bars>`
 * :ref:`Ray Data dashboard <ray-data-dashboard>`
 * :ref:`Ray Data logs <ray-data-logs>`
 * :ref:`Ray Data stats <ray-data-stats>`
 
+.. _ray-data-progress-bars:
+
+Ray Data progress bars
+----------------------
+
+When you execute a :class:`~ray.data.Dataset`, Ray Data displays a set of progress bars in the console. These progress bars show various execution and progress-related metrics, including the number of rows completed/remaining, resource usage, and task/actor status. See the annotated image for a breakdown of how to interpret the progress bar outputs: 
+
+.. image:: images/dataset-progress-bar.png
+   :align: center
+
+
+Some additional notes on progress bars:
+
+* The progress bars are updated every second; resource usage, metrics, and task/actor status may take up to 5 seconds to update.
+* When the tasks section contains the label `[backpressure]`, it indicates that the operator is *backpressured*, meaning that the operator won't submit more tasks until the downstream operator is ready to accept more data.
+* The global resource usage is the sum of resources used by all operators, active and requested (includes pending scheduling and pending node assignment).
+
+Configuring the progress bar
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Depending on your use case, you may not be interested in the full progress bar output, or wish to turn them off altogether. Ray Data provides several ways to accomplish this:
+
+* Disabling operator-level progress bars: Set `DataContext.get_current().enable_operator_progress_bars = False`. This only shows the global progress bar, and omits operator-level progress bars.
+* Disabling all progress bars: Set `DataContext.get_current().enable_progress_bars = False`. This disables all progress bars from Ray Data related to dataset execution.
+* Disabling `ray_tqdm`: Set `DataContext.get_current().use_ray_tqdm = False`. This configures Ray Data to use the base `tqdm` library instead of the custom distributed `tqdm` implementation, which could be useful when debugging logging issues in a distributed setting.
+
+For operator names longer than a threshold of 100 characters, Ray Data truncates the names by default, to prevent the case when the operator names are long and the progress bar is too wide to fit on the screen.
+
+* To turn off this behavior and show the full operator name, set `DataContext.get_current().enable_progress_bar_name_truncation = False`.
+* To change the threshold of truncating the name, update the constant `ray.data._internal.progress_bar.ProgressBar.MAX_NAME_LENGTH = 42`.
 
 .. _ray-data-dashboard:
 

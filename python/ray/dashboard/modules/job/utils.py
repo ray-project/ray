@@ -3,10 +3,9 @@ import dataclasses
 import logging
 import os
 import re
-import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
@@ -37,13 +36,14 @@ MAX_CHUNK_CHAR_LENGTH = 20000
 
 async def get_head_node_id(gcs_aio_client: GcsAioClient) -> Optional[str]:
     """Fetches Head node id persisted in GCS"""
-    head_node_id_bytes = await gcs_aio_client.internal_kv_get(
+    head_node_id_hex_bytes = await gcs_aio_client.internal_kv_get(
         ray_constants.KV_HEAD_NODE_ID_KEY,
         namespace=ray_constants.KV_NAMESPACE_JOB,
         timeout=30,
     )
-
-    return head_node_id_bytes.decode() if head_node_id_bytes is not None else None
+    if head_node_id_hex_bytes is None:
+        return None
+    return head_node_id_hex_bytes.decode()
 
 
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -60,7 +60,7 @@ def redact_url_password(url: str) -> str:
     return url
 
 
-def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
+async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
     """Yield lines from a file as it's written.
 
     Returns lines in batches of up to 10 lines or 20000 characters,
@@ -114,7 +114,7 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 chunk_char_count += len(curr_line)
             else:
                 # If EOF is reached sleep for 1s before continuing
-                time.sleep(1)
+                await asyncio.sleep(1)
 
 
 async def parse_and_validate_request(

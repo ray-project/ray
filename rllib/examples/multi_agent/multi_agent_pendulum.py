@@ -17,6 +17,7 @@ For logging to your WandB account, use:
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
 
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -57,7 +58,7 @@ if __name__ == "__main__":
             vf_clip_param=10.0,
         )
         .rl_module(
-            model_config_dict={"fcnet_activation": "relu"},
+            model_config=DefaultModelConfig(fcnet_activation="relu"),
         )
     )
 

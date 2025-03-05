@@ -92,7 +92,7 @@ def main(pargs):
         json.dump(config, f)
 
     # Create the environment.
-    env = wrap_atari_for_new_api_stack(gym.make("ALE/Breakout-v5"))
+    env = wrap_atari_for_new_api_stack(gym.make("ale_py:ALE/Breakout-v5"))
 
     # setup RLModule
     model_cfg = MODEL_DEFAULTS.copy()
@@ -101,7 +101,7 @@ def main(pargs):
         observation_space=env.observation_space,
         action_space=env.action_space,
         catalog_class=PPOCatalog,
-        model_config_dict=model_cfg,
+        model_config=model_cfg,
     )
     device = torch.device("cuda" if not use_cpu else "cpu")
 

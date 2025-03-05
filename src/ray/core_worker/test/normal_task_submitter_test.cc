@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -39,6 +40,14 @@ class DynamicRateLimiter : public LeaseRequestRateLimiter {
  public:
   size_t limit;
 };
+
+// Wait (and halt the thread) until object_id appears in memory_store.
+void WaitForObjectIdInMemoryStore(CoreWorkerMemoryStore &memory_store,
+                                  const ObjectID &object_id) {
+  std::promise<bool> p;
+  memory_store.GetAsync(object_id, [&p](auto) { p.set_value(true); });
+  ASSERT_TRUE(p.get_future().get());
+}
 }  // namespace
 
 // Used to prevent leases from timing out when not testing that logic. It would
@@ -53,7 +62,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   TaskSpecBuilder builder;
   rpc::Address empty_address;
   rpc::JobConfig config;
-  builder.SetCommonTaskSpec(TaskID::Nil(),
+  builder.SetCommonTaskSpec(TaskID::FromRandom(JobID::Nil()),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
@@ -71,8 +80,9 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             serialized_runtime_env,
                             depth,
-                            TaskID::Nil());
-  return builder.Build();
+                            TaskID::Nil(),
+                            "");
+  return std::move(builder).ConsumeAndBuild();
 }
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
@@ -91,7 +101,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (callbacks.size() == 0) {
       return false;
     }
-    auto callback = callbacks.front();
+    const auto &callback = callbacks.front();
     auto reply = rpc::PushTaskReply();
     if (exit) {
       reply.set_worker_exiting(true);
@@ -138,6 +148,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
                        const Status *status,
                        const rpc::RayErrorInfo *ray_error_info = nullptr) override {
     num_fail_pending_task_calls++;
+    num_tasks_failed++;
   }
 
   bool FailOrRetryPendingTask(const TaskID &task_id,
@@ -169,6 +180,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override {}
 
+  bool IsTaskPending(const TaskID &task_id) const override { return true; }
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
@@ -184,6 +197,7 @@ class MockRayletClient : public WorkerLeaseInterface {
                       bool disconnect_worker,
                       const std::string &disconnect_worker_error_detail,
                       bool worker_exiting) override {
+    std::lock_guard<std::mutex> lock(mu_);
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
@@ -199,6 +213,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
+    std::lock_guard<std::mutex> lock(mu_);
     ray::rpc::GetTaskFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     num_get_task_failure_causes += 1;
@@ -207,6 +222,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
+    std::lock_guard<std::mutex> lock(mu_);
     reported_backlog_size = 0;
     reported_backlogs.clear();
     for (const auto &backlog_report : backlog_reports) {
@@ -223,6 +239,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size,
       const bool is_selected_based_on_locality) override {
+    std::lock_guard<std::mutex> lock(mu_);
     num_workers_requested += 1;
     if (grant_or_reject) {
       num_grant_or_reject_leases_requested += 1;
@@ -231,6 +248,11 @@ class MockRayletClient : public WorkerLeaseInterface {
       num_is_selected_based_on_locality_leases_requested += 1;
     }
     callbacks.push_back(callback);
+  }
+  void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+    RAY_LOG(FATAL) << "Not implemented";
   }
 
   void ReleaseUnusedActorWorkers(
@@ -241,6 +263,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
+    std::lock_guard<std::mutex> lock(mu_);
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
   }
@@ -271,44 +294,60 @@ class MockRayletClient : public WorkerLeaseInterface {
       reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
       reply.mutable_worker_address()->set_worker_id(worker_id);
     }
-    if (callbacks.size() == 0) {
+    rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
+    if (!callback) {
       return false;
-    } else {
-      auto callback = callbacks.front();
-      callback(Status::OK(), std::move(reply));
-      callbacks.pop_front();
-      return true;
     }
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
   bool FailWorkerLeaseDueToGrpcUnavailable() {
-    rpc::RequestWorkerLeaseReply reply;
-    if (callbacks.size() == 0) {
+    rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
+    if (!callback) {
       return false;
-    } else {
-      auto callback = callbacks.front();
-      callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
-               std::move(reply));
-      callbacks.pop_front();
-      return true;
     }
+    rpc::RequestWorkerLeaseReply reply;
+    callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
+             std::move(reply));
+    return true;
   }
 
   bool ReplyCancelWorkerLease(bool success = true) {
+    rpc::ClientCallback<rpc::CancelWorkerLeaseReply> callback = PopCancelCallbackInLock();
+    if (!callback) {
+      return false;
+    }
     rpc::CancelWorkerLeaseReply reply;
     reply.set_success(success);
-    if (cancel_callbacks.size() == 0) {
-      return false;
-    } else {
-      auto callback = cancel_callbacks.front();
-      callback(Status::OK(), std::move(reply));
-      cancel_callbacks.pop_front();
-      return true;
-    }
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
-  ~MockRayletClient() {}
+  template <typename Callback>
+  Callback GenericPopCallbackInLock(std::list<Callback> &lst) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (lst.size() == 0) {
+      return nullptr;
+    }
+    auto callback = std::move(lst.front());
+    lst.pop_front();
+    return callback;
+  }
 
+  // Pop a callback from the list and return it. If there's no callbacks, returns nullptr.
+  rpc::ClientCallback<rpc::RequestWorkerLeaseReply> PopCallbackInLock() {
+    return GenericPopCallbackInLock(callbacks);
+  }
+
+  rpc::ClientCallback<rpc::CancelWorkerLeaseReply> PopCancelCallbackInLock() {
+    return GenericPopCallbackInLock(cancel_callbacks);
+  }
+
+  ~MockRayletClient() = default;
+
+  // Protects all internal fields.
+  std::mutex mu_;
   int num_grant_or_reject_leases_requested = 0;
   int num_is_selected_based_on_locality_leases_requested = 0;
   int num_workers_requested = 0;
@@ -399,24 +438,31 @@ TaskSpecification BuildEmptyTaskSpec() {
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
+TaskSpecification WithRandomTaskId(const TaskSpecification &task_spec) {
+  auto copied_proto = task_spec.GetMessage();
+  *copied_proto.mutable_task_id() = TaskID::FromRandom(JobID::Nil()).Binary();
+  return TaskSpecification(std::move(copied_proto));
+}
+
 TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   lease_policy->is_locality_aware = true;
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -427,7 +473,7 @@ TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -456,19 +502,20 @@ TEST(NormalTaskSubmitterTest, TestSubmitOneTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -479,7 +526,7 @@ TEST(NormalTaskSubmitterTest, TestSubmitOneTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -508,19 +555,19 @@ TEST(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -565,19 +612,19 @@ TEST(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -608,19 +655,20 @@ TEST(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -635,7 +683,7 @@ TEST(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -678,19 +726,20 @@ TEST(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -705,7 +754,7 @@ TEST(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -748,19 +797,19 @@ TEST(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -777,19 +826,20 @@ TEST(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::DRIVER,
                                 kLongTimeout,
@@ -804,7 +854,7 @@ TEST(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -831,12 +881,13 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
 
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);
@@ -844,9 +895,9 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -861,7 +912,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
     ASSERT_TRUE(submitter.SubmitTask(task).ok());
   }
 
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency);
   ASSERT_EQ(raylet_client->num_workers_requested, concurrency);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -875,7 +926,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   for (int i = 0; i < concurrency; i++) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
     ASSERT_EQ(worker_client->callbacks.size(), i + 1);
-    ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency + i + 1);
+    ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + i + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, concurrency + i + 1);
     ASSERT_EQ(raylet_client->reported_backlog_size, concurrency - i - 1);
   }
@@ -883,7 +934,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
     ASSERT_TRUE(
         raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
     ASSERT_EQ(worker_client->callbacks.size(), concurrency + i + 1);
-    ASSERT_EQ(lease_policy->num_lease_policy_consults, tasks.size());
+    ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, tasks.size());
     ASSERT_EQ(raylet_client->num_workers_requested, tasks.size());
     ASSERT_EQ(raylet_client->reported_backlog_size, 0);
   }
@@ -909,12 +960,13 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
 
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
@@ -922,9 +974,9 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -939,7 +991,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
     ASSERT_TRUE(submitter.SubmitTask(task).ok());
   }
 
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -951,14 +1003,14 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
 
   // Max concurrency is still 1.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
   // Increase max concurrency. Should request leases up to the max concurrency.
   rateLimiter->limit = concurrency;
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2 + concurrency);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
   ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
   ASSERT_EQ(raylet_client->reported_backlog_size,
             tasks.size() - raylet_client->num_workers_requested);
@@ -969,7 +1021,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   rateLimiter->limit = 1;
   for (int i = 0; i < concurrency - 1; i++) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
-    ASSERT_EQ(lease_policy->num_lease_policy_consults, 2 + concurrency);
+    ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2 + concurrency);
     ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
     ASSERT_EQ(raylet_client->reported_backlog_size,
               tasks.size() - raylet_client->num_workers_requested);
@@ -977,19 +1029,19 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
 
   // Grant remaining leases with max lease concurrency of 1.
   int num_tasks_remaining = tasks.size() - raylet_client->num_workers_requested;
-  lease_policy->num_lease_policy_consults = 0;
+  lease_policy_ptr->num_lease_policy_consults = 0;
   raylet_client->num_workers_requested = 0;
   for (int i = 0; i < num_tasks_remaining; i++) {
     ASSERT_TRUE(
         raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
-    ASSERT_EQ(lease_policy->num_lease_policy_consults, i + 1);
+    ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, i + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, i + 1);
   }
 
-  lease_policy->num_lease_policy_consults = 0;
+  lease_policy_ptr->num_lease_policy_consults = 0;
   raylet_client->num_workers_requested = 0;
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, NodeID::Nil()));
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 0);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 0);
 
   // All workers returned.
@@ -1013,15 +1065,16 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_client_factory = [&](const std::string &ip, int port) {
     return raylet_client;
   };
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
 
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
@@ -1029,9 +1082,9 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
                                 raylet_client,
                                 client_pool,
                                 lease_client_factory,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1046,7 +1099,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
     ASSERT_TRUE(submitter.SubmitTask(task).ok());
   }
 
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -1058,7 +1111,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
 
   // Max concurrency is still 1.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->reported_backlog_size, tasks.size() - 2);
 
@@ -1068,7 +1121,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::FromRandom()));
   // We should request one lease request from the spillback raylet and then the
   // rest from the raylet returned by the lease policy.
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency + 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
   ASSERT_EQ(raylet_client->reported_backlog_size,
             tasks.size() - raylet_client->num_workers_requested + 1);
@@ -1079,7 +1132,7 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   rateLimiter->limit = 1;
   for (int i = 0; i < concurrency - 1; i++) {
     ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", i, NodeID::Nil()));
-    ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency + 1);
+    ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, concurrency + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, 2 + concurrency);
     ASSERT_EQ(raylet_client->reported_backlog_size,
               tasks.size() - raylet_client->num_workers_requested + 1);
@@ -1087,19 +1140,19 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
 
   // Grant remaining leases with max lease concurrency of 1.
   int num_tasks_remaining = tasks.size() - raylet_client->num_workers_requested + 1;
-  lease_policy->num_lease_policy_consults = 0;
+  lease_policy_ptr->num_lease_policy_consults = 0;
   raylet_client->num_workers_requested = 0;
   for (int i = 0; i < num_tasks_remaining; i++) {
     ASSERT_TRUE(
         raylet_client->GrantWorkerLease("localhost", concurrency + i, NodeID::Nil()));
-    ASSERT_EQ(lease_policy->num_lease_policy_consults, i + 1);
+    ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, i + 1);
     ASSERT_EQ(raylet_client->num_workers_requested, i + 1);
   }
 
-  lease_policy->num_lease_policy_consults = 0;
+  lease_policy_ptr->num_lease_policy_consults = 0;
   raylet_client->num_workers_requested = 0;
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 2000, NodeID::Nil()));
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 0);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 0);
 
   // All workers returned.
@@ -1123,19 +1176,20 @@ TEST(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1150,28 +1204,28 @@ TEST(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 1 is pushed; worker 2 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->reported_backlog_size, 1);
 
   // Task 2 is pushed; worker 3 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
 
   // Task 3 is pushed; no more workers requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 3);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   // All workers returned.
@@ -1195,19 +1249,20 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1222,13 +1277,13 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
@@ -1251,7 +1306,7 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   // The second lease request is returned immediately.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 3);
@@ -1268,19 +1323,19 @@ TEST(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1336,19 +1391,19 @@ TEST(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1401,19 +1456,19 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1457,19 +1512,19 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1504,7 +1559,7 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
@@ -1516,16 +1571,17 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
     remote_lease_clients[port] = client;
     return client;
   };
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 lease_client_factory,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1535,7 +1591,7 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -1546,7 +1602,7 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
   ASSERT_EQ(remote_lease_clients.count(7777), 1);
   // Confirm that lease policy is not consulted on spillback.
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   // There should be no more callbacks on the local client.
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
   // Trigger retry at the remote node.
@@ -1577,7 +1633,7 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
@@ -1589,17 +1645,18 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
     remote_lease_clients[port] = client;
     return client;
   };
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto local_raylet_id = NodeID::FromRandom();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>(local_raylet_id);
+  auto lease_policy = std::make_unique<MockLeasePolicy>(local_raylet_id);
+  auto *lease_policy_ptr = lease_policy.get();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 lease_client_factory,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 local_raylet_id,
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1623,7 +1680,7 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   // Confirm that the spillback lease request has grant_or_reject set to true.
   ASSERT_EQ(remote_lease_clients[7777]->num_grant_or_reject_leases_requested, 1);
   // Confirm that lease policy is not consulted on spillback.
-  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
+  ASSERT_EQ(lease_policy_ptr->num_lease_policy_consults, 1);
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
   // Trigger a rejection back to the local node.
   ASSERT_TRUE(remote_lease_clients[7777]->GrantWorkerLease(
@@ -1668,16 +1725,16 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1688,7 +1745,10 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
   ASSERT_TRUE(submitter.SubmitTask(different).ok());
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  WaitForCondition(
+      [&raylet_client]() { return raylet_client->num_workers_returned == 2; },
+      /*timeout_ms=*/1000);
 
   // same1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
@@ -1733,7 +1793,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 }
 
 TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -1815,22 +1876,23 @@ TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
 }
 
 TEST(NormalTaskSubmitterTest, TestBacklogReport) {
+  InstrumentedIOContextWithThread io_context("TestBacklogReport");
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -1863,18 +1925,26 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
   TaskSpecification task3 = BuildTaskSpec(resources1, descriptor1);
   task3.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       plasma2.Binary());
-  TestSchedulingKey(store, task2, task2, task3);
+  TestSchedulingKey(store, WithRandomTaskId(task2), WithRandomTaskId(task2), task3);
 
   TaskSpecification task4 = BuildTaskSpec(resources2, descriptor2);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   // One is requested and one is in the backlog for each SchedulingKey
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
+
+  // Waits for the async callbacks in submitter.SubmitTask to finish, before we call
+  // ReportWorkerBacklog.
+  std::promise<bool> wait_for_io_ctx_empty;
+  io_context.GetIoService().post(
+      [&wait_for_io_ctx_empty]() { wait_for_io_ctx_empty.set_value(true); },
+      "wait_for_io_ctx_empty");
+  wait_for_io_ctx_empty.get_future().get();
 
   submitter.ReportWorkerBacklog();
   ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
@@ -1887,19 +1957,19 @@ TEST(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 /*lease_timeout_ms=*/5,
@@ -1953,20 +2023,20 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
 
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -2016,19 +2086,19 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -2044,7 +2114,7 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
@@ -2061,19 +2131,19 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::CreateShared();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto task_finisher = std::make_unique<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
                                 raylet_client,
                                 client_pool,
                                 nullptr,
-                                lease_policy,
+                                std::move(lease_policy),
                                 store,
-                                task_finisher,
+                                *task_finisher,
                                 NodeID::Nil(),
                                 WorkerType::WORKER,
                                 kLongTimeout,
@@ -2088,6 +2158,7 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   auto data = GenerateRandomObject();
   ASSERT_TRUE(store->Put(*data, obj1));
+  WaitForObjectIdInMemoryStore(*store, obj1);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);

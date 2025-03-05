@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray.dag import InputNode, MultiOutputNode
 import ray.cluster_utils
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 import torch
 
@@ -41,14 +40,14 @@ def test_multi_args_simulate_pp(ray_start_regular):
         for microbatch_idx in range(NUM_MICROBATCHES):
             microbatch = dag_input[microbatch_idx]
             stage_fwd_out = w0.forward.bind(microbatch)
-            stage_fwd_out.with_type_hint(TorchTensorType(transport="nccl"))
+            stage_fwd_out.with_tensor_transport(transport="nccl")
             stage_fwd_out = w1.forward.bind(stage_fwd_out)
             dag_outs.append(stage_fwd_out)
 
         grad_out = dag_input[NUM_MICROBATCHES]
         for _ in range(NUM_MICROBATCHES):
             stage_bwd_out = w1.backward.bind(grad_out)
-            stage_bwd_out.with_type_hint(TorchTensorType(transport="nccl"))
+            stage_bwd_out.with_tensor_transport(transport="nccl")
             stage_bwd_out = w0.backward.bind(stage_bwd_out)
             dag_outs.append(stage_bwd_out)
 
@@ -67,8 +66,6 @@ def test_multi_args_simulate_pp(ray_start_regular):
     assert torch.equal(tensors[1], tensor_cpu_list[1])
     assert torch.equal(tensors[2], tensor_cpu_list[2])
     assert torch.equal(tensors[3], tensor_cpu_list[2])
-
-    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

@@ -20,6 +20,10 @@ class TestTimeSteps(unittest.TestCase):
         """Test whether PG can be built with both frameworks."""
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .experimental(_disable_preprocessor_api=True)
             .environment(RandomEnv)
             .env_runners(num_env_runners=0)

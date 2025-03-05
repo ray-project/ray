@@ -15,13 +15,19 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
+from ray.data.context import ShuffleStrategy
 from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import _ray_start, wait_for_condition
+from ray.tests.conftest import (
+    _ray_start,
+    pytest_runtest_makereport,  # noqa
+    wait_for_condition,
+)
+from ray.util.debug import reset_log_once
 
 
 @pytest.fixture(scope="module")
@@ -217,7 +223,7 @@ def assert_base_partitioned_ds():
         count=6,
         num_input_files=2,
         num_rows=6,
-        schema="{one: int64, two: string}",
+        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.string())])),
         sorted_values=None,
         ds_take_transform_fn=None,
         sorted_values_transform_fn=None,
@@ -238,28 +244,9 @@ def assert_base_partitioned_ds():
         assert not ds._plan.has_started_execution
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
-        assert ds.schema() is not None
+        assert ds.schema() == schema
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-
-        # For Datasets with long string representations, the format will include
-        # whitespace and newline characters, which is difficult to generalize
-        # without implementing the formatting logic again (from
-        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
-        # characters to test the string contents regardless of the string repr length.
-        def _remove_whitespace(ds_str):
-            for c in ["\n", "   ", " "]:
-                ds_str = ds_str.replace(c, "")
-            return ds_str
-
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(str(ds)), ds
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(repr(ds)), ds
 
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())
@@ -279,13 +266,34 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
-@pytest.fixture(params=[True, False])
-def use_push_based_shuffle(request):
+@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+def configure_shuffle_method(request):
+    shuffle_strategy = request.param
+
     ctx = ray.data.context.DataContext.get_current()
-    original = ctx.use_push_based_shuffle
-    ctx.use_push_based_shuffle = request.param
+
+    original_shuffle_strategy = ctx.shuffle_strategy
+
+    ctx.shuffle_strategy = shuffle_strategy
+
     yield request.param
-    ctx.use_push_based_shuffle = original
+
+    ctx.shuffle_strategy = original_shuffle_strategy
+
+
+@pytest.fixture(params=[True, False])
+def use_polars(request):
+    use_polars = request.param
+
+    ctx = ray.data.context.DataContext.get_current()
+
+    original_use_polars = ctx.use_polars
+
+    ctx.use_polars = use_polars
+
+    yield request.param
+
+    ctx.use_polars = original_use_polars
 
 
 @pytest.fixture(params=[True, False])
@@ -304,6 +312,12 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = request.param
     yield request.param
     ctx.enable_auto_log_stats = original
+
+
+@pytest.fixture(autouse=True)
+def reset_log_once_fixture():
+    reset_log_once()
+    yield
 
 
 @pytest.fixture(params=[1024])

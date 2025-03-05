@@ -3,6 +3,7 @@ import datetime
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -16,7 +17,7 @@ from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
-    ApplicationStatus,
+    CreatePlacementGroupRequest,
     DeploymentID,
     DeploymentStatus,
     RequestProtocol,
@@ -28,6 +29,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.schema import ApplicationStatus
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -187,19 +189,12 @@ class MockActorClass:
 
 
 class MockPlacementGroup:
-    def __init__(
-        self,
-        bundles: List[Dict[str, float]],
-        strategy: str = "PACK",
-        name: str = "",
-        lifetime: Optional[str] = None,
-        _soft_target_node_id: Optional[str] = None,
-    ):
-        self._bundles = bundles
-        self._strategy = strategy
-        self._name = name
-        self._lifetime = lifetime
-        self._soft_target_node_id = _soft_target_node_id
+    def __init__(self, request: CreatePlacementGroupRequest):
+        self._bundles = request.bundles
+        self._strategy = request.strategy
+        self._soft_target_node_id = request.target_node_id
+        self._name = request.name
+        self._lifetime = "detached"
 
 
 class MockDeploymentHandle:
@@ -208,6 +203,16 @@ class MockDeploymentHandle:
         self._app_name = app_name
         self._protocol = RequestProtocol.UNDEFINED
         self._running_replicas_populated = False
+        self._initialized = False
+
+    def is_initialized(self):
+        return self._initialized
+
+    def _init(self):
+        if self._initialized:
+            raise RuntimeError("already initialized")
+
+        self._initialized = True
 
     def options(self, *args, **kwargs):
         return self
@@ -508,13 +513,22 @@ def ping_fruit_stand(channel, app_name):
     assert response.costs == 32
 
 
+@asynccontextmanager
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    cancelled = False
     try:
-        await asyncio.sleep(100000)
+        yield
+        await asyncio.sleep(100)
     except asyncio.CancelledError:
+        cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
+
+    if not cancelled:
+        raise RuntimeError(
+            "CancelledError wasn't raised during `send_signal_on_cancellation` block"
+        )
 
 
 class FakeGrpcContext:

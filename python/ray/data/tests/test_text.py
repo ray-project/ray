@@ -1,9 +1,11 @@
 import os
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Schema
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
@@ -158,7 +160,7 @@ def test_read_text_partitioned_with_filter(
         ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
         assert_base_partitioned_ds(
             ds,
-            schema="{text: string}",
+            schema=Schema(pa.schema([("text", pa.string())])),
             sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
             ds_take_transform_fn=_to_lines,
         )

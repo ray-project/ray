@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 
 """
 This file contains links to pinned versions of remote URIs used in testing.

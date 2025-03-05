@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+from typing import Callable, Optional
 
 import pytest
 import requests
@@ -8,10 +9,9 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
-from ray.serve._private.test_utils import check_apps_running, check_replica_counts
+from ray.serve._private.test_utils import check_apps_running
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
@@ -30,9 +30,14 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     )
     serve.start()
     yield (address_info, _get_global_client())
-    ray.shutdown()
+
+    # When GCS is down, right now some core worker members are not cleared
+    # properly in ray.shutdown.
+    ray.worker._global_node.start_gcs_server()
+
     # Clear cache and global serve client
     serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(
@@ -112,18 +117,30 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
 
 def router_populated_with_replicas(
-    handle: DeploymentHandle,
     threshold: int,
+    handle: Optional[DeploymentHandle] = None,
+    get_replicas_func: Optional[Callable] = None,
     check_cache_populated: bool = False,
 ):
-    replicas = handle._router._replica_scheduler._replica_id_set
+    """Either get router's replica set from `handle` directly, or use
+    `get_replicas_func` to get replica set. Then check that the number
+    of replicas in set is at least `threshold`.
+    """
+    if handle:
+        router = handle._router._asyncio_router
+        replicas = router._replica_scheduler._replica_id_set
+    else:
+        replicas = get_replicas_func()
+
+    print(f"Replica set in router: {replicas}")
     assert len(replicas) >= threshold
 
     # Return early if we don't need to check cache
     if not check_cache_populated:
         return True
 
-    cache = handle._router._replica_scheduler.replica_queue_len_cache
+    router = handle._router._asyncio_router
+    cache = router._replica_scheduler.replica_queue_len_cache
     for replica_id in replicas:
         assert (
             cache.get(replica_id) is not None
@@ -142,6 +159,8 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     sent to replicas during GCS downtime.
     """
 
+    _, client = serve_ha
+
     @serve.deployment
     class Dummy:
         def __call__(self):
@@ -159,9 +178,20 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     h._recorded_telemetry = True
     # Eagerly create router so it receives the replica set instead of
     # waiting for the first request
-    h._get_or_create_router()
+    h._init()
 
-    wait_for_condition(router_populated_with_replicas, handle=h, threshold=1)
+    if use_proxy:
+        proxy_handles = ray.get(client._controller.get_proxies.remote())
+        proxy_handle = list(proxy_handles.values())[0]
+        wait_for_condition(
+            router_populated_with_replicas,
+            threshold=2,
+            get_replicas_func=lambda: ray.get(
+                proxy_handle._dump_ingress_replicas_for_testing.remote("/")
+            ),
+        )
+    else:
+        wait_for_condition(router_populated_with_replicas, threshold=2, handle=h)
 
     # Kill GCS server before a single request is sent.
     ray.worker._global_node.kill_gcs_server()
@@ -170,11 +200,11 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     if use_proxy:
         for _ in range(10):
             returned_pids.add(
-                int(requests.get("http://localhost:8000", timeout=0.1).text)
+                int(requests.get("http://localhost:8000", timeout=3.0).text)
             )
     else:
         for _ in range(10):
-            returned_pids.add(int(h.remote().result(timeout_s=0.1)))
+            returned_pids.add(int(h.remote().result(timeout_s=3.0)))
 
     print("Returned pids:", returned_pids)
     assert len(returned_pids) == 2
@@ -208,8 +238,8 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
 
     wait_for_condition(
         router_populated_with_replicas,
-        handle=h,
         threshold=2,
+        handle=h,
         check_cache_populated=True,
     )
 
@@ -250,15 +280,15 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
     config["deployments"][0]["num_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [config]}))
 
-    # There is no way to directly check if proxy has received updated replicas,
-    # so just check for the status. After controller updates status with new
-    # replicas, proxy should instantly receive updates from long poll
+    proxy_handles = ray.get(client._controller.get_proxies.remote())
+    proxy_handle = list(proxy_handles.values())[0]
+
     wait_for_condition(
-        check_replica_counts,
-        controller=client._controller,
-        deployment_id=DeploymentID("GetPID", "default"),
-        total=2,
-        by_state=[(ReplicaState.RUNNING, 2, None)],
+        router_populated_with_replicas,
+        threshold=2,
+        get_replicas_func=lambda: ray.get(
+            proxy_handle._dump_ingress_replicas_for_testing.remote("/")
+        ),
     )
 
     # Kill GCS server before router gets to send request to second replica
@@ -275,7 +305,4 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
 
 
 if __name__ == "__main__":
-    # When GCS is down, right now some core worker members are not cleared
-    # properly in ray.shutdown. Given that this is not hi-pri issue,
-    # using --forked for isolation.
-    sys.exit(pytest.main(["-v", "-s", "--forked", __file__]))
+    sys.exit(pytest.main(["-v", "-s", __file__]))

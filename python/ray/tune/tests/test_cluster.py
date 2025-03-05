@@ -9,7 +9,7 @@ import pytest
 import ray
 from ray import tune
 from ray.cluster_utils import Cluster
-from ray.train import CheckpointConfig
+from ray.tune import CheckpointConfig
 from ray.train._internal.storage import StorageContext
 from ray.tune import register_trainable
 from ray.tune.error import TuneError

@@ -27,7 +27,6 @@ from ray.autoscaler._private.constants import (
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
     WORKER_LIVENESS_CHECK_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
@@ -309,14 +308,6 @@ class StandardAutoscaler:
         )
         logger.info(f"{WORKER_LIVENESS_CHECK_KEY}:{self.worker_liveness_check}")
 
-        # By default, before worker node termination, the autoscaler sends an RPC to the
-        # GCS asking to kill the worker node.
-        # The worker_rpc_drain flag allows disabling this behavior in settings where
-        # another component, such as a Kubernetes operator, is responsible for worker
-        # lifecycle.
-        self.worker_rpc_drain = self.config["provider"].get(WORKER_RPC_DRAIN_KEY, True)
-        logger.info(f"{WORKER_RPC_DRAIN_KEY}:{self.worker_rpc_drain}")
-
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
         self.launch_queue: Optional[queue.Queue[NodeLaunchData]] = None
@@ -490,8 +481,11 @@ class StandardAutoscaler:
         assert self.non_terminated_nodes
         assert self.provider
 
-        last_used = self.load_metrics.last_used_time_by_ip
-        horizon = now - (60 * self.config["idle_timeout_minutes"])
+        last_used = self.load_metrics.ray_nodes_last_used_time_by_ip
+
+        idle_timeout_s = 60 * self.config["idle_timeout_minutes"]
+
+        last_used_cutoff = now - idle_timeout_s
 
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
@@ -539,7 +533,8 @@ class StandardAutoscaler:
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon:
+
+            if node_ip in last_used and last_used[node_ip] < last_used_cutoff:
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
                 formatted_last_used_time = time.asctime(
@@ -615,10 +610,8 @@ class StandardAutoscaler:
         if not self.nodes_to_terminate:
             return
 
-        # Do Ray-internal preparation for termination, unless this behavior is
-        # explicitly disabled.
-        if self.worker_rpc_drain:
-            self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Drain the nodes
+        self.drain_nodes_via_gcs(self.nodes_to_terminate)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:

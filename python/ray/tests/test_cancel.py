@@ -106,7 +106,7 @@ def test_defer_sigint():
     orig_sigint_handler = signal.getsignal(signal.SIGINT)
     try:
         with DeferSigint():
-            # Send singal to current process.
+            # Send signal to current process.
             # NOTE: We use _thread.interrupt_main() instead of os.kill() in order to
             # support Windows.
             _thread.interrupt_main()
@@ -124,13 +124,62 @@ def test_defer_sigint():
         pytest.fail("SIGINT signal was never sent in test")
 
 
-def test_defer_sigint_monkey_patch():
-    # Tests that setting a SIGINT signal handler within a DeferSigint context is not
-    # allowed.
+def test_defer_sigint_monkey_patch_handler_called_when_exit():
+    # Tests that the SIGINT signal handlers set within a DeferSigint
+    # is triggered at most once and only at context exit.
     orig_sigint_handler = signal.getsignal(signal.SIGINT)
-    with pytest.raises(ValueError):
-        with DeferSigint():
-            signal.signal(signal.SIGINT, orig_sigint_handler)
+    handler_called_times = 0
+
+    def new_sigint_handler(signum, frame):
+        nonlocal handler_called_times
+        handler_called_times += 1
+
+    with DeferSigint():
+        signal.signal(signal.SIGINT, new_sigint_handler)
+        for _ in range(3):
+            _thread.interrupt_main()
+        time.sleep(1)
+        assert handler_called_times == 0
+
+    assert handler_called_times == 1
+
+    # Restore original SIGINT handler.
+    signal.signal(signal.SIGINT, orig_sigint_handler)
+
+
+def test_defer_sigint_monkey_patch_only_last_handler_called():
+    # Tests that only the last SIGINT signal handler set within a DeferSigint
+    # is triggered at most once and only at context exit.
+    orig_sigint_handler = signal.getsignal(signal.SIGINT)
+
+    handler_1_called_times = 0
+    handler_2_called_times = 0
+
+    def sigint_handler_1(signum, frame):
+        nonlocal handler_1_called_times
+        handler_1_called_times += 1
+
+    def sigint_handler_2(signum, frame):
+        nonlocal handler_2_called_times
+        handler_2_called_times += 1
+
+    with DeferSigint():
+        signal.signal(signal.SIGINT, sigint_handler_1)
+        for _ in range(3):
+            _thread.interrupt_main()
+        time.sleep(1)
+        signal.signal(signal.SIGINT, sigint_handler_2)
+        for _ in range(3):
+            _thread.interrupt_main()
+        time.sleep(1)
+        assert handler_1_called_times == 0
+        assert handler_2_called_times == 0
+
+    assert handler_1_called_times == 0
+    assert handler_2_called_times == 1
+
+    # Restore original SIGINT handler.
+    signal.signal(signal.SIGINT, orig_sigint_handler)
 
 
 def test_defer_sigint_noop_in_non_main_thread():
@@ -585,6 +634,26 @@ def test_recursive_cancel_actor_task(shutdown_only):
         return True
 
     wait_for_condition(verify)
+
+
+@pytest.mark.parametrize("use_force", [True, False])
+def test_cancel_with_dependency(shutdown_only, use_force):
+    ray.init(num_cpus=4)
+
+    @ray.remote(num_cpus=1)
+    def wait_forever_task():
+        while True:
+            time.sleep(1000)
+
+    @ray.remote(num_cpus=1)
+    def square(x):
+        return x * x
+
+    wait_forever_obj = wait_forever_task.remote()
+    wait_forever_as_dep = square.remote(wait_forever_obj)
+    ray.cancel(wait_forever_as_dep, force=use_force)
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(wait_forever_as_dep)
 
 
 @pytest.mark.skip("Actor cancelation works now.")

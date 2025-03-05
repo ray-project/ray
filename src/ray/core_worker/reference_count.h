@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -49,14 +51,14 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
-  virtual bool AddObjectPrimaryCopyDeleteCallback(
+  virtual bool AddObjectOutOfScopeOrFreedCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
   virtual bool SetObjectRefDeletedCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
-  virtual ~ReferenceCounterInterface() {}
+  virtual ~ReferenceCounterInterface() = default;
 };
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
@@ -71,20 +73,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using LineageReleasedCallback =
       std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
 
-  ReferenceCounter(const rpc::Address &rpc_address,
+  ReferenceCounter(rpc::Address rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
-                   const std::function<bool(const NodeID &node_id)> &check_node_alive,
-                   bool lineage_pinning_enabled = false,
-                   rpc::ClientFactoryFn client_factory = nullptr)
-      : rpc_address_(rpc_address),
+                   std::function<bool(const NodeID &node_id)> check_node_alive,
+                   bool lineage_pinning_enabled = false)
+      : rpc_address_(std::move(rpc_address)),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        borrower_pool_(client_factory),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        check_node_alive_(check_node_alive) {}
+        check_node_alive_(std::move(check_node_alive)) {}
 
-  ~ReferenceCounter() {}
+  ~ReferenceCounter() override = default;
 
   /// Wait for all object references to go out of scope, and then shutdown.
   ///
@@ -103,7 +103,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  void AddLocalReference(const ObjectID &object_id, const std::string &call_site)
+  void AddLocalReference(const ObjectID &object_id, const std::string &call_site) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the local reference count for the ObjectID by one.
@@ -125,7 +125,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> return_ids,
+      const std::vector<ObjectID> &return_ids,
       const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) ABSL_LOCKS_EXCLUDED(mutex_);
@@ -152,7 +152,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids,
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &return_ids,
                                     const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage,
                                     const rpc::Address &worker_addr,
@@ -191,7 +191,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       bool is_reconstructable,
                       bool add_local_ref,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
-                          absl::optional<NodeID>()) ABSL_LOCKS_EXCLUDED(mutex_);
+                          absl::optional<NodeID>()) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Add an owned object that was dynamically created. These are objects that
   /// were created by a task that we called, but that we own.
@@ -268,7 +268,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool AddBorrowedObject(const ObjectID &object_id,
                          const ObjectID &outer_id,
                          const rpc::Address &owner_address,
-                         bool foreign_owner_already_monitoring = false)
+                         bool foreign_owner_already_monitoring = false) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
@@ -296,7 +296,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_ids The IDs of the object to look up.
   /// \return The addresses of the objects' owners.
   std::vector<rpc::Address> GetOwnerAddresses(
-      const std::vector<ObjectID> object_ids) const;
+      const std::vector<ObjectID> &object_ids) const;
 
   /// Check whether an object value has been freed.
   ///
@@ -322,8 +322,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Adds the callback that will be run when the object goes out of scope
   /// (Reference.OutOfScope() returns true).
   /// Returns true if the object was in scope and the callback was added, else false.
-  bool AddObjectPrimaryCopyDeleteCallback(
-      const ObjectID &object_id, const std::function<void(const ObjectID &)> callback)
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id,
+      const std::function<void(const ObjectID &)> callback) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Sets the callback that will be run when the object reference is deleted
@@ -332,7 +333,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// else false.
   bool SetObjectRefDeletedCallback(const ObjectID &object_id,
                                    const std::function<void(const ObjectID &)> callback)
-      ABSL_LOCKS_EXCLUDED(mutex_);
+      override ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback for when we are no longer borrowing this object (when our
   /// ref count goes to 0).
@@ -476,7 +477,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(
-      const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
+      const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
+          &pinned_objects,
       rpc::CoreWorkerStats *stats,
       const int64_t limit) const ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -532,7 +534,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
   /// \return True if the reference exists and is in scope, false otherwise.
   bool HandleObjectSpilled(const ObjectID &object_id,
-                           const std::string spilled_url,
+                           const std::string &spilled_url,
                            const NodeID &spilled_node_id);
 
   /// Get locality data for object. This is used by the leasing policy to implement
@@ -540,7 +542,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id Object whose locality data we want.
   /// \return Locality data.
-  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const;
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const override;
 
   /// Report locality data for object. This is used by the FutureResolver to report
   /// locality data for borrowed refs.
@@ -629,22 +631,21 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
-    Reference() {}
-    Reference(std::string call_site, const int64_t object_size)
-        : call_site(call_site), object_size(object_size) {}
+    Reference() = default;
+    Reference(std::string call_site, int64_t object_size)
+        : call_site(std::move(call_site)), object_size(object_size) {}
     /// Constructor for a reference that we created.
-    Reference(const rpc::Address &owner_address,
+    Reference(rpc::Address owner_address,
               std::string call_site,
-              const int64_t object_size,
+              int64_t object_size,
               bool is_reconstructable,
-              const absl::optional<NodeID> &pinned_at_raylet_id)
-        : call_site(call_site),
+              absl::optional<NodeID> pinned_at_raylet_id)
+        : call_site(std::move(call_site)),
           object_size(object_size),
-          owner_address(owner_address),
-          pinned_at_raylet_id(pinned_at_raylet_id),
+          owner_address(std::move(owner_address)),
+          pinned_at_raylet_id(std::move(pinned_at_raylet_id)),
           owned_by_us(true),
           is_reconstructable(is_reconstructable),
-          foreign_owner_already_monitoring(false),
           pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
@@ -673,9 +674,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool is_nested = nested().contained_in_borrowed_ids.size();
-      bool has_borrowers = borrow().borrowers.size() > 0;
-      bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
+      bool is_nested = !nested().contained_in_borrowed_ids.empty();
+      bool has_borrowers = !borrow().borrowers.empty();
+      bool was_stored_in_objects = !borrow().stored_in_objects.empty();
 
       bool has_lineage_references = false;
       if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
@@ -703,8 +704,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Returns the default value of the struct if it is not set.
     const BorrowInfo &borrow() const {
       if (borrow_info == nullptr) {
-        static auto *default_info = new BorrowInfo();
-        return *default_info;
+        static const BorrowInfo default_info;
+        return default_info;
       }
       return *borrow_info;
     }
@@ -722,8 +723,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Returns the default value of the struct if it is not set.
     const NestedReferenceCount &nested() const {
       if (nested_reference_count == nullptr) {
-        static auto *default_refs = new NestedReferenceCount();
-        return *default_refs;
+        static const NestedReferenceCount default_refs;
+        return default_refs;
       }
       return *nested_reference_count;
     }
@@ -785,13 +786,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// Callback that will be called when this Object's primary copy
-    /// should be deleted: out of scope or internal_api.free
+    /// Callback that will be called when this object
+    /// is out of scope or manually freed.
     /// Note: when an object is out of scope, it can still
     /// have lineage ref count and on_object_ref_delete
     /// will be called when lineage ref count is also 0.
     std::vector<std::function<void(const ObjectID &)>>
-        on_object_primary_copy_delete_callbacks;
+        on_object_out_of_scope_or_freed_callbacks;
     /// Callback that will be called when the object ref is deleted
     /// from the reference table (all refs including lineage ref count go to 0).
     std::function<void(const ObjectID &)> on_object_ref_delete;
@@ -801,7 +802,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
-    std::string spilled_url = "";
+    std::string spilled_url;
     /// The ID of the node that spilled the object.
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
@@ -849,9 +850,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
                         rpc::Address *owner_address = nullptr) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Delete the object primary copy, if any. Also unsets the raylet address
-  /// that the object was pinned at, if the address was set.
-  void DeleteObjectPrimaryCopy(ReferenceTable::iterator it);
+  /// Unsets the raylet address
+  /// that the object was pinned at or spilled at, if the address was set.
+  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it);
+
+  /// This should be called whenever the object is out of scope or manually freed.
+  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
@@ -1029,14 +1033,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Reference can be deleted. The object's lineage ref count is the number of
   /// tasks that depend on that object that may be retried in the future.
   const bool lineage_pinning_enabled_;
-
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
-
-  /// Pool from worker address to core worker client. The owner of an object
-  /// uses this client to request a notification from borrowers once the
-  /// borrower's ref count for the ID goes to 0.
-  rpc::CoreWorkerClientPool borrower_pool_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

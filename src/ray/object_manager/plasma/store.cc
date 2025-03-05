@@ -113,7 +113,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
-  ray::SetCloseOnFork(acceptor_);
+  ray::SetCloseOnExec(acceptor_);
 
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
       RayConfig::instance().event_stats()) {
@@ -484,6 +484,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
   } break;
   default:
     // This code should be unreachable.
+    RAY_LOG(FATAL) << "Invalid Plasma message type. type=" << static_cast<long>(type)
+                   << ". " << kCorruptedRequestErrorMessage;
     RAY_CHECK(0);
   }
   return Status::OK();

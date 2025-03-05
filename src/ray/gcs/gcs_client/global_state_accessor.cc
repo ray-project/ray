@@ -380,7 +380,7 @@ std::string GlobalStateAccessor::GetSystemConfig() {
   std::promise<std::string> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
+    RAY_CHECK_OK(gcs_client_->InternalKV().AsyncGetInternalConfig(
         [&promise](const Status &status,
                    const std::optional<std::string> &stored_raylet_config) {
           RAY_CHECK_OK(status);
@@ -396,71 +396,37 @@ std::string GlobalStateAccessor::GetSystemConfig() {
   return future.get();
 }
 
-ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &nodes) {
-  std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
-          promise.set_value(
-              std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));
-        },
-        /*timeout_ms=*/-1));
-  }
-  auto result = promise.get_future().get();
-  auto status = result.first;
-  if (!status.ok()) {
-    return status;
-  }
-
-  std::copy_if(result.second.begin(),
-               result.second.end(),
-               std::back_inserter(nodes),
-               [](const rpc::GcsNodeInfo &node) {
-                 return node.state() == rpc::GcsNodeInfo::ALIVE;
-               });
-  return status;
-}
-
-ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
+ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
                                          std::string *node_info) {
-  auto start_ms = current_time_ms();
-  auto node_id_binary = NodeID::FromHex(node_id).Binary();
+  const auto end_time_point =
+      current_time_ms() + RayConfig::instance().raylet_start_wait_time_s() * 1000;
+  const auto node_id_binary = NodeID::FromHex(node_id_hex_str).Binary();
+
+  std::vector<rpc::GcsNodeInfo> node_infos;
   while (true) {
-    std::vector<rpc::GcsNodeInfo> nodes;
-    auto status = GetAliveNodes(nodes);
-    if (!status.ok()) {
-      return status;
+    rpc::GetAllNodeInfoRequest_Filters filters;
+    filters.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+    filters.set_node_id(node_id_binary);
+    {
+      absl::ReaderMutexLock lock(&mutex_);
+      auto timeout_ms =
+          std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
+      RAY_ASSIGN_OR_RETURN(
+          node_infos,
+          gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, std::move(filters)));
+    }
+    if (!node_infos.empty()) {
+      *node_info = node_infos[0].SerializeAsString();
+      return Status::OK();
     }
 
-    if (nodes.empty()) {
-      status = Status::NotFound("GCS has started but no raylets have registered yet.");
-    } else {
-      int relevant_client_index = -1;
-      for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
-        const auto &node = nodes[i];
-        if (node_id_binary == node.node_id()) {
-          relevant_client_index = i;
-          break;
-        }
-      }
-
-      if (relevant_client_index < 0) {
-        status = Status::NotFound(
-            "GCS cannot find the node with node ID " + node_id +
-            ". The node registration may not be complete yet before the timeout." +
-            " Try increase the RAY_raylet_start_wait_time_s config.");
-      } else {
-        *node_info = nodes[relevant_client_index].SerializeAsString();
-        return Status::OK();
-      }
+    if (current_time_ms() >= end_time_point) {
+      return Status::NotFound(
+          "GCS cannot find the node with node ID " + node_id_hex_str +
+          ". The node registration may not be complete yet before the timeout." +
+          " Try increase the RAY_raylet_start_wait_time_s config.");
     }
-
-    if (current_time_ms() - start_ms >=
-        RayConfig::instance().raylet_start_wait_time_s() * 1000) {
-      return status;
-    }
-    RAY_LOG(WARNING) << "Retrying to get node with node ID " << node_id;
+    RAY_LOG(WARNING) << "Retrying to get node with node ID " << node_id_hex_str;
     // Some of the information may not be in GCS yet, so wait a little bit.
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
@@ -468,73 +434,68 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
 
 ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     const std::string &node_ip_address, std::string *node_to_connect) {
-  auto start_ms = current_time_ms();
+  const auto end_time_point =
+      current_time_ms() + RayConfig::instance().raylet_start_wait_time_s() * 1000;
+
+  std::vector<rpc::GcsNodeInfo> node_infos;
+  rpc::GetAllNodeInfoRequest_Filters filters;
+  filters.set_state(rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+  filters.set_node_ip_address(node_ip_address);
   while (true) {
-    std::vector<rpc::GcsNodeInfo> nodes;
-    auto status = GetAliveNodes(nodes);
-    if (!status.ok()) {
-      return status;
+    {
+      absl::ReaderMutexLock lock(&mutex_);
+      auto timeout_ms =
+          std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
+      RAY_ASSIGN_OR_RETURN(
+          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
+    }
+    if (!node_infos.empty()) {
+      *node_to_connect = node_infos[0].SerializeAsString();
+      return Status::OK();
     }
 
-    if (nodes.empty()) {
-      status = Status::NotFound("GCS has started but no raylets have registered yet.");
-    } else {
-      int relevant_client_index = -1;
-      int head_node_client_index = -1;
-      std::pair<std::string, int> gcs_address;
+    std::string gcs_address;
+    {
+      absl::WriterMutexLock lock(&mutex_);
+      auto [address, _] = gcs_client_->GetGcsServerAddress();
+      gcs_address = std::move(address);
+    }
+    filters.set_node_ip_address(gcs_address);
+    {
+      absl::ReaderMutexLock lock(&mutex_);
+      auto timeout_ms = end_time_point - current_time_ms();
+      RAY_ASSIGN_OR_RETURN(
+          node_infos, gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
+    }
+    if (node_infos.empty() && node_ip_address == gcs_address) {
+      filters.set_node_ip_address("127.0.0.1");
       {
-        absl::WriterMutexLock lock(&mutex_);
-        gcs_address = gcs_client_->GetGcsServerAddress();
-      }
-
-      for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
-        const auto &node = nodes[i];
-        std::string ip_address = node.node_manager_address();
-        if (ip_address == node_ip_address) {
-          relevant_client_index = i;
-          break;
-        }
-        // TODO(kfstorm): Do we need to replace `node_ip_address` with
-        // `get_node_ip_address()`?
-        if ((ip_address == "127.0.0.1" && gcs_address.first == node_ip_address) ||
-            ip_address == gcs_address.first) {
-          head_node_client_index = i;
-        }
-      }
-
-      if (relevant_client_index < 0 && head_node_client_index >= 0) {
-        RAY_LOG(INFO) << "This node has an IP address of " << node_ip_address
-                      << ", but we cannot find a local Raylet with the same address. "
-                      << "This can happen when you connect to the Ray cluster "
-                      << "with a different IP address or when connecting to a container.";
-        relevant_client_index = head_node_client_index;
-      }
-      if (relevant_client_index < 0) {
-        std::ostringstream oss;
-        oss << "This node has an IP address of " << node_ip_address << ", and Ray "
-            << "expects this IP address to be either the GCS address or one of"
-            << " the Raylet addresses. Connected to GCS at " << gcs_address.first
-            << " and found raylets at ";
-        for (size_t i = 0; i < nodes.size(); i++) {
-          if (i > 0) {
-            oss << ", ";
-          }
-          oss << nodes[i].node_manager_address();
-        }
-        oss << " but none of these match this node's IP " << node_ip_address
-            << ". Are any of these actually a different IP address for the same node?"
-            << "You might need to provide --node-ip-address to specify the IP "
-            << "address that the head should use when sending to this node.";
-        status = Status::NotFound(oss.str());
-      } else {
-        *node_to_connect = nodes[relevant_client_index].SerializeAsString();
-        return Status::OK();
+        absl::ReaderMutexLock lock(&mutex_);
+        auto timeout_ms =
+            std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
+        RAY_ASSIGN_OR_RETURN(
+            node_infos,
+            gcs_client_->Nodes().GetAllNoCacheWithFilters(timeout_ms, filters));
       }
     }
+    if (!node_infos.empty()) {
+      RAY_LOG(INFO) << "This node has an IP address of " << node_ip_address
+                    << ", but we cannot find a local Raylet with the same address. "
+                    << "This can happen when you connect to the Ray cluster "
+                    << "with a different IP address or when connecting to a container.";
+      *node_to_connect = node_infos[0].SerializeAsString();
+      return Status::OK();
+    }
 
-    if (current_time_ms() - start_ms >=
-        RayConfig::instance().raylet_start_wait_time_s() * 1000) {
-      return status;
+    if (current_time_ms() >= end_time_point) {
+      std::ostringstream oss;
+      oss << "This node has an IP address of " << node_ip_address << ", and Ray "
+          << "expects this IP address to be either the GCS address or one of"
+          << " the Raylet addresses. Connected to GCS at " << gcs_address
+          << ", and found no Raylet with this IP address. "
+          << "You might need to provide --node-ip-address to specify the IP "
+          << "address that the head should use when sending to this node.";
+      return Status::NotFound(oss.str());
     }
     RAY_LOG(WARNING) << "Some processes that the driver needs to connect to have "
                         "not registered with GCS, so retrying. Have you run "

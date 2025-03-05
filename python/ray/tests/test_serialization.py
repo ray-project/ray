@@ -5,11 +5,13 @@ import logging
 import re
 import string
 import sys
+
 import weakref
+import warnings
 from dataclasses import make_dataclass
 
-import numpy as np
 import pytest
+import numpy as np
 from numpy import log
 
 import ray
@@ -20,15 +22,28 @@ from ray import cloudpickle
 logger = logging.getLogger(__name__)
 
 
+def test_warn_copying_non_contiguous_numpy_arrays_warns_once(ray_start_regular):
+    warning_regex = re.compile(".*cannot be zero-copy.*")
+    warnings.simplefilter("always")
+    with pytest.warns(UserWarning, match=warning_regex) as record:
+        non_contiguous_arr = np.zeros(1024 * 1204)[::2]
+        ray.put(non_contiguous_arr)
+        ray.put(non_contiguous_arr)
+    numpy_arr_warnings = [
+        warning for warning in record if warning_regex.match(str(warning.message))
+    ]
+    assert len(numpy_arr_warnings) == 1
+
+
 def is_named_tuple(cls):
     """Return True if cls is a namedtuple and False otherwise."""
     b = cls.__bases__
-    if len(b) != 1 or b[0] != tuple:
+    if len(b) != 1 or b[0] is not tuple:
         return False
     f = getattr(cls, "_fields", None)
     if not isinstance(f, tuple):
         return False
-    return all(type(n) == str for n in f)
+    return all(type(n) is str for n in f)
 
 
 @pytest.mark.parametrize(
@@ -95,8 +110,8 @@ def test_simple_serialization(ray_start_regular):
         # TODO(rkn): The numpy dtypes currently come back as regular integers
         # or floats.
         if type(obj).__module__ != "numpy":
-            assert type(obj) == type(new_obj_1)
-            assert type(obj) == type(new_obj_2)
+            assert type(obj) is type(new_obj_1)
+            assert type(obj) is type(new_obj_2)
 
 
 @pytest.mark.parametrize(
@@ -628,7 +643,7 @@ def test_numpy_ufunc(ray_start_shared_local_modes):
     @ray.remote
     def f():
         # add reference to the numpy ufunc
-        log
+        _ = log
 
     ray.get(f.remote())
 
@@ -747,7 +762,7 @@ def test_cannot_out_of_band_serialize_object_ref(shutdown_only, monkeypatch):
 
         @ray.remote
         def f():
-            ref
+            _ = ref
 
         with pytest.raises(ray.exceptions.OufOfBandObjectRefSerializationException):
             ray.get(f.remote())
@@ -774,7 +789,7 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
 
         @ray.remote
         def f():
-            ref
+            _ = ref
 
         ray.get(f.remote())
 

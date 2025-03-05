@@ -81,7 +81,6 @@ def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]
         filter[predicate_index[0] : predicate_index[1]],
         filter[predicate_index[1] :],
     )
-
     assert predicate == "=" or predicate == "!="
     if len(key) == 0 or len(value) == 0:
         raise ValueError(

@@ -13,6 +13,10 @@ tune.registry.register_env("env", lambda cfg: MultiAgentCartPole(config=cfg))
 
 config = (
     IMPALAConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment("env", env_config={"num_agents": 4})
     .env_runners(
         num_envs_per_env_runner=5,

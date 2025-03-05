@@ -481,6 +481,7 @@ class SkillLevel(ExampleEnum):
 class Framework(ExampleEnum):
     """Framework type for example metadata."""
 
+    AWSNEURON = "AWS Neuron"
     PYTORCH = "PyTorch"
     LIGHTNING = "Lightning"
     TRANSFORMERS = "Transformers"
@@ -490,6 +491,8 @@ class Framework(ExampleEnum):
     HOROVOD = "Horovod"
     XGBOOST = "XGBoost"
     HUGGINGFACE = "Hugging Face"
+    DATAJUICER = "Data-Juicer"
+    VLLM = "vLLM"
     ANY = "Any"
 
     @classmethod
@@ -560,7 +563,7 @@ class Library(ExampleEnum):
 
 
 class Example:
-    """Class containing metadata about an example to be shown in the exmaple gallery."""
+    """Class containing metadata about an example to be shown in the example gallery."""
 
     def __init__(
         self, config: Dict[str, str], library: Library, config_dir: pathlib.Path
@@ -776,8 +779,8 @@ def setup_context(app, pagename, templatename, context, doctree):
         soup.append(page_text)
 
         container = soup.new_tag("div", attrs={"class": "example-index"})
-        for group, examples in examples.items():
-            if not examples:
+        for group, group_examples in examples.items():
+            if not group_examples:
                 continue
 
             header = soup.new_tag("h2", attrs={"class": "example-header"})
@@ -810,7 +813,7 @@ def setup_context(app, pagename, templatename, context, doctree):
                 table.append(thead)
 
             tbody = soup.new_tag("tbody")
-            for example in examples:
+            for example in group_examples:
                 tr = soup.new_tag("tr")
 
                 # The columns specify which attributes of each example to show;
@@ -1297,7 +1300,7 @@ def generate_versions_json():
     for version in git_versions:
         version_json_data.append(
             {
-                "version": f"releases/{version}",
+                "version": f"releases-{version}",
                 "url": generate_version_url(f"releases-{version}"),
             }
         )

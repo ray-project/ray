@@ -10,7 +10,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.tune import Stopper
-from ray import train, tune
+from ray import tune
 
 # Might need `gymnasium[atari, other]` to be installed.
 
@@ -302,11 +302,6 @@ config = (
         },
         clip_rewards=True,
     )
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
@@ -364,7 +359,7 @@ config = (
 tuner = tune.Tuner(
     "DQN",
     param_space=config,
-    run_config=train.RunConfig(
+    run_config=tune.RunConfig(
         stop=BenchmarkStopper(benchmark_envs=benchmark_envs),
         name="benchmark_dqn_atari",
     ),

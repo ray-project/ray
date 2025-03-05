@@ -10,10 +10,10 @@ import ray._private.ray_constants as ray_constants
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
 import ray.exceptions
+from ray.util.state import list_tasks
 
 # Task status.
 WAITING_FOR_DEPENDENCIES = "PENDING_ARGS_AVAIL"
-SCHEDULED = "PENDING_NODE_ASSIGNMENT"
 FINISHED = "FINISHED"
 WAITING_FOR_EXECUTION = "SUBMITTED_TO_WORKER"
 
@@ -354,17 +354,23 @@ def test_memory_util(config, ray_start_cluster):
         print(info)
         info = info.split("\n")
         reconstructing_waiting = [
-            line
-            for line in info
-            if "Attempt #2" in line and WAITING_FOR_DEPENDENCIES in line
+            fields
+            for fields in [[part.strip() for part in line.split("|")] for line in info]
+            if len(fields) == 9
+            and fields[4] == WAITING_FOR_DEPENDENCIES
+            and fields[5] == "2"
         ]
         reconstructing_scheduled = [
-            line
-            for line in info
-            if "Attempt #2" in line and WAITING_FOR_EXECUTION in line
+            fields
+            for fields in [[part.strip() for part in line.split("|")] for line in info]
+            if len(fields) == 9
+            and fields[4] == WAITING_FOR_EXECUTION
+            and fields[5] == "2"
         ]
         reconstructing_finished = [
-            line for line in info if "Attempt #2" in line and FINISHED in line
+            fields
+            for fields in [[part.strip() for part in line.split("|")] for line in info]
+            if len(fields) == 9 and fields[4] == FINISHED and fields[5] == "2"
         ]
         return (
             len(reconstructing_waiting),
@@ -497,6 +503,57 @@ def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enab
             ray.get(x)
         with pytest.raises(ray.exceptions.ObjectFreedError):
             ray.get(obj)
+
+
+def test_object_reconstruction_dead_actor(config, ray_start_cluster):
+    # Test to make sure that if object reconstruction fails
+    # due to dead actor, pending_creation is set back to false.
+    # https://github.com/ray-project/ray/issues/47606
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, _system_config=config)
+    ray.init(address=cluster.address)
+    node1 = cluster.add_node(resources={"node1": 1})
+    node2 = cluster.add_node(resources={"node2": 1})
+
+    @ray.remote(max_restarts=0, max_task_retries=-1, resources={"node1": 0.1})
+    class Worker:
+        def func_in(self):
+            return np.random.rand(1024000)
+
+    @ray.remote(max_retries=-1, resources={"node2": 0.1})
+    def func_out(data):
+        return np.random.rand(1024000)
+
+    worker = Worker.remote()
+
+    ref_in = worker.func_in.remote()
+    ref_out = func_out.remote(ref_in)
+
+    ray.wait([ref_in, ref_out], num_returns=2, timeout=None, fetch_local=False)
+
+    def func_out_resubmitted():
+        tasks = list_tasks(filters=[("name", "=", "func_out")])
+        assert len(tasks) == 2
+        assert (
+            tasks[0]["state"] == "PENDING_NODE_ASSIGNMENT"
+            or tasks[1]["state"] == "PENDING_NODE_ASSIGNMENT"
+        )
+        return True
+
+    cluster.remove_node(node2, allow_graceful=False)
+    # ref_out will reconstruct, wait for the lease request to reach raylet.
+    wait_for_condition(func_out_resubmitted)
+
+    cluster.remove_node(node1, allow_graceful=False)
+    # ref_in is lost and the reconstruction will
+    # fail with ActorDiedError
+
+    node1 = cluster.add_node(resources={"node1": 1})
+    node2 = cluster.add_node(resources={"node2": 1})
+
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ray.get(ref_out)
+    assert "input arguments for this task could not be computed" in str(exc_info.value)
 
 
 def test_object_reconstruction_pending_creation(config, ray_start_cluster):

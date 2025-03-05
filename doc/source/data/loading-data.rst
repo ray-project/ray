@@ -43,6 +43,13 @@ To view the full list of supported file formats, see the
             petal.width   double
             variety       string
 
+        .. tip::
+
+            When reading parquet files, you can take advantage of column pruning to
+            efficiently filter columns at the file scan level. See
+            :ref:`Parquet column pruning <parquet_column_pruning>` for more details
+            on the projection pushdown feature.
+
     .. tab-item:: Images
 
         To read raw images, call :func:`~ray.data.read_images`. Ray Data represents
@@ -211,7 +218,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
-        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+        `S3 Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
     .. tab-item:: GCS
 
@@ -222,7 +229,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             pip install gcsfs
 
-        Then, create a ``GCSFileSystem`` and specify URIs with the ``gcs://`` scheme.
+        Then, create a ``GCSFileSystem`` and specify URIs with the ``gs://`` scheme.
 
         .. testcode::
             :skipif: True
@@ -231,7 +238,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds = ray.data.read_parquet(
-                "gcs://anonymous@ray-example-data/iris.parquet",
+                "gs://...",
                 filesystem=filesystem
             )
 
@@ -249,7 +256,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
         Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
-        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+        `GCS Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
     .. tab-item:: ABS
 

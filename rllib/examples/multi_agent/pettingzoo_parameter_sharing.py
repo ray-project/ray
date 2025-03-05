@@ -97,7 +97,7 @@ if __name__ == "__main__":
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
-                module_specs={"p0": RLModuleSpec()},
+                rl_module_specs={"p0": RLModuleSpec()},
             ),
         )
     )

@@ -152,7 +152,9 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::GcsNodeInfo> &callback, int64_t timeout_ms),
+              (const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+               int64_t timeout_ms,
+               std::optional<NodeID> node_id),
               (override));
   MOCK_METHOD(Status,
               AsyncSubscribeToNodeChange,
@@ -175,10 +177,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
-  MOCK_METHOD(Status,
-              AsyncGetInternalConfig,
-              (const OptionalItemCallback<std::string> &callback),
-              (override));
 };
 
 }  // namespace gcs
@@ -331,7 +329,7 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &value,
                bool overwrite,
                const int64_t timeout_ms,
-               const OptionalItemCallback<int> &callback),
+               const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncInternalKVExists,
@@ -347,6 +345,10 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                bool del_by_prefix,
                const int64_t timeout_ms,
                const OptionalItemCallback<int> &callback),
+              (override));
+  MOCK_METHOD(Status,
+              AsyncGetInternalConfig,
+              (const OptionalItemCallback<std::string> &callback),
               (override));
 };
 

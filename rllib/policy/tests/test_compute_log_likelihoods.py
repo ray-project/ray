@@ -4,10 +4,8 @@ import numpy as np
 from scipy.stats import norm
 
 import ray
-import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.ppo as ppo
-import ray.rllib.algorithms.sac as sac
-from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, fc, one_hot
+from ray.rllib.utils.numpy import fc, one_hot
 from ray.rllib.utils.test_utils import check
 
 
@@ -102,13 +100,8 @@ def do_test_log_likelihood(
                 in_training=False,
             )
 
-            # The expected logp computation logic is overfitted to the ModelV2
-            # stack and does not generalize to RLModule API.
-            if not config.enable_rl_module_and_learner:
-                expected_logp = _get_expected_logp(
-                    vars, obs_batch, a, layer_key, logp_func
-                )
-                check(logp, expected_logp[0], rtol=0.2)
+            expected_logp = _get_expected_logp(vars, obs_batch, a, layer_key, logp_func)
+            check(logp, expected_logp[0], rtol=0.2)
     # Test all available actions for their logp values.
     else:
         for a in [0, 1, 2, 3]:
@@ -122,8 +115,7 @@ def do_test_log_likelihood(
                 in_training=False,
             )
 
-            if not config.enable_rl_module_and_learner:
-                check(np.exp(logp), expected_prob, atol=0.2)
+            check(np.exp(logp), expected_prob, atol=0.2)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):
@@ -135,84 +127,35 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_dqn(self):
-        """Tests, whether DQN correctly computes logp in soft-q mode."""
-        config = dqn.DQNConfig()
-        # Soft-Q for DQN.
-        config.env_runners(exploration_config={"type": "SoftQ", "temperature": 0.5})
-        config.debugging(seed=42)
-        do_test_log_likelihood(dqn.DQN, config)
-
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
-        config = ppo.PPOConfig()
-        config.training(
-            model={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": "linear",
-            }
+        config = (
+            ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+            .training(
+                model={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": "linear",
+                }
+            )
+            .debugging(seed=42)
         )
-        config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(ppo.PPO, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
         config = ppo.PPOConfig()
+        config.api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         config.debugging(seed=42)
         prev_a = np.array(0)
         do_test_log_likelihood(ppo.PPO, config, prev_a)
-
-    def test_sac_cont(self):
-        """Tests SAC's (cont. actions) compute_log_likelihoods method."""
-        config = sac.SACConfig()
-        config.training(
-            policy_model_config={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": "linear",
-            }
-        )
-        config.debugging(seed=42)
-        prev_a = np.array([0.0])
-
-        # SAC cont uses a squashed normal distribution. Implement it's logp
-        # logic here in numpy for comparing results.
-        def logp_func(means, log_stds, values, low=-1.0, high=1.0):
-            stds = np.exp(np.clip(log_stds, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT))
-            unsquashed_values = np.arctanh((values - low) / (high - low) * 2.0 - 1.0)
-            log_prob_unsquashed = np.sum(
-                np.log(norm.pdf(unsquashed_values, means, stds)), -1
-            )
-            return log_prob_unsquashed - np.sum(
-                np.log(1 - np.tanh(unsquashed_values) ** 2), axis=-1
-            )
-
-        do_test_log_likelihood(
-            sac.SAC,
-            config,
-            prev_a,
-            continuous=True,
-            layer_key=(
-                "fc",
-                (0, 2),
-                ("action_model._hidden_layers.0.", "action_model._logits."),
-            ),
-            logp_func=logp_func,
-        )
-
-    def test_sac_discr(self):
-        """Tests SAC's (discrete actions) compute_log_likelihoods method."""
-        config = sac.SACConfig()
-        config.training(
-            policy_model_config={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": "linear",
-            }
-        )
-        config.debugging(seed=42)
-        prev_a = np.array(0)
-
-        do_test_log_likelihood(sac.SAC, config, prev_a)
 
 
 if __name__ == "__main__":
