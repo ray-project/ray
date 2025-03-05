@@ -22,7 +22,6 @@ DATA_SCHEMA = [
     "ray_data_current_bytes",
     "ray_data_cpu_usage_cores",
     "ray_data_gpu_usage_cores",
-
 ]
 
 RESPONSE_SCHEMA = [
