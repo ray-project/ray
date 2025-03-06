@@ -33,12 +33,16 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
+:::
 
 :::{tab-item} ARM64 (Apple silicon)
 ```sh
 curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml | sed 's/2.41.0/2.41.0-aarch64/g' > ray-service.no-ray-serve-replica.yaml
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
+:::
+
+::::
 
 Look at the Ray Serve configuration `serveConfigV2` embedded in the RayService YAML. Notice the only deployment in `deployments` of the application named `simple_app`:
   * `num_replicas`: Controls the number of replicas to run that handle requests to this deployment. Intialize to 1 to ensure the overall number of the ray serve replicas is 1.
