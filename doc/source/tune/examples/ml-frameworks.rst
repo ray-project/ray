@@ -11,14 +11,14 @@ Examples using Ray Tune with ML Frameworks
 .. toctree::
     :hidden:
 
-    Keras Example <tune_mnist_keras>
     PyTorch Example <tune-pytorch-cifar>
-    PyTorch Lightning Example <tune-pytorch-lightning>
-    Ray RLlib Example <pbt_ppo_example>
+    Hugging Face Transformers Example <pbt_transformers>
     XGBoost Example <tune-xgboost>
     LightGBM Example <lightgbm_example>
+    Ray RLlib Example <pbt_ppo_example>
+    Keras Example <tune_mnist_keras>
+    PyTorch Lightning Example <tune-pytorch-lightning>
     Horovod Example <horovod_simple>
-    Hugging Face Transformers Example <pbt_transformers>
 
 
 Ray Tune integrates with many popular machine learning frameworks.
