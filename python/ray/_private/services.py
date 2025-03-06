@@ -354,7 +354,7 @@ def _find_address_from_flag(flag: str):
             # NOTE(kfstorm): To support Windows, we can't use
             # `os.path.basename(cmdline[0]) == "raylet"` here.
 
-            if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
+            if _is_raylet_process(cmdline):
                 for arglist in cmdline:
                     # Given we're merely seeking --redis-address, we just split
                     # every argument on spaces for now.
@@ -2287,3 +2287,19 @@ def start_ray_client_server(
         fate_share=fate_share,
     )
     return process_info
+
+
+def _is_raylet_process(cmdline: Optional[List[str]]) -> bool:
+    """Check if the command line belongs to a raylet process.
+
+    Args:
+        cmdline: List of command line arguments or None
+
+    Returns:
+        bool: True if this is a raylet process, False otherwise
+    """
+    if cmdline is None or len(cmdline) == 0:
+        return False
+
+    executable = os.path.basename(cmdline[0])
+    return "raylet" in executable
