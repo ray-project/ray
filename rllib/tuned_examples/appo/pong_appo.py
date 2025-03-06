@@ -38,7 +38,9 @@ def _env_creator(cfg):
 
 register_env("env", _env_creator)
 
+import os
 
+os.environ["TRAIN_ENABLE_WORKER_SPREAD"] = "1"
 config = (
     APPOConfig()
     .environment(

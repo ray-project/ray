@@ -826,19 +826,49 @@ class Algorithm(Checkpointable, Trainable):
                 spaces=self.env_runner_group.get_spaces(),
                 inference_only=False,
             )
-            agg_cls = ray.remote(
-                num_cpus=1,
-                # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
-                # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
-                max_restarts=-1,
-            )(AggregatorActor)
+            learner_pgs = list(
+                enumerate(
+                    self.learner_group.foreach_learner(
+                        func=lambda _learner: ray.util.get_current_placement_group()
+                    )
+                )
+            )
+            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+            agg_cls_list = []
+            aggregator_index = 0
+            self._aggregator_actor_to_learner = {}
+            for i in range(self.config.num_aggregator_actors_per_learner):
+                for j, pg in learner_pgs:
+                    agg_cls_list.append(
+                        ray.remote(
+                            num_cpus=1,
+                            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                                placement_group=pg.get(),
+                                placement_group_bundle_index=j,
+                            ),
+                            max_restarts=-1,
+                        )(AggregatorActor)
+                    )
+                    self._aggregator_actor_to_learner[aggregator_index] = j
+                    aggregator_index += 1
+            # agg_cls = ray.remote(
+            #     num_cpus=1,
+            #     # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
+            #     # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
+            #     max_restarts=-1,
+            # )(AggregatorActor)
             self._aggregator_actor_manager = FaultTolerantActorManager(
+                # [
+                #     agg_cls.remote(self.config, rl_module_spec)
+                #     for _ in range(
+                #         (self.config.num_learners or 1)
+                #         * self.config.num_aggregator_actors_per_learner
+                #     ),
+                # ],
                 [
                     agg_cls.remote(self.config, rl_module_spec)
-                    for _ in range(
-                        (self.config.num_learners or 1)
-                        * self.config.num_aggregator_actors_per_learner
-                    )
+                    for agg_cls in agg_cls_list
                 ],
                 max_remote_requests_in_flight_per_actor=(
                     self.config.max_requests_in_flight_per_aggregator_actor
@@ -860,26 +890,26 @@ class Algorithm(Checkpointable, Trainable):
                     )
                 )
             )
-            self._aggregator_actor_to_learner = {}
-            for agg_idx, aggregator_location in aggregator_locations:
-                aggregator_location = aggregator_location.get()
-                for learner_idx, learner_location in learner_locations:
-                    # TODO (sven): Activate full comparison (including device) when Ray
-                    #  has figured out GPU pre-loading.
-                    if learner_location.get()[0] == aggregator_location[0]:
-                        # Round-robin, in case all Learners are on same device/node.
-                        learner_locations = learner_locations[1:] + [
-                            learner_locations[0]
-                        ]
-                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
-                        break
-                if agg_idx not in self._aggregator_actor_to_learner:
-                    raise RuntimeError(
-                        "No Learner worker found that matches aggregation worker "
-                        f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
-                        f"({aggregator_location[1]})! The Learner workers' locations "
-                        f"are {learner_locations}."
-                    )
+            # self._aggregator_actor_to_learner = {}
+            # for agg_idx, aggregator_location in aggregator_locations:
+            #     aggregator_location = aggregator_location.get()
+            #     for learner_idx, learner_location in learner_locations:
+            #         # TODO (sven): Activate full comparison (including device) when Ray
+            #         #  has figured out GPU pre-loading.
+            #         if learner_location.get()[0] == aggregator_location[0]:
+            #             # Round-robin, in case all Learners are on same device/node.
+            #             learner_locations = learner_locations[1:] + [
+            #                 learner_locations[0]
+            #             ]
+            #             self._aggregator_actor_to_learner[agg_idx] = learner_idx
+            #             break
+            #     if agg_idx not in self._aggregator_actor_to_learner:
+            #         raise RuntimeError(
+            #             "No Learner worker found that matches aggregation worker "
+            #             f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
+            #             f"({aggregator_location[1]})! The Learner workers' locations "
+            #             f"are {learner_locations}."
+            #         )
 
             # Make sure, each Learner index is mapped to from at least one
             # AggregatorActor.
