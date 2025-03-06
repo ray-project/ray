@@ -83,6 +83,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/daft_logo.webp
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/Eventual-Inc/Daft.svg?style=social
+                :target: https://github.com/Eventual-Inc/Daft
+
+            Daft is a unified data engine for data engineering, analytics, and ML. It exposes SQL and DataFrame interfaces as first-class citizens and is written in Rust. Daft seamlessly scales to petabyte-scale distributed workloads using Ray for distributed computing.
+
+        +++
+        .. button-link:: https://github.com/Eventual-Inc/Daft
+            :color: primary
+            :outline:
+            :expand:
+
+            Daft Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/dask.png
             :class: card-figure
 
@@ -133,7 +154,7 @@ more information.
             .. image:: https://img.shields.io/github/stars/asappresearch/flambe?style=social)]
                 :target: https://github.com/asappresearch/flambe
 
-            Flambé is a machine learning experimentation framework built to accelerate the entire research life cycle. Flambé’s main objective is to provide a unified interface for prototyping models, running experiments containing complex pipelines, monitoring those experiments in real-time, reporting results, and deploying a final model for inference.
+            Flambé is a machine learning experimentation framework built to accelerate the entire research life cycle. Flambé's main objective is to provide a unified interface for prototyping models, running experiments containing complex pipelines, monitoring those experiments in real-time, reporting results, and deploying a final model for inference.
 
         +++
         .. button-link:: https://github.com/asappresearch/flambe
