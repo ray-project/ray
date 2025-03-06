@@ -418,8 +418,12 @@ class Node:
         if not cluster_metadata:
             return
         node_ip_address = ray._private.services.get_node_ip_address()
+        ignore_version = "RAY_IGNORE_VERSION_MISMATCH" in os.environ
+
         ray._private.utils.check_version_info(
-            cluster_metadata, f"node {node_ip_address}"
+            cluster_metadata,
+            f"node {node_ip_address}",
+            raise_on_mismatch=not ignore_version,
         )
 
     def _register_shutdown_hooks(self):
