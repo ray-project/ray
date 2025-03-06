@@ -22,11 +22,8 @@ from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import (
-    _ray_start,
-    pytest_runtest_makereport,  # noqa
-    wait_for_condition,
-)
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import _ray_start, wait_for_condition
 from ray.util.debug import reset_log_once
 
 
@@ -431,18 +428,21 @@ def op_two_block():
     block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
-        block_exec_stats = BlockExecStats()
+
         # The blocks are executing from [0, 5] and [20, 30].
-        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
-        block_exec_stats.end_time_s = (
-            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        start_time_s = time.perf_counter() + i * block_delay
+        end_time_s = start_time_s + block_params["wall_time"][i]
+        start_cpu_s = time.process_time() + i * block_delay
+        end_cpu_s = start_cpu_s + block_params["cpu_time"][i]
+        block_exec_stats = BlockExecStats(
+            start_time_s=start_time_s,
+            end_time_s=end_time_s,
+            start_cpu_s=start_cpu_s,
+            end_cpu_s=end_cpu_s,
+            node_id=block_params["node_id"][i],
+            max_rss_bytes=block_params["max_rss_bytes"][i],
+            task_idx=block_params["task_idx"][i],
         )
-        block_exec_stats.wall_time_s = block_params["wall_time"][i]
-        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
-        block_exec_stats.udf_time_s = block_params["udf_time"][i]
-        block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
-        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],

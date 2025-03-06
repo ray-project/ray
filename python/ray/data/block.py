@@ -2,7 +2,7 @@ import collections
 import logging
 import os
 import time
-from dataclasses import dataclass, asdict, fields
+from dataclasses import asdict, dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -138,73 +138,84 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 
 @DeveloperAPI
+@dataclass(frozen=True)
 class BlockExecStats:
     """Execution stats for this block.
 
     Attributes:
-        wall_time_s: The wall-clock time it took to compute this block.
-        cpu_time_s: The CPU time it took to compute this block.
+        start_time_s: The wall-clock time when block computation started.
+        end_time_s: The wall-clock time when block computation finished.
+        start_cpu_s: The CPU time when block computation started.
+        end_cpu_s: The CPU time when block computation finished.
         node_id: A unique id for the node that computed this block.
+        udf_time_s: The time it took to run the UDF that produced this block.
+        max_rss_bytes: The maximum resident set size (RSS) of the process that computed
+            this block. This might be an overestimate since we don't differentiate from
+            previous tasks on the same worker.
+        task_idx: The index of the task that computed this block.
     """
 
-    def __init__(self):
-        self.start_time_s: Optional[float] = None
-        self.end_time_s: Optional[float] = None
-        self.wall_time_s: Optional[float] = None
-        self.udf_time_s: Optional[float] = 0
-        self.cpu_time_s: Optional[float] = None
-        self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        # Max memory usage. May be an overestimate since we do not
-        # differentiate from previous tasks on the same worker.
-        self.max_rss_bytes: int = 0
-        self.task_idx: Optional[int] = None
+    start_time_s: float
+    end_time_s: float
+    start_cpu_s: float
+    end_cpu_s: float
+    node_id: str
+    udf_time_s: Optional[float] = None
+    max_rss_bytes: Optional[int] = None
+    task_idx: Optional[int] = None
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
         return _BlockExecStatsBuilder()
 
-    def __repr__(self):
-        return repr(
-            {
-                "wall_time_s": self.wall_time_s,
-                "cpu_time_s": self.cpu_time_s,
-                "udf_time_s": self.udf_time_s,
-                "node_id": self.node_id,
-            }
-        )
+    @property
+    def wall_time_s(self) -> float:
+        """The wall-clock time it took to compute this block."""
+        return self.end_time_s - self.start_time_s
+
+    @property
+    def cpu_time_s(self) -> float:
+        """The CPU time it took to compute this block."""
+        return self.end_cpu_s - self.start_cpu_s
 
 
 class _BlockExecStatsBuilder:
     """Helper class for building block stats.
 
     When this class is created, we record the start time. When build() is
-    called, the time delta is saved as part of the stats.
+    called, the final time and memory stats are recorded and returned.
     """
 
-    def __init__(self):
-        self.start_time = time.perf_counter()
-        self.start_cpu = time.process_time()
+    def __init__(self, task_idx: Optional[int] = None):
+        self._start_time_s = time.perf_counter()
+        self._start_cpu_s = time.process_time()
+        self._task_idx = task_idx
 
-    def build(self) -> "BlockExecStats":
-        self.end_time = time.perf_counter()
-        self.end_cpu = time.process_time()
+    def build(self, udf_time_s: Optional[float] = None) -> "BlockExecStats":
+        end_time_s = time.perf_counter()
+        end_cpu_s = time.process_time()
 
-        stats = BlockExecStats()
-        stats.start_time_s = self.start_time
-        stats.end_time_s = self.end_time
-        stats.wall_time_s = self.end_time - self.start_time
-        stats.cpu_time_s = self.end_cpu - self.start_cpu
         if resource is None:
             # NOTE(swang): resource package is not supported on Windows. This
             # is only the memory usage at the end of the task, not the peak
             # memory.
             process = psutil.Process(os.getpid())
-            stats.max_rss_bytes = int(process.memory_info().rss)
+            max_rss_bytes = int(process.memory_info().rss)
         else:
-            stats.max_rss_bytes = int(
+            max_rss_bytes = int(
                 resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
             )
-        return stats
+
+        return BlockExecStats(
+            start_time_s=self._start_time_s,
+            end_time_s=end_time_s,
+            start_cpu_s=self._start_cpu_s,
+            end_cpu_s=end_cpu_s,
+            node_id=ray.runtime_context.get_runtime_context().get_node_id(),
+            udf_time_s=udf_time_s,
+            max_rss_bytes=max_rss_bytes,
+            task_idx=self._task_idx,
+        )
 
 
 @DeveloperAPI
