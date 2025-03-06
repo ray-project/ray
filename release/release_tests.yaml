@@ -4020,7 +4020,8 @@
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
   python: "3.11"
-  group: llm
+  group: llm-serve
+  team: llm
   working_dir: llm_tests/serve
 
   cluster:
@@ -4036,7 +4037,8 @@
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
   python: "3.11"
-  group: llm
+  group: llm-serve
+  team: llm
   working_dir: llm_tests/serve
 
   cluster:
@@ -4052,7 +4054,8 @@
 - name: llm_serve_llama_3dot1_8B_lora
   frequency: nightly
   python: "3.11"
-  group: llm
+  group: llm-serve
+  team: llm
   working_dir: llm_tests/serve
 
   cluster:
