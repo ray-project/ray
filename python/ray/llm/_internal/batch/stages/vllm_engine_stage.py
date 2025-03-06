@@ -205,7 +205,7 @@ class vLLMEngineWrapper:
     async def _maybe_get_lora_request(
         self,
         row: Dict[str, Any],
-    ) -> Optional[vllm.lora.request.LoRARequest]:
+    ) -> Optional[Any]:
         """Get the LoRA request for the given row.
         Specifically, if the model name is given and is different from the model
         set in the config, then this request has LoRA.
@@ -214,7 +214,9 @@ class vLLMEngineWrapper:
             row: The row.
 
         Returns:
-            The LoRA request, or None if there is no LoRA.
+            The LoRA request (vllm.lora.request.LoRARequest),
+            or None if there is no LoRA. We use Any in type hint to
+            pass doc build in the environment without vLLM.
         """
         lora_request = None
         if "model" in row and row["model"] != self.model:
