@@ -66,7 +66,7 @@ cdef class GlobalStateAccessor:
             cjob_id = self.inner.get().GetNextJobID()
         return cjob_id.ToInt()
 
-    def get_node_table(self, virtual_cluster_id):
+    def get_node_table(self, virtual_cluster_id=None):
         cdef:
             c_vector[c_string] items
             c_string item
