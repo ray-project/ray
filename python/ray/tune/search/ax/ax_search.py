@@ -224,7 +224,7 @@ class AxSearch(Searcher):
             self._ax.create_experiment(
                 parameters=self._space,
                 objectives={
-                    self._metric: ObjectiveProperties(minimize=self._mode != "max",)
+                    self._metric: ObjectiveProperties(minimize=self._mode != "max")
                 },
                 parameter_constraints=self._parameter_constraints,
                 outcome_constraints=self._outcome_constraints,
