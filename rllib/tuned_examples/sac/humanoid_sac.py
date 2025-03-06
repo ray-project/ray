@@ -1,9 +1,10 @@
 """This is WIP.
 
-On a single-GPU machine, with the --num-gpus=1 command line option, this example should
-learn a episode return of >1000 in ~10h, which is still very basic, but does somewhat
-prove SAC's capabilities. Some more hyperparameter fine tuning, longer runs, and
-more scale (`--num-gpus > 1` and `--num-env-runners > 0`) should help push this up.
+On a single-GPU machine, with the `--num-gpus-per-learner=1` command line option, this
+example should learn a episode return of >1000 in ~10h, which is still very basic, but
+does somewhat prove SAC's capabilities. Some more hyperparameter fine tuning, longer
+runs, and more scale (`--num-learners > 0` and `--num-env-runners > 0`) should help push
+this up.
 """
 
 from torch import nn

@@ -34,6 +34,14 @@ def validate_uri(uri: str):
         raise ValueError("Only .zip or .whl files supported for remote URIs.")
 
 
+def _handle_local_deps_requirement_file(requirements_file: str):
+    """Read the given [requirements_file], and return all required dependencies."""
+    requirements_path = Path(requirements_file)
+    if not requirements_path.is_file():
+        raise ValueError(f"{requirements_path} is not a valid file")
+    return requirements_path.read_text().strip().split("\n")
+
+
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     """Parses and validates a 'py_modules' option.
 
@@ -107,21 +115,21 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-# TODO(hjiang): More package installation options to implement:
-# 1. Allow users to pass in a local requirements.txt file, which relates to all
-# packages to install;
-# 2. Allow specific version of `uv` to use; as of now we only use default version.
-# 3. `pip_check` has different semantics for `uv` and `pip`, see
-# https://github.com/astral-sh/uv/pull/2544/files, consider whether we need to support
-# it; or simply ignore the field when people come from `pip`.
 def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'uv' option.
 
     The value of the input 'uv' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
            Example usage: ["tensorflow", "requests"]
-        2) A python dictionary that has one field:
+        2) a string containing the path to a local pip “requirements.txt” file.
+        3) A python dictionary that has one field:
             a) packages (required, List[str]): a list of uv packages, it same as 1).
+            b) uv_check (optional, bool): whether to enable pip check at the end of uv
+               install, default to False.
+            c) uv_version (optional, str): user provides a specific uv to use; if
+               unspecified, default version of uv will be used.
+            d) uv_pip_install_options (optional, List[str]): user-provided options for
+              `uv pip install` command, default to ["--no-cache"].
 
     The returned parsed value will be a list of packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
@@ -136,21 +144,56 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
         )
 
     result: str = ""
-    if isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
-        result = dict(packages=uv)
+    if isinstance(uv, str):
+        uv_list = _handle_local_deps_requirement_file(uv)
+        result = dict(packages=uv_list, uv_check=False)
+    elif isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
+        result = dict(packages=uv, uv_check=False)
     elif isinstance(uv, dict):
-        if set(uv.keys()) - {"packages"}:
+        if set(uv.keys()) - {
+            "packages",
+            "uv_check",
+            "uv_version",
+            "uv_pip_install_options",
+        }:
             raise ValueError(
                 "runtime_env['uv'] can only have these fields: "
-                "packages, but got: "
+                "packages, uv_check, uv_version and uv_pip_install_options, but got: "
                 f"{list(uv.keys())}"
             )
         if "packages" not in uv:
             raise ValueError(
                 f"runtime_env['uv'] must include field 'packages', but got {uv}"
             )
+        if "uv_check" in uv and not isinstance(uv["uv_check"], bool):
+            raise TypeError(
+                "runtime_env['uv']['uv_check'] must be of type bool, "
+                f"got {type(uv['uv_check'])}"
+            )
+        if "uv_version" in uv and not isinstance(uv["uv_version"], str):
+            raise TypeError(
+                "runtime_env['uv']['uv_version'] must be of type str, "
+                f"got {type(uv['uv_version'])}"
+            )
+        if "uv_pip_install_options" in uv:
+            if not isinstance(uv["uv_pip_install_options"], list):
+                raise TypeError(
+                    "runtime_env['uv']['uv_pip_install_options'] must be of type "
+                    f"list[str] got {type(uv['uv_pip_install_options'])}"
+                )
+            # Check each item in installation option.
+            for idx, cur_opt in enumerate(uv["uv_pip_install_options"]):
+                if not isinstance(cur_opt, str):
+                    raise TypeError(
+                        "runtime_env['uv']['uv_pip_install_options'] must be of type "
+                        f"list[str] got {type(cur_opt)} for {idx}-th item."
+                    )
 
         result = uv.copy()
+        result["uv_check"] = uv.get("uv_check", False)
+        result["uv_pip_install_options"] = uv.get(
+            "uv_pip_install_options", ["--no-cache"]
+        )
         if not isinstance(uv["packages"], list):
             raise ValueError(
                 "runtime_env['uv']['packages'] must be of type list, "
@@ -192,12 +235,6 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     """
     assert pip is not None
 
-    def _handle_local_pip_requirement_file(pip_file: str):
-        pip_path = Path(pip_file)
-        if not pip_path.is_file():
-            raise ValueError(f"{pip_path} is not a valid file")
-        return pip_path.read_text().strip().split("\n")
-
     result = None
     if sys.platform == "win32":
         logger.warning(
@@ -207,7 +244,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         )
     if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
-        pip_list = _handle_local_pip_requirement_file(pip)
+        pip_list = _handle_local_deps_requirement_file(pip)
         result = dict(packages=pip_list, pip_check=False)
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         result = dict(packages=pip, pip_check=False)
@@ -237,7 +274,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                 f"runtime_env['pip'] must include field 'packages', but got {pip}"
             )
         elif isinstance(pip["packages"], str):
-            result["packages"] = _handle_local_pip_requirement_file(pip["packages"])
+            result["packages"] = _handle_local_deps_requirement_file(pip["packages"])
         elif not isinstance(pip["packages"], list):
             raise ValueError(
                 "runtime_env['pip']['packages'] must be of type str of list, "
@@ -337,14 +374,13 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
 
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
-#
-# TODO(hjiang): Expose `uv` related validation after implementation finished.
 OPTION_TO_VALIDATION_FN = {
     "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
+    "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
 }

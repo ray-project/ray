@@ -331,17 +331,19 @@ class JobSubmissionClient(SubmissionClient):
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
             >>> submission_id = client.submit_job(entrypoint="sleep 1") # doctest: +SKIP
-            >>> job_submission_client.get_job_info(submission_id) # doctest: +SKIP
-            JobInfo(status='SUCCEEDED', message='Job finished successfully.',
-            error_type=None, start_time=1647388711, end_time=1647388712,
-            metadata={}, runtime_env={})
+            >>> client.get_job_info(submission_id) # doctest: +SKIP
+            JobDetails(status='SUCCEEDED',
+            job_id='03000000', type='submission',
+            submission_id='raysubmit_4LamXRuQpYdSMg7J',
+            message='Job finished successfully.', error_type=None,
+            start_time=1647388711, end_time=1647388712, metadata={}, runtime_env={})
 
         Args:
             job_id: The job ID or submission ID of the job whose information
                 is being requested.
 
         Returns:
-            The JobInfo for the job.
+            The JobDetails for the job.
 
         Raises:
             RuntimeError: If the job does not exist or if the request to the
@@ -350,7 +352,13 @@ class JobSubmissionClient(SubmissionClient):
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobDetails(**r.json())
+            if JobDetails is None:
+                raise RuntimeError(
+                    "The Ray jobs CLI & SDK require the ray[default] "
+                    "installation: `pip install 'ray[default]'`"
+                )
+            else:
+                return JobDetails(**r.json())
         else:
             self._raise_error(r)
 
@@ -379,7 +387,7 @@ class JobSubmissionClient(SubmissionClient):
             start_time=1647454832, end_time=None, metadata={}, runtime_env={})]
 
         Returns:
-            A dictionary mapping job_ids to their information.
+            A list of JobDetails containing the job status and other information.
 
         Raises:
             RuntimeError: If the request to the job server fails.

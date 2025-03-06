@@ -26,7 +26,7 @@ def test_auto_detected_more_than_visible(
     # Test more hpus are detected than visible.
     monkeypatch.setenv("HABANA_VISIBLE_MODULES", "0,1,2")
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["HPU"] == 3
 
 
@@ -37,7 +37,7 @@ def test_auto_detected_more_than_visible(
 def test_auto_detect_resources(mock_get_num_accelerators, shutdown_only):
     # Test that ray node resources are filled with auto detected count.
     ray.init()
-    mock_get_num_accelerators.called
+    _ = mock_get_num_accelerators.called
     assert ray.available_resources()["HPU"] == 2
 
 

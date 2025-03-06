@@ -47,6 +47,14 @@ py_test(
 )
 
 py_test(
+    name = "test_arrow",
+    size = "small",
+    srcs = ["tests/test_arrow.py"],
+    tags = ["team:ml", "team:data", "ray_data", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_air_usage",
     size = "small",
     srcs = ["tests/test_air_usage.py"],
@@ -134,14 +142,6 @@ py_test(
     size = "small",
     srcs = ["tests/test_remote_storage_hdfs.py"],
     tags = ["team:ml", "exclusive", "hdfs"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_resource_changing",
-    size = "large",
-    srcs = ["tests/test_resource_changing.py"],
-    tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
 

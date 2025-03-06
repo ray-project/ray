@@ -55,7 +55,7 @@ Results to expect
 
 With `--num-frames=4` and using the two extra ConnectorV2 pieces (in the env-to-module
 and learner connector pipelines), you should see something like this using:
-`--env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95`
+`--env ALE/Pong-v5 --num-learners=4 --num-gpus-per-learner=1 --num-env-runners=95`
 +---------------------------+------------+--------+------------------+...
 | Trial name                | status     |   iter |   total time (s) |
 |                           |            |        |                  |
@@ -192,7 +192,7 @@ if __name__ == "__main__":
             ),
             entropy_coeff=0.01,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.00015 * (args.num_gpus or 1),
+            lr=0.00015 * (args.num_learners or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
         )

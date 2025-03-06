@@ -119,8 +119,8 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
 
 .. note::
 
-  There is nothing preventing you from specifying a larger number of
-  accelerator resources (e.g. ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
+  There's nothing preventing you from specifying a larger number of
+  accelerator resources (e.g., ``num_gpus``) than the true number of accelerators on the machine given Ray resources are :ref:`logical <logical-resources>`.
   In this case, Ray acts as if the machine has the number of accelerators you specified
   for the purposes of scheduling tasks and actors that require accelerators.
   Trouble only occurs if those tasks and actors

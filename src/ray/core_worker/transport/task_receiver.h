@@ -52,7 +52,7 @@ class TaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
@@ -66,12 +66,14 @@ class TaskReceiver {
   TaskReceiver(WorkerContext &worker_context,
                instrumented_io_context &main_io_service,
                worker::TaskEventBuffer &task_event_buffer,
-               const TaskHandler &task_handler,
+               TaskHandler task_handler,
+               std::function<std::function<void()>()> initialize_thread_callback,
                const OnActorCreationTaskDone &actor_creation_task_done_)
       : worker_context_(worker_context),
-        task_handler_(task_handler),
+        task_handler_(std::move(task_handler)),
         task_main_io_service_(main_io_service),
         task_event_buffer_(task_event_buffer),
+        initialize_thread_callback_(std::move(initialize_thread_callback)),
         actor_creation_task_done_(actor_creation_task_done_),
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
@@ -79,7 +81,7 @@ class TaskReceiver {
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>,
             rpc::Address rpc_address,
-            std::shared_ptr<DependencyWaiter> dependency_waiter);
+            DependencyWaiter *dependency_waiter);
 
   /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
   /// the task and then start scheduling the requests to begin the execution. If it's a
@@ -129,6 +131,8 @@ class TaskReceiver {
   /// The IO event loop for running tasks on.
   instrumented_io_context &task_main_io_service_;
   worker::TaskEventBuffer &task_event_buffer_;
+  /// The language-specific callback function that initializes threads.
+  std::function<std::function<void()>()> initialize_thread_callback_;
   /// The callback function to be invoked when finishing a task.
   OnActorCreationTaskDone actor_creation_task_done_;
   /// Shared pool for producing new core worker clients.
@@ -136,7 +140,7 @@ class TaskReceiver {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.
-  std::shared_ptr<DependencyWaiter> waiter_;
+  DependencyWaiter *waiter_ = nullptr;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   absl::flat_hash_map<WorkerID, std::unique_ptr<SchedulingQueue>>

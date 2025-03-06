@@ -5,25 +5,24 @@ import inspect
 import logging
 import os
 import random
-import string
 import time
 import uuid
 from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import requests
 
 import ray
 import ray.util.serialization_addons
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import import_attr
+from ray._private.utils import get_random_alphanumeric_string, import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.serve._private.common import ServeComponentType
+from ray.serve._private.common import RequestMetadata, ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
@@ -140,12 +139,8 @@ def block_until_http_ready(
         time.sleep(backoff_time_s)
 
 
-# Match the standard alphabet used for UUIDs.
-RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
-
-
-def get_random_string(length=8):
-    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
+def get_random_string(length: int = 8):
+    return get_random_alphanumeric_string(length)
 
 
 def format_actor_name(actor_name, *modifiers):
@@ -307,7 +302,7 @@ def require_packages(packages: List[str]):
                         "`pip install` them or add them to "
                         "`runtime_env`."
                     )
-                setattr(func, "_require_packages_checked", True)
+                func._require_packages_checked = True
 
         if inspect.iscoroutinefunction(func):
 
@@ -542,7 +537,11 @@ def get_capacity_adjusted_num_replicas(
 
 
 def generate_request_id() -> str:
-    return str(uuid.uuid4())
+    # NOTE(edoakes): we use random.getrandbits because it reduces CPU overhead
+    # significantly. This is less cryptographically secure but should be ok for
+    # request ID generation.
+    # See https://bugs.python.org/issue45556 for discussion.
+    return str(uuid.UUID(int=random.getrandbits(128), version=4))
 
 
 def inside_ray_client_context() -> bool:
@@ -594,52 +593,27 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
         )
 
 
-async def resolve_request_args(
-    request_args: Tuple[Any], request_kwargs: Dict[str, Any]
-) -> Tuple[Tuple[Any], Dict[str, Any]]:
-    """Replaces top-level `DeploymentResponse` objects with resolved object refs.
+async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadata):
+    """Resolve `DeploymentResponse` objects to underlying object references.
 
     This enables composition without explicitly calling `_to_object_ref`.
     """
     from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
-    new_args = [None for _ in range(len(request_args))]
-    new_kwargs = {}
+    if isinstance(obj, DeploymentResponseGenerator):
+        raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
+    elif isinstance(obj, DeploymentResponse):
+        # Launch async task to convert DeploymentResponse to an object ref
+        return asyncio.create_task(obj._to_object_ref())
 
-    arg_tasks = []
-    response_indices = []
-    for i, obj in enumerate(request_args):
-        if isinstance(obj, DeploymentResponseGenerator):
-            raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
-        elif isinstance(obj, DeploymentResponse):
-            # Launch async task to convert DeploymentResponse to an object ref, and
-            # keep track of the argument index in the original `request_args`
-            response_indices.append(i)
-            arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-        else:
-            new_args[i] = obj
 
-    kwarg_tasks = []
-    response_keys = []
-    for k, obj in request_kwargs.items():
-        if isinstance(obj, DeploymentResponseGenerator):
-            raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
-        elif isinstance(obj, DeploymentResponse):
-            # Launch async task to convert DeploymentResponse to an object ref, and
-            # keep track of the corresponding key in the original `request_kwargs`
-            response_keys.append(k)
-            kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-        else:
-            new_kwargs[k] = obj
-
-    # Gather `DeploymentResponse` object refs concurrently.
-    arg_obj_refs = await asyncio.gather(*arg_tasks)
-    kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
-
-    # Update new args and new kwargs with resolved object refs
-    for index, obj_ref in zip(response_indices, arg_obj_refs):
-        new_args[index] = obj_ref
-    new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
-
-    # Return new args and new kwargs
-    return new_args, new_kwargs
+def wait_for_interrupt() -> None:
+    try:
+        while True:
+            # Block, letting Ray print logs to the terminal.
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.warning("Got KeyboardInterrupt, exiting...")
+        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+        # from the main script.
+        raise

@@ -25,8 +25,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
@@ -42,10 +41,8 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
-
-
 from ray.tune import CLIReporter
-
+from ray.tune.result import TRAINING_ITERATION
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms import Algorithm, AlgorithmConfig
@@ -285,15 +282,34 @@ def add_rllib_example_script_args(
     )
 
     # Learner scaling options.
-    # Old API stack: config.num_gpus.
-    # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
     parser.add_argument(
-        "--num-gpus",
+        "--num-learners",
         type=int,
-        default=0,
-        help="The number of GPUs/Learners to use. If none or not enough GPUs "
-        "are available, will still create `--num-gpus` Learners, but place them on one "
-        "CPU each, instead.",
+        default=None,
+        help="The number of Learners to use. If `None`, use the algorithm's default "
+        "value.",
+    )
+    parser.add_argument(
+        "--num-cpus-per-learner",
+        type=float,
+        default=None,
+        help="The number of CPUs per Learner to use. If `None`, use the algorithm's "
+        "default value.",
+    )
+    parser.add_argument(
+        "--num-gpus-per-learner",
+        type=float,
+        default=None,
+        help="The number of GPUs per Learner to use. If `None` and there are enough "
+        "GPUs for all required Learners (--num-learners), use a value of 1, "
+        "otherwise 0.",
+    )
+    parser.add_argument(
+        "--num-aggregator-actors-per-learner",
+        type=int,
+        default=None,
+        help="The number of Aggregator actors to use per Learner. If `None`, use the "
+        "algorithm's default value.",
     )
 
     # Ray init options.
@@ -303,6 +319,15 @@ def add_rllib_example_script_args(
         action="store_true",
         help="Init Ray in local mode for easier debugging.",
     )
+
+    # Old API stack: config.num_gpus.
+    parser.add_argument(
+        "--num-gpus",
+        type=int,
+        default=None,
+        help="The number of GPUs to use (only on the old API stack).",
+    )
+
     return parser
 
 
@@ -408,6 +433,14 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 x = x.detach().cpu().numpy()
             if isinstance(y, torch.Tensor):
                 y = y.detach().cpu().numpy()
+
+        # Stats objects.
+        from ray.rllib.utils.metrics.stats import Stats
+
+        if isinstance(x, Stats):
+            x = x.peek()
+        if isinstance(y, Stats):
+            y = y.peek()
 
         # Using decimals.
         if atol is None and rtol is None:
@@ -787,8 +820,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
         LEARNER_RESULTS,
-        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
     )
 
@@ -797,8 +828,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
         LEARNER_RESULTS,
-        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
         TRAINING_ITERATION,
         "config",
@@ -817,7 +846,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -906,7 +935,7 @@ def check_train_results(train_results: ResultDict):
     is_multi_agent = (
         AlgorithmConfig()
         .update_from_dict({"policies": train_results["config"]["policies"]})
-        .is_multi_agent()
+        .is_multi_agent
     )
 
     # Check in particular the "info" dict.
@@ -964,6 +993,7 @@ def run_rllib_example_script_experiment(
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
+    keep_ray_up: bool = False,
     scheduler=None,
     progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
@@ -1019,7 +1049,7 @@ def run_rllib_example_script_experiment(
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
             for those example scripts which demonstrate how to set config settings
-            that are taken care of automatically in this function otherwise (e.g.
+            that are otherwise taken care of automatically in this function (e.g.
             `num_env_runners`).
 
     Returns:
@@ -1045,7 +1075,9 @@ def run_rllib_example_script_experiment(
     if stop is None:
         stop = {
             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
-            f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+            f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": (
+                args.stop_timesteps
+            ),
             TRAINING_ITERATION: args.stop_iters,
         }
 
@@ -1060,36 +1092,86 @@ def run_rllib_example_script_experiment(
         if args.env is not None and config.env is None:
             config.environment(args.env)
 
-        # Enable the new API stack?
-        if args.enable_new_api_stack:
+        # Disable the new API stack?
+        if not args.enable_new_api_stack:
             config.api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
             )
 
-        # Define EnvRunner/RolloutWorker scaling and behavior.
+        # Define EnvRunner scaling and behavior.
         if args.num_env_runners is not None:
             config.env_runners(num_env_runners=args.num_env_runners)
+        if args.num_envs_per_env_runner is not None:
+            config.env_runners(num_envs_per_env_runner=args.num_envs_per_env_runner)
 
-        # Define compute resources used automatically (only using the --num-gpus arg).
+        # Define compute resources used automatically (only using the --num-learners
+        # and --num-gpus-per-learner args).
         # New stack.
         if config.enable_rl_module_and_learner:
-            # Do we have GPUs available in the cluster?
-            num_gpus = ray.cluster_resources().get("GPU", 0)
-            if args.num_gpus > 0 and num_gpus < args.num_gpus:
-                logger.warning(
-                    f"You are running your script with --num-gpus={args.num_gpus}, "
-                    f"but your cluster only has {num_gpus} GPUs! Will run "
-                    f"with {num_gpus} CPU Learners instead."
+            if args.num_gpus is not None and args.num_gpus > 0:
+                raise ValueError(
+                    "--num-gpus is not supported on the new API stack! To train on "
+                    "GPUs, use the command line options `--num-gpus-per-learner=1` and "
+                    "`--num-learners=[your number of available GPUs]`, instead."
                 )
+
+            # Do we have GPUs available in the cluster?
+            num_gpus_available = ray.cluster_resources().get("GPU", 0)
+            # Number of actual Learner instances (including the local Learner if
+            # `num_learners=0`).
+            num_actual_learners = (
+                args.num_learners
+                if args.num_learners is not None
+                else config.num_learners
+            ) or 1  # 1: There is always a local Learner, if num_learners=0.
+            # How many were hard-requested by the user
+            # (through explicit `--num-gpus-per-learner >= 1`).
+            num_gpus_requested = (args.num_gpus_per_learner or 0) * num_actual_learners
+            # Number of GPUs needed, if `num_gpus_per_learner=None` (auto).
+            num_gpus_needed_if_available = (
+                args.num_gpus_per_learner
+                if args.num_gpus_per_learner is not None
+                else 1
+            ) * num_actual_learners
             # Define compute resources used.
-            config.resources(num_gpus=0)
-            config.learners(
-                num_learners=args.num_gpus,
-                num_gpus_per_learner=1 if num_gpus >= args.num_gpus > 0 else 0,
-            )
-        # Old stack.
-        else:
+            config.resources(num_gpus=0)  # old API stack setting
+            if args.num_learners is not None:
+                config.learners(num_learners=args.num_learners)
+
+            # User wants to use aggregator actors per Learner.
+            if args.num_aggregator_actors_per_learner is not None:
+                config.learners(
+                    num_aggregator_actors_per_learner=(
+                        args.num_aggregator_actors_per_learner
+                    )
+                )
+
+            # User wants to use GPUs if available, but doesn't hard-require them.
+            if args.num_gpus_per_learner is None:
+                if num_gpus_available >= num_gpus_needed_if_available:
+                    config.learners(num_gpus_per_learner=1)
+                else:
+                    config.learners(num_gpus_per_learner=0)
+            # User hard-requires n GPUs, but they are not available -> Error.
+            elif num_gpus_available < num_gpus_requested:
+                raise ValueError(
+                    "You are running your script with --num-learners="
+                    f"{args.num_learners} and --num-gpus-per-learner="
+                    f"{args.num_gpus_per_learner}, but your cluster only has "
+                    f"{num_gpus_available} GPUs!"
+                )
+
+            # All required GPUs are available -> Use them.
+            else:
+                config.learners(num_gpus_per_learner=args.num_gpus_per_learner)
+
+            # Set CPUs per Learner.
+            if args.num_cpus_per_learner is not None:
+                config.learners(num_cpus_per_learner=args.num_cpus_per_learner)
+
+        # Old stack (override only if arg was provided by user).
+        elif args.num_gpus is not None:
             config.resources(num_gpus=args.num_gpus)
 
         # Evaluation setup.
@@ -1137,10 +1219,12 @@ def run_rllib_example_script_experiment(
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
                     print(f"Stop criterium ({key}={threshold}) fulfilled!")
-                    ray.shutdown()
+                    if not keep_ray_up:
+                        ray.shutdown()
                     return results
 
-        ray.shutdown()
+        if not keep_ray_up:
+            ray.shutdown()
         return results
 
     # Run the experiment using Ray Tune.
@@ -1162,7 +1246,6 @@ def run_rllib_example_script_experiment(
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
         )
-
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     if progress_reporter is None and args.num_agents > 0:
@@ -1192,11 +1275,11 @@ def run_rllib_example_script_experiment(
     results = tune.Tuner(
         trainable or config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=args.verbose,
             callbacks=tune_callbacks,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
@@ -1210,7 +1293,17 @@ def run_rllib_example_script_experiment(
     ).fit()
     time_taken = time.time() - start_time
 
-    ray.shutdown()
+    if not keep_ray_up:
+        ray.shutdown()
+
+    # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
+    # the CI tests w/o us knowing that they are broken (b/c some examples do not have
+    # a --as-test flag and/or any passing criteris).
+    if results.errors:
+        raise RuntimeError(
+            "Running the example script resulted in one or more errors! "
+            f"{[e.args[0].args[2] for e in results.errors]}"
+        )
 
     # If run as a test, check whether we reached the specified success criteria.
     test_passed = False
@@ -1414,14 +1507,14 @@ def check_reproducibilty(
         results1 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            run_config=tune.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results1 = results1.get_best_result().metrics
 
         results2 = tune.Tuner(
             algo_class,
             param_space=algo_config.to_dict(),
-            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            run_config=tune.RunConfig(stop=stop_dict, verbose=1),
         ).fit()
         results2 = results2.get_best_result().metrics
 

@@ -1,5 +1,7 @@
 import asyncio
 import binascii
+import random
+import string
 from collections import defaultdict
 import contextlib
 import errno
@@ -75,6 +77,18 @@ PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
 )
 PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+
+
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
+
+
+def get_random_alphanumeric_string(length: int):
+    """Generates random string of length consisting exclusively of
+    - Lower-case ASCII chars
+    - Digits
+    """
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
 
 def get_user_temp_dir():
@@ -1299,11 +1313,7 @@ def init_grpc_channel(
     asynchronous: bool = False,
 ):
     import grpc
-
-    try:
-        from grpc import aio as aiogrpc
-    except ImportError:
-        from grpc.experimental import aio as aiogrpc
+    from grpc import aio as aiogrpc
 
     from ray._private.tls_utils import load_certs_from_env
 
@@ -1608,7 +1618,8 @@ def get_runtime_env_info(
     In the user interface, the argument `runtime_env` contains some fields
     which not contained in `ProtoRuntimeEnv` but in `ProtoRuntimeEnvInfo`,
     such as `eager_install`. This function will extract those fields from
-    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it.
+    `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it
+    into json format.
     """
     from ray.runtime_env import RuntimeEnvConfig
 
@@ -1949,6 +1960,15 @@ def try_import_each_module(module_names_to_import: List[str]) -> None:
             importlib.import_module(module_to_preload)
         except ImportError:
             logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def remove_ray_internal_flags_from_env(env: dict):
+    """
+    Remove Ray internal flags from `env`.
+    Defined in ray/common/ray_internal_flag_def.h
+    """
+    for flag in ray_constants.RAY_INTERNAL_FLAGS:
+        env.pop(flag, None)
 
 
 def update_envs(env_vars: Dict[str, str]):

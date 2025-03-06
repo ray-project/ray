@@ -335,7 +335,7 @@ class TestWandbLogger:
             "framework": "torch",
             "num_gpus": 1,
             "num_workers": 20,
-            "num_envs_per_worker": 1,
+            "num_envs_per_env_runner": 1,
             "compress_observations": True,
             "lambda": 0.99,
             "train_batch_size": 512,
@@ -515,7 +515,7 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
         "WANDB_PROCESS_RUN_INFO_HOOK", "mock_wandb_process_run_info_hook"
     )
 
-    with patch.object(ray.air.integrations.wandb, "_load_class") as mock_load_class:
+    with patch.object(ray.air.integrations.wandb, "load_class") as mock_load_class:
         logging_process = _WandbLoggingActor(
             logdir="/tmp", queue=mock_queue, exclude=[], to_config=[]
         )

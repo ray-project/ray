@@ -15,7 +15,7 @@ parser.set_defaults(
     num_agents=2,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env("multi_agent_cartpole", lambda cfg: MultiAgentCartPole(config=cfg))
@@ -29,6 +29,9 @@ config = (
             fcnet_activation="linear",
             vf_share_layers=True,
         ),
+    )
+    .env_runners(
+        num_envs_per_env_runner=2,
     )
     .training(
         lr=0.0003,
@@ -44,7 +47,7 @@ config = (
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 300000,
     # Divide by num_agents to get actual return per agent.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0 * (args.num_agents or 1),
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0 * (args.num_agents or 1),
 }
 
 

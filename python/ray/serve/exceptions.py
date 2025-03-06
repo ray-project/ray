@@ -1,6 +1,7 @@
 from typing import Optional
 
 from ray.exceptions import TaskCancelledError
+from ray.serve._private.common import DeploymentID
 from ray.util.annotations import PublicAPI
 
 
@@ -13,13 +14,16 @@ class RayServeException(Exception):
 class BackPressureError(RayServeException):
     """Raised when max_queued_requests is exceeded on a DeploymentHandle."""
 
-    def __init__(self, *, num_queued_requests: int, max_queued_requests: int):
+    def __init__(self, num_queued_requests: int, max_queued_requests: int):
+        super().__init__(num_queued_requests, max_queued_requests)
         self._message = (
             f"Request dropped due to backpressure "
             f"(num_queued_requests={num_queued_requests}, "
             f"max_queued_requests={max_queued_requests})."
         )
-        super().__init__(self._message)
+
+    def __str__(self) -> str:
+        return self._message
 
     @property
     def message(self) -> str:
@@ -38,3 +42,18 @@ class RequestCancelledError(RayServeException, TaskCancelledError):
             return f"Request {self._request_id} was cancelled."
         else:
             return "Request was cancelled."
+
+
+@PublicAPI(stability="alpha")
+class DeploymentUnavailableError(RayServeException):
+    """Raised when a Serve deployment is unavailable to receive requests.
+
+    Currently this happens because the deployment failed to deploy.
+    """
+
+    def __init__(self, deployment_id: DeploymentID):
+        self._deployment_id = deployment_id
+
+    @property
+    def message(self) -> str:
+        return f"{self._deployment_id} is unavailable because it failed to deploy."

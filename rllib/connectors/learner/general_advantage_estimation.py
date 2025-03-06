@@ -8,6 +8,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.zero_padding import (
@@ -69,6 +70,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         # vf targets) into tensors.
         self._numpy_to_tensor_connector = None
 
+    @override(ConnectorV2)
     def __call__(
         self,
         *,
@@ -138,8 +140,9 @@ class GeneralAdvantageEstimation(ConnectorV2):
             assert module_value_targets.shape[0] == sum(episode_lens)
 
             module_advantages = module_value_targets - module_vf_preds
-            # Drop vf-preds, not needed in loss. Note that in the PPORLModule, vf-preds
-            # are recomputed with each `forward_train` call anyway.
+            # Drop vf-preds, not needed in loss. Note that in the DefaultPPORLModule,
+            # vf-preds are recomputed with each `forward_train` call anyway to compute
+            # the vf loss.
             # Standardize advantages (used for more stable and better weighted
             # policy gradient computations).
             module_advantages = (module_advantages - module_advantages.mean()) / max(

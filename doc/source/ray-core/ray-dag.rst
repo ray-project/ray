@@ -18,6 +18,15 @@ computation graph.
      2) Build libraries on top of the Ray DAG APIs.
 
 
+.. note::
+    
+    Ray has introduced an experimental API for high-performance workloads that is
+    especially well suited for applications using multiple GPUs. This API is built on top of
+    the Ray DAG API.
+
+    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
+
+
 When ``.bind()`` is called on a ``ray.remote`` decorated class or function, it will
 generate an intermediate representation (IR) node that act as backbone and
 building blocks of the DAG that is statically holding the computation graph
@@ -38,7 +47,7 @@ executed as root node while iterating, or used as input args or kwargs of other
 functions to form more complex DAGs.
 
 Any IR node can be executed directly ``dag_node.execute()`` that acts as root
-of the DAG, where all other non-reachable nodes from the root will be igored.
+of the DAG, where all other non-reachable nodes from the root will be ignored.
 
 .. tab-set::
 

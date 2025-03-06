@@ -1,15 +1,17 @@
+from dataclasses import fields
 import logging
 import re
 import threading
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import contextmanager
-from typing import List, Optional
-from unittest.mock import patch
+from typing import Dict, List, Optional
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
@@ -22,6 +24,7 @@ from ray.data._internal.execution.interfaces.physical_operator import PhysicalOp
 from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.stats import (
     DatasetStats,
+    NodeMetrics,
     StatsManager,
     _get_or_create_stats_actor,
     _StatsActor,
@@ -43,6 +46,9 @@ def gen_expected_metrics(
         metrics = [
             "'average_num_outputs_per_task': N",
             "'average_bytes_per_output': N",
+            "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue': Z",
+            "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
             "'num_inputs_received': N",
@@ -68,10 +74,7 @@ def gen_expected_metrics(
                 f"{'N' if task_backpressure else 'Z'}"
             ),
             "'obj_store_mem_internal_inqueue_blocks': Z",
-            "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
-            "'obj_store_mem_internal_outqueue': Z",
-            "'obj_store_mem_pending_task_inputs': Z",
             "'obj_store_mem_freed': N",
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
             "'obj_store_mem_used': A",
@@ -80,6 +83,8 @@ def gen_expected_metrics(
         ]
     else:
         metrics = [
+            "'obj_store_mem_internal_inqueue': Z",
+            "'obj_store_mem_internal_outqueue': Z",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_outputs_taken': N",
@@ -89,9 +94,7 @@ def gen_expected_metrics(
                 f"{'N' if task_backpressure else 'Z'}"
             ),
             "'obj_store_mem_internal_inqueue_blocks': Z",
-            "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
-            "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
@@ -182,11 +185,11 @@ EXECUTION_STRING = "N tasks executed, N blocks produced in T"
 
 def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
     # Dataset UUID expression.
-    canonicalized_stats = re.sub("([a-f\d]{32})", "U", stats)
+    canonicalized_stats = re.sub(r"([a-f\d]{32})", "U", stats)
     # Time expressions.
-    canonicalized_stats = re.sub("[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
+    canonicalized_stats = re.sub(r"[0-9\.]+(ms|us|s)", "T", canonicalized_stats)
     # Memory expressions.
-    canonicalized_stats = re.sub("[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
+    canonicalized_stats = re.sub(r"[0-9\.]+(B|MB|GB)", "M", canonicalized_stats)
     # For obj_store_mem_used, the value can be zero or positive, depending on the run.
     # Replace with A to avoid test flakiness.
     canonicalized_stats = re.sub(
@@ -196,13 +199,13 @@ def canonicalize(stats: str, filter_global_stats: bool = True) -> str:
         canonicalized_stats,
     )
     # Handle floats in (0, 1)
-    canonicalized_stats = re.sub(" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
+    canonicalized_stats = re.sub(r" (0\.0*[1-9][0-9]*)", " N", canonicalized_stats)
     # Handle zero values specially so we can check for missing values.
-    canonicalized_stats = re.sub(" [0]+(\.[0])?", " Z", canonicalized_stats)
+    canonicalized_stats = re.sub(r" [0]+(\.[0])?", " Z", canonicalized_stats)
     # Scientific notation for small or large numbers
-    canonicalized_stats = re.sub("\d+(\.\d+)?[eE][-+]?\d+", "N", canonicalized_stats)
+    canonicalized_stats = re.sub(r"\d+(\.\d+)?[eE][-+]?\d+", "N", canonicalized_stats)
     # Other numerics.
-    canonicalized_stats = re.sub("[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
+    canonicalized_stats = re.sub(r"[0-9]+(\.[0-9]+)?", "N", canonicalized_stats)
     # Replace tabs with spaces.
     canonicalized_stats = re.sub("\t", "    ", canonicalized_stats)
     if filter_global_stats:
@@ -537,6 +540,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   extra_metrics={\n"
         "      average_num_outputs_per_task: N,\n"
         "      average_bytes_per_output: N,\n"
+        "      obj_store_mem_internal_inqueue: Z,\n"
+        "      obj_store_mem_internal_outqueue: Z,\n"
+        "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      num_inputs_received: N,\n"
@@ -559,10 +565,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
-        "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
-        "      obj_store_mem_internal_outqueue: Z,\n"
-        "      obj_store_mem_pending_task_inputs: Z,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      obj_store_mem_used: A,\n"
@@ -651,6 +654,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   extra_metrics={\n"
         "      average_num_outputs_per_task: N,\n"
         "      average_bytes_per_output: N,\n"
+        "      obj_store_mem_internal_inqueue: Z,\n"
+        "      obj_store_mem_internal_outqueue: Z,\n"
+        "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
         "      num_inputs_received: N,\n"
@@ -673,10 +679,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
-        "      obj_store_mem_internal_inqueue: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
-        "      obj_store_mem_internal_outqueue: Z,\n"
-        "      obj_store_mem_pending_task_inputs: Z,\n"
         "      obj_store_mem_freed: N,\n"
         "      obj_store_mem_spilled: Z,\n"
         "      obj_store_mem_used: A,\n"
@@ -720,6 +723,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         extra_metrics={\n"
         "            average_num_outputs_per_task: N,\n"
         "            average_bytes_per_output: N,\n"
+        "            obj_store_mem_internal_inqueue: Z,\n"
+        "            obj_store_mem_internal_outqueue: Z,\n"
+        "            obj_store_mem_pending_task_inputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
         "            num_inputs_received: N,\n"
@@ -742,10 +748,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
         "            obj_store_mem_internal_inqueue_blocks: Z,\n"
-        "            obj_store_mem_internal_inqueue: Z,\n"
         "            obj_store_mem_internal_outqueue_blocks: Z,\n"
-        "            obj_store_mem_internal_outqueue: Z,\n"
-        "            obj_store_mem_pending_task_inputs: Z,\n"
         "            obj_store_mem_freed: N,\n"
         "            obj_store_mem_spilled: Z,\n"
         "            obj_store_mem_used: A,\n"
@@ -1602,8 +1605,7 @@ def test_op_metrics_logging():
             + gen_expected_metrics(is_map=False)
         )  # .replace("'obj_store_mem_used': N", "'obj_store_mem_used': Z")
         map_str = (
-            "Operator InputDataBuffer[Input] -> "
-            "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
+            "Operator TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] completed. "
             "Operator Metrics:\n"
         ) + STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE
 
@@ -1648,6 +1650,7 @@ def test_stats_actor_datasets(ray_start_cluster):
     assert "Input0" in operators
     assert "ReadRange->MapBatches(<lambda>)1" in operators
     for value in operators.values():
+        assert value["name"] in ["Input", "ReadRange->MapBatches(<lambda>)"]
         assert value["progress"] == 20
         assert value["total"] == 20
         assert value["state"] == "FINISHED"
@@ -1663,8 +1666,9 @@ def test_stats_manager(shutdown_only):
     datasets = [None] * num_threads
     # Mock clear methods so that _last_execution_stats and _last_iteration_stats
     # are not cleared. We will assert on them afterwards.
-    with patch.object(StatsManager, "clear_execution_metrics"), patch.object(
-        StatsManager, "clear_iteration_metrics"
+    with (
+        patch.object(StatsManager, "clear_last_execution_stats"),
+        patch.object(StatsManager, "clear_iteration_metrics"),
     ):
 
         def update_stats_manager(i):
@@ -1689,9 +1693,7 @@ def test_stats_manager(shutdown_only):
         dataset_tag = create_dataset_tag(dataset._name, dataset._uuid)
         assert dataset_tag in StatsManager._last_execution_stats
         assert dataset_tag in StatsManager._last_iteration_stats
-        StatsManager.clear_execution_metrics(
-            dataset_tag, ["Input0", "ReadRange->MapBatches(<lambda>)1"]
-        )
+        StatsManager.clear_last_execution_stats(dataset_tag)
         StatsManager.clear_iteration_metrics(dataset_tag)
 
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
@@ -1701,6 +1703,104 @@ def test_stats_manager(shutdown_only):
     # Check that a new different thread is spawned.
     assert StatsManager._update_thread != prev_thread
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+
+
+def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
+    """Basic test to ensure per-node metrics are populated."""
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = True
+
+    def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
+        sum_metrics = defaultdict(float)
+        for metrics in per_node_metrics.values():
+            for metric, value in metrics.items():
+                sum_metrics[metric] += value
+        return sum_metrics
+
+    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
+        metrics = ds._plan.stats().extra_metrics
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        assert isinstance(per_node_metrics, dict)
+        assert len(per_node_metrics) >= 1
+
+        for nm in per_node_metrics.values():
+            for f in fields(NodeMetrics):
+                assert f.name in nm
+
+        # basic checks to make sure metrics are populated
+        assert any(nm["num_tasks_finished"] > 0 for nm in per_node_metrics.values())
+        assert any(
+            nm["bytes_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+        assert any(
+            nm["blocks_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+
+        net_metrics = _sum_net_metrics(per_node_metrics)
+        assert net_metrics["num_tasks_finished"] == metrics["num_tasks_finished"]
+        assert (
+            net_metrics["bytes_outputs_of_finished_tasks"]
+            == metrics["bytes_outputs_of_finished_tasks"]
+        )
+
+
+@pytest.mark.parametrize("enable_metrics", [True, False])
+def test_per_node_metrics_toggle(
+    ray_start_regular_shared, restore_data_context, enable_metrics
+):
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = enable_metrics
+
+    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ray.data.range(10000).map(lambda x: x).materialize()
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        if enable_metrics:
+            assert per_node_metrics is not None
+        else:
+            assert per_node_metrics is None
+
+
+def test_task_duration_stats():
+    """Test that OpTaskDurationStats correctly tracks running statistics using Welford's algorithm."""
+    stats = TaskDurationStats()
+
+    # Test initial state
+    assert stats.count() == 0
+    assert stats.mean() == 0.0
+    assert stats.stddev() == 0.0
+
+    # Add some task durations and verify stats
+    durations = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    for d in durations:
+        stats.add_duration(d)
+
+    # Compare with numpy's implementations
+    assert stats.count() == len(durations)
+    assert pytest.approx(stats.mean()) == np.mean(durations)
+    assert pytest.approx(stats.stddev()) == np.std(
+        durations, ddof=1
+    )  # ddof=1 for sample standard deviation
 
 
 if __name__ == "__main__":
