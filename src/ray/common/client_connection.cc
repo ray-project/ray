@@ -410,8 +410,8 @@ void ServerConnection::DoAsyncWrites() {
 }
 
 std::shared_ptr<ClientConnection> ClientConnection::Create(
-    const MessageHandler &message_handler,
-    const ConnectionErrorHandler &connection_error_handler,
+    MessageHandler message_handler,
+    ConnectionErrorHandler connection_error_handler,
     local_stream_socket &&socket,
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names) {
@@ -425,8 +425,8 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
 
 ClientConnection::ClientConnection(
     PrivateTag,
-    const MessageHandler &message_handler,
-    const ConnectionErrorHandler &connection_error_handler,
+    MessageHandler message_handler,
+    ConnectionErrorHandler connection_error_handler,
     local_stream_socket &&socket,
     const std::string &debug_label,
     const std::vector<std::string> &message_type_enum_names)
@@ -549,11 +549,11 @@ std::string ClientConnection::RemoteEndpointInfo() {
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   auto this_ptr = shared_ClientConnection_from_this();
   if (error) {
-    return connection_error_handler_(this_ptr, error);
+    return connection_error_handler_(std::move(this_ptr), error);
   }
 
   int64_t start_ms = current_time_ms();
-  message_handler_(this_ptr, read_type_, read_message_);
+  message_handler_(std::move(this_ptr), read_type_, read_message_);
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     std::string message_type;

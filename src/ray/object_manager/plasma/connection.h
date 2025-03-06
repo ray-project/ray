@@ -58,13 +58,13 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
  public:
   Client(PrivateTag,
-         const PlasmaStoreMessageHandler &message_handler,
-         const PlasmaStoreConnectionErrorHandler &connection_error_handler,
+         ray::MessageHandler message_handler,
+         ray::ConnectionErrorHandler connection_error_handler,
          ray::local_stream_socket &&socket);
 
   static std::shared_ptr<Client> Create(
-      const PlasmaStoreMessageHandler &message_handler,
-      const PlasmaStoreConnectionErrorHandler &connection_error_handler,
+      PlasmaStoreMessageHandler message_handler,
+      PlasmaStoreConnectionErrorHandler connection_error_handler,
       ray::local_stream_socket &&socket);
 
   static std::shared_ptr<Client> Create(PlasmaStoreMessageHandler message_handler,

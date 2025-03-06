@@ -312,10 +312,19 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = Client::Create(
-        // NOLINTNEXTLINE : handler must be of boost::AcceptHandler type.
-        boost::bind(&PlasmaStore::ProcessClientMessage, this, ph::_1, ph::_2, ph::_3),
-        boost::bind(&PlasmaStore::HandleClientConnectionError, this, ph::_1, ph::_2),
+        /*message_handler=*/
+        [this](std::shared_ptr<Client> client,
+               fb::MessageType message_type,
+               const std::vector<uint8_t> &message) -> Status {
+          return ProcessClientMessage(std::move(client), message_type, message);
+        },
+        /*connection_error_handler=*/
+        [this](std::shared_ptr<Client> client, const boost::system::error_code &error)
+            -> void { return HandleClientConnectionError(std::move(client), error); },
         std::move(socket_));
+
+    // Start receiving messages.
+    new_connection->ProcessMessages();
   }
 
   if (error != boost::asio::error::operation_aborted) {
@@ -356,7 +365,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   create_request_queue_.RemoveDisconnectedClientRequests(client);
 }
 
-void PlasmaStore::HandleClientConnectionError(const std::shared_ptr<Client> &client,
+void PlasmaStore::HandleClientConnectionError(std::shared_ptr<Client> client,
                                               const boost::system::error_code &error) {
   absl::MutexLock lock(&mutex_);
   RAY_LOG(WARNING) << "Disconnecting client due to connection error with code "
@@ -364,7 +373,7 @@ void PlasmaStore::HandleClientConnectionError(const std::shared_ptr<Client> &cli
   DisconnectClient(client);
 }
 
-Status PlasmaStore::ProcessClientMessage(const std::shared_ptr<Client> &client,
+Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
                                          fb::MessageType type,
                                          const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);

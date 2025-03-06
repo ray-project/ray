@@ -208,8 +208,8 @@ class ClientConnection : public ServerConnection {
   using std::enable_shared_from_this<ServerConnection>::shared_from_this;
 
   ClientConnection(PrivateTag,
-                   const MessageHandler &message_handler,
-                   const ConnectionErrorHandler &connection_error_handler,
+                   MessageHandler message_handler,
+                   ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names);
@@ -228,8 +228,8 @@ class ClientConnection : public ServerConnection {
   /// message types received from this client, used for debug messages.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection> Create(
-      const MessageHandler &message_handler,
-      const ConnectionErrorHandler &connection_error_handler,
+      MessageHandler message_handler,
+      ConnectionErrorHandler connection_error_handler,
       local_stream_socket &&socket,
       const std::string &debug_label,
       const std::vector<std::string> &message_type_enum_names);
@@ -250,8 +250,8 @@ class ClientConnection : public ServerConnection {
 
  protected:
   /// A protected constructor for a node client connection.
-  ClientConnection(const MessageHandler &message_handler,
-                   const ConnectionErrorHandler &connection_error_handler,
+  ClientConnection(MessageHandler message_handler,
+                   ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names)

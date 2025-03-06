@@ -70,8 +70,8 @@ static const std::vector<std::string> object_store_message_enum =
 }  // namespace
 
 Client::Client(PrivateTag,
-               const ray::MessageHandler &message_handler,
-               const ray::ConnectionErrorHandler &connection_error_handler,
+               ray::MessageHandler message_handler,
+               ray::ConnectionErrorHandler connection_error_handler,
                ray::local_stream_socket &&socket)
     : ray::ClientConnection(message_handler,
                             connection_error_handler,
@@ -80,8 +80,8 @@ Client::Client(PrivateTag,
                             object_store_message_enum) {}
 
 std::shared_ptr<Client> Client::Create(
-    const PlasmaStoreMessageHandler &message_handler,
-    const PlasmaStoreConnectionErrorHandler &connection_error_handler,
+    PlasmaStoreMessageHandler message_handler,
+    PlasmaStoreConnectionErrorHandler connection_error_handler,
     ray::local_stream_socket &&socket) {
   ray::MessageHandler ray_message_handler =
       [message_handler](std::shared_ptr<ray::ClientConnection> client,
@@ -109,12 +109,8 @@ std::shared_ptr<Client> Client::Create(
             error);
       };
 
-  auto self =
-      std::make_shared<Client>(PrivateTag{}, ray_message_handler, std::move(socket));
-
-  // Let our manager process our new connection.
-  self->ProcessMessages();
-  return self;
+  return std::make_shared<Client>(
+      PrivateTag{}, ray_message_handler, ray_connection_error_handler, std::move(socket));
 }
 
 Status Client::SendFd(MEMFD_TYPE fd) {
