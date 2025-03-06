@@ -632,12 +632,12 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
         expected_success_count=2,
     )
 
-    # 3xx is an error.
+    # 3xx is not an error.
     r = requests.get("http://127.0.0.1:8000/", data=b"300")
     assert r.status_code == 300
     wait_for_condition(
         check_request_count_metrics,
-        expected_error_count=1,
+        expected_error_count=0,
         expected_success_count=3,
     )
 
@@ -646,7 +646,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     assert r.status_code == 400
     wait_for_condition(
         check_request_count_metrics,
-        expected_error_count=2,
+        expected_error_count=1,
         expected_success_count=4,
     )
 
@@ -655,7 +655,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     assert r.status_code == 500
     wait_for_condition(
         check_request_count_metrics,
-        expected_error_count=3,
+        expected_error_count=2,
         expected_success_count=5,
     )
 
