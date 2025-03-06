@@ -2,23 +2,29 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, Tuple
 
 import torch
+
+import ray.data
 import ray.train
 from ray.data import Dataset
+
+from config import BenchmarkConfig, DataLoaderConfig, RayDataConfig
 
 
 class BaseDataLoaderFactory(ABC):
     """Base class for creating and managing dataloaders."""
 
+    def __init__(self, benchmark_config: BenchmarkConfig):
+        self.benchmark_config = benchmark_config
+
+    def get_dataloader_config(self) -> DataLoaderConfig:
+        return self.benchmark_config.dataloader_config
+
     @abstractmethod
-    def get_train_dataloader(
-        self, batch_size: int
-    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         pass
 
     @abstractmethod
-    def get_val_dataloader(
-        self, batch_size: int
-    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    def get_val_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         pass
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -31,8 +37,17 @@ class BaseDataLoaderFactory(ABC):
 
 
 class RayDataLoaderFactory(BaseDataLoaderFactory):
-    def __init__(self):
+    def __init__(self, benchmark_config: BenchmarkConfig):
+        super().__init__(benchmark_config)
         self._ray_ds_iterators = {}
+
+        assert isinstance(self.get_dataloader_config(), RayDataConfig), type(
+            self.get_dataloader_config()
+        )
+
+        # Configure Ray Data settings.
+        data_context = ray.data.DataContext.get_current()
+        data_context.enable_operator_progress_bars = False
 
     @abstractmethod
     def get_ray_datasets(self) -> Dict[str, Dataset]:
@@ -52,23 +67,29 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         """
         pass
 
-    def get_train_dataloader(self, batch_size: int):
+    def get_train_dataloader(self):
         ds_iterator = self._ray_ds_iterators["train"] = ray.train.get_dataset_shard(
             "train"
         )
+        dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
-                batch_size=batch_size,
-                local_shuffle_buffer_size=batch_size * 8,
+                batch_size=dataloader_config.train_batch_size,
+                local_shuffle_buffer_size=(
+                    dataloader_config.local_buffer_shuffle_size
+                    if dataloader_config.local_buffer_shuffle_size > 0
+                    else None
+                ),
                 collate_fn=self.collate_fn,
             )
         )
 
-    def get_val_dataloader(self, batch_size: int):
+    def get_val_dataloader(self):
         ds_iterator = self._ray_ds_iterators["val"] = ray.train.get_dataset_shard("val")
+        dataloader_config = self.get_dataloader_config()
         return iter(
             ds_iterator.iter_torch_batches(
-                batch_size=batch_size,
+                batch_size=dataloader_config.validation_batch_size,
                 collate_fn=self.collate_fn,
             )
         )

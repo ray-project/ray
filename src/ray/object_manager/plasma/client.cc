@@ -23,10 +23,13 @@
 #include <boost/asio.hpp>
 #include <cstring>
 #include <deque>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -297,7 +300,7 @@ void PlasmaClient::Impl::InsertObjectInUse(const ObjectID &object_id,
 
   // Add this object ID to the hash table of object IDs in use. The
   // corresponding call to free happens in PlasmaClient::Release.
-  it->second->object = *object.release();
+  it->second->object = std::move(*object);
   // Count starts at 1 to pin the object.
   it->second->count = 1;
   it->second->is_sealed = is_sealed;

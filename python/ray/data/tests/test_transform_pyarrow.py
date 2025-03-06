@@ -13,9 +13,9 @@ from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    unify_schemas,
     try_combine_chunked_columns,
+    unify_schemas,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -953,6 +953,11 @@ def test_fallback_to_pandas_on_incompatible_data(
     assert isinstance(block, pd.DataFrame)
 
 
+_PYARROW_SUPPORTS_TYPE_PROMOTION = (
+    parse_version(_get_pyarrow_version()) >= MIN_PYARROW_VERSION_TYPE_PROMOTION
+)
+
+
 @pytest.mark.parametrize(
     "op, data, should_fail, expected_type",
     [
@@ -960,9 +965,15 @@ def test_fallback_to_pandas_on_incompatible_data(
         ("map_batches", [1, 2**100], False, ArrowPythonObjectType()),
         ("map_batches", [1.0, 2**100], False, ArrowPythonObjectType()),
         ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
-        # Case B: No fallback to `ArrowPythonObjectType` and hence arrow is enforcing
-        #         deduced schema
-        ("map_batches", [1.0, 2**4], True, None),
+        # Case B: No fallback to `ArrowPythonObjectType`, but type promotion allows
+        #         int to be promoted to a double
+        (
+            "map_batches",
+            [1.0, 2**4],
+            not _PYARROW_SUPPORTS_TYPE_PROMOTION,
+            pa.float64(),
+        ),
+        # Case C: No fallback to `ArrowPythonObjectType` and no type promotion possible
         ("map_batches", ["1.0", 2**4], True, None),
     ],
 )

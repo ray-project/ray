@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"
@@ -45,6 +46,14 @@ enum class ObjectState : int {
   /// Object is sealed and stored in the local Plasma Store.
   PLASMA_SEALED = 2,
 };
+
+inline constexpr std::string_view kCorruptedRequestErrorMessage =
+    "This could be due to "
+    "process forking in core worker or driver code which results in multiple processes "
+    "sharing the same Plasma store socket. Please ensure that there are no "
+    "process forking in any of the application core worker or driver code. Follow the "
+    "link here to learn more about the issue and how to fix it: "
+    "https://docs.ray.io/en/latest/ray-core/patterns/fork-new-processes.html";
 
 // Represents a chunk of allocated memory.
 struct Allocation {
@@ -107,7 +116,7 @@ struct Allocation {
 /// the eviction policy.
 class LocalObject {
  public:
-  LocalObject(Allocation allocation);
+  explicit LocalObject(Allocation allocation);
 
   RAY_DISALLOW_COPY_AND_ASSIGN(LocalObject);
 

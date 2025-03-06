@@ -406,7 +406,9 @@ def _align_struct_fields(
     return aligned_blocks
 
 
-def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
+def concat(
+    blocks: List["pyarrow.Table"], *, promote_types: bool = False
+) -> "pyarrow.Table":
     """Concatenate provided Arrow Tables into a single Arrow Table. This has special
     handling for extension types that pyarrow.concat_tables does not yet support.
     """
@@ -432,7 +434,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
-        schema = unify_schemas(schemas_to_unify)
+        schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
     except Exception as e:
         raise ArrowConversionError(str(blocks)) from e
 
@@ -519,13 +521,19 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     else:
         # No extension array columns, so use built-in pyarrow.concat_tables.
 
-        if parse_version(_get_pyarrow_version()) >= parse_version("14.0.0"):
-            # `promote` was superseded by `promote_options='default'` in Arrow 14. To
-            # prevent `FutureWarning`s, we manually check the Arrow version and use the
-            # appropriate parameter.
-            table = pyarrow.concat_tables(blocks, promote_options="default")
-        else:
+        # When concatenating tables we allow type promotions to occur, since
+        # no schema enforcement is currently performed, therefore allowing schemas
+        # to vary b/w blocks
+        #
+        # NOTE: Type promotions aren't available in Arrow < 14.0
+        if parse_version(_get_pyarrow_version()) < parse_version("14.0.0"):
             table = pyarrow.concat_tables(blocks, promote=True)
+        else:
+            arrow_promote_types_mode = "permissive" if promote_types else "default"
+            table = pyarrow.concat_tables(
+                blocks, promote_options=arrow_promote_types_mode
+            )
+
     return table
 
 
@@ -534,7 +542,7 @@ def concat_and_sort(
 ) -> "pyarrow.Table":
     import pyarrow.compute as pac
 
-    ret = concat(blocks)
+    ret = concat(blocks, promote_types=True)
     indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
     return take_table(ret, indices)
 
@@ -589,7 +597,7 @@ def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
 
-def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table":
     """This is counterpart for Pyarrow's `Table.combine_chunks` that's using
     extended `ChunkedArray` combination protocol.
 
@@ -599,13 +607,14 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
     new_column_values_arrays = []
 
     for col in table.columns:
-        new_column_values_arrays.append(combine_chunked_array(col))
+        new_column_values_arrays.append(combine_chunked_array(col, copy))
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
 
 def combine_chunked_array(
     array: "pyarrow.ChunkedArray",
+    copy: bool = False,
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
 
@@ -639,6 +648,8 @@ def combine_chunked_array(
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
+    elif len(array.chunks) == 1 and not copy:
+        return array
     else:
         return _try_combine_chunks_safe(array)
 

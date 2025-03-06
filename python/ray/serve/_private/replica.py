@@ -46,7 +46,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -55,6 +54,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RECONFIGURE_METHOD,
+    REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -81,7 +81,11 @@ from ray.serve._private.utils import parse_import_path
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -170,10 +174,12 @@ class ReplicaMetricsManager:
         if self._cached_metrics_enabled:
             self._cached_error_counter = defaultdict(int)
 
+        # log REQUEST_LATENCY_BUCKET_MS
+        logger.debug(f"REQUEST_LATENCY_BUCKETS_MS: {REQUEST_LATENCY_BUCKETS_MS}")
         self._processing_latency_tracker = metrics.Histogram(
             "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=("route",),
         )
         if self._cached_metrics_enabled:
@@ -1623,7 +1629,10 @@ class UserCallableWrapper:
                 receive_task.cancel()
 
             return final_result
-        except Exception:
+        except Exception as e:
+            unavailable_error = isinstance(
+                e, (BackPressureError, DeploymentUnavailableError)
+            )
             if (
                 request_metadata.is_http_request
                 and asgi_args is not None
@@ -1631,12 +1640,14 @@ class UserCallableWrapper:
                 # If the callable is an ASGI app, it already sent a 500 status response.
                 and not user_method_info.is_asgi_app
             ):
-                await self._send_user_result_over_asgi(
-                    starlette.responses.Response(
+                response = (
+                    starlette.responses.Response(e.message, status_code=503)
+                    if unavailable_error
+                    else starlette.responses.Response(
                         "Internal Server Error", status_code=500
-                    ),
-                    asgi_args,
+                    )
                 )
+                await self._send_user_result_over_asgi(response, asgi_args)
 
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()

@@ -1,9 +1,11 @@
 import importlib
 
 import pytest
+import sys
 
 import ray.train
 from ray.train import FailureConfig, RunConfig, ScalingConfig
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.mark.parametrize(
@@ -43,6 +45,33 @@ def test_scaling_config_total_resources():
         "CPU": num_workers * num_cpus_per_worker,
         "GPU": num_workers * num_gpus_per_worker,
     }
+
+
+def test_trainer_restore():
+    with pytest.raises(DeprecationWarning):
+        DataParallelTrainer.restore("dummy")
+
+    with pytest.raises(DeprecationWarning):
+        DataParallelTrainer.can_restore("dummy")
+
+
+def test_serialized_imports(ray_start_4_cpus):
+    """Check that captured imports are deserialized properly without circular imports."""
+
+    from ray.train.torch import TorchTrainer
+    from ray.train.xgboost import XGBoostTrainer
+    from ray.train.lightgbm import LightGBMTrainer
+
+    if sys.version_info < (3, 12):
+        from ray.train.tensorflow import TensorflowTrainer
+    else:
+        TensorflowTrainer = None
+
+    @ray.remote
+    def dummy_task():
+        _ = (TorchTrainer, TensorflowTrainer, XGBoostTrainer, LightGBMTrainer)
+
+    ray.get(dummy_task.remote())
 
 
 @pytest.mark.parametrize("env_v2_enabled", [True, False])

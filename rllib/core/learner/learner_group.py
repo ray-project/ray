@@ -37,7 +37,6 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -384,19 +383,21 @@ class LearnerGroup(Checkpointable):
                     num_total_minibatches=_num_total_minibatches,
                     **_kwargs,
                 )
-            if _return_state and result:
-                result["_rl_module_state_after_update"] = ray.put(
-                    _learner.get_state(
-                        # Only return the state of those RLModules that actually returned
-                        # results and thus got probably updated.
-                        components=[
-                            COMPONENT_RL_MODULE + "/" + mid
-                            for mid in result
-                            if mid != ALL_MODULES
-                        ],
-                        inference_only=True,
-                    )[COMPONENT_RL_MODULE]
+            if _return_state:
+                learner_state = _learner.get_state(
+                    # Only return the state of those RLModules that actually
+                    # returned results and thus got probably updated.
+                    components=[
+                        COMPONENT_RL_MODULE + "/" + mid
+                        for mid in _learner.module.keys()
+                        if _learner.should_module_be_updated(mid)
+                    ],
+                    inference_only=True,
                 )
+                learner_state[COMPONENT_RL_MODULE] = ray.put(
+                    learner_state[COMPONENT_RL_MODULE]
+                )
+                result["_rl_module_state_after_update"] = learner_state
 
             return result
 
@@ -824,7 +825,7 @@ class LearnerGroup(Checkpointable):
         mark_healthy: bool = False,
         **kwargs,
     ) -> RemoteCallResults:
-        """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
+        r"""Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
             func: The function to call on each Learner L with args: (L, \*\*kwargs).

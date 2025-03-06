@@ -48,7 +48,12 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 /// A generic type representing a client connection to a server. This typename
 /// can be used to write messages synchronously to the server.
 class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
+ private:
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
+
  public:
+  ServerConnection(PrivateTag, local_stream_socket &&socket);
   ServerConnection(const ServerConnection &) = delete;
   ServerConnection &operator=(const ServerConnection &) = delete;
 
@@ -135,7 +140,8 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
  protected:
   /// A private constructor for a server connection.
-  ServerConnection(local_stream_socket &&socket);
+  explicit ServerConnection(local_stream_socket &&socket)
+      : ServerConnection(PrivateTag{}, std::move(socket)) {}
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
@@ -182,7 +188,6 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
 class ClientConnection;
 
-using ClientHandler = std::function<void(ClientConnection &)>;
 using MessageHandler = std::function<void(
     std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &)>;
 
@@ -192,15 +197,25 @@ using MessageHandler = std::function<void(
 /// writing messages to the client, like in ServerConnection, this typename can
 /// also be used to process messages asynchronously from client.
 class ClientConnection : public ServerConnection {
+ private:
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
+
  public:
   using std::enable_shared_from_this<ServerConnection>::shared_from_this;
+
+  ClientConnection(PrivateTag,
+                   MessageHandler &message_handler,
+                   local_stream_socket &&socket,
+                   const std::string &debug_label,
+                   const std::vector<std::string> &message_type_enum_names,
+                   int64_t error_message_type);
 
   ClientConnection(const ClientConnection &) = delete;
   ClientConnection &operator=(const ClientConnection &) = delete;
 
   /// Allocate a new node client connection.
   ///
-  /// \param new_client_handler A reference to the client handler.
   /// \param message_handler A reference to the message handler.
   /// \param socket The client socket.
   /// \param debug_label Label that is printed in debug messages, to identify
@@ -210,7 +225,6 @@ class ClientConnection : public ServerConnection {
   /// \param error_message_type the type of error message
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection> Create(
-      ClientHandler &new_client_handler,
       MessageHandler &message_handler,
       local_stream_socket &&socket,
       const std::string &debug_label,
@@ -237,7 +251,13 @@ class ClientConnection : public ServerConnection {
                    local_stream_socket &&socket,
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names,
-                   int64_t error_message_type);
+                   int64_t error_message_type)
+      : ClientConnection(PrivateTag{},
+                         message_handler,
+                         std::move(socket),
+                         debug_label,
+                         message_type_enum_names,
+                         error_message_type) {}
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);
