@@ -7,6 +7,7 @@ ray_cc_library(
     deps = [
         ":base_cgroup_setup",
         "//src/ray/util",
+        "//src/ray/util:invoke_once_token",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

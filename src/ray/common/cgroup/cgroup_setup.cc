@@ -50,6 +50,7 @@ bool IsCgroupV2MountedAsRw() { return false; }
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/invoke_once_token.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -162,10 +163,8 @@ bool IsCgroupV2MountedAsRw() {
 }  // namespace internal
 
 CgroupSetup::CgroupSetup(std::string node_id) {
-  static std::atomic<bool> cgroup_already_setup{false};
-  bool expected = false;
-  RAY_CHECK(cgroup_already_setup.compare_exchange_strong(expected, /*desired=*/true))
-      << "Cgroup setup should be only called once per process";
+  static InvokeOnceToken token;
+  token.CheckInvokeOnce();
 
   cgroup_enabled_ = SetupCgroups(node_id);
 }
@@ -212,10 +211,8 @@ bool CgroupSetup::SetupCgroups(const std::string &node_id) {
 CgroupSetup::~CgroupSetup() { CleanupCgroups(); }
 
 void CgroupSetup::CleanupCgroups() {
-  static std::atomic<bool> cgroup_already_cleaned{false};
-  bool expected = false;
-  RAY_CHECK(cgroup_already_cleaned.compare_exchange_strong(expected, /*desired=*/true))
-      << "Cgroup should be only cleaned once per process";
+  static InvokeOnceToken token;
+  token.CheckInvokeOnce();
 
   for (const auto &entry : std::filesystem::directory_iterator{cgroup_v2_app_folder_}) {
     // Search for all subcgroup, terminate all dangling processes and delete the empty
