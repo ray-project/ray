@@ -1407,7 +1407,7 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            num_blocks: Number of blocks after repartitioning. 
+            num_blocks: Number of blocks after repartitioning.
             Set this argument to None if using target_num_rows_per_block
             target_num_rows_per_block: The target number of rows per block to
                 repartition. Note that either `num_blocks` or
