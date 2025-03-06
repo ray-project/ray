@@ -416,4 +416,6 @@ steps:
         --build-name coregpubuild
         --only-tags multi_gpu
         --install-mask serve
-    depends_on: block-core-gpu-tests
+    depends_on:
+      - block-core-gpu-tests
+      - coregpubuild
