@@ -387,14 +387,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} -- ",
-            f"{resp2['request_id']} -- ",
+            f"{resp['request_id']}",
+            f"{resp2['request_id']}",
         ]
 
         # Check User log
         user_log_regexes = [
-            f".*{resp['request_id']} -- user func.*",
-            f".*{resp2['request_id']} -- user log.*" "message from class method.*",
+            ".*user func.*",
+            ".*user log message from class method.*",
         ]
 
         def check_log():
@@ -449,9 +449,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 rf'"timestamp_ns": \d+}}.*'
             )
         else:
-            user_method_log_regex = f".*{resp['request_id']} -- user func.*"
+            user_method_log_regex = f".*user func.*" f".*{resp['request_id']}.*"
             user_class_method_log_regex = (
-                f".*{resp2['request_id']} -- .*" "user log message from class method.*"
+                f".*user log message from class method.*" f".*{resp2['request_id']}.*"
             )
 
         def check_log_file(log_file: str, expected_regex: list):
@@ -511,7 +511,6 @@ class TestLoggingAPI:
         actors = state_api.list_actors()
         expected_log_regex = [".*logger with logging config.*"]
         for actor in actors:
-            print(actor["name"])
             if "SERVE_CONTROLLER_ACTOR" == actor["name"]:
                 controller_pid = actor["pid"]
         controller_log_file_name = get_component_file_name(
@@ -597,11 +596,19 @@ class TestLoggingAPI:
         paths[-1] = "new_dir"
         new_log_dir = "/".join(paths)
 
-        serve.run(Model.options(logging_config={"logs_dir": new_log_dir}).bind())
+        serve.run(
+            Model.options(
+                logging_config={
+                    "logs_dir": new_log_dir,
+                    "additional_log_standard_attrs": ["name"],
+                }
+            ).bind()
+        )
         resp = requests.get("http://127.0.0.1:8000/").json()
         assert "new_dir" in resp["logs_path"]
 
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
+        check_log_file(resp["logs_path"], ["name"], check_contains=True)
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
@@ -635,6 +642,35 @@ class TestLoggingAPI:
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
+
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
+        """Test additional log standard attrs"""
+        logger = logging.getLogger("ray.serve")
+        logging_config = {
+            "enable_access_log": True,
+            "encoding": encoding_type,
+            "additional_log_standard_attrs": ["name"],
+        }
+
+        @serve.deployment(logging_config=logging_config)
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("model_info_level")
+                logger.info("model_not_show", extra={"serve_access_log": True})
+                return {
+                    "logs_path": logger.handlers[1].baseFilename,
+                }
+
+        serve.run(Model.bind())
+
+        resp = requests.get("http://127.0.0.1:8000/")
+        assert resp.status_code == 200
+        resp = resp.json()
+        if encoding_type == "JSON":
+            check_log_file(resp["logs_path"], ["name"], check_contains=True)
+        else:
+            check_log_file(resp["logs_path"], ["name=ray.serve"], check_contains=True)
 
     def test_application_logging_overwrite(self, serve_and_ray_shutdown):
         @serve.deployment
@@ -818,10 +854,8 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     @serve.deployment(logging_config=logging_config)
     def disable_stdout():
         serve_logger.info("from_serve_logger")
-        print("from_print")
         sys.stdout.write("direct_from_stdout\n")
         sys.stderr.write("direct_from_stderr\n")
-        print("this\nis\nmultiline\nlog\n")
         raise RuntimeError("from_error")
 
     app = disable_stdout.bind()

@@ -8,7 +8,7 @@ from typing import Any, Optional, Tuple
 import ray
 from ray._private.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter
+from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
@@ -19,13 +19,9 @@ from ray.serve._private.constants import (
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_DEPLOYMENT,
-    SERVE_LOG_LEVEL_NAME,
-    SERVE_LOG_MESSAGE,
-    SERVE_LOG_RECORD_FORMAT,
     SERVE_LOG_REPLICA,
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
-    SERVE_LOG_TIME,
     SERVE_LOG_UNWANTED_ATTRS,
     SERVE_LOGGER_NAME,
 )
@@ -111,44 +107,42 @@ class ServeLogAttributeRemovalFilter(logging.Filter):
         return True
 
 
-class ServeFormatter(logging.Formatter):
+class ServeFormatter(TextFormatter):
     """Serve Logging Formatter
 
     The formatter will generate the log format on the fly based on the field of record.
     """
 
-    COMPONENT_LOG_FMT = f"%({SERVE_LOG_LEVEL_NAME})s %({SERVE_LOG_TIME})s {{{SERVE_LOG_COMPONENT}}} {{{SERVE_LOG_COMPONENT_ID}}} "  # noqa:E501
+    COMPONENT_LOG_FMT = f"%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s {{{SERVE_LOG_COMPONENT}}} {{{SERVE_LOG_COMPONENT_ID}}} -- %(message)s"
 
     def __init__(
         self,
         component_name: str,
         component_id: str,
+        fmt=None,
+        datefmt=None,
+        style="%",
+        validate=True,
     ):
-        self.component_log_fmt = ServeFormatter.COMPONENT_LOG_FMT.format(
+        super().__init__(fmt, datefmt, style, validate)
+        self.component_name = component_name
+        self.component_id = component_id
+
+        formatter_string = self.COMPONENT_LOG_FMT.format(
             component_name=component_name, component_id=component_id
         )
+        self._inner_formatter = logging.Formatter(formatter_string)
 
     def format(self, record: logging.LogRecord) -> str:
-        """Format the log record into the format string.
+        s = self._inner_formatter.format(record)
+        record_format_attrs = self.generate_record_format_attrs(
+            record, exclude_default_standard_attrs=True
+        )
 
-        Args:
-            record: The log record to be formatted.
-
-            Returns:
-                The formatted log record in string format.
-        """
-        record_format = self.component_log_fmt
-        record_formats_attrs = []
-        if SERVE_LOG_REQUEST_ID in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
-        record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
-        record_format += " ".join(record_formats_attrs)
-
-        # create a formatter using the format string
-        formatter = logging.Formatter(record_format)
-
-        # format the log record using the formatter
-        return formatter.format(record)
+        additional_attrs = " ".join(
+            [f"{key}={value}" for key, value in record_format_attrs.items()]
+        )
+        return f"{s} {additional_attrs}"
 
 
 def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
@@ -291,11 +285,21 @@ def configure_component_logger(
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
 
+    serve_formatter = ServeFormatter(component_name, component_id)
+    json_formatter = JSONFormatter()
+    if logging_config.additional_log_standard_attrs:
+        json_formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
+        serve_formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
+
     # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True or if
     # `stream_handler_only` is set to True.
     if RAY_SERVE_LOG_TO_STDERR or stream_handler_only:
         stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+        stream_handler.setFormatter(serve_formatter)
         stream_handler.addFilter(log_to_stderr_filter)
         stream_handler.addFilter(ServeContextFilter())
         logger.addHandler(stream_handler)
@@ -341,9 +345,9 @@ def configure_component_logger(
         file_handler.addFilter(
             ServeComponentFilter(component_name, component_id, component_type)
         )
-        file_handler.setFormatter(JSONFormatter())
+        file_handler.setFormatter(json_formatter)
     else:
-        file_handler.setFormatter(ServeFormatter(component_name, component_id))
+        file_handler.setFormatter(serve_formatter)
 
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
