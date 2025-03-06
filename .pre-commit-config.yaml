@@ -42,6 +42,12 @@ repos:
       - id: ruff
         args: [ --fix, --exit-non-zero-on-fix ]
 
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+    - id: codespell
+      args: [-w] # Fix spelling in place.
+
   - repo: https://github.com/cpplint/cpplint
     rev: 2.0.0
     hooks:
