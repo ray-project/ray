@@ -170,10 +170,10 @@ def get_applications(serve_config_file: str) -> List[Any]:
     return loaded_llm_config["applications"]
 
 
-def setup_client_env_vars(api_url: str, api_token: str):
+def setup_client_env_vars(api_url: str, api_token: Optional[str] = None):
     """Set up the environment variables for the tests."""
     os.environ["OPENAI_API_BASE"] = f"{api_url.rstrip('/')}/v1"
-    os.environ["OPENAI_API_KEY"] = api_token
+    os.environ["OPENAI_API_KEY"] = api_token or "fake-key"
 
 
 def get_hf_token_env_var() -> Dict[str, str]:
