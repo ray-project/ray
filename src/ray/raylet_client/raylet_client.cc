@@ -94,6 +94,7 @@ Status RayletClient::Disconnect(
   std::vector<uint8_t> reply;
   // NOTE(edoakes): AtomicRequestReply will fast fail and exit the process if the raylet
   // is already dead.
+  // TODO(edoakes): we should add a timeout to this call in case the raylet is overloaded.
   return conn_->AtomicRequestReply(MessageType::DisconnectClientRequest,
                                    MessageType::DisconnectClientReply,
                                    &reply,
