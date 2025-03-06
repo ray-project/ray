@@ -100,7 +100,7 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     // TODO (myan): The parsing of the resource_id String can be costly and impact the
     // task creation throughput if the parting is required every time we allocate
     // resources for a task and updating the available resources. The current benchmark
-    // shows no observable impact for now. But in the furture, ideas of improvement are:
+    // shows no observable impact for now. But in the future, ideas of improvement are:
     // (1) to add the placement group id as well as the bundle index inside the
     // ResourceID class. And instead of parse the String, leveraging the fields in the
     // ResourceID class directly; (2) to update the pg resource id format to start with

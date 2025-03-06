@@ -177,7 +177,7 @@ Python version.
 To distribute custom code dependencies across your cluster, you can build a custom container image,
 using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray) as the base.
 See {ref}`this guide <docker-images>` to learn more about the official Ray images.
-For dynamic dependency management geared towards iteration and developement,
+For dynamic dependency management geared towards iteration and development,
 you can also use {ref}`Runtime Environments <runtime-environments>`.
 
 For `kuberay-operator` versions 1.1.0 and later, the Ray container image must have `wget` installed in it.

@@ -6,7 +6,7 @@ Pattern: Using resources to limit the number of concurrently running tasks
 In this pattern, we use :ref:`resources <resource-requirements>` to limit the number of concurrently running tasks.
 
 By default, Ray tasks require 1 CPU each and Ray actors require 0 CPU each, so the scheduler limits task concurrency to the available CPUs and actor concurrency to infinite.
-Tasks that use more than 1 CPU (e.g., via mutlithreading) may experience slowdown due to interference from concurrent ones, but otherwise are safe to run.
+Tasks that use more than 1 CPU (e.g., via multithreading) may experience slowdown due to interference from concurrent ones, but otherwise are safe to run.
 
 However, tasks or actors that use more than their proportionate share of memory may overload a node and cause issues like OOM.
 If that is the case, we can reduce the number of concurrently running tasks or actors on each node by increasing the amount of resources requested by them.

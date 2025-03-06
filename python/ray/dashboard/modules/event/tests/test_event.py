@@ -22,7 +22,10 @@ from ray._private.event.event_logger import (
     get_event_id,
     get_event_logger,
 )
-from ray._private.event.export_event_logger import get_export_event_logger
+from ray._private.event.export_event_logger import (
+    EventLogType,
+    get_export_event_logger,
+)
 from ray._private.protobuf_compat import message_to_dict
 from ray._private.state_api_test_utils import create_api_options, verify_schema
 from ray._private.test_utils import (
@@ -34,7 +37,6 @@ from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,
-    export_event_pb2,
     export_submission_job_event_pb2,
 )
 from ray.dashboard.modules.event import event_consts
@@ -637,9 +639,7 @@ def test_export_event_logger(tmp_path):
     Unit test a mock export event of type ExportSubmissionJobEventData
     is correctly written to file. This doesn't events are correctly generated.
     """
-    logger = get_export_event_logger(
-        export_event_pb2.ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, str(tmp_path)
-    )
+    logger = get_export_event_logger(EventLogType.SUBMISSION_JOB, str(tmp_path))
     ExportSubmissionJobEventData = (
         export_submission_job_event_pb2.ExportSubmissionJobEventData
     )

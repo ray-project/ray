@@ -860,6 +860,9 @@ class SyncerReactorTest : public ::testing::Test {
     client_node_id = NodeID::FromRandom();
     cli_channel = MakeChannel("18990");
     auto cli_stub = ray::rpc::syncer::RaySyncer::NewStub(cli_channel);
+
+    // `cli_reactor` will be deleted by `RayClientBidiReactor::OnDone`, so we need to use
+    // `release()` to release ownership.
     cli_reactor =
         std::make_unique<RayClientBidiReactor>(
             rpc_service_->node_id.Binary(),

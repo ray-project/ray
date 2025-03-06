@@ -137,7 +137,7 @@ class WorkerContext {
   const WorkerType worker_type_;
   const WorkerID worker_id_;
 
-  // a worker's job infomation might be lazily initialized.
+  // a worker's job information might be lazily initialized.
   JobID current_job_id_ ABSL_GUARDED_BY(mutex_);
   std::optional<rpc::JobConfig> job_config_ ABSL_GUARDED_BY(mutex_);
 

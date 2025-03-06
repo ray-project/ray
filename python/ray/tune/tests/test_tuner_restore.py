@@ -512,16 +512,6 @@ def test_tuner_restore_from_cloud_manual_path(
     )
 
 
-def test_tuner_restore_from_cloud_ray_storage(ray_shutdown, tmpdir, mock_s3_bucket_uri):
-    ray.init(num_cpus=2, configure_logging=False, storage=mock_s3_bucket_uri)
-
-    _test_tuner_restore_from_cloud(
-        tmpdir / "local",
-        configure_storage_path=None,
-        storage_path=mock_s3_bucket_uri,
-    )
-
-
 # TODO(justinvyu): [fallback_to_latest]
 @pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
 @pytest.mark.parametrize(

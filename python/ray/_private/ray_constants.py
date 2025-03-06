@@ -87,11 +87,6 @@ CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
 # TODO(swang): Ideally this should be pulled directly from the
 # config in case the user overrides it.
 DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
-# The default maximum number of bytes that the non-primary Redis shards are
-# allowed to use unless overridden by the user.
-DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
-# The smallest cap on the memory used by Redis that we allow.
-REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10

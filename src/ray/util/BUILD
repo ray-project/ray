@@ -359,8 +359,17 @@ ray_cc_library(
     name = "process_cleaner",
     srcs = ["process_cleaner.cc"],
     hdrs = ["process_cleaner.h"],
-    deps = select({
-        "@platforms//os:windows": [],
-        "//conditions:default": ["//src/ray/util:logging"],
-    }),
+    deps = [":invoke_once_token"] +
+           select({
+               "@platforms//os:windows": [],
+               "//conditions:default": ["//src/ray/util:logging"],
+           }),
+)
+
+ray_cc_library(
+    name = "invoke_once_token",
+    hdrs = ["invoke_once_token.h"],
+    deps = [
+        ":logging",
+    ],
 )

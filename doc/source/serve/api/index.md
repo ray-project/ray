@@ -414,7 +414,7 @@ Content-Type: application/json
    :nosignatures:
    :toctree: doc/
 
-   serve.llm.build_vllm_deployment
+   serve.llm.build_llm_deployment
    serve.llm.build_openai_app
 ```
 
@@ -443,7 +443,7 @@ Content-Type: application/json
    :nosignatures:
    :toctree: doc/
 
-   serve.llm.VLLMServer
+   serve.llm.LLMServer
    serve.llm.LLMRouter
 ```
 

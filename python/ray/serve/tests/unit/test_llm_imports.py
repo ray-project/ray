@@ -32,12 +32,12 @@ def test_serve_llm_import_does_not_error():
         )
     with pytest.raises(ImportError):
         from ray.serve.llm import (
-            VLLMServer,  # noqa: F401
+            LLMServer,  # noqa: F401
             LLMRouter,  # noqa: F401
         )
     with pytest.raises(ImportError):
         from ray.serve.llm import (
-            build_vllm_deployment,  # noqa: F401
+            build_llm_deployment,  # noqa: F401
             build_openai_app,  # noqa: F401
         )
 

@@ -25,6 +25,9 @@ class VectorMultiAgentEnv:
     # single on that holds for all sub-envs.
     single_observation_spaces: Optional[Dict[str, gym.Space]] = None
     single_action_spaces: Optional[Dict[str, gym.Space]] = None
+    # Note, the proper `gym` spaces are needed for the connector pipeline.
+    single_observation_space: Optional[gym.spaces.Dict] = None
+    single_action_space: Optional[gym.spaces.Dict] = None
 
     num_envs: int
 

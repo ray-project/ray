@@ -2193,7 +2193,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
 
   /**
    * Test TemporarilyOwnGeneratorReturnRefIfNeeded called before any
-   * HandleReportGeneratorItemReturns adds a refernece.
+   * HandleReportGeneratorItemReturns adds a reference.
    */
   manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
                                                     generator_id);

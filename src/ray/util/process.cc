@@ -51,7 +51,7 @@
 #ifdef __APPLE__
 extern char **environ;
 
-// macOS dosn't come with execvpe.
+// macOS doesn't come with execvpe.
 // https://stackoverflow.com/questions/7789750/execve-with-path-search
 int execvpe(const char *program, char *const argv[], char *const envp[]) {
   char **saved = environ;

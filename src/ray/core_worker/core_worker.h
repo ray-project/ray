@@ -178,7 +178,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Otherwise, it can have various destruction order related memory corruption.
   ///
   /// If the core worker is initiated at a driver, the driver is responsible for calling
-  /// the shutdown API before terminating. If the core worker is initated at a worker,
+  /// the shutdown API before terminating. If the core worker is initiated at a worker,
   /// shutdown must be called before terminating the task execution loop.
   ~CoreWorker() override;
 
@@ -345,7 +345,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TOOD(ilr): better way of keeping an object from being deleted
+    // TODO(ilr): better way of keeping an object from being deleted
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
     if (!options_.is_local_mode) {
@@ -840,14 +840,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
-  /// should capture parent's placement group implicilty.
+  /// should capture parent's placement group implicitly.
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Default is an empty string, which will be treated as an allow-all in the
   /// language worker.
   /// \param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
-  /// This is used when worker_context cannot reliably obtain the curernt task_id
+  /// This is used when worker_context cannot reliably obtain the current task_id
   /// i.e., Python async actors.
   /// \param[in] call_site The stacktrace of the task invocation, or actor
   /// creation. This is only used for observability.
@@ -890,7 +890,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] placement_group_creation_options Options for this placement group
   /// creation task.
   /// \param[out] placement_group_id ID of the created placement group.
-  /// This can be used to shedule actor in node
+  /// This can be used to schedule actor in node
   /// \return Status error if placement group
   /// creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(

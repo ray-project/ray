@@ -35,10 +35,6 @@ class RayParams:
         memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries. This only applies to the
-            sharded redis tables (task and object tables).
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         gcs_server_port: The port to use for the GCS server.
@@ -147,7 +143,6 @@ class RayParams:
         labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
-        redis_max_memory: Optional[float] = None,
         redis_port: Optional[int] = None,
         redis_shard_ports: Optional[List[int]] = None,
         object_manager_port: Optional[int] = None,
@@ -208,7 +203,6 @@ class RayParams:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
-        self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port

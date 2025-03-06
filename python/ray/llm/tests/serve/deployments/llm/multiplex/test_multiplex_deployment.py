@@ -4,7 +4,7 @@ import ray.serve.context
 from ray import serve
 import sys
 
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
 )
@@ -116,7 +116,7 @@ async def test_multiplex_deployment(
     vllm_app = LLMConfig.parse_yaml(vllm_app_def)
 
     handle = serve._run(
-        VLLMDeployment.options(placement_group_bundles=[{"CPU": 1}],).bind(
+        LLMDeployment.options(placement_group_bundles=[{"CPU": 1}],).bind(
             vllm_app,
             engine_cls=MockMultiplexEngine,
             model_downloader=FakeLoraModelLoader(),

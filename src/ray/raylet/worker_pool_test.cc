@@ -252,8 +252,6 @@ class WorkerPoolMock : public WorkerPool {
       int runtime_env_hash = 0,
       StartupToken worker_startup_token = 0,
       bool set_process = true) {
-    std::function<void(ClientConnection &)> client_handler =
-        [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(
         std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &)>
         message_handler = [this](std::shared_ptr<ClientConnection> client,
@@ -262,19 +260,15 @@ class WorkerPoolMock : public WorkerPool {
           HandleMessage(client, message_type, message);
         };
     local_stream_socket socket(instrumented_io_service_);
-    auto client = ClientConnection::Create(client_handler,
-                                           message_handler,
-                                           std::move(socket),
-                                           "worker",
-                                           {},
-                                           error_message_type_);
+    auto conn = ClientConnection::Create(
+        message_handler, std::move(socket), "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
                                                                runtime_env_hash,
                                                                WorkerID::FromRandom(),
                                                                language,
                                                                worker_type,
                                                                "127.0.0.1",
-                                                               client,
+                                                               conn,
                                                                client_call_manager_,
                                                                worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
@@ -398,7 +392,6 @@ class WorkerPoolMock : public WorkerPool {
   rpc::ClientCallManager client_call_manager_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       &mock_worker_rpc_clients_;
-  void HandleNewClient(ClientConnection &){};
   void HandleMessage(std::shared_ptr<ClientConnection>,
                      int64_t,
                      const std::vector<uint8_t> &){};

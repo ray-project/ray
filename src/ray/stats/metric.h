@@ -410,7 +410,7 @@ class Stats {
 /*
   Syntax sugar to define a metrics:
       DEFINE_stats(name,
-        desctiption,
+        description,
         (tag1, tag2, ...),
         (bucket1, bucket2, ...),
         type1,

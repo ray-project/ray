@@ -231,7 +231,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 
   // Returns the unique semaphore name for the object. This name is intended to be used
-  // for the object's named sempahores.
+  // for the object's named semaphores.
   std::string GetSemaphoreName(PlasmaObjectHeader *header);
 
   // Opens named semaphores for the object. This method must be called before

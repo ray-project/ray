@@ -81,7 +81,7 @@ class ClusterTaskManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
-  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  /// Queue task and schedule. This happens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request
