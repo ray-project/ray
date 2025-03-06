@@ -1183,11 +1183,6 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
-void NodeManager::ProcessNewClient(ClientConnection &client) {
-  // The new client is a worker, so begin listening for messages.
-  client.ProcessMessages();
-}
-
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
                                        int64_t message_type,
                                        const uint8_t *message_data) {
