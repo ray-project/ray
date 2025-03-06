@@ -15,10 +15,11 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 		--strip-extras
 		--unsafe-package ray
 		--unsafe-package grpcio-tools
-		--unsafe-pacage setuptools
+		--unsafe-package setuptools
 		--index-url "https://pypi.org/simple"
 		--extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 		--find-links "https://data.pyg.org/whl/torch-2.3.0+${CUDA_CODE}.html"
+		--index-strategy unsafe-best-match
 	)
 
 	mkdir -p /tmp/ray-deps
