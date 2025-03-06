@@ -43,7 +43,7 @@ This code shows how to compile and execute the same example as a Compiled Graph.
     ref = graph.execute(data)
     ray.get(ref)
 
-Ray Compiled Graph has a static execution model. It is different from classic Ray APIs, which are eager. Because
+Ray Compiled Graph has a static execution model. It's different from classic Ray APIs, which are eager. Because
 of the static nature, Ray Compiled Graph can perform various optimizations such as:
 
 - Pre-allocate resources so that it can reduce system overhead.
