@@ -420,7 +420,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
 }
 
 TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
-  /// Test the scneario where the object is spilled to local storage, like filesystems.
+  /// Test the scenario where the object is spilled to local storage, like filesystems.
   BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
@@ -467,7 +467,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
 }
 
 TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
-  /// Test the scneario where the object is spilled to external storages, such as S3.
+  /// Test the scenario where the object is spilled to external storages, such as S3.
   BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
