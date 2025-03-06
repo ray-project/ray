@@ -26,6 +26,8 @@ BTS
 Pythonic
 [Gg]rafana
 CLI
+[Ee]xoshuffle
+RISECamp
 Anyscale
 Nsight
 [Pp]rofiler
