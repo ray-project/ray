@@ -6,6 +6,16 @@ from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
+if "ROCR_VISIBLE_DEVICES" in os.environ:
+    raise RuntimeError("Please use HIP_VISIBLE_DEVICES instead of ROCR_VISIBLE_DEVICES")
+
+if "HIP_VISIBLE_DEVICES" in os.environ:
+    val = os.environ["HIP_VISIBLE_DEVICES"]
+    if cuda_val := os.environ.get("CUDA_VISIBLE_DEVICES", None):
+        assert val == cuda_val
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = val
+
 HIP_VISIBLE_DEVICES_ENV_VAR = "HIP_VISIBLE_DEVICES"
 NOSET_HIP_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES"
 
