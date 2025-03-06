@@ -163,13 +163,13 @@ def test_repartition_target_num_rows_per_block(
             4,
             10,
             False,
-            "Either `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
+            "Only one of `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
         ),
         (
             None,
             None,
             False,
-            "Either `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
+            "Either `num_blocks` or `target_num_rows_per_block` must be set",
         ),
         (
             None,
