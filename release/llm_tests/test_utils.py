@@ -34,6 +34,7 @@ def check_service_state(
     ), f"Service {service_name} is {state}, expected {expected_state}."
     return True
 
+
 def terminate_service_if_running(service_name: str, cloud: Optional[str] = None):
     try:
         status = service.status(name=service_name, cloud=cloud)
@@ -58,6 +59,7 @@ def timeit(stage: str, time_metrics: Dict[str, float]):
     duration = end - start
     logger.info(f"Stage '{stage}' took {duration:.2f} seconds.")
     time_metrics[f"time_{stage}"] = duration
+
 
 @contextmanager
 def start_service(
@@ -109,13 +111,12 @@ def start_service(
         env_vars=env_vars,
         query_auth_token_enabled=False,
     )
-    
-    
+
     # If the service already exists, terminate and the start a new service
     # so the new service starts immediately. Otherwise, start a new service
     # without a canary_percent.
     terminate_service_if_running(service_name=service_name, cloud=cloud)
-    
+
     try:
         logger.info(f"Service config: {service_config}")
         with timeit("service_startup", time_metrics):
@@ -131,7 +132,7 @@ def start_service(
             )
 
         service_status = service.status(name=service_name, cloud=cloud)
-                
+
         yield {
             "api_url": service_status.query_url,
             "api_token": service_status.query_auth_token,

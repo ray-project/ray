@@ -3,8 +3,6 @@ from enum import Enum
 from pydantic import BaseModel, Field
 import argparse
 
-from typing import Optional, List
-from pydantic import BaseModel, Field
 
 
 class DistributionType(str, Enum):
@@ -80,9 +78,7 @@ class LoadTestConfig(BaseModel):
         description="Auth for the API",
     )
 
-    temperature: float = Field(
-        0.1, description="Temperature parameter for the API"
-    )
+    temperature: float = Field(0.1, description="Temperature parameter for the API")
 
     logprobs: Optional[int] = Field(
         None,

@@ -17,7 +17,6 @@ from test_utils import (
 )
 
 
-
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
 
@@ -53,11 +52,11 @@ def main(
         api_url = service_info["api_url"]
         api_token = service_info["api_token"]
         startup_time = service_info["time_service_startup"]
-        
+
         logger.info(f"Service started: {api_url=} in {startup_time:.2f} seconds")
-        
+
         setup_client_env_vars(api_url=api_url, api_token=api_token)
-        
+
         if run_probes:
             exit_code = pytest.main(
                 [
@@ -69,14 +68,14 @@ def main(
                     "-rx",
                 ]
             )
-            
+
             if exit_code != 0:
                 raise RuntimeError(f"Tests failed! {exit_code=}")
-            
+
         if run_perf_profiler:
             # For now, the values are hardcoded.
             results = run_bm(
-                api_url=api_url, 
+                api_url=api_url,
                 api_key=api_token,
                 concurrency=[1, 2, 4, 8, 16, 32],
                 run_time="1m",
@@ -85,7 +84,7 @@ def main(
                 stream=False,
                 summary_file="./results.csv",
             )
-            
+
             logger.info(f"Performance test results: {results}")
 
 

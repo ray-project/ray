@@ -37,9 +37,7 @@ def add_custom_metric(name, value, length_value=0):
 PROMPT_PREFIX_TOKEN = "Pad "  # exactly one token
 # "Lengthy" prompt borrowed from nat.dev
 PROMPT_SUFFIX = """Generate a Django application with Authentication, JWT, Tests, DB support. Show docker-compose for python and postgres. Show the complete code for every file!"""
-PROMPT_SUFFIX_TOKENS = (
-    35  # from Llama tokenizer tool (so we don't import it here)
-)
+PROMPT_SUFFIX_TOKENS = 35  # from Llama tokenizer tool (so we don't import it here)
 
 
 class FixedQPSPacer:
@@ -92,9 +90,7 @@ class FixedQPSPacer:
 
 
 class LengthSampler:
-    def __init__(
-        self, distribution: str, mean: int, cap: Optional[int], alpha: float
-    ):
+    def __init__(self, distribution: str, mean: int, cap: Optional[int], alpha: float):
         self.distribution = distribution
         self.mean = mean
         self.cap = cap
@@ -234,13 +230,16 @@ class BaseProvider(abc.ABC):
         self.parsed_options = parsed_options
 
     @abc.abstractmethod
-    def get_url(self): ...
+    def get_url(self):
+        ...
 
     @abc.abstractmethod
-    def format_payload(self, prompt, max_tokens, images): ...
+    def format_payload(self, prompt, max_tokens, images):
+        ...
 
     @abc.abstractmethod
-    def parse_output_json(self, json, prompt): ...
+    def parse_output_json(self, json, prompt):
+        ...
 
 
 class OpenAIProvider(BaseProvider):
@@ -287,9 +286,7 @@ class OpenAIProvider(BaseProvider):
     def parse_output_json(self, data, prompt):
         usage = data.get("usage", None)
 
-        assert (
-            len(data["choices"]) == 1
-        ), f"Too many choices {len(data['choices'])}"
+        assert len(data["choices"]) == 1, f"Too many choices {len(data['choices'])}"
         choice = data["choices"][0]
         if self.parsed_options.chat:
             if self.parsed_options.stream:
@@ -304,9 +301,7 @@ class OpenAIProvider(BaseProvider):
             text=text,
             logprob_tokens=len(logprobs["tokens"]) if logprobs else None,
             usage_tokens=usage["completion_tokens"] if usage else None,
-            prompt_usage_tokens=(
-                usage.get("prompt_tokens", None) if usage else None
-            ),
+            prompt_usage_tokens=(usage.get("prompt_tokens", None) if usage else None),
         )
 
 
@@ -388,9 +383,7 @@ class TritonInferProvider(BaseProvider):
                 },
             ]
         }
-        assert (
-            self.parsed_options.logprobs is None
-        ), "logprobs are not supported"
+        assert self.parsed_options.logprobs is None, "logprobs are not supported"
         return data
 
     def parse_output_json(self, data, prompt):
@@ -435,9 +428,7 @@ class TritonGenerateProvider(BaseProvider):
             "bad_words": "",
             "stop_words": "",
         }
-        assert (
-            self.parsed_options.logprobs is None
-        ), "logprobs are not supported"
+        assert self.parsed_options.logprobs is None, "logprobs are not supported"
         return data
 
     def parse_output_json(self, data, prompt):
@@ -494,14 +485,10 @@ class TgiProvider(BaseProvider):
             return ChunkMetadata(
                 text=data["generated_text"],
                 logprob_tokens=(
-                    len(data["details"]["tokens"])
-                    if "details" in data
-                    else None
+                    len(data["details"]["tokens"]) if "details" in data else None
                 ),
                 usage_tokens=(
-                    data["details"]["generated_tokens"]
-                    if "details" in data
-                    else None
+                    data["details"]["generated_tokens"] if "details" in data else None
                 ),
                 prompt_usage_tokens=None,
             )
@@ -566,8 +553,7 @@ class LLMUser(HttpUser):
         if (
             self.model is None
             and self.provider is not None
-            and PROVIDER_CLASS_MAP[self.provider].DEFAULT_MODEL_NAME
-            is not None
+            and PROVIDER_CLASS_MAP[self.provider].DEFAULT_MODEL_NAME is not None
         ):
             self.model = PROVIDER_CLASS_MAP[self.provider].DEFAULT_MODEL_NAME
 
@@ -616,11 +602,7 @@ class LLMUser(HttpUser):
                 key, val = header.split(":", 1)
                 self.client.headers[key] = val
         self._guess_provider()
-        print(
-            f" Provider {self.provider} using model {self.model} ".center(
-                80, "*"
-            )
-        )
+        print(f" Provider {self.provider} using model {self.model} ".center(80, "*"))
         self.provider_formatter = PROVIDER_CLASS_MAP[self.provider](
             self.model, self.environment.parsed_options
         )
@@ -633,21 +615,16 @@ class LLMUser(HttpUser):
             )
         elif prompt_chars:
             self.input = (
-                PROMPT_PREFIX_TOKEN
-                * (prompt_chars // len(PROMPT_PREFIX_TOKEN) + 1)
+                PROMPT_PREFIX_TOKEN * (prompt_chars // len(PROMPT_PREFIX_TOKEN) + 1)
                 + PROMPT_SUFFIX
             )[:prompt_chars]
         else:
             assert (
-                self.environment.parsed_options.prompt_tokens
-                >= PROMPT_SUFFIX_TOKENS
+                self.environment.parsed_options.prompt_tokens >= PROMPT_SUFFIX_TOKENS
             ), f"Minimal prompt length is {PROMPT_SUFFIX_TOKENS}"
             self.input = (
                 PROMPT_PREFIX_TOKEN
-                * (
-                    self.environment.parsed_options.prompt_tokens
-                    - PROMPT_SUFFIX_TOKENS
-                )
+                * (self.environment.parsed_options.prompt_tokens - PROMPT_SUFFIX_TOKENS)
                 + PROMPT_SUFFIX
             )
         self.max_tokens_sampler = LengthSampler(
@@ -729,9 +706,7 @@ class LLMUser(HttpUser):
     def generate_text(self):
         max_tokens = self.max_tokens_sampler.sample()
         prompt, images = self._get_input()
-        data = self.provider_formatter.format_payload(
-            prompt, max_tokens, images
-        )
+        data = self.provider_formatter.format_payload(prompt, max_tokens, images)
         t_start = time.perf_counter()
 
         with self.client.post(
@@ -748,18 +723,14 @@ class LLMUser(HttpUser):
             try:
                 response.raise_for_status()
             except Exception as e:
-                raise RuntimeError(
-                    f"Error in response: {response.text}"
-                ) from e
+                raise RuntimeError(f"Error in response: {response.text}") from e
             t_first_token = None
             for chunk in response.iter_lines(delimiter=b"\n\n"):
                 if len(chunk) == 0:
                     continue  # come providers send empty lines between data chunks
                 if done:
                     if chunk != b"data: [DONE]":
-                        print(
-                            f"WARNING: Received more chunks after [DONE]: {chunk}"
-                        )
+                        print(f"WARNING: Received more chunks after [DONE]: {chunk}")
                 try:
                     now = time.perf_counter()
                     if self.stream:
@@ -771,9 +742,7 @@ class LLMUser(HttpUser):
                             done = True
                             continue
                     data = orjson.loads(chunk)
-                    out = self.provider_formatter.parse_output_json(
-                        data, prompt
-                    )
+                    out = self.provider_formatter.parse_output_json(data, prompt)
                     if out.usage_tokens:
                         total_usage_tokens = (
                             total_usage_tokens or 0
@@ -791,9 +760,7 @@ class LLMUser(HttpUser):
                             total_logprob_tokens or 0
                         ) + out.logprob_tokens
                 except Exception as e:
-                    print(
-                        f"Failed to parse response: {chunk} with error {repr(e)}"
-                    )
+                    print(f"Failed to parse response: {chunk} with error {repr(e)}")
                     response.failure(e)
                     return
             assert t_first_token is not None, "empty response received"
@@ -810,9 +777,7 @@ class LLMUser(HttpUser):
             else:
                 num_tokens = total_usage_tokens
             if self.tokenizer:
-                num_tokenizer_tokens = len(
-                    self.tokenizer.encode(combined_text)
-                )
+                num_tokenizer_tokens = len(self.tokenizer.encode(combined_text))
                 if num_tokens is None:
                     num_tokens = num_tokenizer_tokens
                 elif num_tokens != num_tokenizer_tokens:
@@ -839,9 +804,7 @@ class LLMUser(HttpUser):
                     num_chars,
                 )
             if self.stream:
-                add_custom_metric(
-                    "time_to_first_token", dur_first_token * 1000
-                )
+                add_custom_metric("time_to_first_token", dur_first_token * 1000)
             add_custom_metric("total_latency", dur_total * 1000)
             if num_tokens:
                 if num_tokens != max_tokens:
@@ -1040,19 +1003,16 @@ def init_parser(parser):
 # ADDED A NAME TO THE FUNCTION
 def collect_metrics(environment, **kw):
     total_latency = environment.stats.entries[("total_latency", "METRIC")]
-    if (
-        environment.stats.total.num_failures > 0
-        or total_latency.num_requests == 0
-    ):
+    if environment.stats.total.num_failures > 0 or total_latency.num_requests == 0:
         print("Test failed due to failed requests")
         environment.process_exit_code = 1
         return
 
     entries = copy.copy(InitTracker.logging_params)
     if environment.parsed_options.qps is not None:
-        entries["concurrency"] = (
-            f"QPS {environment.parsed_options.qps} {environment.parsed_options.qps_distribution}"
-        )
+        entries[
+            "concurrency"
+        ] = f"QPS {environment.parsed_options.qps} {environment.parsed_options.qps_distribution}"
     else:
         entries["concurrency"] = InitTracker.users
     for metric_name in [
@@ -1077,9 +1037,7 @@ def collect_metrics(environment, **kw):
         metrics = environment.stats.entries[percentile_metric, "METRIC"]
         for percentile in percentile_to_report:
             name = f"P{percentile}_{percentile_metric}"
-            entries[name] = metrics.get_response_time_percentile(
-                percentile / 100
-            )
+            entries[name] = metrics.get_response_time_percentile(percentile / 100)
 
     pretty_name = lambda s: " ".join([w.capitalize() for w in s.split("_")])
     entries = {pretty_name(k): v for k, v in entries.items()}

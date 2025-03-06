@@ -103,4 +103,3 @@ class LLMLoadTester:
             return value * 3600
         else:
             raise ValueError(f"Invalid time unit: {unit}")
-        

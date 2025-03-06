@@ -6,7 +6,6 @@ import gevent.monkey
 gevent.monkey.patch_all()
 
 
-
 from .locust import LLMLoadTester
 from .configs import LoadTestConfig
 
@@ -15,14 +14,14 @@ import openai
 
 
 def run_bm(
-    api_url: str, 
-    api_key: Optional[str] = None, 
-    concurrency: Optional[List[int]] = None, 
-    run_time: str = "1m", 
-    prompt_tokens: int = 512, 
-    max_tokens: int = 64, 
-    stream: bool = False, 
-    summary_file: str = "./results.csv"
+    api_url: str,
+    api_key: Optional[str] = None,
+    concurrency: Optional[List[int]] = None,
+    run_time: str = "1m",
+    prompt_tokens: int = 512,
+    max_tokens: int = 64,
+    stream: bool = False,
+    summary_file: str = "./results.csv",
 ):
     if api_key is None:
         api_key = "NONE"
