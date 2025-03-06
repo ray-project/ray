@@ -1000,21 +1000,21 @@ def test_exit_actor_async_actor_raise_immediately(shutdown_only, tmp_path):
     except Exception:
         pass
 
-    # with pytest.raises(ray.exceptions.RayActorError) as exc_info:
-    #     ray.get(a.exit.remote())
-    # assert (
-    #     # Exited when task execution returns
-    #     "exit_actor()" in str(exc_info.value)
-    #     # Exited during periodical check in worker
-    #     or "User requested to exit the actor" in str(exc_info.value)
-    # )
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(a.exit.remote())
+    assert (
+        # Exited when task execution returns
+        "exit_actor()" in str(exc_info.value)
+        # Exited during periodical check in worker
+        or "User requested to exit the actor" in str(exc_info.value)
+    )
 
     def verify():
         return temp_file_atexit.exists()
 
-    # wait_for_condition(verify)
-    # time.sleep(3)
-    # assert not temp_file_after_exit_actor.exists()
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
 
 
 def test_exit_actor_async_actor_user_catch_err_should_still_exit(
