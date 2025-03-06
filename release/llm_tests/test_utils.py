@@ -4,6 +4,7 @@ import os
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union
 
+import time
 import anyscale
 import boto3
 import ray
@@ -33,6 +34,30 @@ def check_service_state(
     ), f"Service {service_name} is {state}, expected {expected_state}."
     return True
 
+def terminate_service_if_running(service_name: str, cloud: Optional[str] = None):
+    try:
+        status = service.status(name=service_name, cloud=cloud)
+    except RuntimeError:
+        return
+
+    if status.state != ServiceState.TERMINATED:
+        logger.info(
+            f"Service {service_name} is in state {status.state}. Terminating it before running the benchmark."
+        )
+        service.terminate(name=service_name, cloud=cloud)
+        service.wait(name=service_name, cloud=cloud, state=ServiceState.TERMINATED)
+        logger.info(f"Service {service_name} is now terminated.")
+
+
+@contextmanager
+def timeit(stage: str, time_metrics: Dict[str, float]):
+    start = time.perf_counter()
+    yield
+    end = time.perf_counter()
+
+    duration = end - start
+    logger.info(f"Stage '{stage}' took {duration:.2f} seconds.")
+    time_metrics[f"time_{stage}"] = duration
 
 @contextmanager
 def start_service(
@@ -74,6 +99,7 @@ def start_service(
         if cluster_env is not None:
             image_uri = f"anyscale/image/{cluster_env}:1"
 
+    time_metrics = {}
     service_config = service.ServiceConfig(
         name=service_name,
         image_uri=image_uri,
@@ -83,20 +109,34 @@ def start_service(
         env_vars=env_vars,
         query_auth_token_enabled=False,
     )
+    
+    
+    # If the service already exists, terminate and the start a new service
+    # so the new service starts immediately. Otherwise, start a new service
+    # without a canary_percent.
+    terminate_service_if_running(service_name=service_name, cloud=cloud)
+    
     try:
         logger.info(f"Service config: {service_config}")
-        service.deploy(service_config)
+        with timeit("service_startup", time_metrics):
+            service.deploy(service_config)
 
-        wait_for_condition(
-            check_service_state,
-            service_name=service_name,
-            expected_state="RUNNING",
-            retry_interval_ms=10000,  # 10s
-            timeout=600,
-            cloud=cloud,
-        )
+            wait_for_condition(
+                check_service_state,
+                service_name=service_name,
+                expected_state=ServiceState.RUNNING,
+                retry_interval_ms=10000,  # 10s
+                timeout=600,
+                cloud=cloud,
+            )
 
-        yield service.status(name=service_name, cloud=cloud).query_url
+        service_status = service.status(name=service_name, cloud=cloud)
+                
+        yield {
+            "api_url": service_status.query_url,
+            "api_token": service_status.query_auth_token,
+            **time_metrics,
+        }
 
     finally:
         logger.info(f"Terminating service {service_name}.")
@@ -129,9 +169,10 @@ def get_applications(serve_config_file: str) -> List[Any]:
     return loaded_llm_config["applications"]
 
 
-def setup_url_base_envs(query_url: str):
+def setup_client_env_vars(api_url: str, api_token: str):
     """Set up the environment variables for the tests."""
-    os.environ["OPENAI_API_BASE"] = f"{query_url.rstrip('/')}/v1"
+    os.environ["OPENAI_API_BASE"] = f"{api_url.rstrip('/')}/v1"
+    os.environ["OPENAI_API_KEY"] = api_token
 
 
 def get_hf_token_env_var() -> Dict[str, str]:
