@@ -36,6 +36,7 @@ from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
@@ -3300,6 +3301,61 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_iceberg(
+        self,
+        table_identifier: str,
+        catalog_kwargs: Optional[Dict[str, Any]] = None,
+        snapshot_properties: Optional[Dict[str, str]] = None,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
+
+        .. tip::
+            For more details on PyIceberg, see
+            - URI: https://py.iceberg.apache.org/
+
+        Examples:
+             .. testcode::
+                :skipif: True
+
+                import ray
+                import pandas as pd
+                docs = [{"title": "Iceberg data sink test"} for key in range(4)]
+                ds = ray.data.from_pandas(pd.DataFrame(docs))
+                ds.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={"name": "default", "type": "sql"}
+                )
+
+        Args:
+            table_identifier: Fully qualified table identifier (``db_name.table_name``)
+            catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
+                function (e.g., name, type, etc.). For the function definition, see
+                `pyiceberg catalog
+                <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
+                #pyiceberg.catalog.load_catalog>`_.
+            snapshot_properties: custom properties write to snapshot when committing
+            to an iceberg table.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+        """
+
+        datasink = IcebergDatasink(
+            table_identifier, catalog_kwargs, snapshot_properties
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
     def write_images(
@@ -3609,7 +3665,7 @@ class Dataset:
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
     ) -> None:
-        """Writes the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
         files will contain
@@ -3870,7 +3926,7 @@ class Dataset:
             This method supports only a subset of the PyArrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
             types fails on type checking. See all the supported types at:
-            https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
+            https://mongo-arrow.readthedocs.io/en/stable/api/types.html.
 
         .. note::
             The records are inserted into MongoDB as new documents. If a record has
@@ -4895,7 +4951,7 @@ class Dataset:
     @PublicAPI(api_group=IOC_API_GROUP)
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
-        `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
+        `Spark DataFrame <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.html>`_.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4905,7 +4961,7 @@ class Dataset:
         Returns:
             A `Spark DataFrame`_ created from this dataset.
 
-        .. _SparkSession: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.SparkSession.html
+        .. _SparkSession: https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.SparkSession.html
         """  # noqa: E501
         import raydp
 
