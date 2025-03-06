@@ -42,7 +42,7 @@ class BaseCgroupSetup {
   BaseCgroupSetup &operator=(const BaseCgroupSetup &) = delete;
 
   // Add system process into system cgroup.
-  virtual ScopedCgroupHandler AddSystemProcess(pid_t pid) = 0;
+  virtual void AddSystemProcess(pid_t pid) = 0;
 
   // Apply cgroup context, which adds the process id into the corresponding cgroup.
   virtual ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) = 0;
@@ -55,7 +55,7 @@ class NoopCgroupSetup : public BaseCgroupSetup {
   NoopCgroupSetup() = default;
   ~NoopCgroupSetup() override = default;
 
-  ScopedCgroupHandler AddSystemProcess(pid_t pid) override { return {}; }
+  void void AddSystemProcess(pid_t pid) override {}
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override {
     return {};

@@ -18,11 +18,10 @@
 #ifndef __linux__
 namespace ray {
 CgroupSetup::CgroupSetup() {}
-ScopedCgroupHandler CgroupSetup::AddSystemProcess(pid_t pid) { return {}; }
+void CgroupSetup::AddSystemProcess(pid_t pid) {}
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
   return {};
 }
-void CgroupSetup::CleanupSystemProcess(pid_t pid) {}
 void CgroupSetup::CleanupCgroupContext(const AppProcCgroupMetadata &ctx) {}
 void CgroupSetup::CleanupCgroups() {}
 namespace internal {
@@ -238,17 +237,14 @@ void CgroupSetup::CleanupCgroups() {
       << "Failed to delete raylet system cgroup folder";
 }
 
-ScopedCgroupHandler CgroupSetup::AddSystemProcess(pid_t pid) {
+void CgroupSetup::AddSystemProcess(pid_t pid) {
   if (!cgroup_enabled_) {
-    return {};
+    return;
   }
   std::ofstream out_file(cgroup_v2_system_folder_);
   // Able to add memory constraint to the system cgroup.
   out_file << pid;
   RAY_CHECK(out_file.good()) << "Failed to add " << pid << " into cgroup.";
-
-  // Nothing to do at destruction.
-  return ScopedCgroupHandler{};
 }
 
 ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(

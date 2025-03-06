@@ -56,7 +56,7 @@ class CgroupSetup : public BaseCgroupSetup {
   // On destruction, all processes in the managed cgroup will be killed via SIGKILL.
   ~CgroupSetup() override;
 
-  ScopedCgroupHandler AddSystemProcess(pid_t pid) override;
+  void AddSystemProcess(pid_t pid) override;
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
