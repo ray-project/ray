@@ -343,9 +343,18 @@ class WorkerGroup:
         """
         new_actors = []
         new_actor_metadata = []
-        for _ in range(num_workers):
+        for i in range(num_workers):
+            actor_options = {
+                "placement_group": self._placement_group,
+            }
+            if isinstance(self._placement_group, PlacementGroup):
+                actor_options.update(
+                    {
+                        "placement_group_bundle_index": i,
+                    }
+                )
             actor = self._remote_cls.options(
-                placement_group=self._placement_group
+                **actor_options,
             ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
