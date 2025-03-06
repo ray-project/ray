@@ -1365,7 +1365,7 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
-        num_blocks: Union[int, None],
+        num_blocks: Optional[int],
         target_num_rows_per_block: Optional[int] = None,
         *,
         shuffle: bool = False,
