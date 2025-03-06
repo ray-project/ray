@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-from ray.llm._internal.serve.deployments.llm.vllm.vllm_deployment import VLLMDeployment
+from ray.llm._internal.serve.deployments.llm.llm_server import LLMDeployment
 from ray.llm._internal.serve.configs.server_models import LLMConfig, LoraConfig
 from ray.llm._internal.serve.deployments.routers.router import (
     LLMRouter,
@@ -20,7 +20,7 @@ VLLM_APP_DEF = """
 model_loading_config:
   model_id: meta-llama/Llama-2-7b-hf
 
-llm_engine: VLLM
+llm_engine: vLLM
 
 engine_kwargs:
   trust_remote_code: True
@@ -60,7 +60,7 @@ def get_mocked_llm_deployments(llm_configs) -> List[DeploymentHandle]:
     for llm_config in llm_configs:
         model_id = llm_config.model_id
         deployment_args = llm_config.get_serve_options(name_prefix=f"{model_id}:")
-        deployment = VLLMDeployment.options(**deployment_args)
+        deployment = LLMDeployment.options(**deployment_args)
         llm_deployments.append(
             deployment.bind(
                 llm_config=llm_config,

@@ -49,6 +49,16 @@ MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = int(
     os.environ.get("MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT", "20")
 )
 
+# Max retry on deployment constructor is
+# min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT)
+MAX_PER_REPLICA_RETRY_COUNT = int(os.environ.get("MAX_PER_REPLICA_RETRY_COUNT", "3"))
+
+
+# If you are wondering why we are using histogram buckets, please refer to
+# https://prometheus.io/docs/practices/histograms/
+# short answer is that its cheaper to calculate percentiles on the histogram
+# than to calculate them on raw data, both in terms of time and space.
+
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
     1,
@@ -77,6 +87,39 @@ DEFAULT_LATENCY_BUCKET_MS = [
     # 10 min
     600000,
 ]
+
+
+def parse_latency_buckets(bucket_str: str, default_buckets: list) -> list:
+    if bucket_str.strip() == "":
+        return default_buckets
+    try:
+        # Convert string to list of floats
+        buckets = [float(x.strip()) for x in bucket_str.split(",")]
+        if not buckets:
+            raise ValueError("Empty bucket list")
+        if any(x <= 0 for x in buckets):
+            raise ValueError("Bucket values must be positive")
+        if sorted(set(buckets)) != buckets:
+            raise ValueError("Bucket values must be in strictly ascending order")
+        return buckets
+    except Exception as e:
+        raise ValueError(
+            f"Invalid format for {bucket_str}. "
+            f"Expected comma-separated positive numbers in ascending order. Error: {str(e)}"
+        )
+
+
+# Example usage:
+# RAY_SERVE_REQUEST_LATENCY_BUCKET_MS="1,2,3,4"
+# RAY_SERVE_MODEL_LOAD_LATENCY_BUCKET_MS="1,2,3,4"
+#: Histogram buckets for request latency.
+REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    os.getenv("REQUEST_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+)
+#: Histogram buckets for model load/unload latency.
+MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    os.getenv("MODEL_LOAD_LATENCY_BUCKETS_MS", ""), DEFAULT_LATENCY_BUCKET_MS
+)
 
 #: Name of deployment health check method implemented by user.
 HEALTH_CHECK_METHOD = "check_health"

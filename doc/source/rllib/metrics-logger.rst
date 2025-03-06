@@ -16,7 +16,7 @@ parent component, it "reduces" the logged results and sends them upstream.
 
 The RLlib team recommends this API for all your custom code, like in
 :py:class:`~ray.rllib.env.env_runner.EnvRunner`-based :ref:`callbacks <rllib-callback-docs>`,
-in `custom loss functions <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_loss_function.py>`__, or in custom `training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__
+in `custom loss functions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__, or in custom `training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__
 implementations.
 
 .. figure:: images/metrics_logger_overview.svg
@@ -114,7 +114,7 @@ For example, you can continue logging new values under the ``loss`` key:
     logger.log_value("loss", 0.05)
 
 Because you specified a window of 2, :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` only uses the last 2 values to compute the reduced result.
-You can ``peek()`` at the currently reduced result throug the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method:
+You can ``peek()`` at the currently reduced result through the :py:meth:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek` method:
 
 .. testcode::
 
@@ -434,7 +434,7 @@ You can log metrics inside your custom loss functions. Use the Learner's ``self.
 
 
 Take a look at this running
-`end-to-end example for logging custom values inside a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_loss_function.py>`__ here.
+`end-to-end example for logging custom values inside a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__ here.
 
 
 Example 3: How to use MetricsLogger in a custom Algorithm

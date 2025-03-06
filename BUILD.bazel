@@ -21,7 +21,7 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-# Hermetic python envionment, currently only used for CI infra and scripts.
+# Hermetic python environment, currently only used for CI infra and scripts.
 
 py_runtime(
     name = "python3_runtime",
@@ -526,7 +526,13 @@ ray_cc_library(
     name = "ray_mock",
     hdrs = glob(
         ["src/mock/**/*.h"],
+        exclude = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
     ),
+)
+
+ray_cc_library(
+    name = "ray_mock_syncer",
+    hdrs = ["src/mock/ray/common/ray_syncer/ray_syncer.h"]
 )
 
 cc_grpc_library(
@@ -851,6 +857,15 @@ ray_cc_library(
     deps = [
         ":publisher_lib",
         ":subscriber_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "stats_opentelemetry",
+    srcs = ["src/ray/stats/opentelemetry_metrics.cc"],
+    deps = [
+        "@io_opentelemetry_cpp//sdk/src/logs:logs",
+        "@io_opentelemetry_cpp//sdk/src/trace:trace",
     ],
 )
 
@@ -3054,6 +3069,8 @@ pyx_library(
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
         "//src/ray/util:memory",
+        "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:stream_redirection_utils",
     ],
 )
 
