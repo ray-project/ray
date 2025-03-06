@@ -38,10 +38,10 @@ def get_top_n_memory_usage(n: int = 10):
         (str) The formatted string of top n process memory usage.
     """
     proc_stats = []
-    for p in psutil.process_iter(["memory_info", "cmdline"]):
+    for proc in psutil.process_iter(["memory_info", "cmdline"]):
         try:
             proc_stats.append(
-                (get_rss(p.info["memory_info"]), p.pid, p.info["cmdline"])
+                (get_rss(proc.info["memory_info"]), proc.pid, proc.info["cmdline"])
             )
         except psutil.NoSuchProcess:
             # We should skip the process that has exited. Refer this
