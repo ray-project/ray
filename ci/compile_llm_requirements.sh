@@ -9,17 +9,15 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 
 	echo "--- Compile dependencies for ${PYTHON_CODE}_${CUDA_CODE}"
 
-	UV_COMPILE=(
-		uv pip compile
-		--generate-hashes
-		--strip-extras
+	PIP_COMPILE=(
+		pip-compile -v --generate-hashes --strip-extras
 		--unsafe-package ray
+		# The version we use on python 3.9 is not installable on python 3.11
 		--unsafe-package grpcio-tools
+		# setuptools should not be pinned.
 		--unsafe-package setuptools
-		--index-url "https://pypi.org/simple"
 		--extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
 		--find-links "https://data.pyg.org/whl/torch-2.3.0+${CUDA_CODE}.html"
-		--index-strategy unsafe-best-match
 	)
 
 	mkdir -p /tmp/ray-deps
@@ -34,7 +32,7 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 	#
 	# Needs to use the exact torch version.
 	echo "--- Compile ray base test dependencies"
-	"${UV_COMPILE[@]}" \
+	"${PIP_COMPILE[@]}" \
 		-c "/tmp/ray-deps/requirements_compiled.txt" \
 		"python/requirements.txt" \
 		"python/requirements/cloud-requirements.txt" \
@@ -43,7 +41,7 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 
 	# Second, expand it into LLM test dependencies
 	echo "--- Compile LLM test dependencies"
-	"${UV_COMPILE[@]}" \
+	"${PIP_COMPILE[@]}" \
 		-c "python/requirements_compiled_ray_test_${PYTHON_CUDA_CODE}.txt" \
 		"python/requirements.txt" \
 		"python/requirements/cloud-requirements.txt" \
@@ -55,7 +53,7 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 	# Third, extract the ray base dependencies from ray base test dependencies.
 	# TODO(aslonnie): This should be used for installing ray in the container images.
 	echo "--- Compile ray base test dependencies"
-	"${UV_COMPILE[@]}" \
+	"${PIP_COMPILE[@]}" \
 		-c "python/requirements_compiled_ray_test_${PYTHON_CUDA_CODE}.txt" \
 		"python/requirements.txt" \
 		-o "python/requirements_compiled_ray_${PYTHON_CUDA_CODE}.txt"
@@ -64,7 +62,7 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 	# which is also an expansion of the ray base dependencies.
 	# TODO(aslonnie): This should be used for installing ray[llm] in the container images.
 	echo "--- Compile LLM dependencies"
-	"${UV_COMPILE[@]}" \
+	"${PIP_COMPILE[@]}" \
 		-c "python/requirements_compiled_rayllm_test_${PYTHON_CUDA_CODE}.txt" \
 		"python/requirements.txt" \
 		"python/requirements/llm/llm-requirements.txt" \
