@@ -277,7 +277,7 @@ class _StatsActor:
         )
 
         # === Dataset and Operator Metadata Metrics ===
-        dataset_tags = ("dataset",)
+        dataset_tags = ("dataset","job_id","start_time")
         self.data_dataset_progress = Gauge(
             "data_dataset_progress",
             description="Progress of dataset execution",
@@ -492,9 +492,11 @@ class _StatsActor:
 
     def update_dataset(self, dataset_tag: str, state: Dict[str, Any]):
         self.datasets[dataset_tag].update(state)
+        job_id = self.datasets[dataset_tag].get("job_id", None)
+        start_time = self.datasets[dataset_tag].get("start_time", None)
 
         # Update dataset-level metrics
-        dataset_tags = {"dataset": dataset_tag}
+        dataset_tags = {"dataset": dataset_tag, "job_id": job_id, "start_time": start_time}
         self.data_dataset_progress.set(state.get("progress", 0), dataset_tags)
         self.data_dataset_estimated_total_blocks.set(
             state.get("total", 0), dataset_tags
