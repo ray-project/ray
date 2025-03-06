@@ -310,9 +310,7 @@ class ClusterStatusFormatter:
 
     @classmethod
     def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
-        header = cls._header_info(data, verbose)
-        # Find the length of the first line of the header
-        separator_len = max(0, min(len(header), header.rfind("=") + 1))
+        header, separator_len = cls._header_info(data, verbose)
         separator = "-" * separator_len
 
         # Parse ClusterStatus information to reportable format
@@ -408,7 +406,7 @@ class ClusterStatusFormatter:
         return "\n".join(node_usage_report_lines)
 
     @staticmethod
-    def _header_info(data: ClusterStatus, verbose: bool) -> str:
+    def _header_info(data: ClusterStatus, verbose: bool) -> (str, int):
         # Get the request timestamp or default to the current time
         time = (
             datetime.fromtimestamp(data.stats.request_ts_s)
@@ -423,6 +421,7 @@ class ClusterStatusFormatter:
 
         # Create the header with autoscaler status
         header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
+        separator_len = len(header)
 
         # Add verbose details if required
         if verbose:
@@ -441,7 +440,7 @@ class ClusterStatusFormatter:
             if details:
                 header += "\n" + "\n".join(details) + "\n"
 
-        return header
+        return header, separator_len
 
     @staticmethod
     def _available_node_report(data: ClusterStatus) -> str:
