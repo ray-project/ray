@@ -157,9 +157,9 @@ spec:
               cpu: "1"
               memory: "2G"
             requests:
-              # For production use-cases, we recommend specifying integer CPU reqests and limits.
+              # For production use-cases, we recommend specifying integer CPU requests and limits.
               # We also recommend setting requests equal to limits for both CPU and memory.
-              # For this example, we use a 500m CPU request to accomodate resource-constrained local
+              # For this example, we use a 500m CPU request to accommodate resource-constrained local
               # Kubernetes testing environments such as Kind and minikube.
               cpu: "500m"
               # The rest state memory usage of the Ray head node is around 1Gb. We do not
@@ -223,9 +223,9 @@ spec:
           limits:
             cpu: "1"
             memory: "1G"
-            # For production use-cases, we recommend specifying integer CPU reqests and limits.
+            # For production use-cases, we recommend specifying integer CPU requests and limits.
             # We also recommend setting requests equal to limits for both CPU and memory.
-            # For this example, we use a 500m CPU request to accomodate resource-constrained local
+            # For this example, we use a 500m CPU request to accommodate resource-constrained local
             # Kubernetes testing environments such as Kind and minikube.
           requests:
             cpu: "500m"

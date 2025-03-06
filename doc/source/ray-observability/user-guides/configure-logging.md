@@ -239,7 +239,7 @@ ray_serve_logger = logging.getLogger("ray.serve")
 ray_data_logger.setLevel(logging.WARNING)
 
 # Other loggers can be modified similarly.
-# Here's how to add an aditional file handler for Ray Tune:
+# Here's how to add an additional file handler for Ray Tune:
 ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ```
 
