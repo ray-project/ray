@@ -5,7 +5,7 @@ from ray import train
 
 
 def objective(x, a, b):  # Define an objective function.
-    return a * (x**0.5) + b
+    return a * (x**2) + b
 
 
 def trainable(config):  # Pass a "config" dictionary into your trainable.

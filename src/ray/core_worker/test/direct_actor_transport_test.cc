@@ -481,7 +481,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   }
   if (execute_out_of_order) {
-    // After restart the tasks are executed in submittion order.
+    // After restart the tasks are executed in submission order.
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3, 1, 2));
   } else {
     // Actor counter restarts at 0 after the actor is restarted. New task cannot
@@ -950,7 +950,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   }
 
   // Push a task request with actor counter 1, but with a different worker id,
-  // and a older timstamp. In this case the request should fail.
+  // and a older timestamp. In this case the request should fail.
   {
     auto worker_id = WorkerID::FromRandom();
     auto request =

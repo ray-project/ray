@@ -216,6 +216,12 @@ def ray_deps_setup():
         patch_args = ["-p1"],
     )
 
+    auto_http_archive(
+        name = "io_opentelemetry_cpp",
+        url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
+        sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
+    )
+
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     #

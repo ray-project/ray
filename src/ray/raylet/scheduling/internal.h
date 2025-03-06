@@ -46,7 +46,7 @@ enum class UnscheduledWorkCause {
   /// Waiting because the worker wasn't available since job config for the worker wasn't
   /// registered yet.
   WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST,
-  /// Waiting becasue the worker wasn't available since its registration timed out.
+  /// Waiting because the worker wasn't available since its registration timed out.
   WORKER_NOT_FOUND_REGISTRATION_TIMEOUT,
 };
 
