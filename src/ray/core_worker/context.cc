@@ -311,7 +311,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
     const bool is_first_time_assignment = runtime_env_info_ == nullptr;
 
-    // Only perform heavy-loaded assigment and parsing on first access.
+    // Only perform heavy-loaded assignment and parsing on first access.
     // All threads are requesting for the same parsed json result, so ok to place in
     // critical section.
     if (is_first_time_assignment) {
