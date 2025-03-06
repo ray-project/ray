@@ -12,12 +12,12 @@ Examples using Ray Tune with ML Frameworks
     :hidden:
 
     PyTorch Example <tune-pytorch-cifar>
-    Hugging Face Transformers Example <pbt_transformers>
+    PyTorch Lightning Example <tune-pytorch-lightning>
     XGBoost Example <tune-xgboost>
     LightGBM Example <lightgbm_example>
+    Hugging Face Transformers Example <pbt_transformers>
     Ray RLlib Example <pbt_ppo_example>
     Keras Example <tune_mnist_keras>
-    PyTorch Lightning Example <tune-pytorch-lightning>
     Horovod Example <horovod_simple>
 
 
