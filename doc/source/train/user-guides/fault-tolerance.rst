@@ -80,28 +80,27 @@ Consider the following example of a cluster containing a CPU head node and 2 GPU
 There are 4 GPU training workers running on the 2 worker nodes.
 The :ref:`storage path has been configured <persistent-storage-guide>` to use cloud storage, which is where checkpoints are saved.
 
+.. figure:: ../images/fault_tolerance/worker_failure_start.png
+    :align: left
+
+    Training has been running for some time, and the latest checkpoint has been saved to cloud storage.
+
 .. figure:: ../images/fault_tolerance/worker_node_failure.png
     :align: left
 
-    (Left) Training has been running for some time, and the latest checkpoint has been saved to cloud storage.
-
-    (Right) One of the worker GPU nodes fails due to a hardware fault. Ray Train detects this failure and shuts down all the workers.
+    One of the worker GPU nodes fails due to a hardware fault. Ray Train detects this failure and shuts down all the workers.
     Since the number of failures detected so far is less than the configured ``max_failures``, Ray Train will attempt to restart training,
     rather than exiting and raising an error.
 
 .. figure:: ../images/fault_tolerance/worker_node_replacement.png
     :align: left
 
-    (Left) Same as the previous figure.
+    Ray Train has requested a new worker node to join the cluster and is waiting for it to come up.
 
-    (Right) Ray Train has requested a new worker node to join the cluster and is waiting for it to come up.
-
-.. figure:: ../images/fault_tolerance/resume_from_checkpoint.png
+.. figure:: ../images/fault_tolerance/worker_group_recovery.png
     :align: left
 
-    (Left) Same as the previous figure.
-
-    (Right) The new worker node has joined the cluster.
+    The new worker node has joined the cluster.
     Ray Train restarts all the worker processes and provides them with the latest checkpoint.
     The workers download the checkpoint from storage and use it to resume training.
 
@@ -162,27 +161,26 @@ Illustrated Example
 Consider the following example of a cluster containing a CPU head node and 2 GPU worker nodes. There are 4 GPU training workers running on the 2 worker nodes. The storage path has been configured to use cloud storage, which is where checkpoints are saved.
 
 
+.. figure:: ../images/fault_tolerance/cluster_failure_start.png
+    :align: left
+
+    Training has been running for some time, and the latest checkpoints and run state has been saved to storage.
+
+
 .. figure:: ../images/fault_tolerance/head_node_failure.png
     :align: left
 
-    (Left) Training has been running for some time, and the latest checkpoints and run state has been saved to storage.
-
-    (Right) The head node crashes for some reason (e.g., an out-of-memory error), and the Ray Train driver process is interrupted.
-
+    The head node crashes for some reason (e.g., an out-of-memory error), and the Ray Train driver process is interrupted.
 
 .. figure:: ../images/fault_tolerance/cluster_failure.png
     :align: left
 
-    (Left) Same as the previous figure.
+    The entire cluster goes down due to the head node failure.
 
-    (Right) The entire cluster goes down due to the head node failure.
-
-.. figure:: ../images/fault_tolerance/cluster_restart.png
+.. figure:: ../images/fault_tolerance/cluster_recovery.png
     :align: left
 
-    (Left) Same as the previous figure.
-
-    (Right) A manual cluster restart or some job submission system brings up a new Ray cluster.
+    A manual cluster restart or some job submission system brings up a new Ray cluster.
     The Ray Train driver process runs on a new head node.
     Ray Train fetches the run state information from storage at ``{storage_path}/{name}`` (e.g., ``s3://my_bucket/my_run_name``)
     and passes the latest checkpoint to the newly launched worker processes to resume training.
