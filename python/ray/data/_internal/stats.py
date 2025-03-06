@@ -278,11 +278,6 @@ class _StatsActor:
 
         # === Dataset and Operator Metadata Metrics ===
         dataset_tags = ("dataset", "job_id", "start_time")
-        self.data_dataset_progress = Gauge(
-            "data_dataset_progress",
-            description="Progress of dataset execution",
-            tag_keys=dataset_tags,
-        )
         self.data_dataset_estimated_total_blocks = Gauge(
             "data_dataset_estimated_total_blocks",
             description="Total work units in blocks for dataset",
@@ -300,11 +295,6 @@ class _StatsActor:
         )
 
         operator_tags = ("dataset", "operator")
-        self.data_operator_progress = Gauge(
-            "data_operator_progress",
-            description="Progress of operator execution",
-            tag_keys=operator_tags,
-        )
         self.data_operator_estimated_total_blocks = Gauge(
             "data_operator_estimated_total_blocks",
             description="Total work units in blocks for operator",
@@ -501,7 +491,6 @@ class _StatsActor:
             "job_id": job_id,
             "start_time": start_time,
         }
-        self.data_dataset_progress.set(state.get("progress", 0), dataset_tags)
         self.data_dataset_estimated_total_blocks.set(
             state.get("total", 0), dataset_tags
         )
@@ -518,7 +507,6 @@ class _StatsActor:
                 "dataset": dataset_tag,
                 "operator": operator,
             }
-            self.data_operator_progress.set(op_state.get("progress", 0), operator_tags)
             self.data_operator_estimated_total_blocks.set(
                 op_state.get("total", 0), operator_tags
             )
