@@ -18,7 +18,7 @@ config
 logits?
 log-probs?
 LSTMs?
-hyperparameters?
+[Hh]yperparameters?
 MARLModule
 (MARWIL|marwil)
 MLAgents

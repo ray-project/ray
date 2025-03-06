@@ -33,7 +33,7 @@ and the :ref:`Class API <tune-class-api>`.
 Both are valid ways of defining a `trainable`, but the Function API is generally recommended and is used
 throughout the rest of this guide.
 
-Let's say we want to optimize a simple objective function like ``a (x ** 2) + b`` in which ``a`` and ``b`` are the
+Consider an example of optimizing a simple objective function like ``a * (x ** 2) + b `` in which ``a`` and ``b`` are the
 hyperparameters we want to tune to `minimize` the objective.
 Since the objective also has a variable ``x``, we need to test for different values of ``x``.
 Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective function and get a `score` to minimize.
