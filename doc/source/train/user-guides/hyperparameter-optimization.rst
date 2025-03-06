@@ -20,8 +20,8 @@ Quickstart
 
 In the example below:
 
-* :class:`~ray.tune.Tuner` launches the tuning job, which runs a bunch of ``train_driver_fn`` trials with different hyperparameter configurations.
-* ``train_driver_fn``, which instantiates a ``TorchTrainer`` (or some other framework trainer), takes in a hyperparameter configuration and launches the distributed training job.
+* :class:`~ray.tune.Tuner` launches the tuning job, which runs trials of ``train_driver_fn`` with different hyperparameter configurations.
+* ``train_driver_fn``, which (1) takes in a hyperparameter configuration, (2) instantiates a ``TorchTrainer`` (or some other framework trainer), and (3) launches the distributed training job.
 * :class:`~ray.train.ScalingConfig` defines the number of training workers and resources per worker for a single Ray Train run.
 * ``train_fn_per_worker`` is the Python code that executes on each distributed training worker for a trial.
 
@@ -31,7 +31,7 @@ In the example below:
     :end-before: __quickstart_end__
 
 
-Configuring Resources for Multiple Trials
+Configuring resources for multiple trials
 -----------------------------------------
 
 Ray Tune launches multiple trials which run a user-defined function in a remote Ray actor, where each trial gets a different sampled hyperparameter configuration.
@@ -39,20 +39,20 @@ Typically, these Tune trials do work computation directly inside the Ray actor. 
 training within the remote actor itself. When using Ray Train inside Ray Tune functions, the Tune trial is actually not doing extensive computation inside this actor
 -- instead it just acts as a driver process to launch and monitor the Ray Train workers running elsewhere.
 
+.. figure:: ../images/hyperparameter_optimization/train_without_tune.png
+    :align: center
+
+    A single Ray Train run to showcase how using Ray Tune in the next figure just adds a layer of hierarchy to this tree of processes.
+
+
 .. figure:: ../images/hyperparameter_optimization/train_tune_interop.png
     :align: center
 
     Example of Ray Train runs being launched from within Ray Tune trials.
 
 
-.. figure:: ../images/hyperparameter_optimization/train_without_tune.png
-    :align: center
-
-    A single Ray Train run to showcase how using Ray Tune just adds a layer of hierarchy to this tree of processes.
-
-
-Set ``max_concurrent_trials`` to limit the number of Ray Train driver processes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Limit the number of concurrent Ray Train runs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Train runs can only start when resources for all workers can be acquired at once.
 This means that multiple Tune trials spawning Train runs will be competing for the logical resources available in the Ray cluster.
@@ -73,15 +73,15 @@ As a concrete example, consider a fixed sized cluster with 128 CPUs and 8 GPUs.
 * Each Ray Train run is configured to train with 4 GPU workers: ``ScalingConfig(num_workers=4, use_gpu=True)``. Since there are only 8 GPUs, only 2 Train runs can acquire their full set of resources at a time.
 * However, since there are many CPUs available in the cluster, the 4 total Ray Tune trials (which default to requesting 1 CPU) can be launched immediately.
   This results in 2 extra Ray Tune trial processes being launched, even though their inner Ray Train run just waits for resources until one of the other trials finishes.
-  This introduces some spammy log messages when Train waits for resources, and this could also lead to an excessive number of Ray Tune trial processes if the total number of hyperparameter configurations is large.
+  This introduces some spammy log messages when Train waits for resources. There may also be an excessive number of Ray Tune trial processes if the total number of hyperparameter configurations is large.
 * To fix this issue, set ``Tuner(tune_config=tune.TuneConfig(max_concurrent_trials=2))``. Now, only two Ray Tune trial processes will be running at a time.
   This number can be calculated based on the limiting cluster resource and the amount of that resources required by each trial.
 
 
-Advanced: Set Tune function resources
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Advanced: Set Train driver resources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The default Ray Tune function launches with 1 CPU. Ray Tune will just schedule these functions to run anywhere on the cluster that has free logical CPU resources.
+The default Train driver runs as a Ray Tune function with 1 CPU. Ray Tune will schedule these functions to run anywhere on the cluster that has free logical CPU resources.
 
 **Recommendation:** If you are launching longer-running training jobs or using spot instances, these Tune functions which act as the Ray Train driver process should be run on “safe nodes” that are at lower risk of going down. For example, they should not be scheduled to run on preemptible spot instances and should not be colocated with training workers. This could be the head node or a dedicated CPU node in your cluster.
 
@@ -101,7 +101,8 @@ One way to achieve this behavior is to set custom resources on certain node type
 Checkpoints
 -----------
 
-Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the ray.train.report and ray.tune.report APIs. See the :ref:`train-checkpointing` user guide for more details.
+Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the :func:`ray.train.report <ray.train.report>` and :func:`ray.tune.report <ray.tune.report>` APIs.
+See the :ref:`train-checkpointing` user guide for more details.
 
 If the Ray Train workers report checkpoints, saving another Ray Tune checkpoint at the Train driver level is not needed because it does not hold any extra training state. The Ray Train driver process will already periodically snapshot its status to the configured storage_path, which is further described in the next section on fault tolerance.
 
@@ -158,13 +159,32 @@ which propagates results to the Tuner.
 
 .. _train-tune-deprecation:
 
-Deprecation of the ``Tuner(trainer)`` API + Migration Guide
------------------------------------------------------------
+``Tuner(trainer)`` API Deprecation 
+----------------------------------
 
-The old ``Tuner(trainer)`` API is deprecated in favor of the new usage pattern described in this user guide.
-The reasons for this change include (1) decoupling Ray Train and Ray Tune to have better separation of responsibilities and (2) improving the configuration user experience.
+The ``Tuner(trainer)`` API which directly takes in a Ray Train trainer instance is deprecated as of Ray 2.43 and will be removed in a future release. 
 
-Find more context regarding this deprecation in the `REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_
-and see the `migration guide <https://github.com/ray-project/ray/issues/49454>`_ for steps to migrate off the old API.
+Motivation
+~~~~~~~~~~
 
-Please see :ref:`train-tune-deprecated-api` for the old API user guide.
+This API change provides several benefits:
+
+1. **Better separation of concerns**: Decouples Ray Train and Ray Tune responsibilities
+2. **Improved configuration experience**: Makes hyperparameter and run configuration more explicit and flexible
+
+Migration Steps
+~~~~~~~~~~~~~~~
+
+To migrate from the old ``Tuner(trainer)`` API to the new pattern:
+
+1. Enable the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
+2. Replace ``Tuner(trainer)`` with a function-based approach where Ray Train is launched inside a Tune trial.
+3. Move your training logic into a driver function that Tune will call with different hyperparameters.
+
+Additional Resources
+~~~~~~~~~~~~~~~~~~~~
+
+* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
+* `Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_: Full migration guide for Train V2
+* :ref:`train-tune-deprecated-api`: Documentation for the old API
+
