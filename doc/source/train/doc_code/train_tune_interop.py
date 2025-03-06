@@ -99,6 +99,17 @@ total_cluster_gpus = 8
 num_gpu_workers_per_trial = 4
 max_concurrent_trials = total_cluster_gpus // num_gpu_workers_per_trial
 
+
+def train_driver_fn(config: dict):
+    trainer = ray.train.torch.TorchTrainer(
+        train_fn_per_worker,
+        scaling_config=ray.train.ScalingConfig(
+            num_workers=num_gpu_workers_per_trial, use_gpu=True
+        ),
+    )
+    trainer.fit()
+
+
 tuner = ray.tune.Tuner(
     train_driver_fn,
     tune_config=ray.tune.TuneConfig(max_concurrent_trials=max_concurrent_trials),

@@ -34,10 +34,14 @@ In the example below:
 Configuring resources for multiple trials
 -----------------------------------------
 
-Ray Tune launches multiple trials which run a user-defined function in a remote Ray actor, where each trial gets a different sampled hyperparameter configuration.
-Typically, these Tune trials do work computation directly inside the Ray actor. For example, each trial could request 1 GPU and do some single-process model
+Ray Tune launches multiple trials which :ref:`run a user-defined function in a remote Ray actor <tune-function-api>`, where each trial gets a different sampled hyperparameter configuration.
+
+When using Ray Tune by itself, trials do computation directly inside the Ray actor. For example, each trial could request 1 GPU and do some single-process model
 training within the remote actor itself. When using Ray Train inside Ray Tune functions, the Tune trial is actually not doing extensive computation inside this actor
 -- instead it just acts as a driver process to launch and monitor the Ray Train workers running elsewhere.
+
+Ray Train requests its own resources via the :class:`~ray.train.ScalingConfig`.
+See :ref:`train_scaling_config` for more details.
 
 .. figure:: ../images/hyperparameter_optimization/train_without_tune.png
     :align: center
