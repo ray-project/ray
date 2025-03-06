@@ -19,6 +19,7 @@ Examples using Ray Tune with ML Frameworks
     LightGBM Example <lightgbm_example>
     Horovod Example <horovod_simple>
     Hugging Face Transformers Example <pbt_transformers>
+    Jax Example <tune_jax>
 
 
 Ray Tune integrates with many popular machine learning frameworks.
@@ -108,3 +109,11 @@ At the end of these guides you will often find links to even more examples.
         .. button-ref:: tune_train_torch_example
 
             End-to-end Example for Tuning a PyTorch Model with PBT
+
+    .. grid-item-card::
+        :img-top: /images/jax.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune_jax
+
+            Tune a neural ordinary differential equation built in Jax and Equinox
