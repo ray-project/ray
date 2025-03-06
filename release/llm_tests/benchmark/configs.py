@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 import argparse
 
 
-
 class DistributionType(str, Enum):
     CONSTANT = "constant"
     UNIFORM = "uniform"
