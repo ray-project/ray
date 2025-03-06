@@ -1365,7 +1365,7 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
-        num_blocks: Optional[int],
+        num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
         shuffle: bool = False,
@@ -1426,9 +1426,14 @@ class Dataset:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        if (num_blocks is not None) == (target_num_rows_per_block is not None):
+        if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
-                "Either `num_blocks` or `target_num_rows_per_block` must be set, "
+                "Either `num_blocks` or `target_num_rows_per_block` must be set"
+            )
+
+        if (num_blocks is not None) and (target_num_rows_per_block is not None):
+            raise ValueError(
+                "Only one of `num_blocks` or `target_num_rows_per_block` must be set, "
                 "but not both."
             )
 
