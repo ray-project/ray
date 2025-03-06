@@ -19,12 +19,15 @@ namespace ray {
 bool SetupCgroupsPreparation(const std::string &node_id /*unused*/) { return false; }
 namespace internal {
 bool CanCurrenUserWriteCgroupV2() { return false; }
-bool IsCgroupV2MountedAsRw() { return false; }
+bool IsCgroupV2MountedAsRw(const std::string &path) { return false; }
 }  // namespace internal
 }  // namespace ray
 #else  // __linux__
 
+#include <linux/magic.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <sys/vfs.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -87,37 +90,23 @@ namespace internal {
 
 bool CanCurrenUserWriteCgroupV2() { return access("/sys/fs/cgroup", W_OK | X_OK) == 0; }
 
-bool IsCgroupV2MountedAsRw() {
-  // Checking all mountpoints directly and parse textually is the easiest way, compared
-  // with mounted filesystem attributes.
-  std::ifstream mounts("/proc/mounts");
-  if (!mounts.is_open()) {
+bool IsCgroupV2MountedAsRw(const std::string &path) {
+  // Check whether cgroupv2 is mounted solely at `/sys/fs/cgroup`.
+  struct statfs fs_stats;
+  if (statfs(path.data(), &fs_stats) != 0) {
+    return false;
+  }
+  if (fs_stats.f_type != CGROUP2_SUPER_MAGIC) {
     return false;
   }
 
-  // Mount information is formatted as:
-  // <fs_spec> <fs_file> <fs_vfstype> <fs_mntopts> <dump-field> <fsck-field>
-  std::string line;
-  while (std::getline(mounts, line)) {
-    std::vector<std::string_view> mount_info_tokens = absl::StrSplit(line, ' ');
-    RAY_CHECK_EQ(mount_info_tokens.size(), 6UL);
-    // For cgroupv2, `fs_spec` should be `cgroupv2` and there should be only one mount
-    // information item.
-    if (mount_info_tokens[0] != "cgroup2") {
-      continue;
-    }
-    const auto &fs_mntopts = mount_info_tokens[3];
-
-    // Mount options are formatted as: <opt1,opt2,...>.
-    std::vector<std::string_view> mount_opts = absl::StrSplit(fs_mntopts, ',');
-
-    // CgroupV2 has only one mount item, directly returns.
-    return std::any_of(mount_opts.begin(),
-                       mount_opts.end(),
-                       [](const std::string_view cur_opt) { return cur_opt == "rw"; });
+  // Check whether cgroupv2 is mounted in rw mode.
+  struct statvfs vfs_stats;
+  if (statvfs(path.data(), &vfs_stats) != 0) {
+    return false;
   }
-
-  return false;
+  // There're only two possible modes, either rw mode or read-only mode.
+  return (vfs_stats.f_flag & ST_RDONLY) == 0;
 }
 
 }  // namespace internal
@@ -135,7 +124,7 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
     RAY_LOG(ERROR) << "Current user doesn't have the permission to update cgroup v2.";
     return false;
   }
-  if (!internal::IsCgroupV2MountedAsRw()) {
+  if (!internal::IsCgroupV2MountedAsRw("/sys/fs/cgroup")) {
     RAY_LOG(ERROR) << "Cgroup v2 is not mounted in read-write mode.";
     return false;
   }

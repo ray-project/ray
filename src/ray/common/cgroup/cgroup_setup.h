@@ -23,8 +23,9 @@ namespace internal {
 // Return whether current user could write to cgroupv2.
 bool CanCurrenUserWriteCgroupV2();
 
-// Return whether cgroup V2 is mounted in read and write mode.
-bool IsCgroupV2MountedAsRw();
+// Return whether cgroup V2 is mounted in read and write mode exclusively on the given
+// [path] (with no cgroupv1 meanwhile).
+bool IsCgroupV2MountedAsRw(const std::string &path);
 
 }  // namespace internal
 
