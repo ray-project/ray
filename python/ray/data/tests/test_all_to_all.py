@@ -129,7 +129,6 @@ def test_repartition_target_num_rows_per_block(
     target_num_rows_per_block,
 ):
     ds = ray.data.range(total_rows).repartition(
-        num_blocks=None,
         target_num_rows_per_block=target_num_rows_per_block,
     )
     rows_count = 0
