@@ -601,11 +601,16 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
                                 const std::string &disconnect_detail,
-                                bool force) {
+                                bool force,
+                                bool disable_schedule) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
+  DisconnectClient(worker->Connection(),
+                   disconnect_type,
+                   disconnect_detail,
+                   /*creation_task_exception=*/nullptr,
+                   disable_schedule);
   worker->MarkDead();
   KillWorker(worker, force);
   if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -1541,7 +1546,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    rpc::WorkerExitType disconnect_type,
                                    const std::string &disconnect_detail,
-                                   const rpc::RayException *creation_task_exception) {
+                                   const rpc::RayException *creation_task_exception,
+                                   bool disable_schedule) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = " << std::boolalpha
                 << bool(creation_task_exception != nullptr);
@@ -1639,7 +1645,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     local_task_manager_->ReleaseWorkerResources(worker);
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+    if (!disable_schedule) cluster_task_manager_->ScheduleAndDispatchTasks();
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
@@ -2086,7 +2092,13 @@ void NodeManager::HandleCancelResourceReserve(
         << ", worker id: " << worker->WorkerId();
     const auto &message = stream.str();
     RAY_LOG(DEBUG) << message;
-    DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
+    // Note(hejialing): We need to prohibit scheduling before we complete the modification
+    // of the bundle.
+    DestroyWorker(worker,
+                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                  message,
+                  /*force=*/false,
+                  /*disable_schedule=*/true);
   }
 
   RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec));

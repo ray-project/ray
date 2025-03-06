@@ -371,12 +371,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param disconnect_type The reason why this worker process is disconnected.
   /// \param disconnect_detail The detailed reason for a given exit.
   /// \param force true to destroy immediately, false to give time for the worker to
+  /// \param disable_schedule true to diable schedule local task.
   /// clean up and exit gracefully.
   /// \return Void.
   void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                      rpc::WorkerExitType disconnect_type,
                      const std::string &disconnect_detail,
-                     bool force = false);
+                     bool force = false,
+                     bool disable_schedule = false);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -699,11 +701,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param disconnect_type The reason to disconnect the specified client.
   /// \param disconnect_detail Disconnection information in details.
   /// \param client_error_message Extra error messages about this disconnection
+  /// \param disable_schedule true to diable schedule local task.
   /// \return Void.
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                         rpc::WorkerExitType disconnect_type,
                         const std::string &disconnect_detail,
-                        const rpc::RayException *creation_task_exception = nullptr);
+                        const rpc::RayException *creation_task_exception = nullptr,
+                        bool disable_schedule = false);
 
   bool TryLocalGC();
 
