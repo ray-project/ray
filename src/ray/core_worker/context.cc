@@ -397,7 +397,8 @@ bool WorkerContext::CurrentActorIsAsync() const {
 
 void WorkerContext::SetCurrentActorShouldExit() {
   absl::WriterMutexLock lock(&mutex_);
-  RAY_CHECK(!current_actor_id_.IsNil());
+  RAY_CHECK(!current_actor_id_.IsNil())
+      << "SetCurrentActorShouldExit should only be used inside actors";
   current_actor_should_exit_ = true;
 }
 

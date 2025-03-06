@@ -117,8 +117,11 @@ class WorkerContext {
 
   bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Set a flag to indicate that the current actor should exit, it'll be checked
+  /// periodically and the actor will exit if the flag is set.
   void SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Get the flag to indicate that the current actor should exit.
   bool GetCurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
