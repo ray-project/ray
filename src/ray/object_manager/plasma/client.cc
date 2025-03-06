@@ -23,10 +23,13 @@
 #include <boost/asio.hpp>
 #include <cstring>
 #include <deque>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
