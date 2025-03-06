@@ -62,7 +62,7 @@ namespace plasma {
 namespace {
 
 ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
-  uint8_t *input = (uint8_t *)message.data();
+  const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   auto request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
   RAY_DCHECK(plasma::VerifyFlatbuffer(request, input, input_size));
@@ -154,7 +154,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
                                                    PlasmaObject *object) {
-  uint8_t *input = (uint8_t *)message.data();
+  const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   ray::ObjectInfo object_info;
   fb::ObjectSource source;
@@ -312,10 +312,19 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = Client::Create(
-        // NOLINTNEXTLINE : handler must be of boost::AcceptHandler type.
-        boost::bind(&PlasmaStore::ProcessClientMessage, this, ph::_1, ph::_2, ph::_3),
-        boost::bind(&PlasmaStore::HandleClientConnectionError, this, ph::_1, ph::_2),
+        /*message_handler=*/
+        [this](std::shared_ptr<Client> client,
+               fb::MessageType message_type,
+               const std::vector<uint8_t> &message) -> Status {
+          return ProcessClientMessage(std::move(client), message_type, message);
+        },
+        /*connection_error_handler=*/
+        [this](std::shared_ptr<Client> client, const boost::system::error_code &error)
+            -> void { return HandleClientConnectionError(std::move(client), error); },
         std::move(socket_));
+
+    // Start receiving messages.
+    new_connection->ProcessMessages();
   }
 
   if (error != boost::asio::error::operation_aborted) {
@@ -356,7 +365,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   create_request_queue_.RemoveDisconnectedClientRequests(client);
 }
 
-void PlasmaStore::HandleClientConnectionError(const std::shared_ptr<Client> &client,
+void PlasmaStore::HandleClientConnectionError(std::shared_ptr<Client> client,
                                               const boost::system::error_code &error) {
   absl::MutexLock lock(&mutex_);
   RAY_LOG(WARNING) << "Disconnecting client due to connection error with code "
@@ -364,12 +373,12 @@ void PlasmaStore::HandleClientConnectionError(const std::shared_ptr<Client> &cli
   DisconnectClient(client);
 }
 
-Status PlasmaStore::ProcessClientMessage(const std::shared_ptr<Client> &client,
+Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
                                          fb::MessageType type,
                                          const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
-  uint8_t *input = (uint8_t *)message.data();
+  const uint8_t *input = const_cast<uint8_t *>(message.data());
   size_t input_size = message.size();
   ObjectID object_id;
 
@@ -447,7 +456,6 @@ Status PlasmaStore::ProcessClientMessage(const std::shared_ptr<Client> &client,
       RAY_RETURN_NOT_OK(
           SendReleaseReply(client, object_id, should_unmap, PlasmaError::OK));
     }
-
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
     std::vector<ObjectID> object_ids;

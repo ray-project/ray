@@ -20,6 +20,9 @@
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <deque>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/common_protocol.h"
@@ -49,11 +52,11 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 /// can be used to write messages synchronously to the server.
 class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
  private:
-  // Tag to allow `make_shared` inside of the class.
-  struct Tag {};
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
 
  public:
-  ServerConnection(Tag, local_stream_socket &&socket);
+  ServerConnection(PrivateTag, local_stream_socket &&socket);
   ServerConnection(const ServerConnection &) = delete;
   ServerConnection &operator=(const ServerConnection &) = delete;
 
@@ -141,7 +144,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
  protected:
   /// A private constructor for a server connection.
   explicit ServerConnection(local_stream_socket &&socket)
-      : ServerConnection(Tag{}, std::move(socket)) {}
+      : ServerConnection(PrivateTag{}, std::move(socket)) {}
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
@@ -201,15 +204,15 @@ using ConnectionErrorHandler = std::function<void(std::shared_ptr<ClientConnecti
 /// also be used to process messages asynchronously from client.
 class ClientConnection : public ServerConnection {
  private:
-  // Tag to allow `make_shared` inside of the class.
-  struct Tag {};
+  // Enables `make_shared` inside of the class without exposing a public constructor.
+  struct PrivateTag {};
 
  public:
   using std::enable_shared_from_this<ServerConnection>::shared_from_this;
 
-  ClientConnection(Tag,
-                   const MessageHandler &message_handler,
-                   const ConnectionErrorHandler &connection_error_handler,
+  ClientConnection(PrivateTag,
+                   MessageHandler message_handler,
+                   ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names);
@@ -228,8 +231,8 @@ class ClientConnection : public ServerConnection {
   /// message types received from this client, used for debug messages.
   /// \return std::shared_ptr<ClientConnection>.
   static std::shared_ptr<ClientConnection> Create(
-      const MessageHandler &message_handler,
-      const ConnectionErrorHandler &connection_error_handler,
+      MessageHandler message_handler,
+      ConnectionErrorHandler connection_error_handler,
       local_stream_socket &&socket,
       const std::string &debug_label,
       const std::vector<std::string> &message_type_enum_names);
@@ -250,12 +253,12 @@ class ClientConnection : public ServerConnection {
 
  protected:
   /// A protected constructor for a node client connection.
-  ClientConnection(const MessageHandler &message_handler,
-                   const ConnectionErrorHandler &connection_error_handler,
+  ClientConnection(MessageHandler message_handler,
+                   ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    const std::string &debug_label,
                    const std::vector<std::string> &message_type_enum_names)
-      : ClientConnection(Tag{},
+      : ClientConnection(PrivateTag{},
                          message_handler,
                          connection_error_handler,
                          std::move(socket),
