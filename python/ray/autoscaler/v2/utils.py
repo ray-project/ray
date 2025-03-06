@@ -311,7 +311,8 @@ class ClusterStatusFormatter:
     @classmethod
     def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
         header = cls._header_info(data, verbose)
-        separator_len = max(0, min(len(header), header.find("\n")))
+        # Find the length of the first line of the header
+        separator_len = max(0, min(len(header), header.rfind("=") + 1))
         separator = "-" * separator_len
 
         # Parse ClusterStatus information to reportable format
