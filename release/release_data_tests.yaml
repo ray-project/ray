@@ -518,4 +518,4 @@
     timeout: 3600
     script: >
       python run_llama.py
-      --pp-size 2 --concurrency 2 --vllm-use-v1
+      --pp-size 2 --concurrency 2
