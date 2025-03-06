@@ -1,11 +1,12 @@
+from dataclasses import fields
 import logging
 import re
 import threading
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import contextmanager
-from typing import List, Optional
-from unittest.mock import patch
+from typing import Dict, List, Optional
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -23,6 +24,7 @@ from ray.data._internal.execution.interfaces.physical_operator import PhysicalOp
 from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.stats import (
     DatasetStats,
+    NodeMetrics,
     StatsManager,
     _get_or_create_stats_actor,
     _StatsActor,
@@ -1701,6 +1703,82 @@ def test_stats_manager(shutdown_only):
     # Check that a new different thread is spawned.
     assert StatsManager._update_thread != prev_thread
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
+
+
+def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
+    """Basic test to ensure per-node metrics are populated."""
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = True
+
+    def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
+        sum_metrics = defaultdict(float)
+        for metrics in per_node_metrics.values():
+            for metric, value in metrics.items():
+                sum_metrics[metric] += value
+        return sum_metrics
+
+    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
+        metrics = ds._plan.stats().extra_metrics
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        assert isinstance(per_node_metrics, dict)
+        assert len(per_node_metrics) >= 1
+
+        for nm in per_node_metrics.values():
+            for f in fields(NodeMetrics):
+                assert f.name in nm
+
+        # basic checks to make sure metrics are populated
+        assert any(nm["num_tasks_finished"] > 0 for nm in per_node_metrics.values())
+        assert any(
+            nm["bytes_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+        assert any(
+            nm["blocks_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+
+        net_metrics = _sum_net_metrics(per_node_metrics)
+        assert net_metrics["num_tasks_finished"] == metrics["num_tasks_finished"]
+        assert (
+            net_metrics["bytes_outputs_of_finished_tasks"]
+            == metrics["bytes_outputs_of_finished_tasks"]
+        )
+
+
+@pytest.mark.parametrize("enable_metrics", [True, False])
+def test_per_node_metrics_toggle(
+    ray_start_regular_shared, restore_data_context, enable_metrics
+):
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = enable_metrics
+
+    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ray.data.range(10000).map(lambda x: x).materialize()
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        if enable_metrics:
+            assert per_node_metrics is not None
+        else:
+            assert per_node_metrics is None
 
 
 def test_task_duration_stats():
