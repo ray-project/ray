@@ -1,6 +1,7 @@
 # There is a dead-lock issue that arises due to gevent's monkey-patching
 # https://github.com/ipython/ipython/issues/11730
 # Fix: We do this import first before anything else
+# ruff: noqa: E402
 import gevent.monkey
 
 gevent.monkey.patch_all()

@@ -17,11 +17,6 @@ import time
 import orjson
 import threading
 
-try:
-    import locust_plugins
-except ImportError:
-    print("locust-plugins is not installed, Grafana won't work")
-
 
 def add_custom_metric(name, value, length_value=0):
     events.request.fire(
@@ -1039,7 +1034,10 @@ def collect_metrics(environment, **kw):
             name = f"P{percentile}_{percentile_metric}"
             entries[name] = metrics.get_response_time_percentile(percentile / 100)
 
-    pretty_name = lambda s: " ".join([w.capitalize() for w in s.split("_")])
+    # Pretty print the entries
+    def pretty_name(s):
+        return " ".join([w.capitalize() for w in s.split("_")])
+
     entries = {pretty_name(k): v for k, v in entries.items()}
 
     # print in the final event handler to make sure our output is the last one
