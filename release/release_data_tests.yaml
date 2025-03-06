@@ -503,7 +503,7 @@
       python run_llama.py
       --tp-size 2 --concurrency 2 --vllm-use-v1
 
-- name: llm_batch_vllm_v1_llama_pp2dp2
+- name: llm_batch_vllm_llama_pp2dp2
   frequency: nightly
   python: "3.11"
   group: llm
