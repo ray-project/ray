@@ -374,7 +374,7 @@ NodeManager::NodeManager(
       "NodeManager.ScheduleAndDispatchTasks");
 
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
-  // Run the node manger rpc server.
+  // Run the node manager rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false);
   node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
