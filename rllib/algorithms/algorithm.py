@@ -829,7 +829,7 @@ class Algorithm(Checkpointable, Trainable):
             learner_pgs = list(
                 enumerate(
                     self.learner_group.foreach_learner(
-                        func=lambda _learner: ray.util.get_current_placement_group()
+                        func=lambda _learner: ray.util.get_current_placement_group(),
                     )
                 )
             )
@@ -837,15 +837,22 @@ class Algorithm(Checkpointable, Trainable):
 
             agg_cls_list = []
             aggregator_index = 0
+            print(f"===> Learner PGS: {learner_pgs}")
             self._aggregator_actor_to_learner = {}
+            print(f"{learner_pgs[0][1].get()}")
+            pg = learner_pgs[0][1].get()
+            print(f"PG: {pg}")
+            print(f"BUNDLES: {pg.bundle_cache}")
             for i in range(self.config.num_aggregator_actors_per_learner):
-                for j, pg in learner_pgs:
+                for j in range(self.config.num_learners):
                     agg_cls_list.append(
                         ray.remote(
                             num_cpus=1,
                             scheduling_strategy=PlacementGroupSchedulingStrategy(
-                                placement_group=pg.get(),
-                                placement_group_bundle_index=j,
+                                placement_group=pg,
+                                placement_group_bundle_index=j
+                                if pg.bundle_cache
+                                else -1,
                             ),
                             max_restarts=-1,
                         )(AggregatorActor)
@@ -858,6 +865,7 @@ class Algorithm(Checkpointable, Trainable):
             #     # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
             #     max_restarts=-1,
             # )(AggregatorActor)
+            print(f"Creating Aggregators")
             self._aggregator_actor_manager = FaultTolerantActorManager(
                 # [
                 #     agg_cls.remote(self.config, rl_module_spec)
@@ -874,6 +882,7 @@ class Algorithm(Checkpointable, Trainable):
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
+            print(f"AggregatorActors created")
             # Get the devices of each learner.
             learner_locations = list(
                 enumerate(

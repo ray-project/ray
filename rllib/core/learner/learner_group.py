@@ -202,6 +202,10 @@ class LearnerGroup(Checkpointable):
                             placement_group_for_learners.bundle_specs,
                         )
                     )
+            else:
+                placement_group_for_learners = None
+
+            self._placement_group = placement_group_for_learners
 
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
