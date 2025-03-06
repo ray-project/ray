@@ -87,8 +87,7 @@ class TrainingData:
         else:
             assert self.data_iterators and len(self.data_iterators) == num_shards
             return [
-                (TrainingData(data_iterators=[di]), {})
-                for di in self.data_iterators
+                (TrainingData(data_iterators=[di]), {}) for di in self.data_iterators
             ]
 
     def solve_refs(self):

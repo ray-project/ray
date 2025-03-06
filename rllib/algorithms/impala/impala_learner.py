@@ -135,17 +135,19 @@ class IMPALALearner(Learner):
 
         # Get the train batch from the object store.
         training_data.solve_refs()
-        assert training_data.batch is not None
+
+        batch = self._make_batch_if_necessary(training_data=training_data)
+        assert batch is not None
 
         if self.config.num_gpus_per_learner > 0:
-            self._gpu_loader_in_queue.put(training_data.batch)
+            self._gpu_loader_in_queue.put(batch)
             self.metrics.log_value(
                 (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
                 self._gpu_loader_in_queue.qsize(),
             )
         else:
             if isinstance(self._learner_thread_in_queue, CircularBuffer):
-                ts_dropped = self._learner_thread_in_queue.add(training_data.batch)
+                ts_dropped = self._learner_thread_in_queue.add(batch)
                 self.metrics.log_value(
                     (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
                     ts_dropped,
@@ -154,7 +156,7 @@ class IMPALALearner(Learner):
             else:
                 # Enqueue to Learner thread's in-queue.
                 _LearnerThread.enqueue(
-                    self._learner_thread_in_queue, training_data.batch, self.metrics
+                    self._learner_thread_in_queue, batch, self.metrics
                 )
 
         try:
@@ -350,7 +352,7 @@ class _LearnerThread(threading.Thread):
             #  MA-CartPole).
             results = self._update_method(
                 self=self.learner,
-                batch=ma_batch_on_gpu,
+                training_data=TrainingData(batch=ma_batch_on_gpu),
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
             self._out_queue.append(results)

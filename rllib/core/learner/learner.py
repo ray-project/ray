@@ -46,11 +46,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -1036,66 +1032,8 @@ class Learner(Checkpointable):
 
         self._weights_seq_no += 1
 
-        batch = None
-
-        # Call the learner connector on the given `episodes` (if we have one).
-        if training_data.episodes is not None:
-            # If we want to learn from Episodes, we must have a LearnerConnector
-            # pipeline to translate into a train batch first.
-            if self._learner_connector is None:
-                raise ValueError(
-                    f"If episodes provided for training, Learner ({self}) must have a "
-                    "LearnerConnector pipeline (but pipeline is None)!"
-                )
-
-            # Call the learner connector pipeline.
-            shared_data = {}
-            batch = self._learner_connector(
-                rl_module=self.module,
-                batch=training_data.batch if training_data.batch is not None else {},
-                episodes=training_data.episodes,
-                shared_data=shared_data,
-                metrics=self.metrics,
-            )
-            # Convert to a batch.
-            # TODO (sven): Try to not require MultiAgentBatch anymore.
-            batch = MultiAgentBatch(
-                {
-                    module_id: (
-                        SampleBatch(module_data, _zero_padded=True)
-                        if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                        else SampleBatch(module_data)
-                    )
-                    for module_id, module_data in batch.items()
-                },
-                env_steps=sum(len(e) for e in episodes),
-            )
-        # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
-        elif isinstance(training_data.batch, SampleBatch):
-            if len(self.module) != 1:
-                raise ValueError(
-                    f"SampleBatch provided, but RLModule ({self.module}) has more than "
-                    f"one sub-RLModule! Need to provide MultiAgentBatch instead."
-                )
-
-            batch = MultiAgentBatch(
-                {next(iter(self.module.keys())): training_data.batch},
-                env_steps=len(training_data.batch),
-            )
-        # If we already have an `MultiAgentBatch` but with `numpy` array, convert to
-        # tensors.
-        elif (
-            isinstance(training_data.batch, MultiAgentBatch)
-            and training_data.batch.policy_batches
-            and isinstance(
-                next(iter(training_data.batch.policy_batches.values()))["obs"],
-                numpy.ndarray,
-            )
-        ):
-            batch = self._convert_batch_type(training_data.batch)
-
         # Data iterator provided.
-        elif training_data.data_iterators:
+        if training_data.data_iterators:
             if "num_iters" not in kwargs:
                 raise ValueError(
                     "Learner.update(data_iterators=..) requires `num_iters` kwarg!"
@@ -1104,19 +1042,22 @@ class Learner(Checkpointable):
             if not self.iterator:
                 self.iterator = training_data.data_iterators[0]
 
-            def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
+            def _finalize_fn(_batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
                 # Note, the incoming batch is a dictionary with a numpy array
                 # holding the `MultiAgentBatch`.
-                batch = self._convert_batch_type(batch["batch"][0])
-                return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
+                _batch = self._convert_batch_type(_batch["batch"][0])
+                return {"batch": self._set_slicing_by_batch_id(_batch, value=True)}
 
             batch_iter = MiniBatchRayDataIterator(
                 iterator=self.iterator,
                 finalize_fn=_finalize_fn,
                 **kwargs,
             )
+        else:
+            batch = self._make_batch_if_necessary(training_data=training_data)
 
-        if batch is not None:
+            assert batch is not None
+
             # TODO: Move this into LearnerConnector pipeline?
             # Filter out those RLModules from the final train batch that should not be
             # updated.
@@ -1194,8 +1135,6 @@ class Learner(Checkpointable):
                 value=loss,
                 window=1,
             )
-
-        #self._set_slicing_by_batch_id(batch, value=False)
 
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
@@ -1339,6 +1278,67 @@ class Learner(Checkpointable):
         return [
             (COMPONENT_RL_MODULE, self.module),
         ]
+
+    def _make_batch_if_necessary(self, training_data):
+        batch = training_data.batch
+
+        # Call the learner connector on the given `episodes` (if we have one).
+        if training_data.episodes is not None:
+            # If we want to learn from Episodes, we must have a LearnerConnector
+            # pipeline to translate into a train batch first.
+            if self._learner_connector is None:
+                raise ValueError(
+                    f"If episodes provided for training, Learner ({self}) must have a "
+                    "LearnerConnector pipeline (but pipeline is None)!"
+                )
+
+            # Call the learner connector pipeline.
+            shared_data = {}
+            batch = self._learner_connector(
+                rl_module=self.module,
+                batch=training_data.batch if training_data.batch is not None else {},
+                episodes=training_data.episodes,
+                shared_data=shared_data,
+                metrics=self.metrics,
+            )
+            # Convert to a batch.
+            # TODO (sven): Try to not require MultiAgentBatch anymore.
+            batch = MultiAgentBatch(
+                {
+                    module_id: (
+                        SampleBatch(module_data, _zero_padded=True)
+                        if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                        else SampleBatch(module_data)
+                    )
+                    for module_id, module_data in batch.items()
+                },
+                env_steps=sum(len(e) for e in training_data.episodes),
+            )
+        # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
+        elif isinstance(training_data.batch, SampleBatch):
+            if len(self.module) != 1:
+                raise ValueError(
+                    f"SampleBatch provided, but RLModule ({self.module}) has more than "
+                    f"one sub-RLModule! Need to provide MultiAgentBatch instead."
+                )
+
+            batch = MultiAgentBatch(
+                {next(iter(self.module.keys())): training_data.batch},
+                env_steps=len(training_data.batch),
+            )
+        # If we already have an `MultiAgentBatch` but with `numpy` array, convert to
+        # tensors.
+        elif (
+            isinstance(training_data.batch, MultiAgentBatch)
+            and training_data.batch.policy_batches
+            and isinstance(
+                next(iter(training_data.batch.policy_batches.values()))["obs"],
+                numpy.ndarray,
+            )
+        ):
+            batch = self._convert_batch_type(training_data.batch)
+
+        return batch
 
     def _get_optimizer_state(self) -> StateDict:
         """Returns the state of all optimizers currently registered in this Learner.

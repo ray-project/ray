@@ -199,11 +199,11 @@ class MiniBatchRayDataIterator:
         iter = 0
         while self._num_iters is None or iter < self._num_iters:
             for batch in self._iterator.iter_batches(
-                    # Note, this needs to be one b/c data is already mapped to
-                    # `MultiAgentBatch`es of `minibatch_size`.
-                    batch_size=1,
-                    _finalize_fn=self._finalize_fn,
-                    **self._kwargs,
+                # Note, this needs to be one b/c data is already mapped to
+                # `MultiAgentBatch`es of `minibatch_size`.
+                batch_size=1,
+                _finalize_fn=self._finalize_fn,
+                **self._kwargs,
             ):
                 # Update the iteration counter.
                 iter += 1
@@ -213,7 +213,6 @@ class MiniBatchRayDataIterator:
 
                 yield (batch)
 
-                #self._set_slicing_by_batch_id(batch, value=False)
                 # If `num_iters` is reached break and return.
                 if self._num_iters and iter == self._num_iters:
                     break
