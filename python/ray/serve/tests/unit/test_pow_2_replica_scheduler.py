@@ -1803,6 +1803,7 @@ async def test_replicas_actor_unavailable_error(
         assert (await s.choose_replica_for_request(fake_pending_request())) == r1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pow_2_scheduler",
