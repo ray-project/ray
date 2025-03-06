@@ -13,7 +13,7 @@ import time
 import numpy as np
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.tune import Trainable
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search.bohb import TuneBOHB
@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="bohb_test", stop={"training_iteration": max_iterations}
         ),
         tune_config=tune.TuneConfig(

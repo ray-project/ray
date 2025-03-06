@@ -215,12 +215,12 @@ def test_redirect(serve_instance, base_path):
 def test_default_error_handling(serve_instance):
     @serve.deployment
     def f():
-        1 / 0
+        _ = 1 / 0
 
     serve.run(f.bind())
     r = requests.get("http://localhost:8000/f")
     assert r.status_code == 500
-    assert "ZeroDivisionError" in r.text, r.text
+    assert r.text == "Internal Server Error"
 
     @ray.remote(num_cpus=0)
     def intentional_kill(actor_handle):

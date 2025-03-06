@@ -12,11 +12,10 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ProxyStatus,
     ReplicaState,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
+from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
@@ -359,12 +358,21 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             "docs_path": None,
             "deployments": {"f", "BasicDriver"},
             "source": "declarative",
+            "required_resources": {
+                "f": {
+                    "CPU": f_deployment_options.get("ray_actor_options", {}).get(
+                        "num_cpus", 0.1
+                    )
+                },
+                "BasicDriver": {"CPU": 0.1},
+            },
         },
         "app2": {
             "route_prefix": "/banana",
             "docs_path": "/my_docs",
             "deployments": {"FastAPIDeployment"},
             "source": "declarative",
+            "required_resources": {"FastAPIDeployment": {"CPU": 1}},
         },
     }
 
@@ -444,6 +452,10 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
                     == deployment.deployment_config.num_replicas
                 )
                 assert len(deployment.replicas) == deployment.target_num_replicas
+            assert (
+                deployment.required_resources
+                == expected_values[app]["required_resources"][deployment.name]
+            )
 
             for replica in deployment.replicas:
                 assert replica.replica_id

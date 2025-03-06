@@ -1,8 +1,6 @@
-load("//bazel:python.bzl", "py_test_run_all_subdirectory")
-load("//bazel:python.bzl", "py_test_run_all_notebooks")
-load("//bazel:python.bzl", "doctest")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:python.bzl", "doctest", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
 
 exports_files(["test_myst_doc.py"])
 
@@ -153,6 +151,42 @@ py_test(
     ],
 )
 
+py_test(
+    name = "doc_code_cgraph_profiling",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_profiling.py"],
+    main = "source/ray-core/doc_code/cgraph_profiling.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_cgraph_nccl",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_nccl.py"],
+    main = "source/ray-core/doc_code/cgraph_nccl.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_cgraph_overlap",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_overlap.py"],
+    main = "source/ray-core/doc_code/cgraph_overlap.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
@@ -160,6 +194,11 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/runtime_env_example.py",
         "source/ray-core/doc_code/cross_language.py",
         "source/ray-core/doc_code/ray_oom_prevention.py",
+        "source/ray-core/doc_code/cgraph_profiling.py",
+        "source/ray-core/doc_code/cgraph_nccl.py",
+        "source/ray-core/doc_code/cgraph_overlap.py",
+        # not testing this as it purposefully segfaults
+        "source/ray-core/doc_code/cgraph_troubleshooting.py",
     ],
     extra_srcs = [],
     tags = [
@@ -215,7 +254,8 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = [
         "source/serve/doc_code/distilbert.py",
-        "source/serve/doc_code/stable_diffusion.py",
+        # TODO: Re-enable after fixing diffusers dependency in runtime_env
+        # "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
     ],
     env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
@@ -274,21 +314,6 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
     ],
-    extra_srcs = [],
-    tags = [
-        "exclusive",
-        "team:ml",
-    ],
-)
-
-# --------------------------------------------------------------------
-# Test all doc/source/ray-overview/doc_test snippets, used on ray.io
-# --------------------------------------------------------------------
-
-py_test_run_all_subdirectory(
-    size = "small",
-    include = ["source/ray-overview/doc_test/*.py"],
-    exclude = ["source/ray-overview/doc_test/ray_data.py"],
     extra_srcs = [],
     tags = [
         "exclusive",
@@ -428,7 +453,7 @@ doctest(
             "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-gpus.rst",
             "source/train/horovod.rst",  # CI do not have Horovod
-        ]
+        ],
     ),
     tags = ["team:ml"],
 )
@@ -456,18 +481,28 @@ doctest(
 
 doctest(
     name = "doctest[rllib]",
-    size = "enormous",
+    size = "large",
+    data = ["//rllib:cartpole-v1_large"],
     files = glob(
         include = [
             "source/rllib/**/*.rst",
             "source/rllib/**/*.md",
         ],
         exclude = [
-            "source/rllib/rllib-env.rst",
-            "source/rllib/rllib-sample-collection.rst",
+            "source/rllib/getting-started.rst",
         ],
     ),
-    data = ["//rllib:cartpole-v1_large"],
+    tags = ["team:rllib"],
+)
+
+doctest(
+    name = "doctest[rllib2]",
+    size = "large",
+    files = glob(
+        include = [
+            "source/rllib/getting-started.rst",
+        ],
+    ),
     tags = ["team:rllib"],
 )
 

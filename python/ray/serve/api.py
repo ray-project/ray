@@ -1,35 +1,40 @@
 import collections
 import inspect
 import logging
-import time
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
+from attr import dataclass
 from fastapi import APIRouter, FastAPI
 
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray.dag import DAGNode
+from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
-from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.constants import (
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
+from ray.serve._private.local_testing_mode import make_local_deployment_handle
+from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_string,
     validate_route_prefix,
+    wait_for_interrupt,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -52,6 +57,7 @@ from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -195,7 +201,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
         if issubclass(cls, collections.abc.Callable):
             raise ValueError(
-                "Class passed to @serve.ingress may not have __call__ method."
+                "Classes passed to @serve.ingress may not have __call__ method."
             )
 
         # Sometimes there are decorators on the methods. We want to fix
@@ -423,71 +429,162 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@DeveloperAPI
+@dataclass(frozen=True)
+class RunTarget:
+    """Represents a Serve application to run for `serve.run_many`."""
+
+    target: Application
+    name: str = SERVE_DEFAULT_APP_NAME
+    route_prefix: Optional[str] = "/"
+    logging_config: Optional[Union[Dict, LoggingConfig]] = None
+
+
+@DeveloperAPI
+def _run_many(
+    targets: Sequence[RunTarget],
+    wait_for_ingress_deployment_creation: bool = True,
+    wait_for_applications_running: bool = True,
+    _local_testing_mode: bool = False,
+) -> List[DeploymentHandle]:
+    """Run many applications and return the handles to their ingress deployments.
+
+    This is only used internally with the _blocking not totally blocking the following
+    code indefinitely until Ctrl-C'd.
+    """
+    if not targets:
+        raise ValueError("No applications provided.")
+
+    if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
+        if not _local_testing_mode:
+            logger.info("Overriding local_testing_mode=True from environment variable.")
+
+        _local_testing_mode = True
+
+    built_apps = []
+    for t in targets:
+        if len(t.name) == 0:
+            raise RayServeException("Application name must a non-empty string.")
+
+        if not isinstance(t.target, Application):
+            raise TypeError(
+                "`serve.run` expects an `Application` returned by `Deployment.bind()`."
+            )
+
+        validate_route_prefix(t.route_prefix)
+
+        built_apps.append(
+            build_app(
+                t.target,
+                name=t.name,
+                route_prefix=t.route_prefix,
+                logging_config=t.logging_config,
+                make_deployment_handle=make_local_deployment_handle
+                if _local_testing_mode
+                else None,
+                default_runtime_env=ray.get_runtime_context().runtime_env
+                if not _local_testing_mode
+                else None,
+            )
+        )
+
+    if _local_testing_mode:
+        # implicitly use the last target's logging config (if provided) in local testing mode
+        logging_config = t.logging_config or LoggingConfig()
+        if not isinstance(logging_config, LoggingConfig):
+            logging_config = LoggingConfig(**(logging_config or {}))
+
+        configure_component_logger(
+            component_name="local_test",
+            component_id="-",
+            logging_config=logging_config,
+            stream_handler_only=True,
+        )
+        return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
+    else:
+        client = _private_api.serve_start(
+            http_options={"location": "EveryNode"},
+            global_logging_config=None,
+        )
+
+        # Record after Ray has been started.
+        ServeUsageTag.API_VERSION.record("v2")
+
+        return client.deploy_applications(
+            built_apps,
+            wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
+            wait_for_applications_running=wait_for_applications_running,
+        )
+
+
 @PublicAPI(stability="stable")
 def _run(
     target: Application,
+    *,
     _blocking: bool = True,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
     This is only used internally with the _blocking not totally blocking the following
     code indefinitely until Ctrl-C'd.
     """
-    if len(name) == 0:
-        raise RayServeException("Application name must a non-empty string.")
-
-    validate_route_prefix(route_prefix)
-
-    client = _private_api.serve_start(
-        http_options={"location": "EveryNode"},
-    )
-
-    # Record after Ray has been started.
-    ServeUsageTag.API_VERSION.record("v2")
-
-    if isinstance(target, Application):
-        deployments = pipeline_build(target._get_internal_dag_node(), name)
-        ingress_deployment_name = deployments[-1].name
-    else:
-        msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
-        if isinstance(target, DAGNode):
-            msg += (
-                " If you are using the DAG API, you must bind the DAG node to a "
-                "deployment like: `app = Deployment.bind(my_dag_output)`. "
+    return _run_many(
+        [
+            RunTarget(
+                target=target,
+                name=name,
+                route_prefix=route_prefix,
+                logging_config=logging_config,
             )
-        raise TypeError(msg)
+        ],
+        wait_for_applications_running=_blocking,
+        _local_testing_mode=_local_testing_mode,
+    )[0]
 
-    parameter_group = []
-    for deployment in deployments:
-        is_ingress = deployment._name == ingress_deployment_name
-        if deployment.logging_config is None and logging_config:
-            deployment = deployment.options(logging_config=logging_config)
 
-        deployment_parameters = {
-            "name": deployment._name,
-            "replica_config": deployment._replica_config,
-            "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_string(),
-            "route_prefix": route_prefix if is_ingress else None,
-            "docs_path": deployment._docs_path,
-            "ingress": is_ingress,
-        }
-        parameter_group.append(deployment_parameters)
+@DeveloperAPI
+def run_many(
+    targets: Sequence[RunTarget],
+    blocking: bool = False,
+    wait_for_ingress_deployment_creation: bool = True,
+    wait_for_applications_running: bool = True,
+    _local_testing_mode: bool = False,
+) -> List[DeploymentHandle]:
+    """Run many applications and return the handles to their ingress deployments.
 
-    client.deploy_application(
-        name,
-        parameter_group,
-        _blocking=_blocking,
+    Args:
+        targets:
+            A sequence of `RunTarget`,
+            each containing information about an application to deploy.
+        blocking: Whether this call should be blocking. If True, it
+            will loop and log status until Ctrl-C'd.
+        wait_for_ingress_deployment_creation: Whether to wait for the ingress
+            deployments to be created.
+        wait_for_applications_running: Whether to wait for the applications to be
+            running. Note that this effectively implies
+            `wait_for_ingress_deployment_creation=True`,
+            because the ingress deployments must be created
+            before the applications can be running.
+
+    Returns:
+        List[DeploymentHandle]: A list of handles that can be used
+            to call the applications.
+    """
+    handles = _run_many(
+        targets,
+        wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
+        wait_for_applications_running=wait_for_applications_running,
+        _local_testing_mode=_local_testing_mode,
     )
 
-    # The deployment state is not guaranteed to be created after
-    # deploy_application returns; the application state manager will
-    # need another reconcile iteration to create it.
-    client._wait_for_deployment_created(ingress_deployment_name, name)
-    return client.get_handle(ingress_deployment_name, name, check_exists=False)
+    if blocking:
+        wait_for_interrupt()
+
+    return handles
 
 
 @PublicAPI(stability="stable")
@@ -497,6 +594,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -529,19 +627,12 @@ def run(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
+        _local_testing_mode=_local_testing_mode,
     )
-    logger.info(f"Deployed app '{name}' successfully.")
 
     if blocking:
-        try:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
-        except KeyboardInterrupt:
-            logger.warning("Got KeyboardInterrupt, exiting...")
-            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
-            # from the main script.
-            raise
+        wait_for_interrupt()
+
     return handle
 
 
@@ -721,7 +812,7 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
-    _request_context = ray.serve.context._serve_request_context.get()
+    _request_context = ray.serve.context._get_serve_request_context()
     return _request_context.multiplexed_model_id
 
 

@@ -19,6 +19,10 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <chrono>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/asio_chaos.h"
@@ -26,7 +30,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/util/util.h"
+#include "ray/util/thread_utils.h"
 
 namespace ray {
 namespace rpc {
@@ -202,7 +206,7 @@ class ClientCallManager {
         num_threads_(num_threads),
         shutdown_(false),
         call_timeout_ms_(call_timeout_ms) {
-    rr_index_ = rand() % num_threads_;
+    rr_index_ = std::rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
@@ -266,7 +270,8 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(
+        &call->reply_, &call->status_, static_cast<void *>(tag));
     return call;
   }
 

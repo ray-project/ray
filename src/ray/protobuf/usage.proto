@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.usage;
 
@@ -186,7 +185,7 @@ enum TagKey {
   // One of: "Trainer.fit", "Tuner.fit", "tune.run", "tune.run_experiments"
   AIR_ENTRYPOINT = 508;
 
-  // Train Utilities
+  // Train
   TRAIN_TORCH_GET_DEVICE = 509;
   TRAIN_TORCH_PREPARE_MODEL = 510;
   TRAIN_TORCH_PREPARE_DATALOADER = 511;
@@ -199,4 +198,7 @@ enum TagKey {
   TRAIN_TRANSFORMERS_PREPARE_TRAINER = 518;
   TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK = 519;
   TRAIN_TORCH_GET_DEVICES = 520;
+
+  // Train V2 Trainer name (e.g. "TorchTrainer")
+  TRAIN_TRAINER = 521;
 }

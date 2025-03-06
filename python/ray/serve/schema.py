@@ -19,7 +19,6 @@ from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ProxyStatus,
     ReplicaState,
     ServeDeployMode,
 )
@@ -788,6 +787,22 @@ class ServeDeploySchema(BaseModel):
         return {"applications": []}
 
 
+# Keep in sync with ServeSystemActorStatus in
+# python/ray/dashboard/client/src/type/serve.ts
+@PublicAPI(stability="stable")
+class ProxyStatus(str, Enum):
+    """The current status of the proxy."""
+
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
+    DRAINED = "DRAINED"
+
+
 @PublicAPI(stability="alpha")
 @dataclass
 class DeploymentStatusOverview:
@@ -936,6 +951,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "change over time for autoscaling deployments, but will remain a constant "
             "number for other deployments."
         )
+    )
+    required_resources: Dict = Field(
+        description="The resources required per replica of this deployment."
     )
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."

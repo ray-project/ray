@@ -1,5 +1,5 @@
 #!/bin/bash
-# This script is used to login to gcloud docker registry using GCP workload identity 
+# This script is used to login to gcloud docker registry using GCP workload identity
 # federation service account
 
 set -euo pipefail

@@ -24,7 +24,7 @@ def test_rllib_integration(ray_start_regular):
                 dqn.DQNConfig().environment("CartPole-v1")
                 # Run locally.
                 # Test with compression.
-                .rollouts(num_rollout_workers=0, compress_observations=True)
+                .env_runners(num_env_runners=0, compress_observations=True)
             )
             num_iterations = 2
             trainer = config.build()
@@ -47,22 +47,6 @@ def test_rllib_integration_tune(ray_start_regular):
             tune.run(
                 "DQN", config={"env": "CartPole-v1"}, stop={"training_iteration": 2}
             )
-
-
-@pytest.mark.asyncio
-async def test_serve_handle(ray_start_regular):
-    with ray_start_client_server():
-        from ray import serve
-
-        with enable_client_mode():
-            serve.start()
-
-            @serve.deployment
-            def hello():
-                return "hello"
-
-            handle = serve.run(hello.bind()).options(use_new_handle_api=True)
-            assert await handle.remote() == "hello"
 
 
 if __name__ == "__main__":

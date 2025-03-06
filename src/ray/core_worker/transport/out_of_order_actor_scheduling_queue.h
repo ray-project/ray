@@ -22,9 +22,9 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/transport/actor_scheduling_util.h"
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 #include "ray/core_worker/transport/scheduling_queue.h"
+#include "ray/core_worker/transport/scheduling_util.h"
 #include "ray/core_worker/transport/thread_pool.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/server_call.h"
@@ -101,7 +101,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// This stores all the tasks that have previous attempts that are pending.
   /// They are queued and will be executed after the previous attempt finishes.
   /// This can happen if transient network error happens after an actor
-  /// task is submitted and recieved by the actor and the caller retries
+  /// task is submitted and received by the actor and the caller retries
   /// the same task.
   absl::flat_hash_map<TaskID, InboundRequest> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.

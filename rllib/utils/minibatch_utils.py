@@ -60,7 +60,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         minibatch_size: int,
         shuffle_batch_per_epoch: bool = True,
         num_total_minibatches: int = 0,
-        _uses_new_env_runners: bool = False,
     ) -> None:
         """Initializes a MiniBatchCyclicIterator instance."""
         super().__init__(
@@ -79,8 +78,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._start = {mid: 0 for mid in batch.policy_batches.keys()}
         # mapping from module_id to the number of epochs covered for each module_id
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
-
-        self._uses_new_env_runners = _uses_new_env_runners
 
         self._minibatch_count = 0
         self._num_total_minibatches = num_total_minibatches
@@ -119,8 +116,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 #  these setups require sequencing, BUT their batches are not yet time-
                 #  ranked (this is done only in their loss functions via the
                 #  `make_time_major` utility).
-                #  Get rid of the _uses_new_env_runners c'tor arg, once this work is
-                #  done.
                 n_steps = self._minibatch_size
 
                 samples_to_concat = []
@@ -139,11 +134,10 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
 
-                    if self._uses_new_env_runners:
-                        n_steps = int(
-                            get_len(module_batch)
-                            * (self._minibatch_size / len(module_batch))
-                        )
+                    n_steps = int(
+                        get_len(module_batch)
+                        * (self._minibatch_size / len(module_batch))
+                    )
 
                 else:
 

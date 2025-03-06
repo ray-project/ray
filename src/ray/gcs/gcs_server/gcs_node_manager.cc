@@ -29,20 +29,23 @@ namespace ray {
 namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(
-    std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    const ClusterID &cluster_id)
-    : gcs_publisher_(std::move(gcs_publisher)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
-      raylet_client_pool_(std::move(raylet_client_pool)),
-      cluster_id_(cluster_id) {}
+GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
+                               gcs::GcsTableStorage *gcs_table_storage,
+                               instrumented_io_context &io_context,
+                               rpc::NodeManagerClientPool *raylet_client_pool,
+                               const ClusterID &cluster_id)
+    : gcs_publisher_(gcs_publisher),
+      gcs_table_storage_(gcs_table_storage),
+      io_context_(io_context),
+      raylet_client_pool_(raylet_client_pool),
+      cluster_id_(cluster_id) {
+  export_event_write_enabled_ = IsExportAPIEnabledNode();
+}
 
 void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
   /// Write node_info as a export node event if
   /// enable_export_api_write() is enabled.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  if (!export_event_write_enabled_) {
     return;
   }
   std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr =
@@ -91,7 +94,8 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_LOG(INFO).WithField(node_id)
         << "Finished registering node info, address = "
         << request.node_info().node_manager_address()
-        << ", node name = " << request.node_info().node_name();
+        << ", node name = " << request.node_info().node_name()
+        << ", is_head_node = " << request.node_info().is_head_node();
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     WriteNodeExportEvent(request.node_info());
@@ -115,15 +119,15 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                     [this, request, on_done, node_id](const Status &status) {
                       RAY_CHECK_OK(status);
                       RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
-                          node_id, request.node_info(), on_done));
+                          node_id, request.node_info(), {on_done, io_context_}));
                     });
     } else {
-      RAY_CHECK_OK(
-          gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+      RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+          node_id, request.node_info(), {on_done, io_context_}));
     }
   } else {
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(
+        node_id, request.node_info(), {on_done, io_context_}));
   }
   ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
@@ -166,7 +170,8 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     WriteNodeExportEvent(*node);
   };
-  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
+  RAY_CHECK_OK(
+      gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_}));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -218,19 +223,29 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   int64_t limit =
       (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
-  NodeID filter_node_id = request.filters().has_node_id()
-                              ? NodeID::FromBinary(request.filters().node_id())
-                              : NodeID::Nil();
-  std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state = std::nullopt;
-  if (request.filters().has_state()) {
-    filter_state = request.filters().state();
-  }
-  std::string filter_node_name = request.filters().node_name();
-  auto filter_fn = [&filter_node_id, &filter_node_name](const rpc::GcsNodeInfo &node) {
-    if (!filter_node_id.IsNil() && filter_node_id != NodeID::FromBinary(node.node_id())) {
+  std::optional<NodeID> filter_node_id =
+      request.filters().has_node_id()
+          ? std::make_optional(NodeID::FromBinary(request.filters().node_id()))
+          : std::nullopt;
+  std::optional<std::string> filter_node_name =
+      request.filters().has_node_name()
+          ? std::make_optional(request.filters().node_name())
+          : std::nullopt;
+  std::optional<std::string> filter_node_ip_address =
+      request.filters().has_node_ip_address()
+          ? std::make_optional(request.filters().node_ip_address())
+          : std::nullopt;
+  auto filter_fn = [&filter_node_id, &filter_node_name, &filter_node_ip_address](
+                       const rpc::GcsNodeInfo &node) {
+    if (filter_node_id.has_value() &&
+        *filter_node_id != NodeID::FromBinary(node.node_id())) {
       return false;
     }
-    if (!filter_node_name.empty() && filter_node_name != node.node_name()) {
+    if (filter_node_name.has_value() && *filter_node_name != node.node_name()) {
+      return false;
+    }
+    if (filter_node_ip_address.has_value() &&
+        *filter_node_ip_address != node.node_manager_address()) {
       return false;
     }
     return true;
@@ -240,18 +255,21 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   auto add_to_response =
       [limit, reply, filter_fn, &num_added, &num_filtered](
           const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
-        for (const auto &entry : nodes) {
+        for (const auto &[node_id, node_info_ptr] : nodes) {
           if (num_added >= limit) {
             break;
           }
-          if (filter_fn(*entry.second)) {
-            *reply->add_node_info_list() = *entry.second;
+          if (filter_fn(*node_info_ptr)) {
+            *reply->add_node_info_list() = *node_info_ptr;
             num_added += 1;
           } else {
             num_filtered += 1;
           }
         }
       };
+  std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state =
+      request.filters().has_state() ? std::make_optional(request.filters().state())
+                                    : std::nullopt;
   if (filter_state == std::nullopt) {
     add_to_response(alive_nodes_);
     add_to_response(dead_nodes_);
@@ -268,8 +286,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
     return;
   }
-  size_t total = alive_nodes_.size() + dead_nodes_.size();
-  reply->set_total(total);
+  reply->set_total(alive_nodes_.size() + dead_nodes_.size());
   reply->set_num_filtered(num_filtered);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
@@ -392,8 +409,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
       RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
 
@@ -429,7 +446,8 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
       }
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Put(node_id, *node, {on_done, io_context_}));
   } else if (node_table_updated_callback != nullptr) {
     node_table_updated_callback(Status::OK());
   }
@@ -458,17 +476,19 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       sorted_dead_node_list_.emplace_back(node_id, node_info.end_time_ms());
     }
   }
-  sorted_dead_node_list_.sort(
-      [](const std::pair<NodeID, int64_t> &left,
-         const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
+  std::sort(
+      sorted_dead_node_list_.begin(),
+      sorted_dead_node_list_.end(),
+      [](const auto &left, const auto &right) { return left.second < right.second; });
 }
 
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
-    const auto &node_id = sorted_dead_node_list_.begin()->first;
-    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, nullptr));
-    dead_nodes_.erase(sorted_dead_node_list_.begin()->first);
-    sorted_dead_node_list_.erase(sorted_dead_node_list_.begin());
+    const auto &node_id = sorted_dead_node_list_.front().first;
+    RAY_CHECK_OK(
+        gcs_table_storage_->NodeTable().Delete(node_id, {[](auto) {}, io_context_}));
+    dead_nodes_.erase(sorted_dead_node_list_.front().first);
+    sorted_dead_node_list_.pop_front();
   }
   auto node_id = NodeID::FromBinary(node->node_id());
   dead_nodes_.emplace(node_id, node);

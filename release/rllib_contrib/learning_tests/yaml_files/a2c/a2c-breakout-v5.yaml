@@ -1,5 +1,5 @@
 a2c-breakoutnoframeskip-v5:
-    env: ALE/Breakout-v5
+    env: ale_py:ALE/Breakout-v5
     run: A2C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
@@ -14,7 +14,7 @@ a2c-breakoutnoframeskip-v5:
         rollout_fragment_length: auto
         clip_rewards: True
         num_workers: 5
-        num_envs_per_worker: 5
+        num_envs_per_env_runner: 5
         num_gpus: 1
         lr_schedule: [
             [0, 0.0007],

@@ -23,9 +23,9 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are job id, and pid.
-WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
+WORKER_LOG_PATTERN = re.compile(r".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
-RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
+RUNTIME_ENV_SETUP_PATTERN = re.compile(r".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
 # We need it because log name update is CPU intensive and uses 100%
 # of cpu when there are many log files.
@@ -235,6 +235,11 @@ class LogMonitor:
 
         # If gcs server restarts, there can be multiple log files.
         monitor_log_paths += glob.glob(f"{self.logs_dir}/gcs_server*.err")
+
+        # Add libtpu logs if they exist in the Ray container.
+        tpu_log_dir = f"{self.logs_dir}/tpu_logs"
+        if os.path.isdir(tpu_log_dir):
+            monitor_log_paths += glob.glob(f"{self.logs_dir}/tpu_logs/**")
 
         # runtime_env setup process is logged here
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:

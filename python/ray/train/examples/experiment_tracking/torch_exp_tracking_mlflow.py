@@ -1,4 +1,4 @@
-# flake8: noqa
+# ruff: noqa
 # isort: skip_file
 from filelock import FileLock
 import os
@@ -45,7 +45,7 @@ def train_func(config):
 
     # Data
     transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
+        [transforms.ToTensor(), transforms.Normalize((0.28604,), (0.32025,))]
     )
     with FileLock("./data.lock"):
         train_data = datasets.FashionMNIST(

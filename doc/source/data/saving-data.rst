@@ -64,9 +64,9 @@ To write data to formats other than Parquet, read the :ref:`Input/Output referen
 
             ds.write_parquet("s3://my-bucket/my-folder")
 
-        Ray Data relies on PyArrow for authenticaion with Amazon S3. For more on how to configure
+        Ray Data relies on PyArrow to authenticate with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
-        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+        `S3 Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
     .. tab-item:: GCS
 
@@ -89,9 +89,9 @@ To write data to formats other than Parquet, read the :ref:`Input/Output referen
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
 
-        Ray Data relies on PyArrow for authenticaion with Google Cloud Storage. For more on how
+        Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
-        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+        `GCS Filesystem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
     .. tab-item:: ABS
 
@@ -114,7 +114,7 @@ To write data to formats other than Parquet, read the :ref:`Input/Output referen
             filesystem = adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
             ds.write_parquet("az://my-bucket/my-folder", filesystem=filesystem)
 
-        Ray Data relies on PyArrow for authenticaion with Azure Blob Storage. For more on how
+        Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
@@ -143,12 +143,15 @@ Changing the number of output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When you call a write method, Ray Data writes your data to several files. To control the
-number of output files, configure ``num_rows_per_file``.
+number of output files, configure ``min_rows_per_write``.
 
 .. note::
 
-    ``num_rows_per_file`` is a hint, not a strict limit. Ray Data might write more or
-    fewer rows to each file.
+    ``min_rows_per_write`` is a hint, not a strict limit. Ray Data might write more or
+    fewer rows to each file. Under the hood, if the number of rows per block is
+    larger than the specified value, Ray Data writes
+    the number of rows per block to each file.
+
 
 .. testcode::
 
@@ -156,7 +159,7 @@ number of output files, configure ``num_rows_per_file``.
     import ray
 
     ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-    ds.write_csv("/tmp/few_files/", num_rows_per_file=75)
+    ds.write_csv("/tmp/few_files/", min_rows_per_write=75)
 
     print(os.listdir("/tmp/few_files/"))
 

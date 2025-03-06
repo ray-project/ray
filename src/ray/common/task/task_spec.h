@@ -28,7 +28,6 @@
 #include "ray/common/id.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_common.h"
-#include "ray/util/container_util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -306,11 +305,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
-  [[nodiscard]] rpc::RuntimeEnvInfo RuntimeEnvInfo() const;
+  [[nodiscard]] const rpc::RuntimeEnvInfo &RuntimeEnvInfo() const;
 
-  std::string SerializedRuntimeEnv() const;
+  const std::string &SerializedRuntimeEnv() const;
 
-  rpc::RuntimeEnvConfig RuntimeEnvConfig() const;
+  const rpc::RuntimeEnvConfig &RuntimeEnvConfig() const;
 
   bool HasRuntimeEnv() const;
 

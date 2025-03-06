@@ -2,7 +2,6 @@ import numpy as np
 import scipy.signal
 from typing import Dict, Optional
 
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
@@ -157,7 +156,7 @@ def compute_gae_for_sample_batch(
     policy: Policy,
     sample_batch: SampleBatch,
     other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-    episode: Optional[Episode] = None,
+    episode=None,
 ) -> SampleBatch:
     """Adds GAE (generalized advantage estimations) to a trajectory.
 

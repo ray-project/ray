@@ -21,6 +21,10 @@ def export_test(
 ):
     cls = get_trainable_cls(alg_name)
     config = cls.get_default_config()
+    config.api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
     config.checkpointing(export_native_model_files=True)

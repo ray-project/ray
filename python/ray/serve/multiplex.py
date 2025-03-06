@@ -8,7 +8,7 @@ from typing import Any, Callable, List, Set
 from ray.serve import metrics
 from ray.serve._private.common import MultiplexedReplicaInfo
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
+    MODEL_LOAD_LATENCY_BUCKETS_MS,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
@@ -58,15 +58,17 @@ class _ModelMultiplexWrapper:
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
 
+        # log MODEL_LOAD_LATENCY_BUCKET_MS
+        logger.debug(f"MODEL_LOAD_LATENCY_BUCKET_MS: {MODEL_LOAD_LATENCY_BUCKETS_MS}")
         self.model_load_latency_ms = metrics.Histogram(
             "serve_multiplexed_model_load_latency_ms",
             description="The time it takes to load a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
         )
         self.model_unload_latency_ms = metrics.Histogram(
             "serve_multiplexed_model_unload_latency_ms",
             description="The time it takes to unload a model.",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
         )
         self.num_models_gauge = metrics.Gauge(
             "serve_num_multiplexed_models",
@@ -173,7 +175,7 @@ class _ModelMultiplexWrapper:
             The user-constructed model object.
         """
 
-        if type(model_id) != str:
+        if type(model_id) is not str:
             raise TypeError("The model ID must be a string.")
 
         if not model_id:
@@ -249,7 +251,7 @@ class _ModelMultiplexWrapper:
                 await asyncio.get_running_loop().run_in_executor(None, model.__del__)
             else:
                 await model.__del__()
-            setattr(model, "__del__", lambda _: None)
+            model.__del__ = lambda _: None
         unload_latency_ms = (time.time() - unload_start_time) * 1000.0
         self.model_unload_latency_ms.observe(unload_latency_ms)
         logger.info(

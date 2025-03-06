@@ -6,7 +6,6 @@ import os
 import threading
 import time
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -52,9 +51,6 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode  # noqa
 
 torch, nn = try_import_torch()
 
@@ -332,7 +328,7 @@ class TorchPolicy(Policy):
         prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
         prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes=None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         **kwargs,

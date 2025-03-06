@@ -43,7 +43,9 @@ class _LF2CRLF_FileWrapper(object):
         self.flush = fh.flush
         self.fileno = fh.fileno
         if hasattr(fh, "encoding"):
-            self._send = lambda data: connection.sendall(data.encode(fh.encoding))
+            self._send = lambda data: connection.sendall(
+                data.encode(fh.encoding, errors="replace")
+            )
         else:
             self._send = connection.sendall
 
@@ -117,7 +119,7 @@ class _RemotePdb(Pdb):
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
         if not self._quiet:
-            _cry("RemotePdb accepted connection from %s." % repr(address))
+            _cry(f"RemotePdb accepted connection from {address}")
         self.handle = _LF2CRLF_FileWrapper(connection)
         Pdb.__init__(
             self,
@@ -284,22 +286,22 @@ def set_trace(breakpoint_uuid=None):
 
     Can be used within a Ray task or actor.
     """
-    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+    if os.environ.get("RAY_DEBUG", "1") == "1":
         return ray.util.ray_debugpy.set_trace(breakpoint_uuid)
-
-    # If there is an active debugger already, we do not want to
-    # start another one, so "set_trace" is just a no-op in that case.
-    if ray._private.worker.global_worker.debugger_breakpoint == b"":
-        frame = sys._getframe().f_back
-        rdb = _connect_ray_pdb(
-            host=None,
-            port=None,
-            patch_stdstreams=False,
-            quiet=None,
-            breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
-            debugger_external=ray._private.worker.global_worker.ray_debugger_external,
-        )
-        rdb.set_trace(frame=frame)
+    if os.environ.get("RAY_DEBUG", "1") == "legacy":
+        # If there is an active debugger already, we do not want to
+        # start another one, so "set_trace" is just a no-op in that case.
+        if ray._private.worker.global_worker.debugger_breakpoint == b"":
+            frame = sys._getframe().f_back
+            rdb = _connect_ray_pdb(
+                host=None,
+                port=None,
+                patch_stdstreams=False,
+                quiet=None,
+                breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
+                debugger_external=ray._private.worker.global_worker.ray_debugger_external,  # noqa: E501
+            )
+            rdb.set_trace(frame=frame)
 
 
 def _driver_set_trace():
@@ -308,27 +310,27 @@ def _driver_set_trace():
     This disables Ray driver logs temporarily so that the PDB console is not
     spammed: https://github.com/ray-project/ray/issues/18172
     """
-    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+    if os.environ.get("RAY_DEBUG", "1") == "1":
         return ray.util.ray_debugpy.set_trace()
+    if os.environ.get("RAY_DEBUG", "1") == "legacy":
+        print("*** Temporarily disabling Ray worker logs ***")
+        ray._private.worker._worker_logs_enabled = False
 
-    print("*** Temporarily disabling Ray worker logs ***")
-    ray._private.worker._worker_logs_enabled = False
+        def enable_logging():
+            print("*** Re-enabling Ray worker logs ***")
+            ray._private.worker._worker_logs_enabled = True
 
-    def enable_logging():
-        print("*** Re-enabling Ray worker logs ***")
-        ray._private.worker._worker_logs_enabled = True
-
-    pdb = _PdbWrap(enable_logging)
-    frame = sys._getframe().f_back
-    pdb.set_trace(frame)
+        pdb = _PdbWrap(enable_logging)
+        frame = sys._getframe().f_back
+        pdb.set_trace(frame)
 
 
-def _is_ray_debugger_enabled():
-    return "RAY_PDB" in os.environ or ray.util.ray_debugpy._is_ray_debugger_enabled()
+def _is_ray_debugger_post_mortem_enabled():
+    return os.environ.get("RAY_DEBUG_POST_MORTEM", "0") == "1"
 
 
 def _post_mortem():
-    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+    if os.environ.get("RAY_DEBUG", "1") == "1":
         return ray.util.ray_debugpy._post_mortem()
 
     rdb = _connect_ray_pdb(
@@ -342,16 +344,28 @@ def _post_mortem():
 
 
 def _connect_pdb_client(host, port):
+    if sys.platform == "win32":
+        import msvcrt
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, port))
 
     while True:
         # Get the list of sockets which are readable.
-        read_sockets, write_sockets, error_sockets = select.select(
-            [sys.stdin, s], [], []
-        )
+        if sys.platform == "win32":
+            ready_to_read = select.select([s], [], [], 1)[0]
+            if msvcrt.kbhit():
+                ready_to_read.append(sys.stdin)
+            if not ready_to_read and not sys.stdin.isatty():
+                # in tests, when using pexpect, the pipe makes
+                # the msvcrt.kbhit() trick fail. Assume we are waiting
+                # for stdin, since this will block waiting for input
+                ready_to_read.append(sys.stdin)
+        else:
+            ready_to_read, write_sockets, error_sockets = select.select(
+                [sys.stdin, s], [], []
+            )
 
-        for sock in read_sockets:
+        for sock in ready_to_read:
             if sock == s:
                 # Incoming message from remote debugger.
                 data = sock.recv(4096)

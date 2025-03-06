@@ -105,7 +105,7 @@ def _start_controller(
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
     ).remote(
-        http_config=http_options,
+        http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
     )
@@ -240,16 +240,16 @@ def serve_start(
     return client
 
 
-def call_app_builder_with_args_if_necessary(
+def call_user_app_builder_with_args_if_necessary(
     builder: Union[Application, FunctionType],
     args: Dict[str, Any],
 ) -> Application:
-    """Builds a Serve application from an application builder function.
+    """Calls a user-provided function that returns Serve application.
 
-    If a pre-built application is passed, this is a no-op.
+    If an Application object is passed, this is a no-op.
 
-    Else, we validate the signature of the builder, convert the args dictionary to
-    the user-annotated Pydantic model if provided, and call the builder function.
+    Else, we validate the signature of the function, convert the args dictionary to
+    the user-annotated Pydantic model if provided, and call the function.
 
     The output of the function is returned (must be an Application).
     """

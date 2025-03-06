@@ -9,6 +9,7 @@ from ray_release.config import (
     as_smoke_test,
     find_test,
     read_and_validate_release_test_collection,
+    RELEASE_TEST_CONFIG_FILES,
 )
 from ray_release.configs.global_config import init_global_config
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
@@ -114,7 +115,7 @@ def main(
     )
     init_global_config(global_config_file)
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file or ["release/release_tests.yaml"],
+        test_collection_file or RELEASE_TEST_CONFIG_FILES,
         test_definition_root,
     )
     test = find_test(test_collection, test_name)
