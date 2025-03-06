@@ -20,6 +20,7 @@ Environment variables aren't passed from the Driver process to Worker processes
    :start-after: __env_var_start__
    :end-before: __env_var_end__
 
+
 **Expected behavior:** Users may expect that setting environment variables on the Driver sends them to all Worker processes as if running on a single machine, but it doesn't.
 
 **Fix:** Enable Runtime Environments to explicitly pass environment variables. When you call ``ray.init(runtime_env=...)``, it sends the specified environment variables to the Workers.
