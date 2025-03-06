@@ -183,9 +183,9 @@ struct ActorCreationOptions {
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
-  /// Wether the actor execute tasks out of order.
+  /// Whether the actor execute tasks out of order.
   const bool execute_out_of_order = false;
-  /// The maxmium actor call pending count.
+  /// The maximum actor call pending count.
   const int max_pending_calls = -1;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
