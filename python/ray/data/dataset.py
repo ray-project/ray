@@ -1421,6 +1421,8 @@ class Dataset:
 
             Note that either `num_blocks` or `target_num_rows_per_block` must be set
             here, but not both.
+            This operation requires all inputs to be materialized in object store
+            when shuffle is set to True.
 
         Returns:
             The repartitioned :class:`Dataset`.
