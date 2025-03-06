@@ -18,7 +18,7 @@
 
 namespace ray {
 
-void FakeCgroupSetup::AddSystemProcess(pid_t pid) {
+void FakeCgroupSetup::AddInternalProcess(pid_t pid) {
   absl::MutexLock lock(&mtx_);
   const bool is_new = system_cgroup_.emplace(pid).second;
   RAY_CHECK(is_new);

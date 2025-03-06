@@ -52,7 +52,7 @@ static constexpr std::string_view kDefaultCgroupV2Id = "default_cgroup_id";
 bool OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) {
   std::ofstream out_file{path.data(), std::ios::out | std::ios::app};
   out_file << content;
-  return out.good();
+  return out_file.good();
 }
 
 bool CreateNewCgroupV2(const AppProcCgroupMetadata &ctx) {
@@ -131,13 +131,6 @@ void PlaceProcessIntoDefaultCgroup(const AppProcCgroupMetadata &ctx) {
 }
 
 }  // namespace
-
-/*static*/ std::unique_ptr<CgroupV2Setup> CgroupV2Setup::New(AppProcCgroupMetadata ctx) {
-  if (!CgroupV2Setup::SetupCgroupV2ForContext(ctx)) {
-    return nullptr;
-  }
-  return std::make_unique<CgroupV2Setup>(std::move(ctx));
-}
 
 CgroupV2Setup::~CgroupV2Setup() {
   if (!CleanupCgroupV2ForContext(ctx_)) {

@@ -36,7 +36,7 @@ bool IsCgroupV2MountedAsRw();
 
 class CgroupSetup : public BaseCgroupSetup {
  public:
-  // Util class to setup cgroups to reserve resources on a ray node for ray system
+  // Util class to setup cgroups to reserve resources on a ray node for ray internal
   // processes on linux, and it works for different environments (VM, bare metal machine
   // and docker). It's expected to call from raylet to setup node level cgroup
   // configurations.
@@ -48,21 +48,21 @@ class CgroupSetup : public BaseCgroupSetup {
   // docker env. Impact:
   // - Application cgroup will be created, where later worker process will be placed
   // under;
-  // - Existing operating system processes and system components will be placed under
-  // system cgroup. For more details, see
+  // - Existing operating internal processes and internal components will be placed under
+  // internal cgroup. For more details, see
   // https://github.com/ray-project/ray/blob/master/src/ray/common/cgroup/README.md
-  explicit CgroupSetup(std::string node_id);
+  explicit CgroupSetup(const std::string &node_id);
 
   // On destruction, all processes in the managed cgroup will be killed via SIGKILL.
   ~CgroupSetup() override;
 
-  void AddSystemProcess(pid_t pid) override;
+  void AddInternalProcess(pid_t pid) override;
 
   ScopedCgroupHandler ApplyCgroupContext(const AppProcCgroupMetadata &ctx) override;
 
  private:
   // Setup cgroup folders for the given [node_id].
-  bool SetupCgroups(const std::string &node_id);
+  void SetupCgroups(const std::string &node_id);
 
   // Util function to cleanup cgroup after raylet exits.
   // NOTICE: This function is expected to be called once for each raylet instance at its
@@ -79,14 +79,12 @@ class CgroupSetup : public BaseCgroupSetup {
   // Apply cgroup context which addes pid into default cgroup folder.
   ScopedCgroupHandler ApplyCgroupForDefaultAppCgroup(const AppProcCgroupMetadata &ctx);
 
-  [[maybe_unused]] bool cgroup_enabled_ = true;
-
   // See README under the current folder for details.
   //
   // Folder for cgroup v2 application processes of the current raylet instance.
   [[maybe_unused]] std::string cgroup_v2_app_folder_;
-  // Folder for cgroup v2 system processes of the current raylet instance.
-  [[maybe_unused]] std::string cgroup_v2_system_folder_;
+  // Folder for cgroup v2 internal processes of the current raylet instance.
+  [[maybe_unused]] std::string cgroup_v2_internal_folder_;
   // Cgroup folder for the current ray node.
   [[maybe_unused]] std::string cgroup_v2_folder_;
 };

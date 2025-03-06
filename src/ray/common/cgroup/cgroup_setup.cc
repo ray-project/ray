@@ -18,7 +18,7 @@
 #ifndef __linux__
 namespace ray {
 CgroupSetup::CgroupSetup() {}
-void CgroupSetup::AddSystemProcess(pid_t pid) {}
+void CgroupSetup::AddInternalProcess(pid_t pid) {}
 ScopedCgroupHandler CgroupSetup::ApplyCgroupContext(const AppProcCgroupMetadata &ctx) {
   return {};
 }
@@ -86,38 +86,17 @@ bool MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
 bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
   std::ofstream out_file(subtree_control_path);
   RAY_CHECK(out_file.good()) << "Failed to open cgroup file " << subtree_control_path;
-  // Able to add memory constraint to the system cgroup.
+  // Able to add memory constraint to the internal cgroup.
   out_file << "+memory";
   return out_file.good();
 }
 
-// Kill all processes inside of the cgroup.
-// If any operation fails, the error is logged and continue.
-void KillProcsUnderCgroupFolder(const std::string &folder) {
-  const std::string cgroup_v2_app_procs = ray::JoinPaths(folder, "cgroup.procs");
-  std::vector<int> dangling_pids;
-  std::ifstream in_file(cgroup_v2_app_procs.data());
-  RAY_CHECK(in_file.good()) << "Failed to open cgroup file " << cgroup_v2_app_procs;
-  pid_t pid = 0;
-  while (in_file >> pid) {
-    dangling_pids.emplace_back(pid);
-  }
-
-  for (pid_t pid : dangling_pids) {
-    if (kill(pid, SIGKILL) == -1) {
-      // TODO(hjiang): Consider to use command which starts the process to be more
-      // user-friendly.
-      RAY_LOG(ERROR) << "Failed to kill process " << pid << " because "
-                     << strerror(errno);
-      continue;
-    }
-    int status = 0;
-    if (waitpid(pid, &status, 0) != -1) {
-      RAY_LOG(ERROR) << "Failed to wait for subprocess when clean up cgroup because "
-                     << strerror(errno);
-      continue;
-    }
-  }
+// Kill all processes under the given [cgroup_folder].
+void KillAllProc(const std::string &cgroup_folder) {
+  const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);
+  std::ofstream f{kill_proc_file};
+  f << "1";
+  RAY_CHECK(f.good()) << "Fails to kill all processes under the cgroup";
 }
 
 }  // namespace
@@ -161,50 +140,44 @@ bool IsCgroupV2MountedAsRw() {
 
 }  // namespace internal
 
-CgroupSetup::CgroupSetup(std::string node_id) {
+CgroupSetup::CgroupSetup(const std::string &node_id) {
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
-
-  cgroup_enabled_ = SetupCgroups(node_id);
+  SetupCgroups(node_id);
 }
 
-bool CgroupSetup::SetupCgroups(const std::string &node_id) {
+void CgroupSetup::SetupCgroups(const std::string &node_id) {
   // Check cgroup accessibility before setup.
-  if (!internal::CanCurrenUserWriteCgroupV2()) {
-    RAY_LOG(ERROR) << "Current user doesn't have the permission to update cgroup v2.";
-    return false;
-  }
-  if (!internal::IsCgroupV2MountedAsRw()) {
-    RAY_LOG(ERROR) << "Cgroup v2 is not mounted in read-write mode.";
-    return false;
-  }
+  RAY_CHECK(internal::CanCurrenUserWriteCgroupV2())
+      << "Current user doesn't have the permission to update cgroup v2.";
+
+  RAY_CHECK(internal::IsCgroupV2MountedAsRw())
+      << "Cgroup v2 is not mounted in read-write mode.";
 
   // Cgroup folder for the current ray node.
   cgroup_v2_folder_ = absl::StrFormat("/sys/fs/cgroup/ray_node_%s", node_id);
 
   cgroup_v2_app_folder_ = absl::StrFormat("%s/ray_application", cgroup_v2_folder_);
-  cgroup_v2_system_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
+  cgroup_v2_internal_folder_ = absl::StrFormat("%s/internal", cgroup_v2_folder_);
   const std::string cgroup_v2_app_procs =
       ray::JoinPaths(cgroup_v2_app_folder_, "cgroup.procs");
   const std::string cgroup_v2_app_subtree_control =
       ray::JoinPaths(cgroup_v2_app_folder_, "cgroup.subtree_control");
-  const std::string cgroup_v2_system_procs =
-      ray::JoinPaths(cgroup_v2_system_folder_, "cgroup.procs");
+  const std::string cgroup_v2_internal_procs =
+      ray::JoinPaths(cgroup_v2_internal_folder_, "cgroup.procs");
 
-  // Create the system cgroup.
-  RAY_CHECK_EQ(mkdir(cgroup_v2_system_folder_.data(), kCgroupFilePerm), 0);
+  // Create the internal cgroup.
+  RAY_CHECK_EQ(mkdir(cgroup_v2_internal_folder_.data(), kCgroupFilePerm), 0);
 
-  // TODO(hjiang): Move GCS and raylet into system cgroup, so we need a way to know system
-  // components PID for raylet.
+  // TODO(hjiang): Move GCS and raylet into internal cgroup, so we need a way to know
+  // internal components PID for raylet.
   RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/kRootCgroupProcs.data(),
-                                    /*to=*/cgroup_v2_system_folder_));
+                                    /*to=*/cgroup_v2_internal_folder_));
   RAY_CHECK(EnableCgroupSubtreeControl(kRootCgroupSubtreeControl.data()));
 
   // Setup application cgroup.
   RAY_CHECK_EQ(mkdir(cgroup_v2_app_folder_.data(), kCgroupFilePerm), 0);
   RAY_CHECK(EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data()));
-
-  return true;
 }
 
 CgroupSetup::~CgroupSetup() { CleanupCgroups(); }
@@ -213,36 +186,24 @@ void CgroupSetup::CleanupCgroups() {
   static InvokeOnceToken token;
   token.CheckInvokeOnce();
 
-  for (const auto &entry : std::filesystem::directory_iterator{cgroup_v2_app_folder_}) {
-    // Search for all subcgroup, terminate all dangling processes and delete the empty
-    // cgroup folder.
-    if (!entry.is_directory()) {
-      continue;
-    }
-    const std::string subcgroup_directory = std::filesystem::absolute(entry.path());
-    KillProcsUnderCgroupFolder(subcgroup_directory);
-    RAY_CHECK(std::filesystem::remove(subcgroup_directory))
-        << "Failed to remove cgroup directory " << subcgroup_directory;
-  }
+  // Kill all dangling processes.
+  KillAllProc(cgroup_v2_app_folder_);
 
-  // Move all system processes into root cgroup and delete system cgroup.
-  RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_system_folder_,
+  // Move all internal processes into root cgroup and delete internal cgroup.
+  RAY_CHECK(MoveProcsBetweenCgroups(/*from=*/cgroup_v2_internal_folder_,
                                     /*to=*/kRootCgroupProcs.data()))
-      << "Failed to move system processes back to root cgroup";
-  RAY_CHECK(std::filesystem::remove(cgroup_v2_system_folder_))
-      << "Failed to delete raylet system cgroup folder";
+      << "Failed to move internal processes back to root cgroup";
+  RAY_CHECK(std::filesystem::remove(cgroup_v2_internal_folder_))
+      << "Failed to delete raylet internal cgroup folder";
 
   // Cleanup cgroup for current node.
   RAY_CHECK(std::filesystem::remove(cgroup_v2_folder_))
-      << "Failed to delete raylet system cgroup folder";
+      << "Failed to delete raylet internal cgroup folder";
 }
 
-void CgroupSetup::AddSystemProcess(pid_t pid) {
-  if (!cgroup_enabled_) {
-    return;
-  }
-  std::ofstream out_file(cgroup_v2_system_folder_);
-  // Able to add memory constraint to the system cgroup.
+void CgroupSetup::AddInternalProcess(pid_t pid) {
+  std::ofstream out_file(cgroup_v2_internal_folder_);
+  // Able to add memory constraint to the internal cgroup.
   out_file << pid;
   RAY_CHECK(out_file.good()) << "Failed to add " << pid << " into cgroup.";
 }
@@ -253,11 +214,8 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(
 
   // Create a new cgroup folder for the given process.
   const std::string cgroup_folder = ray::JoinPaths(cgroup_v2_app_folder_, ctx.id);
-  // Create cgroup folder.
-  const std::string default_cgroup_folder =
-      ray::JoinPaths(cgroup_v2_app_folder_, "default");
-  RAY_CHECK(std::filesystem::create_directory(default_cgroup_folder))
-      << "Failed to create cgroup " << default_cgroup_folder;
+  RAY_CHECK(std::filesystem::create_directory(cgroup_folder))
+      << "Failed to create cgroup " << cgroup_folder;
 
   const std::string cgroup_proc_file = ray::JoinPaths(cgroup_folder, "cgroup.procs");
   std::ofstream out_file(cgroup_proc_file);
@@ -265,7 +223,7 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(
   RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
                              << ctx.max_memory << " into cgroup folder";
 
-  auto delete_cgroup_folder = [folder = default_cgroup_folder]() {
+  auto delete_cgroup_folder = [folder = cgroup_folder]() {
     RAY_CHECK(std::filesystem::remove(folder));  // Not expected to fail.
   };
   return ScopedCgroupHandler{std::move(delete_cgroup_folder)};
