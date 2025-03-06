@@ -21,8 +21,12 @@
 #include <boost/asio/write.hpp>
 #include <boost/bind/bind.hpp>
 #include <chrono>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
