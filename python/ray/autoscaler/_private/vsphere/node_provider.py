@@ -26,13 +26,13 @@ class VsphereWcpNodeProvider(NodeProvider):
         self.tag_cache = {}
         self.tag_cache_lock = threading.Lock()
         self.client = ClusterOperatorClient(
-            cluster_name, provider_config, VmRayNodeProvider.cluster_config
+            cluster_name, provider_config, VsphereWcpNodeProvider.cluster_config
         )
 
     @staticmethod
     def bootstrap_config(cluster_config):
         config = bootstrap_vsphere(cluster_config)
-        VmRayNodeProvider.cluster_config = config
+        VsphereWcpNodeProvider.cluster_config = config
         return config
 
     def non_terminated_nodes(self, tag_filters):
