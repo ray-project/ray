@@ -29,6 +29,9 @@ class BaseRouteTable(abc.ABC):
             self.lineno = lineno
             self.instance = instance
 
+        def __repr__(self):
+            return f"_BindInfo({self.filename}:{self.lineno}, {self.instance})"
+
     @classmethod
     @property
     @abc.abstractmethod
