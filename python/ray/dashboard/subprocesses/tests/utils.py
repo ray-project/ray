@@ -1,8 +1,5 @@
 import asyncio
 import logging
-import os
-import signal
-from typing import AsyncIterator
 
 from ray.dashboard.optional_deps import aiohttp
 
@@ -30,6 +27,10 @@ class TestModule(SubprocessModule):
     async def is_healthy(self) -> bool:
         return True
 
+    @property
+    def gcs_aio_client(self):
+        return None
+
     @routes.get("/test")
     async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return aiohttp.web.Response(
@@ -37,72 +38,71 @@ class TestModule(SubprocessModule):
         )
 
     @routes.post("/echo")
-    async def echo(self, request_body: bytes) -> aiohttp.web.Response:
+    async def echo(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         # await works
         await asyncio.sleep(0.1)
-        return aiohttp.web.Response(
-            body=b"Hello, World from POST /echo from " + request_body
-        )
+        body = await req.text()
+        return aiohttp.web.Response(text="Hello, World from POST /echo from " + body)
 
     @routes.put("/error")
-    async def make_error(self, request_body: bytes) -> aiohttp.web.Response:
+    async def make_error(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         raise ValueError("This is an error")
 
     @routes.put("/error_403")
-    async def make_error_403(self, request_body: bytes) -> aiohttp.web.Response:
+    async def make_error_403(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         # For an ascii art of Gandalf the Grey, see:
         # https://github.com/ray-project/ray/pull/49732#discussion_r1919292428
         raise aiohttp.web.HTTPForbidden(reason="you shall not pass")
 
-    @routes.post("/streamed_iota", streaming=True)
-    async def streamed_iota(self, request_body: bytes) -> AsyncIterator[bytes]:
-        """
-        Streams the numbers 0 to N.
-        """
-        n = int(request_body)
-        for i in range(n):
-            await asyncio.sleep(0.001)
-            yield f"{i}\n".encode()
-
-    @routes.post("/streamed_iota_with_503", streaming=True)
-    async def streamed_iota_with_503(self, request_body: bytes) -> AsyncIterator[bytes]:
-        """
-        Streams the numbers 0 to N, then raises an error.
-        """
-        n = int(request_body)
-        for i in range(n):
-            await asyncio.sleep(0.001)
-            yield f"{i}\n".encode()
-        raise aiohttp.web.HTTPServiceUnavailable(
-            reason=f"Service Unavailable after {n} numbers"
-        )
-
-    @routes.post("/streamed_401", streaming=True)
-    async def streamed_401(self, request_body: bytes) -> AsyncIterator[bytes]:
-        """
-        Raises an error directly in a streamed handler before yielding any data.
-        """
-        raise aiohttp.web.HTTPUnauthorized(
-            reason="Unauthorized although I am not a teapot"
-        )
-        # To make sure Python treats this method as an async generator, we yield something.
-        yield b"Hello, World"
-
-    @routes.post("/run_forever")
-    async def run_forever(self, request_body: bytes) -> aiohttp.web.Response:
-        while True:
-            await asyncio.sleep(1)
-        return aiohttp.web.Response(text="done in the infinite future!")
-
-    @routes.post("/logging_in_module")
-    async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
-        request_body_str = request_body.decode()
-        logger.info(f"In /logging_in_module, {request_body_str}.")
-        return aiohttp.web.Response(text="done!")
-
-    @routes.post("/kill_self")
-    async def kill_self(self, request_body: bytes) -> aiohttp.web.Response:
-        logger.error("Crashing by sending myself a sigkill")
-        os.kill(os.getpid(), signal.SIGKILL)
-        asyncio.sleep(1000)
-        return aiohttp.web.Response(text="done!")
+    # @routes.post("/streamed_iota", streaming=True)
+    # async def streamed_iota(self, request_body: bytes) -> AsyncIterator[bytes]:
+    #     """
+    #     Streams the numbers 0 to N.
+    #     """
+    #     n = int(request_body)
+    #     for i in range(n):
+    #         await asyncio.sleep(0.001)
+    #         yield f"{i}\n".encode()
+    #
+    # @routes.post("/streamed_iota_with_503", streaming=True)
+    # async def streamed_iota_with_503(self, request_body: bytes) -> AsyncIterator[bytes]:
+    #     """
+    #     Streams the numbers 0 to N, then raises an error.
+    #     """
+    #     n = int(request_body)
+    #     for i in range(n):
+    #         await asyncio.sleep(0.001)
+    #         yield f"{i}\n".encode()
+    #     raise aiohttp.web.HTTPServiceUnavailable(
+    #         reason=f"Service Unavailable after {n} numbers"
+    #     )
+    #
+    # @routes.post("/streamed_401", streaming=True)
+    # async def streamed_401(self, request_body: bytes) -> AsyncIterator[bytes]:
+    #     """
+    #     Raises an error directly in a streamed handler before yielding any data.
+    #     """
+    #     raise aiohttp.web.HTTPUnauthorized(
+    #         reason="Unauthorized although I am not a teapot"
+    #     )
+    #     # To make sure Python treats this method as an async generator, we yield something.
+    #     yield b"Hello, World"
+    #
+    # @routes.post("/run_forever")
+    # async def run_forever(self, request_body: bytes) -> aiohttp.web.Response:
+    #     while True:
+    #         await asyncio.sleep(1)
+    #     return aiohttp.web.Response(text="done in the infinite future!")
+    #
+    # @routes.post("/logging_in_module")
+    # async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
+    #     request_body_str = request_body.decode()
+    #     logger.info(f"In /logging_in_module, {request_body_str}.")
+    #     return aiohttp.web.Response(text="done!")
+    #
+    # @routes.post("/kill_self")
+    # async def kill_self(self, request_body: bytes) -> aiohttp.web.Response:
+    #     logger.error("Crashing by sending myself a sigkill")
+    #     os.kill(os.getpid(), signal.SIGKILL)
+    #     asyncio.sleep(1000)
+    #     return aiohttp.web.Response(text="done!")
