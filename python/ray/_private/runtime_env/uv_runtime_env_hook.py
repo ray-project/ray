@@ -27,7 +27,7 @@ def _check_working_dir_files(uv_run_args, runtime_env):
     ).resolve().is_relative_to(working_dir):
         raise RuntimeError(
             f"You specified --with-requirements={known_args.with_requirements} but "
-            f"the requirements file is not in the working_dir {runtime_env["working_dir"]}, "
+            f"the requirements file is not in the working_dir {runtime_env['working_dir']}, "
             "so the workers will not have access to the file. Make sure "
             "the requirements file is in the working directory. "
             "You can do so by specifying --directory in 'uv run', by changing the current "
