@@ -1,5 +1,5 @@
 # __serve_example_begin__
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
 import logging
 
 from fastapi import FastAPI
@@ -24,12 +24,24 @@ from vllm.entrypoints.openai.serving_models import (
     OpenAIServingModels,
 )
 
+from vllm.usage.usage_lib import UsageContext
 from vllm.utils import FlexibleArgumentParser
 from vllm.entrypoints.logger import RequestLogger
 
 logger = logging.getLogger("ray.serve")
 
 app = FastAPI()
+
+
+def get_served_model_names(engine_args: AsyncEngineArgs) -> List[str]:
+    if engine_args.served_model_name is not None:
+        served_model_names: Union[str, List[str]] = engine_args.served_model_name
+        # Because the typing suggests it could be a string or list of strings
+        if isinstance(served_model_names, str):
+            served_model_names: List[str] = [served_model_names]
+    else:
+        served_model_names: List[str] = [engine_args.model]
+    return served_model_names
 
 
 @serve.deployment(
@@ -60,6 +72,15 @@ class VLLMDeployment:
         self.request_logger = request_logger
         self.chat_template = chat_template
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
+        self.usage_context = UsageContext.ENGINE_CONTEXT
+        self.engine_config = self.engine_args.create_engine_config(self.usage_context)
+        served_model_names: List[str] = get_served_model_names(engine_args)
+        additional_metrics_logger: RayPrometheusStatLogger = RayPrometheusStatLogger(
+            local_interval=0.5,
+            labels=dict(model_name=served_model_names[0]),
+            vllm_config=self.engine_config,
+        )
+        self.engine.add_logger("ray", additional_metrics_logger)
 
     @app.post("/v1/chat/completions")
     async def create_chat_completion(
