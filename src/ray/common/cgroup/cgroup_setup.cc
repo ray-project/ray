@@ -232,7 +232,6 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(
   return ScopedCgroupHandler{std::move(delete_cgroup_folder)};
 }
 
-// TODO(hjiang): Make a few constants for cgroup.
 ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
     const AppProcCgroupMetadata &ctx) {
   RAY_CHECK_EQ(ctx.max_memory, 0);  // Sanity check.

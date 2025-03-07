@@ -11,10 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-// TODO(hjiang): The util class should take a parameter like `allow_proceed_at_error` to
-// decide what to do when a non-internal error happens; at the moment we simply log and
-// return for these errors.
 
 #pragma once
 
