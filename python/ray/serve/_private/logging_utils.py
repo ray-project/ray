@@ -19,9 +19,13 @@ from ray.serve._private.constants import (
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_DEPLOYMENT,
+    SERVE_LOG_LEVEL_NAME,
+    SERVE_LOG_MESSAGE,
+    SERVE_LOG_RECORD_FORMAT,
     SERVE_LOG_REPLICA,
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
+    SERVE_LOG_TIME,
     SERVE_LOG_UNWANTED_ATTRS,
     SERVE_LOGGER_NAME,
 )
@@ -113,7 +117,7 @@ class ServeFormatter(TextFormatter):
     The formatter will generate the log format on the fly based on the field of record.
     """
 
-    COMPONENT_LOG_FMT = f"%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s {{{SERVE_LOG_COMPONENT}}} {{{SERVE_LOG_COMPONENT_ID}}} -- %(message)s"
+    COMPONENT_LOG_FMT = f"%({SERVE_LOG_LEVEL_NAME})s %({SERVE_LOG_TIME})s {{{SERVE_LOG_COMPONENT}}} {{{SERVE_LOG_COMPONENT_ID}}} "  # noqa:E501
 
     def __init__(
         self,
@@ -125,24 +129,32 @@ class ServeFormatter(TextFormatter):
         validate=True,
     ):
         super().__init__(fmt, datefmt, style, validate)
-        self.component_name = component_name
-        self.component_id = component_id
-
-        formatter_string = self.COMPONENT_LOG_FMT.format(
+        self.component_log_fmt = self.COMPONENT_LOG_FMT.format(
             component_name=component_name, component_id=component_id
         )
-        self._inner_formatter = logging.Formatter(formatter_string)
 
     def format(self, record: logging.LogRecord) -> str:
-        s = self._inner_formatter.format(record)
-        record_format_attrs = self.generate_record_format_attrs(
-            record, exclude_default_standard_attrs=True
-        )
+        """Format the log record into the format string.
 
-        additional_attrs = " ".join(
-            [f"{key}={value}" for key, value in record_format_attrs.items()]
+        Args:
+            record: The log record to be formatted.
+            Returns:
+                The formatted log record in string format.
+        """
+        record_format = self.component_log_fmt
+        record_formats_attrs = []
+        if SERVE_LOG_REQUEST_ID in record.__dict__:
+            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
+        record_formats_attrs.extend(
+            [f"%({k})s" for k in self.additional_log_standard_attrs]
         )
-        return f"{s} {additional_attrs}"
+        record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
+        record_format += " ".join(record_formats_attrs)
+        # create a formatter using the format string
+        formatter = logging.Formatter(record_format)
+
+        # format the log record using the formatter
+        return formatter.format(record)
 
 
 def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
