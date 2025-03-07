@@ -65,7 +65,7 @@ class ClientConnectionTest : public ::testing::Test {
 
 void CheckNoError(std::shared_ptr<ClientConnection> conn,
                   const boost::system::error_code &error) {
-  RAY_CHECK(FALSE) << "Unexpected connection error: " << error.message();
+  RAY_CHECK(false) << "Unexpected connection error: " << error.message();
 }
 
 /*

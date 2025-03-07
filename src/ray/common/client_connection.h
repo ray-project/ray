@@ -214,7 +214,7 @@ class ClientConnection : public ServerConnection {
                    MessageHandler message_handler,
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
-                   const std::string &debug_label,
+                   std::string debug_label,
                    const std::vector<std::string> &message_type_enum_names);
 
   ClientConnection(const ClientConnection &) = delete;
@@ -234,7 +234,7 @@ class ClientConnection : public ServerConnection {
       MessageHandler message_handler,
       ConnectionErrorHandler connection_error_handler,
       local_stream_socket &&socket,
-      const std::string &debug_label,
+      std::string debug_label,
       const std::vector<std::string> &message_type_enum_names);
 
   std::shared_ptr<ClientConnection> shared_ClientConnection_from_this() {
@@ -256,13 +256,13 @@ class ClientConnection : public ServerConnection {
   ClientConnection(MessageHandler message_handler,
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
-                   const std::string &debug_label,
+                   std::string debug_label,
                    const std::vector<std::string> &message_type_enum_names)
       : ClientConnection(PrivateTag{},
-                         message_handler,
-                         connection_error_handler,
+                         std::move(message_handler),
+                         std::move(connection_error_handler),
                          std::move(socket),
-                         debug_label,
+                         std::move(debug_label),
                          message_type_enum_names) {}
   /// Process an error from the last operation, then process the  message
   /// header from the client.
