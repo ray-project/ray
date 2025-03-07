@@ -150,8 +150,9 @@ Note that CPU quantities will be rounded up to the nearest integer
 before being relayed to Ray.
 The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.
 
-On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
-For this reason, it is best when possible to **set resource requests equal to resource limits**.
+Starting in KubeRay v1.3, Ray uses CPU **requests** if **limits** aren't specified.
+Prior to KubeRay v1.3, Ray ignored CPU, GPU, and memory **requests**,
+so it's recommended to **set resource requests equal to resource limits** when possible.
 
 #### nodeSelector and tolerations
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and
