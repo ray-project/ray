@@ -1,5 +1,7 @@
 import asyncio
+import re
 import sys
+import pathlib
 from typing import List
 
 from ray.dashboard.optional_deps import aiohttp
@@ -121,109 +123,117 @@ async def test_http_server(aiohttp_client, default_module_config):
 #     assert await response.text() == "401: Unauthorized although I am not a teapot"
 #
 #
-# async def test_kill_self(aiohttp_client, default_module_config):
-#     """
-#     If a module died, all pending requests should be failed, and the module should be
-#     restarted. After the restart, subsequent requests should be successful.
-#     """
-#     app = await start_http_server_app(default_module_config, [TestModule])
-#     client = await aiohttp_client(app)
-#
-#     long_running_task = asyncio.create_task(client.post("/run_forever", data=b""))
-#     # Wait for 1s for the long running request to start.
-#     await asyncio.sleep(1)
-#
-#     response = await client.post("/kill_self", data=b"")
-#     assert response.status == 500
-#     assert (
-#         await response.text()
-#         == "500 Internal Server Error\n\nServer got itself in trouble"
-#     )
-#
-#     # Long running request should get a 500.
-#     long_running_response = await long_running_task
-#     assert long_running_response.status == 500
-#     assert (
-#         await long_running_response.text()
-#         == "500 Internal Server Error\n\nServer got itself in trouble"
-#     )
-#
-#     # Assert that after we found it's dead, it's auto restarted.
-#     response = await client.post("/echo", data=b"a restarted dashboard")
-#     assert response.status == 200
-#     assert (
-#         await response.text()
-#         == "Hello, World from POST /echo from a restarted dashboard"
-#     )
-#
-#
-# async def test_logging_in_module(aiohttp_client, default_module_config):
-#     app = await start_http_server_app(default_module_config, [TestModule])
-#     client = await aiohttp_client(app)
-#
-#     response = await client.post(
-#         "/logging_in_module", data=b"Not all those who wander are lost"
-#     )
-#     assert response.status == 200
-#     assert await response.text() == "done!"
-#
-#     # Assert the log file name and read the log file
-#     log_file_path = default_module_config.log_dir / "dashboard-TestModule-0.log"
-#     with open(log_file_path, "r") as f:
-#         log_file_content = f.read()
-#
-#     # Assert on the log format and the content.
-#     log_pattern = (
-#         r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+):\d+ -- (.*)"
-#     )
-#     matches = re.findall(log_pattern, log_file_content)
-#
-#     # Expected format: [(file_name, content), ...]
-#     expected_logs = [
-#         ("utils.py", "TestModule is initing"),
-#         ("utils.py", "TestModule is done initing"),
-#         ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
-#     ]
-#     assert all(
-#         (file_name, content) in matches for (file_name, content) in expected_logs
-#     ), f"Expected to contain {expected_logs}, got {matches}"
-#
-#
-# async def test_logging_in_module_with_multiple_incarnations(
-#     aiohttp_client, default_module_config
-# ):
-#     app = await start_http_server_app(default_module_config, [TestModule])
-#     client = await aiohttp_client(app)
-#
-#     response = await client.post(
-#         "/logging_in_module", data=b"this is from incarnation 0"
-#     )
-#     assert response.status == 200
-#     assert await response.text() == "done!"
-#
-#     response = await client.post("/kill_self", data=b"")
-#     assert response.status == 500
-#     assert (
-#         await response.text()
-#         == "500 Internal Server Error\n\nServer got itself in trouble"
-#     )
-#
-#     response = await client.post(
-#         "/logging_in_module", data=b"and this is from incarnation 1"
-#     )
-#     assert response.status == 200
-#     assert await response.text() == "done!"
-#
-#     # Expect logs from both incarnations.
-#     log_file_path = default_module_config.log_dir / "dashboard-TestModule-0.log"
-#     with open(log_file_path, "r") as f:
-#         log_file_content = f.read()
-#     assert "In /logging_in_module, this is from incarnation 0." in log_file_content
-#
-#     log_file_path = default_module_config.log_dir / "dashboard-TestModule-1.log"
-#     with open(log_file_path, "r") as f:
-#         log_file_content = f.read()
-#     assert "In /logging_in_module, and this is from incarnation 1." in log_file_content
+async def test_kill_self(aiohttp_client, default_module_config):
+    """
+    If a module died, all pending requests should be failed, and the module should be
+    restarted. After the restart, subsequent requests should be successful.
+    """
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    long_running_task = asyncio.create_task(client.post("/run_forever", data=b""))
+    # Wait for 1s for the long running request to start.
+    await asyncio.sleep(1)
+
+    response = await client.post("/kill_self", data=b"")
+    assert response.status == 500
+    assert (
+        await response.text()
+        == "500 Internal Server Error\n\nServer got itself in trouble"
+    )
+
+    # Long running request should get a 500.
+    long_running_response = await long_running_task
+    assert long_running_response.status == 500
+    assert (
+        await long_running_response.text()
+        == "500 Internal Server Error\n\nServer got itself in trouble"
+    )
+
+    # Assert that after we found it's dead, it's auto restarted.
+    await asyncio.sleep(3)
+    response = await client.post("/echo", data=b"a restarted dashboard")
+    assert response.status == 200
+    assert (
+        await response.text()
+        == "Hello, World from POST /echo from a restarted dashboard"
+    )
+
+
+async def test_logging_in_module(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.post(
+        "/logging_in_module", data=b"Not all those who wander are lost"
+    )
+    assert response.status == 200
+    assert await response.text() == "done!"
+
+    # Assert the log file name and read the log file
+    log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard-TestModule-0.log"
+    )
+    with log_file_path.open("r") as f:
+        log_file_content = f.read()
+
+    # Assert on the log format and the content.
+    log_pattern = (
+        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\tINFO ([\w\.]+):\d+ -- (.*)"
+    )
+    matches = re.findall(log_pattern, log_file_content)
+
+    # Expected format: [(file_name, content), ...]
+    expected_logs = [
+        ("utils.py", "TestModule is initing"),
+        ("utils.py", "TestModule is done initing"),
+        ("utils.py", "In /logging_in_module, Not all those who wander are lost."),
+    ]
+    assert all(
+        (file_name, content) in matches for (file_name, content) in expected_logs
+    ), f"Expected to contain {expected_logs}, got {matches}"
+
+
+async def test_logging_in_module_with_multiple_incarnations(
+    aiohttp_client, default_module_config
+):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.post(
+        "/logging_in_module", data=b"this is from incarnation 0"
+    )
+    assert response.status == 200
+    assert await response.text() == "done!"
+
+    response = await client.post("/kill_self", data=b"")
+    assert response.status == 500
+    assert (
+        await response.text()
+        == "500 Internal Server Error\n\nServer got itself in trouble"
+    )
+
+    await asyncio.sleep(3)
+    response = await client.post(
+        "/logging_in_module", data=b"and this is from incarnation 1"
+    )
+    assert response.status == 200
+    assert await response.text() == "done!"
+
+    # Expect logs from both incarnations.
+    log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard-TestModule-0.log"
+    )
+    with log_file_path.open("r") as f:
+        log_file_content = f.read()
+    assert "In /logging_in_module, this is from incarnation 0." in log_file_content
+
+    log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard-TestModule-1.log"
+    )
+    with log_file_path.open("r") as f:
+        log_file_content = f.read()
+    assert "In /logging_in_module, and this is from incarnation 1." in log_file_content
 
 
 if __name__ == "__main__":
