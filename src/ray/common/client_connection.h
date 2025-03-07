@@ -33,7 +33,7 @@ using local_stream_protocol = boost::asio::generic::stream_protocol;
 using local_stream_socket = boost::asio::basic_stream_socket<local_stream_protocol>;
 
 // Set "close on exec" feature for the given file descriptor.
-// WARNIGN: It does no-op on windows platform.
+// WARNING: It does no-op on windows platform.
 void SetCloseOnExec(local_stream_socket &socket);
 void SetCloseOnExec(boost::asio::basic_socket_acceptor<local_stream_protocol> &acceptor);
 
