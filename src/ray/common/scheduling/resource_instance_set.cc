@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "ray/common/bundle_spec.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -99,7 +100,7 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     // TODO (myan): The parsing of the resource_id String can be costly and impact the
     // task creation throughput if the parting is required every time we allocate
     // resources for a task and updating the available resources. The current benchmark
-    // shows no observable impact for now. But in the furture, ideas of improvement are:
+    // shows no observable impact for now. But in the future, ideas of improvement are:
     // (1) to add the placement group id as well as the bundle index inside the
     // ResourceID class. And instead of parse the String, leveraging the fields in the
     // ResourceID class directly; (2) to update the pg resource id format to start with
@@ -371,7 +372,15 @@ void NodeResourceInstanceSet::AllocateWithReference(
   RAY_CHECK_EQ(available.size(), ref_allocation.size());
 
   for (size_t i = 0; i < ref_allocation.size(); i++) {
-    RAY_CHECK_GE(available[i], ref_allocation[i]);
+    if (available[i] < ref_allocation[i]) {
+      // Only CPU resource can go negative due to the behavior
+      // that ray.get() will temporarily release the CPU resource.
+      // See https://github.com/ray-project/ray/pull/50517.
+      RAY_CHECK(IsCPUOrPlacementGroupCPUResource(resource_id))
+          << "Resource " << resource_id.Binary()
+          << " has less availability than requested. Available: "
+          << debug_string(available) << ", requested: " << debug_string(ref_allocation);
+    }
     available[i] -= ref_allocation[i];
   }
 

@@ -27,24 +27,21 @@
 // // Check and consume `val`.
 //
 // TODO(hjiang):
-// 1. Add template arguments for key hash and key equal, to pass into absl::flat_hash_map.
-// 2. Provide a key hash wrapper to save a copy.
-// 3. flat hash map supports heterogeneous lookup, expose `KeyLike` templated interface.
-// 4. Add a `GetOrCreate` interface, which takes factory function to creation value.
-// 5. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
+// For thread-safe cache, add a sharded container wrapper to reduce lock contention.
 
 #pragma once
 
+#include <condition_variable>
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "src/ray/util/logging.h"
+#include "ray/util/logging.h"
+#include "ray/util/map_utils.h"
 
 namespace ray::utils::container {
 
@@ -76,7 +73,7 @@ class SharedLruCache final {
 
     lru_list_.emplace_front(key);
     Entry new_entry{std::move(value), lru_list_.begin()};
-    cache_[std::move(key)] = std::move(new_entry);
+    cache_[std::cref(lru_list_.front())] = std::move(new_entry);
 
     if (max_entries_ > 0 && lru_list_.size() > max_entries_) {
       const auto &stale_key = lru_list_.back();
@@ -90,7 +87,8 @@ class SharedLruCache final {
   // Delete the entry with key `key`. Return true if the entry was found for
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
-  bool Delete(const Key &key) {
+  template <typename KeyLike>
+  bool Delete(KeyLike &&key) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
@@ -100,8 +98,10 @@ class SharedLruCache final {
     return true;
   }
 
-  // Look up the entry with key `key`. Return nullptr if key doesn't exist.
-  std::shared_ptr<Val> Get(const Key &key) {
+  // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
+  // If found, return a copy for the value.
+  template <typename KeyLike>
+  std::shared_ptr<Val> Get(KeyLike &&key) {
     const auto cache_iter = cache_.find(key);
     if (cache_iter == cache_.end()) {
       return nullptr;
@@ -128,7 +128,14 @@ class SharedLruCache final {
     typename std::list<Key>::iterator lru_iterator;
   };
 
-  using EntryMap = absl::flat_hash_map<Key, Entry>;
+  // TODO(hjiang): These two internal type alias has been consolidated into stable header
+  // in later versions, update after we bump up abseil.
+  using KeyHash = absl::container_internal::hash_default_hash<Key>;
+  using KeyEqual = absl::container_internal::hash_default_eq<Key>;
+
+  using KeyConstRef = std::reference_wrapper<const Key>;
+  using EntryMap =
+      absl::flat_hash_map<KeyConstRef, Entry, RefHash<KeyHash>, RefEq<KeyEqual>>;
 
   // The maximum number of entries in the cache. A value of 0 means there is no
   // limit on entry count.
@@ -173,16 +180,80 @@ class ThreadSafeSharedLruCache final {
   // Delete the entry with key `key`. Return true if the entry was found for
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
-  bool Delete(const Key &key) {
+  template <typename KeyLike>
+  bool Delete(KeyLike &&key) {
     std::lock_guard lck(mu_);
-    return cache_.Delete(key);
+    return cache_.Delete(std::forward<KeyLike>(key));
   }
 
   // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
   // If found, return a copy for the value.
-  std::shared_ptr<Val> Get(const Key &key) {
+  template <typename KeyLike>
+  std::shared_ptr<Val> Get(KeyLike &&key) {
     std::lock_guard lck(mu_);
-    return cache_.Get(key);
+    return cache_.Get(std::forward<KeyLike>(key));
+  }
+
+  // Get or creation for cached key-value pairs.
+  //
+  // WARNING: Currently factory cannot have exception thrown.
+  // TODO(hjiang): [factory] should support template.
+  template <typename KeyLike>
+  std::shared_ptr<Val> GetOrCreate(
+      KeyLike &&key, std::function<std::shared_ptr<Val>(const Key &)> factory) {
+    std::shared_ptr<CreationToken> creation_token;
+
+    {
+      std::unique_lock lck(mu_);
+      auto cached_val = cache_.Get(key);
+      if (cached_val != nullptr) {
+        return cached_val;
+      }
+
+      auto creation_iter = ongoing_creation_.find(key);
+
+      // Another thread has requested for the same key-value pair, simply wait for its
+      // completion.
+      if (creation_iter != ongoing_creation_.end()) {
+        creation_token = creation_iter->second;
+        ++creation_token->count;
+        creation_token->cv.wait(lck, [creation_token = creation_token.get()]() {
+          return creation_token->val != nullptr;
+        });
+
+        // Creation finished.
+        --creation_token->count;
+        if (creation_token->count == 0) {
+          // [creation_iter] could be invalidated here due to new insertion/deletion.
+          ongoing_creation_.erase(key);
+        }
+        return creation_token->val;
+      }
+
+      // Current thread is the first one to request for the key-value pair, perform
+      // factory function.
+      creation_iter =
+          ongoing_creation_.emplace(key, std::make_shared<CreationToken>()).first;
+      creation_token = creation_iter->second;
+      creation_token->count = 1;
+    }
+
+    // Place factory out of critical section.
+    std::shared_ptr<Val> val = factory(key);
+
+    {
+      std::lock_guard lck(mu_);
+      cache_.Put(key, val);
+      creation_token->val = val;
+      creation_token->cv.notify_all();
+      int new_count = --creation_token->count;
+      if (new_count == 0) {
+        // [creation_iter] could be invalidated here due to new insertion/deletion.
+        ongoing_creation_.erase(key);
+      }
+    }
+
+    return val;
   }
 
   // Clear the cache.
@@ -195,8 +266,19 @@ class ThreadSafeSharedLruCache final {
   size_t max_entries() const { return cache_.max_entries(); }
 
  private:
+  struct CreationToken {
+    std::condition_variable cv;
+    // Nullptr indicate creation unfinished.
+    std::shared_ptr<Val> val;
+    // Counter for ongoing creation.
+    int count = 0;
+  };
+
   std::mutex mu_;
   SharedLruCache<Key, Val> cache_;
+
+  // Ongoing creation.
+  absl::flat_hash_map<Key, std::shared_ptr<CreationToken>> ongoing_creation_;
 };
 
 // Same interfaces as `SharedLruCache`, but all cached values are

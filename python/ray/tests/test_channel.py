@@ -8,11 +8,13 @@ import traceback
 
 import numpy as np
 import pytest
+import torch
 
 import ray
 import ray.cluster_utils
 import ray.exceptions
 import ray.experimental.channel as ray_channel
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
@@ -907,10 +909,10 @@ def test_composite_channel_single_reader(ray_start_cluster):
             self._chan = channel
 
         def create_composite_channel(
-            self, writer, reader_and_node_list, read_by_adag_driver
+            self, writer, reader_and_node_list, driver_actor_id
         ):
             self._chan = ray_channel.CompositeChannel(
-                writer, reader_and_node_list, 10, read_by_adag_driver
+                writer, reader_and_node_list, 10, driver_actor_id
             )
             return self._chan
 
@@ -926,21 +928,19 @@ def test_composite_channel_single_reader(ray_start_cluster):
     node2 = get_actor_node_id(actor2)
 
     # Create a channel to communicate between driver process and actor1.
-    driver_to_actor1_channel = ray_channel.CompositeChannel(
-        None, [(actor1, node1)], 10, False
-    )
+    driver_to_actor1_channel = ray_channel.CompositeChannel(None, [(actor1, node1)], 10)
     ray.get(actor1.pass_channel.remote(driver_to_actor1_channel))
     driver_to_actor1_channel.write("hello")
     assert ray.get(actor1.read.remote()) == "hello"
 
     # Create a channel to communicate between two tasks in actor1.
-    ray.get(actor1.create_composite_channel.remote(actor1, [(actor1, node1)], False))
+    ray.get(actor1.create_composite_channel.remote(actor1, [(actor1, node1)], None))
     ray.get(actor1.write.remote("world"))
     assert ray.get(actor1.read.remote()) == "world"
 
     # Create a channel to communicate between actor1 and actor2.
     actor1_to_actor2_channel = ray.get(
-        actor1.create_composite_channel.remote(actor1, [(actor2, node2)], False)
+        actor1.create_composite_channel.remote(actor1, [(actor2, node2)], None)
     )
     ray.get(actor2.pass_channel.remote(actor1_to_actor2_channel))
     ray.get(actor1.write.remote("hello world"))
@@ -950,7 +950,9 @@ def test_composite_channel_single_reader(ray_start_cluster):
     driver_actor = create_driver_actor()
     actor2_to_driver_channel = ray.get(
         actor2.create_composite_channel.remote(
-            actor2, [(driver_actor, get_actor_node_id(driver_actor))], True
+            actor2,
+            [(driver_actor, get_actor_node_id(driver_actor))],
+            driver_actor._actor_id.hex(),
         )
     )
     ray.get(actor2.write.remote("world hello"))
@@ -985,9 +987,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
             self._chan = channel
 
         def create_composite_channel(self, writer, reader_and_node_list):
-            self._chan = ray_channel.CompositeChannel(
-                writer, reader_and_node_list, 10, False
-            )
+            self._chan = ray_channel.CompositeChannel(writer, reader_and_node_list, 10)
             return self._chan
 
         def read(self):
@@ -1003,7 +1003,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
 
     # The driver writes data to CompositeChannel and actor1 and actor2 read it.
     driver_output_channel = ray_channel.CompositeChannel(
-        None, [(actor1, node1), (actor2, node2)], 10, False
+        None, [(actor1, node1), (actor2, node2)], 10
     )
     ray.get(actor1.pass_channel.remote(driver_output_channel))
     ray.get(actor2.pass_channel.remote(driver_output_channel))
@@ -1033,12 +1033,19 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         # are the same actor. Note that reading the channel multiple
         # times is supported via channel cache mechanism.
         ray.get(actor1.read.remote())
-    """
-    TODO (kevin85421): Add tests for the following cases:
-    (1) actor1 writes data to CompositeChannel and two Ray tasks on actor2 read it.
-    (2) actor1 writes data to CompositeChannel and actor2 and the driver reads it.
-    Currently, (1) is not supported, and (2) is blocked by the reference count issue.
-    """
+
+    # actor1 writes data to CompositeChannel and actor2 and the driver reads it.
+    driver_actor = create_driver_actor()
+    actor1_output_channel = ray.get(
+        actor1.create_composite_channel.remote(
+            actor1,
+            [(driver_actor, get_actor_node_id(driver_actor)), (actor2, node2)],
+        )
+    )
+    ray.get(actor2.pass_channel.remote(actor1_output_channel))
+    ray.get(actor1.write.remote("world hello"))
+    assert ray.get(actor2.read.remote()) == "world hello"
+    assert actor1_output_channel.read() == "world hello"
 
 
 @pytest.mark.skipif(
@@ -1400,6 +1407,20 @@ def test_buffered_channel(shutdown_only):
             deserialized._buffers[i]._writer._actor_id
             == chan._buffers[i]._writer._actor_id
         )
+
+
+def test_torch_dtype():
+    typ = TorchTensorType()
+    typ.register_custom_serializer()
+
+    t = torch.randn(5, 5, dtype=torch.bfloat16)
+    with pytest.raises(TypeError):
+        t.numpy()
+
+    ref = ray.put(t)
+    t_out = ray.get(ref)
+    assert (t == t_out).all()
+    assert t_out.dtype == t.dtype
 
 
 if __name__ == "__main__":

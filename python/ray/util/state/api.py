@@ -487,6 +487,9 @@ class StateApiClient(SubmissionClient):
             when timeout occurs.
 
         """
+        if options.has_conflicting_filters():
+            # return early with empty list when there are conflicting filters
+            return []
 
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)

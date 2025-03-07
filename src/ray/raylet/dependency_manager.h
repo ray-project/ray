@@ -14,13 +14,11 @@
 
 #pragma once
 
-// clang-format off
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/counter_map.h"
-// clang-format on
 
 namespace ray {
 

@@ -16,7 +16,6 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
-    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
@@ -401,10 +400,6 @@ class AutoscalingConfig:
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
         return provider_config.get(DISABLE_LAUNCH_CONFIG_CHECK_KEY, True)
-
-    def worker_rpc_drain(self) -> bool:
-        provider_config = self._configs.get("provider", {})
-        return provider_config.get(WORKER_RPC_DRAIN_KEY, True)
 
     def get_instance_reconcile_config(self) -> InstanceReconcileConfig:
         # TODO(rickyx): we need a way to customize these configs,

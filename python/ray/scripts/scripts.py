@@ -18,6 +18,7 @@ from ray.util.check_open_ports import check_open_ports
 import requests
 
 import click
+import colorama
 import psutil
 import yaml
 
@@ -26,11 +27,11 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
+    load_class,
     parse_resources_json,
     parse_node_labels_json,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.autoscaler._private.commands import (
@@ -232,6 +233,15 @@ def debug(address: str, verbose: bool):
     address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
+    if os.environ.get("RAY_DEBUG", "1") != "legacy":
+        print(
+            f"{colorama.Fore.YELLOW}NOTE: The distributed debugger "
+            "https://docs.ray.io/en/latest/ray-observability"
+            "/ray-distributed-debugger.html is now the default "
+            "due to better interactive debugging support. If you want "
+            "to keep using 'ray debug' please set RAY_DEBUG=legacy "
+            f"in your cluster (e.g. via runtime environment).{colorama.Fore.RESET}"
+        )
     while True:
         # Used to filter out and clean up entries from dead jobs.
         live_jobs = {
@@ -347,6 +357,14 @@ def debug(address: str, verbose: bool):
     "Defaults to the node's ip_address",
 )
 @click.option(
+    "--redis-username",
+    required=False,
+    hidden=True,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_USERNAME,
+    help="If provided, secure Redis ports with this username",
+)
+@click.option(
     "--redis-password",
     required=False,
     hidden=True,
@@ -427,16 +445,6 @@ def debug(address: str, verbose: bool):
     "of available system memory capped by "
     "the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES) "
     "but can be set higher.",
-)
-@click.option(
-    "--redis-max-memory",
-    required=False,
-    hidden=True,
-    type=int,
-    help="The max amount of memory (in bytes) to allow redis to use. Once the "
-    "limit is exceeded, redis will start LRU eviction of entries. This only "
-    "applies to the sharded redis tables (task, object, and profile tables). "
-    "By default this is capped at 10GB but can be set higher.",
 )
 @click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
@@ -638,6 +646,7 @@ def start(
     address,
     port,
     node_name,
+    redis_username,
     redis_password,
     redis_shard_ports,
     object_manager_port,
@@ -649,7 +658,6 @@ def start(
     ray_client_server_port,
     memory,
     object_store_memory,
-    redis_max_memory,
     num_cpus,
     num_gpus,
     resources,
@@ -680,6 +688,8 @@ def start(
     include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
+    # TODO(hjiang): Expose physical mode interface to ray cluster start command after
+    # all features implemented.
 
     if gcs_server_port is not None:
         cli_logger.error(
@@ -741,6 +751,7 @@ def start(
         node_manager_port=node_manager_port,
         memory=memory,
         object_store_memory=object_store_memory,
+        redis_username=redis_username,
         redis_password=redis_password,
         redirect_output=redirect_output,
         num_cpus=num_cpus,
@@ -767,11 +778,12 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        enable_physical_mode=False,
         include_log_monitor=include_log_monitor,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
-        _load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
+        load_class(os.environ[ray_constants.RAY_START_HOOK])(ray_params, head)
 
     if head:
         # Start head node.
@@ -820,6 +832,14 @@ def start(
 
             ray_params.update_if_absent(external_addresses=external_addresses)
             num_redis_shards = len(external_addresses) - 1
+            if redis_username == ray_constants.REDIS_DEFAULT_USERNAME:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if "
+                    "external Redis server(s) `{}` points to requires "
+                    "username.",
+                    cf.bold("--redis-username"),
+                    cf.bold("--address"),
+                )
             if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                 cli_logger.warning(
                     "`{}` should not be specified as empty string if "
@@ -836,7 +856,6 @@ def start(
         # Initialize Redis settings.
         ray_params.update_if_absent(
             redis_shard_ports=redis_shard_ports,
-            redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
         )
@@ -1019,6 +1038,9 @@ def start(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
         )
         temp_dir = node.get_temp_dir_path()
+
+        # TODO(hjiang): Validate whether specified resource is true for physical
+        # resource.
 
         # Ray and Python versions should probably be checked before
         # initializing Node.
@@ -1963,13 +1985,6 @@ def timeline(address):
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--group-by",
     type=click.Choice(["NODE_ADDRESS", "STACK_TRACE"]),
     default="NODE_ADDRESS",
@@ -2010,7 +2025,6 @@ terminal width is less than 137 characters.",
 )
 def memory(
     address,
-    redis_password,
     group_by,
     sort_by,
     units,
@@ -2041,13 +2055,6 @@ def memory(
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "-v",
     "--verbose",
     required=False,
@@ -2056,7 +2063,7 @@ def memory(
     help="Experimental: Display additional debuggging information.",
 )
 @PublicAPI
-def status(address: str, redis_password: str, verbose: bool):
+def status(address: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     gcs_client = ray._raylet.GcsClient(address=address)
@@ -2403,13 +2410,6 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--component",
     required=False,
     type=str,
@@ -2422,7 +2422,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     default=False,
     help="Skip comparison of GCS version with local Ray version.",
 )
-def healthcheck(address, redis_password, component, skip_version_check):
+def healthcheck(address, component, skip_version_check):
     """
     This is NOT a public API.
 

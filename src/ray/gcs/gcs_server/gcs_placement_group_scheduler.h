@@ -291,7 +291,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// scheduling.
   /// \param lease_client_factory Factory to create remote lease client.
   GcsPlacementGroupScheduler(instrumented_io_context &io_context,
-                             std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                             gcs::GcsTableStorage &gcs_table_storage,
                              const GcsNodeManager &gcs_node_manager,
                              ClusterResourceScheduler &cluster_resource_scheduler,
                              rpc::NodeManagerClientPool &raylet_client_pool);
@@ -485,7 +485,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   boost::asio::deadline_timer return_timer_;
 
   /// Used to update placement group information upon creation, deletion, etc.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsTableStorage &gcs_table_storage_;
 
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;

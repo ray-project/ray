@@ -49,9 +49,9 @@ def synchronous_parallel_sample(
         concat: Whether to aggregate all resulting batches or episodes. in case of
             batches the list of batches is concatinated at the end. in case of
             episodes all episode lists from workers are flattened into a single list.
-        sample_timeout_s: The timeout in sec to use on the `foreach_worker` call.
-            After this time, the call will return with a result (or not if all workers
-            are stalling). If None, will block indefinitely and not timeout.
+        sample_timeout_s: The timeout in sec to use on the `foreach_env_runner` call.
+            After this time, the call will return with a result (or not if all
+            EnvRunners are stalling). If None, will block indefinitely and not timeout.
         _uses_new_env_runners: Whether the new `EnvRunner API` is used. In this case
             episodes instead of `SampleBatch` objects are returned.
 
@@ -103,7 +103,7 @@ def synchronous_parallel_sample(
                 stats_dicts = [worker_set.local_env_runner.get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
-            sampled_data = worker_set.foreach_worker(
+            sampled_data = worker_set.foreach_env_runner(
                 (
                     (lambda w: w.sample(**random_action_kwargs))
                     if not _return_metrics

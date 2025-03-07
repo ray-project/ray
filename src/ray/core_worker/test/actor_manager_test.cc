@@ -140,7 +140,7 @@ class ActorManagerTest : public ::testing::Test {
 
   void SetUp() {
     actor_manager_ = std::make_shared<ActorManager>(
-        gcs_client_mock_, actor_task_submitter_, reference_counter_);
+        gcs_client_mock_, *actor_task_submitter_, *reference_counter_);
   }
 
   void TearDown() { actor_manager_.reset(); }
@@ -182,7 +182,7 @@ class ActorManagerTest : public ::testing::Test {
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
-  std::shared_ptr<MockReferenceCounter> reference_counter_;
+  std::unique_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
 };
 
@@ -363,7 +363,7 @@ TEST_F(ActorManagerTest, TestActorStateIsOnlySubscribedOnce) {
 
   // Try subscribing again.
   actor_manager_->SubscribeActorState(actor_id);
-  // Make sure the AsyncSubscribe wont be invoked anymore.
+  // Make sure the AsyncSubscribe won't be invoked anymore.
   ASSERT_TRUE(actor_info_accessor_->actor_subscribed_times_[actor_id] == 1);
 }
 

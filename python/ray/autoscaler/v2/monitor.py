@@ -66,6 +66,9 @@ class AutoscalerMonitor:
         log_dir: Optional[str] = None,
         monitor_ip: Optional[str] = None,
     ):
+        # Record v2 usage (we do this as early as possible to capture usage)
+        record_autoscaler_v2_usage(GcsClient(address))
+
         self.gcs_address = address
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
@@ -279,9 +282,6 @@ if __name__ == "__main__":
     gcs_address = args.gcs_address
     if gcs_address is None:
         raise ValueError("--gcs-address must be set!")
-
-    # Record v2 usage (we do this as early as possible to capture usage)
-    record_autoscaler_v2_usage(GcsClient(gcs_address))
 
     if not args.autoscaling_config:
         logger.info("No autoscaling config provided: use read only node provider.")

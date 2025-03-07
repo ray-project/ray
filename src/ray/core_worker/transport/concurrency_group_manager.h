@@ -35,7 +35,8 @@ class ConcurrencyGroupManager final {
  public:
   explicit ConcurrencyGroupManager(
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const int32_t max_concurrency_for_default_concurrency_group = 1);
+      const int32_t max_concurrency_for_default_concurrency_group = 1,
+      std::function<std::function<void()>()> initialize_thread_callback = nullptr);
 
   /// Get the corresponding concurrency group executor by the give concurrency group or
   /// function descriptor.
@@ -50,6 +51,14 @@ class ConcurrencyGroupManager final {
   /// Otherwise return the corresponding executor by the given function descriptor.
   std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
                                             const ray::FunctionDescriptor &fd);
+
+  /// Initialize the executor for specific language runtime.
+  ///
+  /// \param executor The executor to be initialized.
+
+  /// \return A function that will be called when destructing the executor.
+  std::optional<std::function<void()>> InitializeExecutor(
+      std::shared_ptr<ExecutorType> executor);
 
   /// Get the default executor.
   std::shared_ptr<ExecutorType> GetDefaultExecutor() const;
@@ -67,6 +76,12 @@ class ConcurrencyGroupManager final {
 
   // The default concurrency group executor. It's nullptr if its max concurrency is 1.
   std::shared_ptr<ExecutorType> default_executor_ = nullptr;
+
+  // The language-specific callback function that initializes threads.
+  std::function<std::function<void()>()> initialize_thread_callback_;
+
+  // A vector of language-specific functions used to release the executors.
+  std::vector<std::optional<std::function<void()>>> executor_releasers_;
 
   friend class ConcurrencyGroupManagerTest;
 };

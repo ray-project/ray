@@ -31,7 +31,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
-    ALL_MODULES,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     LAST_TARGET_UPDATE_TS,
@@ -213,6 +212,10 @@ class CQLConfig(SACConfig):
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
 
+        # If training on GPU, do not convert batches to tensors.
+        if self.num_gpus_per_learner > 0:
+            pipeline.remove("NumpyToTensor")
+
         return pipeline
 
     @override(SACConfig)
@@ -251,7 +254,7 @@ class CQLConfig(SACConfig):
             and not self.dataset_num_iters_per_learner
             and self.enable_rl_module_and_learner
         ):
-            raise ValueError(
+            self._value_error(
                 "When using a single local learner the number of iterations "
                 "per learner, `dataset_num_iters_per_learner` has to be defined. "
                 "Set this hyperparameter in the `AlgorithmConfig.offline_data`."
@@ -259,14 +262,12 @@ class CQLConfig(SACConfig):
 
     @override(SACConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
-
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.cql.torch.cql_torch_rl_module import (
-                CQLTorchRLModule,
+            from ray.rllib.algorithms.cql.torch.default_cql_torch_rl_module import (
+                DefaultCQLTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=CQLTorchRLModule, catalog_class=SACCatalog)
+            return RLModuleSpec(module_class=DefaultCQLTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
@@ -309,7 +310,11 @@ class CQL(SAC):
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=self.config.num_learners > 1,
+                # Return an iterator, if a `Learner` should update
+                # multiple times per RLlib iteration.
+                return_iterator=self.config.dataset_num_iters_per_learner > 1
+                if self.config.dataset_num_iters_per_learner
+                else True,
             )
 
         # Updating the policy.
@@ -324,23 +329,6 @@ class CQL(SAC):
 
             # Log training results.
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-
-        # Synchronize weights.
-        # As the results contain for each policy the loss and in addition the
-        # total loss over all policies is returned, this total loss has to be
-        # removed.
-        modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-
-        # Update weights - after learning on the local worker -
-        # on all remote workers. Note, we only have the local `EnvRunner`,
-        # but from this `EnvRunner` the evaulation `EnvRunner`s get updated.
-        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.env_runner_group.sync_weights(
-                # Sync weights from learner_group to all EnvRunners.
-                from_worker_or_learner_group=self.learner_group,
-                policies=modules_to_update,
-                inference_only=True,
-            )
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:

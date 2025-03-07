@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
+import mock
 import pytest
 
 from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
@@ -364,6 +365,14 @@ def mock_deployment_state_manager(
         )
 
         dead_replicas_context.clear()
+
+
+@pytest.fixture
+def mock_max_per_replica_retry_count():
+    with mock.patch(
+        "ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2
+    ):
+        yield 2
 
 
 class FakeDeploymentReplica:
@@ -2235,7 +2244,9 @@ def test_update_while_unhealthy(mock_deployment_state_manager):
     )
 
 
-def _constructor_failure_loop_two_replica(dsm, ds, num_loops):
+def _constructor_failure_loop_two_replica(
+    dsm, ds, num_loops, replica_retry_multiplier=3
+):
     """Helper function to exact constructor failure loops."""
 
     for i in range(num_loops):
@@ -2253,7 +2264,7 @@ def _constructor_failure_loop_two_replica(dsm, ds, num_loops):
         # Now the replica should be marked STOPPING after failure.
         dsm.update()
         if (
-            ds._replica_constructor_retry_counter >= 6
+            ds._replica_constructor_retry_counter >= replica_retry_multiplier * 2
             or not RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
         ):
             check_counts(
@@ -2276,7 +2287,9 @@ def _constructor_failure_loop_two_replica(dsm, ds, num_loops):
         replica_2._actor.set_done_stopping()
 
 
-def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manager):
+def test_deploy_with_consistent_constructor_failure(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
     """
     Test deploy() multiple replicas with consistent constructor failure.
 
@@ -2294,10 +2307,13 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manage
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
-    _constructor_failure_loop_two_replica(dsm, ds, 3)
+    loop_count = mock_max_per_replica_retry_count
+    _constructor_failure_loop_two_replica(
+        dsm, ds, loop_count, mock_max_per_replica_retry_count
+    )
 
-    assert ds._replica_constructor_retry_counter == 6
-    assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert ds._replica_constructor_retry_counter == 2 * mock_max_per_replica_retry_count
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert (
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
@@ -2306,7 +2322,9 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manage
     assert ds.curr_status_info.message != ""
 
 
-def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
+def test_deploy_with_partial_constructor_failure(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
     """
     Test deploy() multiple replicas with constructor failure exceedining
     pre-set limit but achieved partial success with at least 1 running replica.
@@ -2333,7 +2351,7 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
 
-    _constructor_failure_loop_two_replica(dsm, ds, 2)
+    _constructor_failure_loop_two_replica(dsm, ds, 1, mock_max_per_replica_retry_count)
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
         ds.curr_status_info.status_trigger
@@ -2342,7 +2360,7 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state_manager):
 
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
-    assert ds._replica_constructor_retry_counter == 4
+    assert ds._replica_constructor_retry_counter == 2
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
         ds.curr_status_info.status_trigger
@@ -2535,7 +2553,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     # All replicas have failed to initialize 3 times. The deployment should
     # stop trying to initialize replicas.
-    assert ds1.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert ds1.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     check_counts(ds1, total=0)
     assert ds1._replica_constructor_retry_counter == 9
     assert "The deployment failed to start" in ds1.curr_status_info.message
@@ -2601,8 +2619,8 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager
     )
 
 
-def test_exponential_backoff(mock_deployment_state_manager):
-    """Test exponential backoff."""
+def test_deploy_failed(mock_deployment_state_manager):
+    """Once deployment failed to deploy, should not retry replicas."""
 
     create_dsm, timer, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -2619,41 +2637,14 @@ def test_exponential_backoff(mock_deployment_state_manager):
 
     _constructor_failure_loop_two_replica(dsm, ds, 3)
     assert ds._replica_constructor_retry_counter == 6
-    last_retry = timer.time()
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
 
-    for i in range(7):
-        while timer.time() - last_retry < 2**i:
-            dsm.update()
-            assert ds._replica_constructor_retry_counter == 6 + 2 * i
-            # Check that during backoff time, no replicas are created
-            check_counts(ds, total=0)
-            timer.advance(0.1)  # simulate time passing between each call to udpate
-
-        # Skip past random additional backoff time used to avoid synchronization
-        timer.advance(5)
-
-        # Set new replicas to fail consecutively
-        check_counts(ds, total=0)  # No replicas
+    # No more replicas should be retried.
+    for _ in range(20):
         dsm.update()
-        last_retry = timer.time()  # This should be time at which replicas were retried
-        check_counts(ds, total=2)  # Two new replicas
-        replica_1 = ds._replicas.get()[0]
-        replica_2 = ds._replicas.get()[1]
-        replica_1._actor.set_failed_to_start()
-        replica_2._actor.set_failed_to_start()
-        timer.advance(0.1)  # simulate time passing between each call to udpate
-
-        # Now the replica should be marked STOPPING after failure.
-        dsm.update()
-        check_counts(ds, total=2, by_state=[(ReplicaState.STOPPING, 2, None)])
-        timer.advance(0.1)  # simulate time passing between each call to udpate
-
-        # Once it's done stopping, replica should be removed.
-        replica_1._actor.set_done_stopping()
-        replica_2._actor.set_done_stopping()
-        dsm.update()
+        assert ds._replica_constructor_retry_counter == 6
         check_counts(ds, total=0)
-        timer.advance(0.1)  # simulate time passing between each call to udpate
+        timer.advance(10)  # simulate time passing between each call to update
 
 
 def test_recover_state_from_replica_names(mock_deployment_state_manager):
@@ -2728,6 +2719,9 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     # Now execute a rollout: upgrade the version to "2".
     info2, v2 = deployment_info(version="2")
     assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+
+    # In real code this checkpoint would be done by the caller of .deploy()
+    dsm.save_checkpoint()
 
     # Before the replica could be stopped and restarted, simulate
     # controller crashed! A new deployment state manager should be
@@ -3308,13 +3302,13 @@ class TestAutoscaling:
         elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
             expected_message = (
                 "Deployment 'test_deployment' in application 'test_app' "
-                "has 3 replicas that have taken more than 30s to be scheduled.\n"
+                "has 3 replicas that have taken more than 30s to be scheduled. "
                 "This may be due to waiting for the cluster to auto-scale or for "
-                "a runtime environment to be installed.\n"
-                "Resources required for each replica:\n"
-                '{"CPU": 0.1}\n'
-                "Total resources available:\n"
-                "{}\n"
+                "a runtime environment to be installed. "
+                "Resources required for each replica: "
+                '{"CPU": 0.1}, '
+                "total resources available: "
+                "{}. "
                 "Use `ray status` for more details."
             )
         else:
