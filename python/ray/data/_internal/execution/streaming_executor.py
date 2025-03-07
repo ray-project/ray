@@ -29,7 +29,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.logging import get_log_directory
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatasetStats, StatsManager
+from ray.data._internal.stats import DatasetStats, StatsManager, DatasetState
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
@@ -190,7 +190,9 @@ class StreamingExecutor(Executor, threading.Thread):
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
             self._update_stats_metrics(
-                state="FINISHED" if exception is None else "FAILED",
+                state=DatasetState.FINISHED.name
+                if exception is None
+                else DatasetState.FAILED.name,
                 force_update=True,
             )
             # Once Dataset execution completes, mark it as complete
@@ -333,7 +335,7 @@ class StreamingExecutor(Executor, threading.Thread):
         update_operator_states(topology)
         self._refresh_progress_bars(topology)
 
-        self._update_stats_metrics(state="RUNNING")
+        self._update_stats_metrics(state=DatasetState.RUNNING.name)
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
@@ -409,12 +411,14 @@ class StreamingExecutor(Executor, threading.Thread):
             "state": state,
             "progress": last_state.num_completed_tasks,
             "total": last_op.num_outputs_total(),
-            "end_time": time.time() if state != "RUNNING" else None,
+            "total_rows": last_op.num_output_rows_total(),
+            "end_time": time.time() if state != DatasetState.RUNNING.name else None,
             "operators": {
                 f"{op.name}{i}": {
                     "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
+                    "total_rows": op.num_output_rows_total(),
                     "state": state,
                 }
                 for i, (op, op_state) in enumerate(self._topology.items())
