@@ -144,7 +144,6 @@ class WorkerPoolMock : public WorkerPool {
             [this]() { return absl::FromUnixMillis(current_time_ms_); }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
-        error_message_type_(1),
         client_call_manager_(instrumented_io_service_),
         mock_worker_rpc_clients_(mock_worker_rpc_clients) {
     SetNodeManagerPort(1);
@@ -260,8 +259,8 @@ class WorkerPoolMock : public WorkerPool {
           HandleMessage(client, message_type, message);
         };
     local_stream_socket socket(instrumented_io_service_);
-    auto conn = ClientConnection::Create(
-        message_handler, std::move(socket), "worker", {}, error_message_type_);
+    auto conn =
+        ClientConnection::Create(message_handler, std::move(socket), "worker", {});
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
                                                                runtime_env_hash,
                                                                WorkerID::FromRandom(),
@@ -388,7 +387,6 @@ class WorkerPoolMock : public WorkerPool {
   double current_time_ms_ = 0;
   absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
-  int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       &mock_worker_rpc_clients_;
