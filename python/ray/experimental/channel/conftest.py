@@ -26,6 +26,11 @@ class Barrier:
         self.data = {}
         # Buffer for the number of actors seen, each entry is one p2p op.
         self.num_actors_seen = defaultdict(int)
+        ctx_get_device_patcher = mock.patch(
+            "ray.experimental.channel.serialization_context._SerializationContext.get_target_device_type",
+            return_value="cpu",
+        )
+        ctx_get_device_patcher.start()
 
     async def wait(self, idx: int, data=None):
         """
@@ -144,6 +149,11 @@ def start_nccl_mock():
         lambda shape, dtype: torch.zeros(shape, dtype=dtype),
     )
     tensor_allocator_patcher.start()
+    ctx_get_device_patcher = mock.patch(
+        "ray.experimental.channel.serialization_context._SerializationContext.get_target_device_type",
+        return_value="cpu",
+    )
+    ctx_get_device_patcher.start()
 
     ctx = ray_channel.ChannelContext.get_current()
     ctx.set_torch_device(torch.device("cuda"))

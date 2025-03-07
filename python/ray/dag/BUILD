@@ -137,6 +137,7 @@ py_test(
     size = "enormous",
     srcs = [
         "tests/experimental/test_torch_tensor_dag.py",
+        "tests/experimental/test_torch_transport_dag.py",
     ],
     env = {"RAY_PYTEST_USE_GPU": "1"},
     main = "tests/experimental/test_torch_tensor_dag.py",

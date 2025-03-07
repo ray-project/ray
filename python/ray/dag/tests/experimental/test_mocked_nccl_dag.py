@@ -93,7 +93,7 @@ def test_p2p(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0], inp.send_as_dict)
-        dag = dag.with_tensor_transport(transport="nccl", device="cpu")
+        dag = dag.with_tensor_transport(transport="nccl")
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -146,9 +146,7 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0], send_as_dict=send_as_dict)
-        dag = dag.with_tensor_transport(
-            transport="nccl", _static_shape=True, device="cpu"
-        )
+        dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -188,9 +186,7 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0], send_as_dict=send_as_dict)
-        dag = dag.with_tensor_transport(
-            transport="nccl", _static_shape=True, device="cpu"
-        )
+        dag = dag.with_tensor_transport(transport="nccl", _static_shape=True)
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -245,7 +241,8 @@ def test_p2p_direct_return(ray_start_cluster):
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_tensor_transport(
-            transport="nccl", _direct_return=True, device="cpu"
+            transport="nccl",
+            _direct_return=True,
         )
         dag = receiver.recv.bind(dag)
 
@@ -289,7 +286,8 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_tensor_transport(
-            transport="nccl", _direct_return=True, device="cpu"
+            transport="nccl",
+            _direct_return=True,
         )
         dag = receiver.recv.bind(dag)
 
@@ -357,7 +355,9 @@ def test_p2p_static_shape_and_direct_return(
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_tensor_transport(
-            transport="nccl", _static_shape=True, _direct_return=True, device="cpu"
+            transport="nccl",
+            _static_shape=True,
+            _direct_return=True,
         )
         dag = receiver.recv.bind(dag)
 

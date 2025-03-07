@@ -93,6 +93,15 @@ class _SerializationContext:
         self._deserialized_tensor_placeholders = set()
         return prev_tensors, deserialized_tensor_placeholders
 
+    def get_target_device_type(self, tensor_device_type: str) -> str:
+        if self.target_device == Device.DEFAULT:
+            target_device_type = tensor_device_type
+        elif self.target_device in [Device.GPU, Device.CUDA]:
+            target_device_type = "cuda"
+        else:
+            target_device_type = "cpu"
+        return target_device_type
+
     def serialize_tensor(
         self, tensor: "torch.Tensor"
     ) -> Union[int, Tuple["np.ndarray", "torch.dtype", str]]:
@@ -153,12 +162,7 @@ class _SerializationContext:
     ):
         import torch
 
-        if self.target_device == Device.DEFAULT:
-            target_device_type = tensor_device_type
-        elif self.target_device in [Device.GPU, Device.CUDA]:
-            target_device_type = "cuda"
-        else:
-            target_device_type = "cpu"
+        target_device_type = self.get_target_device_type(tensor_device_type)
 
         # TODO(swang): Support local P2P transfers if available.
         if target_device_type == "cuda":
