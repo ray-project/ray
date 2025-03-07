@@ -3,7 +3,13 @@ import subprocess
 from pathlib import Path
 
 
-NSIGHT_FAKE_DIR = str(Path(os.path.realpath(__file__)).parents[4] / "python" / "ray" / "tests" / "nsight_fake")
+NSIGHT_FAKE_DIR = str(
+    Path(os.path.realpath(__file__)).parents[4]
+    / "python"
+    / "ray"
+    / "tests"
+    / "nsight_fake"
+)
 
 
 subprocess.check_call(
