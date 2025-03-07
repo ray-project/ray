@@ -363,7 +363,7 @@ TEST_F(ActorManagerTest, TestActorStateIsOnlySubscribedOnce) {
 
   // Try subscribing again.
   actor_manager_->SubscribeActorState(actor_id);
-  // Make sure the AsyncSubscribe wont be invoked anymore.
+  // Make sure the AsyncSubscribe won't be invoked anymore.
   ASSERT_TRUE(actor_info_accessor_->actor_subscribed_times_[actor_id] == 1);
 }
 
