@@ -2144,6 +2144,13 @@ class CompiledDAG:
                     except Exception:
                         pass
 
+                if kill_actors:
+                    # In the previous loop, we allow the actor tasks to exit first.
+                    # Now, we force kill the actors if not yet.
+                    for actor in outer.worker_task_refs:
+                        logger.info(f"Killing actor: {actor}")
+                        ray.kill(actor)
+
             def teardown(self, kill_actors: bool = False):
                 with self._in_teardown_lock:
                     if self._teardown_done:
