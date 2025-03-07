@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.context import DistributedContext
@@ -41,7 +41,7 @@ class TrainStateManager:
         name: str,
         job_id: str,
         controller_actor_id: str,
-        log_file_path: Optional[str] = None,
+        controller_log_file_path: str,
     ) -> None:
         run = TrainRun(
             id=id,
@@ -51,7 +51,7 @@ class TrainStateManager:
             status_detail=None,
             controller_actor_id=controller_actor_id,
             start_time_ns=_current_time_ns(),
-            log_file_path=log_file_path,
+            controller_log_file_path=controller_log_file_path,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)

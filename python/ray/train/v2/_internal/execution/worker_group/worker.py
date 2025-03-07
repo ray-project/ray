@@ -70,8 +70,8 @@ class Worker:
     actor: ActorHandle
     metadata: ActorMetadata
     resources: Dict[str, float]
+    log_file_path: str
     distributed_context: Optional[DistributedContext] = None
-    log_file_path: Optional[str] = None
 
     @cached_property
     def _repr(self) -> str:
@@ -83,8 +83,8 @@ class Worker:
             "Worker(",
             f"{indent}actor={repr(self.actor)},",
             f"{indent}metadata={metadata_repr},",
-            f"{indent}distributed_context={context_repr},",
             f"{indent}log_file_path={repr(self.log_file_path)},",
+            f"{indent}distributed_context={context_repr},",
             ")",
         ]
         return "\n".join(repr_lines)

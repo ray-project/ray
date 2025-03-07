@@ -96,7 +96,7 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         status_detail=run.status_detail,
         start_time_ns=run.start_time_ns,
         end_time_ns=run.end_time_ns,
-        log_file_path=run.log_file_path,
+        controller_log_file_path=run.controller_log_file_path,
     )
 
     return proto_run
