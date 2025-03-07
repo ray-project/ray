@@ -64,7 +64,7 @@ def _check_working_dir_files(uv_run_args, runtime_env):
 def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Hook that detects if the driver is run in 'uv run' and sets the runtime environment accordingly."""
 
-    runtime_env = runtime_env or {}
+    runtime_env = copy.deepcopy(runtime_env or {})
 
     # uv spawns the python process as a child process, so to determine if
     # we are running under 'uv run', we check the parent process commandline.
