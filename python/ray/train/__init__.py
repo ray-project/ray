@@ -28,9 +28,9 @@ from ray.train.context import get_context
 from ray.train.trainer import TrainingIterator
 
 from ray.train.v2._internal.constants import is_v2_enabled
-from ray.train.v2.api.callback import UserCallback  # noqa: F811
 
 if is_v2_enabled():
+    from ray.train.v2.api.callback import UserCallback  # noqa: F811
     from ray.train.v2.api.config import (  # noqa: F811
         FailureConfig,
         RunConfig,
@@ -64,7 +64,6 @@ __all__ = [
     "SyncConfig",
     "TrainingIterator",
     "TRAIN_DATASET_KEY",
-    "UserCallback",
 ]
 
 get_checkpoint.__module__ = "ray.train"
@@ -81,7 +80,10 @@ RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainingIterator.__module__ = "ray.train"
-UserCallback.__module__ = "ray.train"
+
+if is_v2_enabled():
+    __all__.append("UserCallback")
+    UserCallback.__module__ = "ray.train"
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.
