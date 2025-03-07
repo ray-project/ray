@@ -32,7 +32,11 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
-from ray.util.placement_group import get_current_placement_group, remove_placement_group
+from ray.util.placement_group import (
+    get_current_placement_group,
+    PlacementGroup,
+    remove_placement_group,
+)
 
 T = TypeVar("T")
 
@@ -92,6 +96,7 @@ class BackendExecutor:
         num_workers: int = 1,
         resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
+        placement_group: Optional[PlacementGroup] = None,
     ):
         if resources_per_worker is None:
             self._resources_per_worker = {"CPU": 1}
@@ -107,7 +112,7 @@ class BackendExecutor:
         self._num_failures = 0
         self._last_failure = None
         self._initialization_hook = None
-        self._placement_group = None
+        self._placement_group = placement_group
 
         self._trial_info = trial_info
 
@@ -246,7 +251,7 @@ class BackendExecutor:
             or not should_capture_child_tasks_in_placement_group
         )
 
-        if should_create_placement_group:
+        if should_create_placement_group and not self._placement_group:
             bundles = [
                 self._resources_per_worker.copy() for _ in range(self._num_workers)
             ]

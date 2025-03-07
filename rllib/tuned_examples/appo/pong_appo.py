@@ -11,6 +11,7 @@ from ray.tune.registry import register_env
 parser = add_rllib_example_script_args(
     default_reward=20.0,
     default_timesteps=10000000,
+    default_iters=30,
 )
 parser.set_defaults(
     enable_new_api_stack=True,
@@ -37,7 +38,9 @@ def _env_creator(cfg):
 
 register_env("env", _env_creator)
 
+import os
 
+os.environ["TRAIN_ENABLE_WORKER_SPREAD"] = "1"
 config = (
     APPOConfig()
     .environment(
@@ -69,6 +72,7 @@ config = (
         # learner_queue_size=1,
         circular_buffer_num_batches=4,
         circular_buffer_iterations_per_batch=2,
+        num_pkgs_per_aggregation_cycle=2,
     )
     .rl_module(
         model_config=DefaultModelConfig(
@@ -80,7 +84,8 @@ config = (
     )
 )
 
-
+args.num_learners = 2
+args.num_env_runners = 4
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
