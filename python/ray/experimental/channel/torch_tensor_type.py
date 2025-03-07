@@ -18,6 +18,8 @@ class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
     NCCL = "nccl"
     CPU = "cpu"
+    HCCL = "hccl"
+    COMMUNICATOR_TYPES = [NCCL, HCCL]
 
     def __init__(
         self,
@@ -70,7 +72,7 @@ class TorchTensorType(ChannelOutputType):
             self._communicator = transport
             transport = transport.get_transport_name()
 
-        if transport not in [self.AUTO, self.NCCL, self.CPU]:
+        if transport not in [self.AUTO, self.NCCL, self.CPU, self.HCCL]:
             raise ValueError(
                 "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, "
                 "or TorchTensorType.CPU"
@@ -146,7 +148,7 @@ class TorchTensorType(ChannelOutputType):
         return typ.create_channel(writer, reader_and_node_list, driver_actor_id)
 
     def requires_nccl(self) -> bool:
-        return self.transport == self.NCCL
+        return self.transport in self.COMMUNICATOR_TYPES
 
     def get_custom_communicator(self) -> Optional[Communicator]:
         """
