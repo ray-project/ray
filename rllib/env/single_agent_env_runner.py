@@ -32,6 +32,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
+    ENV_STEP_TIMER,
     ENV_TO_MODULE_TIMER,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -326,7 +327,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Try stepping the environment.
-            results = self._try_env_step(actions_for_env)
+            with self.metrics.log_time(ENV_STEP_TIMER):
+                results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
                 return self._sample(
                     num_timesteps=num_timesteps,
