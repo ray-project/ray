@@ -236,7 +236,7 @@ def configure_worker_logger(context: TrainRunContext) -> None:
     """
     config = get_worker_logger_config_dict(context)
     logging.config.dictConfig(config)
-    # TODO: Return the controller log file path.
+    # TODO: Return the worker log file path.
 
 
 def get_log_directory() -> Optional[str]:
