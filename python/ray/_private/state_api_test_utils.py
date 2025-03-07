@@ -15,6 +15,7 @@ from ray.util.state import list_tasks
 import ray
 from ray.actor import ActorHandle
 from ray.util.state import list_workers
+import psutil
 
 from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray.util.state.state_manager import StateDataSourceClient
@@ -406,6 +407,36 @@ class PidActor:
         self.name_to_pid[name] = (pid, state)
 
 
+def _is_actor_task_running(actor_pid: int, task_name: str):
+    """
+    Check whether the actor task `task_name` is running on the actor process
+    with pid `actor_pid`.
+
+    Args:
+      actor_pid: The pid of the actor process.
+      task_name: The name of the actor task.
+
+    Returns:
+      True if the actor task is running, False otherwise.
+    """
+    if not psutil.pid_exists(actor_pid):
+        return False
+
+    name = psutil.Process(actor_pid).name()
+    if task_name in name:
+        return True
+
+    # By default, `psutil.Process.name()` returns `/proc/pid/comm`. However,
+    # it's only modified by the leader thread. Hence, if `setproctitle` is
+    # executed on other threads, the `psutil.Process.name()` value may not be
+    # updated. Therefore, we not only need to check `psutil.Process.name()`
+    # but also check `psutil.Process.cmdline()`.
+    cmdline = psutil.Process(actor_pid).cmdline()
+    if cmdline and task_name in cmdline[0]:
+        return True
+    return False
+
+
 def verify_tasks_running_or_terminated(
     task_pids: Dict[str, Tuple[int, Optional[str]]], expect_num_tasks: int
 ):
@@ -419,8 +450,6 @@ def verify_tasks_running_or_terminated(
         task_pids: A dict of task name to (pid, expected terminal state).
 
     """
-    import psutil
-
     assert len(task_pids) == expect_num_tasks, task_pids
     for task_name, pid_and_state in task_pids.items():
         tasks = list_tasks(detail=True, filters=[("name", "=", task_name)])
@@ -438,7 +467,7 @@ def verify_tasks_running_or_terminated(
             if expected_state is not None:
                 assert task["state"] == expected_state, task
             continue
-        if psutil.pid_exists(pid) and task_name in psutil.Process(pid).name():
+        if _is_actor_task_running(pid, task_name):
             assert (
                 "ray::IDLE" not in task["name"]
             ), "One should not name it 'IDLE' since it's reserved in Ray"
