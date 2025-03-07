@@ -2325,13 +2325,13 @@ def _get_extra_usage_tags() -> Dict[str, str]:
 
 
 def check_library_usage_telemetry(
-    use_lib_fn: Callable,
+    use_lib_fn: Callable[[], None],
     *,
     callsite: TelemetryCallsite,
     expected_library_usages: List[Set[str]],
     expected_extra_usage_tags: Optional[Dict[str, str]] = None,
 ):
-    assert len(_get_library_usages()) == 0
+    assert len(_get_library_usages()) == 0, _get_library_usages()
 
     if callsite == TelemetryCallsite.DRIVER:
         use_lib_fn()
