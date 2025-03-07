@@ -188,13 +188,30 @@ Consider the following example of a cluster containing a CPU head node and 2 GPU
 
 .. _train-fault-tolerance-deprecation-info:
 
-Deprecation of the ``<Framework>Trainer.restore`` API + Migration Guide
------------------------------------------------------------------------
+``<Framework>Trainer.restore`` API Deprecation 
+----------------------------------------------
 
-The ``<Framework>Trainer.restore`` API is deprecated in favor of the new usage pattern described in this user guide.
-The reasons for this change include (1) avoiding saving user code to pickled files and (2) improving the previously convoluted user experience.
+The ``<Framework>Trainer.restore`` API is deprecated as of Ray 2.43 and will be removed in a future release. 
 
-Find more context regarding this deprecation in the `REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_
-and see the `migration guide <https://github.com/ray-project/ray/issues/49454>`_ for steps to migrate off the old API.
+Motivation
+~~~~~~~~~~
 
-Please see :ref:`train-fault-tolerance-deprecated-api` for the old API user guide.
+This API change provides several benefits:
+
+1. **Avoid saving user code to pickled files**: The old API saved user code to pickled files, which could lead to issues with deserialization, leading to unrecoverable runs.
+2. **Improved configuration experience**: While some configurations are loaded from the pickled files, certain arguments are required to be re-specified, and another subset of arguments can even be optionally re-specified. This confuses users about the set of configurations that are actually being used in the restored run.
+
+Migration Steps
+~~~~~~~~~~~~~~~
+
+To migrate from the old ``<Framework>Trainer.restore`` API to the new pattern:
+
+1. Enable the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
+2. Replace ``<Framework>Trainer.restore`` with the regular ``<Framework>Trainer`` constructor, making sure to pass in the same ``storage_path`` and ``name`` as the previous run.
+
+Additional Resources
+~~~~~~~~~~~~~~~~~~~~
+
+* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
+* `Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_: Full migration guide for Train V2
+* :ref:`train-fault-tolerance-deprecated-api`: Documentation for the old API
