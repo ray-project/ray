@@ -14,7 +14,8 @@ def test_basic_dqn():
             # Confirming mode hook is enabled.
             assert client_mode_should_convert()
             config = (
-                dqn.DQNConfig().environment("CartPole-v1")
+                dqn.DQNConfig()
+                .environment("CartPole-v1")
                 .env_runners(num_env_runners=0, compress_observations=True)
             )
             trainer = config.build()
