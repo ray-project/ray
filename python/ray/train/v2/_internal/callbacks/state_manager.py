@@ -46,14 +46,17 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         core_context = ray.runtime_context.get_runtime_context()
         self._job_id = core_context.get_job_id()
         self._controller_actor_id = core_context.get_actor_id()
-        self._controller_log_file_path = get_train_application_controller_log_path()
+
+        controller_log_file_path = get_train_application_controller_log_path()
+        if controller_log_file_path is None:
+            raise ValueError("Controller log file path is not set.")
 
         self._state_manager.create_train_run(
             id=self._run_id,
             name=self._run_name,
             job_id=self._job_id,
             controller_actor_id=self._controller_actor_id,
-            controller_log_file_path=self._controller_log_file_path,
+            controller_log_file_path=controller_log_file_path,
         )
 
     def after_controller_state_update(
