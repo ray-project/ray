@@ -401,9 +401,14 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._global_info:
             self._global_info.set_description(resources_status)
 
+    def _get_operator_id(self, op: PhysicalOperator, topology_index: int) -> str:
+        return f"{op.name}_{topology_index}"
+
     def _get_operator_tags(self):
         """Returns a list of operator tags."""
-        return [f"{op.name}{i}" for i, op in enumerate(self._topology)]
+        return [
+            f"{self._get_operator_id(op, i)}" for i, op in enumerate(self._topology)
+        ]
 
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
@@ -414,7 +419,7 @@ class StreamingExecutor(Executor, threading.Thread):
             "total_rows": last_op.num_output_rows_total(),
             "end_time": time.time() if state != DatasetState.RUNNING.name else None,
             "operators": {
-                f"{op.name}{i}": {
+                f"{self._get_operator_id(op, i)}": {
                     "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
