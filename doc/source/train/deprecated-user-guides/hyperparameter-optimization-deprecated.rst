@@ -53,7 +53,7 @@ pass it into a :class:`~ray.tune.Tuner`.
 How to configure a Tuner?
 -------------------------
 
-There are two main configuration objects that can be passed into a Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.train.RunConfig>`.
+There are two main configuration objects that can be passed into a Tuner: the :class:`TuneConfig <ray.tune.TuneConfig>` and the :class:`ray.tune.RunConfig`.
 
 The :class:`TuneConfig <ray.tune.TuneConfig>` contains tuning specific settings, including:
 

@@ -31,6 +31,18 @@ In the example below:
     :end-before: __quickstart_end__
 
 
+What does Ray Tune provide?
+---------------------------
+
+Ray Tune provides utilities for:
+
+* :ref:`Defining hyperparameter search spaces <tune-search-space-tutorial>` and :ref:`launching multiple trials concurrently <tune-parallel-experiments-guide>` on a Ray cluster
+* :ref:`Using search algorithms <tune-search-alg>`
+* :ref:`Early stopping runs based on metrics <tune-stopping-guide>`
+
+This user guide only focuses on the integration layer between Ray Train and Ray Tune. For more details on how to use Ray Tune, refer to the :ref:`Ray Tune documentation <tune-main>`.
+
+
 Configuring resources for multiple trials
 -----------------------------------------
 
@@ -102,8 +114,8 @@ One way to achieve this behavior is to set custom resources on certain node type
     :end-before: __trainable_resources_end__
 
 
-Checkpoints
------------
+Reporting metrics and checkpoints
+---------------------------------
 
 Both Ray Train and Ray Tune provide utilities to help upload and track checkpoints via the :func:`ray.train.report <ray.train.report>` and :func:`ray.tune.report <ray.tune.report>` APIs.
 See the :ref:`train-checkpointing` user guide for more details.
@@ -117,9 +129,10 @@ does this by propagating reported Ray Train results over to Ray Tune, where the 
 Advanced: Fault Tolerance
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the event that the Ray Tune trials running the Ray Train driver process crash, you can enable trial fault tolerance on the Ray Tune side to re-launch the Train jobs to automatically recover.
+In the event that the Ray Tune trials running the Ray Train driver process crash, you can enable trial fault tolerance on the Ray Tune side via:
+:class:`ray.tune.Tuner(run_config=ray.tune.RunConfig(failure_config)) <ray.tune.FailureConfig>`.
 
-If a Ray Train worker crashes, the Ray Train driver will handle that and restart training as long as fault tolerance is configured. See the :ref:`train-fault-tolerance` user guide for more details.
+Fault tolerance on the Ray Train side is configured and handled separately. See the :ref:`train-fault-tolerance` user guide for more details.
 
 .. literalinclude:: ../doc_code/train_tune_interop.py
     :language: python
@@ -127,7 +140,7 @@ If a Ray Train worker crashes, the Ray Train driver will handle that and restart
     :end-before: __fault_tolerance_end__
 
 
-Advanced: Using Ray Tune Callbacks
+Advanced: Using Ray Tune callbacks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Tune callbacks should be passed into the :class:`ray.tune.RunConfig(callbacks) <ray.tune.RunConfig>` at the Tuner level. 
