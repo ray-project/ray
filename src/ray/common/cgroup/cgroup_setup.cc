@@ -14,7 +14,6 @@
 
 #include "ray/common/cgroup/cgroup_setup.h"
 
-// Cgroup only works for linux platform, proceed with no warning for other platforms.
 #ifndef __linux__
 namespace ray {
 CgroupSetup::CgroupSetup() {}
@@ -76,6 +75,7 @@ bool MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
   while (in_file >> pid) {
     out_file << pid << std::endl;
   }
+  out_file.flush();
   return out_file.good();
 }
 
@@ -84,7 +84,7 @@ bool MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
 // TODO(hjiang): Currently only memory resource is considered, should consider CPU
 // resource as well.
 bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
-  std::ofstream out_file(subtree_control_path);
+  std::ofstream out_file(subtree_control_path, std::ios::app | std::ios::out);
   RAY_CHECK(out_file.good()) << "Failed to open cgroup file " << subtree_control_path;
   // Able to add memory constraint to the internal cgroup.
   out_file << "+memory";
@@ -95,7 +95,7 @@ bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
 // Kill all processes under the given [cgroup_folder].
 void KillAllProc(const std::string &cgroup_folder) {
   const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);
-  std::ofstream f{kill_proc_file};
+  std::ofstream f{kill_proc_file, std::ios::app | std::ios::out};
   f << "1";
   f.flush();
   RAY_CHECK(f.good()) << "Fails to kill all processes under the cgroup " << cgroup_folder;
@@ -203,7 +203,7 @@ void CgroupSetup::CleanupCgroups() {
 }
 
 void CgroupSetup::AddInternalProcess(pid_t pid) {
-  std::ofstream out_file(cgroup_v2_internal_folder_);
+  std::ofstream out_file(cgroup_v2_internal_folder_, std::ios::app | std::ios::out);
   // Able to add memory constraint to the internal cgroup.
   out_file << pid;
   out_file.flush();
@@ -220,7 +220,7 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(
       << "Failed to create cgroup " << cgroup_folder;
 
   const std::string cgroup_proc_file = ray::JoinPaths(cgroup_folder, "cgroup.procs");
-  std::ofstream out_file(cgroup_proc_file);
+  std::ofstream out_file(cgroup_proc_file, std::ios::app | std::ios::out);
   out_file << ctx.pid;
   out_file.flush();
   RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
@@ -242,7 +242,7 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
   const std::string default_cgroup_proc_file =
       ray::JoinPaths(default_cgroup_folder, "cgroup.procs");
 
-  std::ofstream out_file(default_cgroup_proc_file);
+  std::ofstream out_file(default_cgroup_proc_file, std::ios::app | std::ios::out);
   out_file << ctx.pid;
   out_file.flush();
   RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
