@@ -253,9 +253,9 @@ def get_log_directory() -> Optional[str]:
     return os.path.join(root_dir, "logs", "train")
 
 
-def get_train_app_controller_log_path() -> Optional[str]:
+def get_train_application_controller_log_path() -> Optional[str]:
     """
-    Return the path to the file train app controller log file.
+    Return the path to the file train application controller log file.
     """
     logger = logging.getLogger("ray.train")
     for handler in logger.handlers:
@@ -267,9 +267,9 @@ def get_train_app_controller_log_path() -> Optional[str]:
     return None
 
 
-def get_train_app_worker_log_path() -> Optional[str]:
+def get_train_application_worker_log_path() -> Optional[str]:
     """
-    Return the path to the file train app worker log file.
+    Return the path to the file train application worker log file.
     """
     logger = logging.getLogger("ray.train")
     for handler in logger.handlers:

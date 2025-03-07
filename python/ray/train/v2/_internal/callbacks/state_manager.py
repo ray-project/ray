@@ -22,7 +22,9 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupState,
 )
 from ray.train.v2._internal.execution.worker_group.poll import WorkerGroupPollStatus
-from ray.train.v2._internal.logging.logging import get_train_app_controller_log_path
+from ray.train.v2._internal.logging.logging import (
+    get_train_application_controller_log_path,
+)
 from ray.train.v2._internal.state.state_manager import TrainStateManager
 
 logger = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
         core_context = ray.runtime_context.get_runtime_context()
         self._job_id = core_context.get_job_id()
         self._controller_actor_id = core_context.get_actor_id()
-        self._controller_log_file_path = get_train_app_controller_log_path()
+        self._controller_log_file_path = get_train_application_controller_log_path()
 
         self._state_manager.create_train_run(
             id=self._run_id,

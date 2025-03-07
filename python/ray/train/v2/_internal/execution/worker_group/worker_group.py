@@ -38,7 +38,7 @@ from ray.train.v2._internal.execution.context import (
     StorageContext,
     TrainRunContext,
 )
-from ray.train.v2._internal.logging.logging import get_train_app_worker_log_path
+from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
@@ -390,7 +390,7 @@ class WorkerGroup:
         ]
         ray_get_safe(context_init_tasks)
 
-        self._assign_worker_log_file_paths(workers)
+        self._decorate_worker_log_file_paths(workers)
 
     #####################################################################################
     # Shutdown Worker Group
@@ -686,15 +686,16 @@ class WorkerGroup:
         return workers
 
     @staticmethod
-    def _assign_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
-        """Assign log file paths to workers.
+    def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
+        """Decorate worker log file paths.
 
         Returns:
             workers: Workers with log file paths set.
         """
         # Execute all tasks in parallel and then get results
         log_path_refs = [
-            worker.execute_async(get_train_app_worker_log_path) for worker in workers
+            worker.execute_async(get_train_application_worker_log_path)
+            for worker in workers
         ]
         log_paths = ray_get_safe(log_path_refs)
 

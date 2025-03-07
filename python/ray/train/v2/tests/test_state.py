@@ -434,7 +434,7 @@ def test_callback_log_file_paths(
     )
     monkeypatch.setattr(
         ray.train.v2._internal.callbacks.state_manager,
-        "get_train_app_controller_log_path",
+        "get_train_application_controller_log_path",
         lambda: expected_controller_log_path,
     )
 
