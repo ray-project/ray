@@ -1,24 +1,19 @@
 import abc
 import asyncio
+import aiohttp
 import logging
-import multiprocessing
-import threading
 import sys
 from dataclasses import dataclass
 import os
 import setproctitle
+import pathlib
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
-from ray.dashboard.subprocesses.message import (
-    ChildBoundMessage,
-    RequestMessage,
-    UnaryResponseMessage,
-)
 from ray.dashboard.subprocesses.utils import (
-    assert_not_in_asyncio_loop,
     module_logging_filename,
 )
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray._private.ray_logging import setup_component_logger
 
 logger = logging.getLogger(__name__)
@@ -44,20 +39,18 @@ class SubprocessModuleConfig:
     logging_filename: str
     logging_rotate_bytes: int
     logging_rotate_backup_count: int
+    # The directory where the socket file will be created.
+    socket_dir: str
 
 
 class SubprocessModule(abc.ABC):
     """
-    A Dashboard Head Module that runs in a subprocess. This is used with the decorators
-    to define a (request -> response) endpoint, or a (request -> AsyncIterator[bytes])
-    for a streaming endpoint.
+    A Dashboard Head Module that runs in a subprocess as a standalone aiohttp server.
     """
 
     def __init__(
         self,
         config: SubprocessModuleConfig,
-        child_bound_queue: multiprocessing.Queue,
-        parent_bound_queue: multiprocessing.Queue,
         parent_process_pid: int,
     ):
         """
@@ -65,8 +58,6 @@ class SubprocessModule(abc.ABC):
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
-        self._child_bound_queue = child_bound_queue
-        self._parent_bound_queue = parent_bound_queue
         self._parent_process_pid = parent_process_pid
         # Lazy init
         self._gcs_aio_client = None
@@ -97,6 +88,34 @@ class SubprocessModule(abc.ABC):
         pass
 
     @property
+    def socket_path(self):
+        module_name = self.__class__.__name__
+        socket_path = pathlib.Path(self._config.socket_dir) / module_name
+        return socket_path
+
+    async def start_server(self):
+        """
+        Start the aiohttp server.
+        """
+        if self.socket_path.exists():
+            self.socket_path.unlink()
+
+        app = aiohttp.web.Application()
+        app.add_routes(
+            [aiohttp.web.get("/api/healthz", self._internal_module_health_check)]
+        )
+        app.add_routes(SubprocessRouteTable.bound_routes_for_module(self))
+        runner = aiohttp.web.AppRunner(app)
+        await runner.setup()
+
+        if sys.platform == "win32":
+            site = aiohttp.web.NamedPipeSite(runner, str(self.socket_path))
+        else:
+            site = aiohttp.web.UnixSite(runner, str(self.socket_path))
+        await site.start()
+        logger.info("Started aiohttp server.")
+
+    @property
     def gcs_aio_client(self):
         if self._gcs_aio_client is None:
             self._gcs_aio_client = GcsAioClient(
@@ -106,74 +125,26 @@ class SubprocessModule(abc.ABC):
             )
         return self._gcs_aio_client
 
-    def handle_child_bound_message(
-        self,
-        loop: asyncio.AbstractEventLoop,
-        message: ChildBoundMessage,
-    ):
-        """Handles a message from the child bound queue."""
-        if isinstance(message, RequestMessage):
-            # Assume module has a method_name method that has signature:
-            #
-            # async def my_handler(self: SubprocessModule,
-            #                      message: RequestMessage,
-            #                      parent_bound_queue: multiprocessing.Queue) -> None
-            #
-            # which comes from the decorators from MethodRouteTable.
-            method = getattr(self, message.method_name)
-            # getattr() already binds self to method, so we don't need to pass it.
-            asyncio.run_coroutine_threadsafe(
-                method(message, self._parent_bound_queue), loop
-            )
-        else:
-            raise ValueError(f"Unknown message type: {type(message)}")
+    @abc.abstractmethod
+    async def is_healthy(self) -> bool:
+        """
+        Whether the module is considered healthy.
+        Subclasses should implement this method to provide health check logic.
+        """
+        pass
 
-    def dispatch_child_bound_messages(
-        self,
-        loop: asyncio.AbstractEventLoop,
-    ):
-        """
-        Dispatch Messages to the module. This function should be run in a separate
-        thread from the asyncio loop of the module.
-        """
-        assert_not_in_asyncio_loop()
-        while True:
-            try:
-                message = self._child_bound_queue.get()
-            except Exception:
-                # This can happen if the parent process died, and getting from the queue
-                # can have EOFError.
-                logger.exception(
-                    "Error getting message from child bound queue. This module will exit."
-                )
-                loop.call_soon_threadsafe(sys.exit)
-                break
-            try:
-                self.handle_child_bound_message(loop, message)
-            except Exception:
-                logger.exception(
-                    f"Error handling child bound message {message}. This request will hang forever."
-                )
-
-    async def _internal_health_check(
-        self, message: RequestMessage, parent_bound_queue: multiprocessing.Queue
-    ) -> None:
-        """
-        Internal health check. Sends back a response to the parent queue.
-
-        Note this is NOT registered as a route, so an external HTTP request will not
-        trigger this.
-        """
+    async def _internal_module_health_check(self, request):
         try:
-            parent_bound_queue.put(
-                UnaryResponseMessage(
-                    request_id=message.request_id, status=200, body=b"ok!"
-                )
+            is_healthy = await self.is_healthy()
+        except Exception:
+            logger.exception("Error during internal health check")
+            is_healthy = False
+        if is_healthy:
+            return aiohttp.web.Response(
+                text="success",
+                content_type="application/text",
             )
-        except Exception as e:
-            logger.error(
-                f"Error sending response: {e}. This means we will never reply the parent's health check request. The parent will think the module is dead."
-            )
+        return aiohttp.web.HTTPServiceUnavailable(reason="Internal health check failed")
 
     async def _detect_parent_process_death(self):
         """
@@ -190,8 +161,6 @@ class SubprocessModule(abc.ABC):
 
 
 async def run_module_inner(
-    child_bound_queue: multiprocessing.Queue,
-    parent_bound_queue: multiprocessing.Queue,
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
@@ -205,29 +174,22 @@ async def run_module_inner(
     )
 
     try:
-        module = cls(config, child_bound_queue, parent_bound_queue, parent_process_pid)
+        module = cls(config, parent_process_pid)
         module._parent_process_death_detection_task = asyncio.create_task(
             module._detect_parent_process_death()
         )
-        # First init the module, then start dispatching messages.
+        # First init the module, then start the aiohttp server.
         await module.init()
+        await module.start_server()
         logger.info(f"Module {module_name} initialized, receiving messages...")
+        while True:
+            await asyncio.sleep(3600)  # sleep forever
     except Exception as e:
         logger.exception(f"Error creating module {module_name}")
         raise e
-    loop = asyncio.get_running_loop()
-    dispatch_child_bound_messages_thread = threading.Thread(
-        name=f"{module_name}-dispatch_child_bound_messages_thread",
-        target=module.dispatch_child_bound_messages,
-        args=(loop,),
-        daemon=True,
-    )
-    dispatch_child_bound_messages_thread.start()
 
 
 def run_module(
-    child_bound_queue: multiprocessing.Queue,
-    parent_bound_queue: multiprocessing.Queue,
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
@@ -235,9 +197,6 @@ def run_module(
 ):
     """
     Entrypoint for a subprocess module.
-    Creates a dedicated thread to listen from the the parent queue and dispatch messages
-    to the module. Only listen to the parent queue AFTER the module is prepared by
-    `module.init()`.
 
     parent_process_pid: Used to detect if the parent process died every 1s. If it does,
     the module will exit.
@@ -262,8 +221,6 @@ def run_module(
     loop = asyncio.new_event_loop()
     loop.create_task(
         run_module_inner(
-            child_bound_queue,
-            parent_bound_queue,
             cls,
             config,
             incarnation,
@@ -272,9 +229,8 @@ def run_module(
     )
     # TODO: do graceful shutdown.
     # 1. define a stop token.
-    # 2. dispatch_child_bound_messages_thread will stop listening.
-    # 3. join the loop to wait for all pending tasks to finish, up until a timeout.
-    # 4. close the loop and exit.
+    # 2. join the loop to wait for all pending tasks to finish, up until a timeout.
+    # 3. close the loop and exit.
 
     def sigterm_handler(signum, frame):
         logger.warning(f"Exiting with signal {signum} immediately...")

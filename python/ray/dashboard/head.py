@@ -305,7 +305,13 @@ class DashboardHead:
             logging_filename=self.logging_filename,
             logging_rotate_bytes=self.logging_rotate_bytes,
             logging_rotate_backup_count=self.logging_rotate_backup_count,
+            socket_dir=str(
+                Path(self.session_dir)
+                / "sockets"
+                / ray_constants.RAY_DASHBOARD_SOCKET_DIR
+            ),
         )
+
         # Select modules to load.
         if modules_to_load is not None:
             subprocess_cls_list = [
