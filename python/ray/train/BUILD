@@ -656,7 +656,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_telemetry.py"],
     tags = ["team:ml"],
-    deps = [":train_lib""],
+    deps = [":train_lib"],
 )
 
 ### E2E Data + Train
