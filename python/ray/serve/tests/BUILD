@@ -45,7 +45,7 @@ py_test_module_list(
         "test_proxy.py",
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
-        "test_telemetry_serve_used.py",
+        "test_telemetry.py",
         "test_util.py",
         "test_websockets.py",
     ],
@@ -127,7 +127,7 @@ py_test_module_list(
         "test_deploy_2.py",
         "test_standalone.py",
         "test_standalone_3.py",
-        "test_telemetry.py",
+        "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
     tags = [
