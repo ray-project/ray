@@ -45,8 +45,9 @@ System logs may include information about your applications. For example, ``runt
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. All stdout and stderr from Tasks or Actors are streamed to these files. Note that job_id is the ID of the driver.
 
 ### System (component) logs
-- ``dashboard.[log|err]``: A log file of a Ray Dashboard. ``.log`` files contain logs generated from the dashboard's logger. ``.err`` files contain stdout and stderr printed from the dashboard. They are usually empty except when the dashboard crashes unexpectedly.
+- ``dashboard.[log|err]``: The log file for old Ray Dashboard single-process modules. We are currently trying to migrate to multi-processes dashboard modules, so these log files will be removed in the future. ``.log`` files contain logs generated from the dashboard's logger. ``.err`` files contain stdout and stderr printed from the dashboard. They are usually empty except when the dashboard crashes unexpectedly.
 - ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
+- ``dashboard-[module_name]-[incarnation].log``: The log files for the Ray Dashboard multi-processes modules. Incarnation is the number of times that the module has been restarted, starting from 0.
 - ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
 - ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
 - ``log_monitor.[log|err]``: The log monitor is in charge of streaming logs to the driver. ``.log`` files contain logs generated from the log monitor's logger. ``.err`` files contain the stdout and stderr printed from the log monitor. They are usually empty except when the log monitor crashes unexpectedly.
