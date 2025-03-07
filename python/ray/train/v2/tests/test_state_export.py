@@ -37,6 +37,7 @@ def _create_mock_train_run(status: RunStatus = RunStatus.RUNNING):
         status=status,
         status_detail=None,
         start_time_ns=time.time_ns(),
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
     )
 
 
@@ -55,6 +56,7 @@ def _create_mock_train_run_attempt(
         gpu_ids=[0],
         status=ActorStatus.ALIVE,
         resources=TrainResources(resources={"CPU": 1}),
+        log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
     )
 
     return TrainRunAttempt(
@@ -269,46 +271,6 @@ def test_export_optional_fields(enable_export_api_write):
     assert attempt_data["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
     assert attempt_data["event_data"]["status_detail"] == "Attempt details"
     assert "end_time_ns" in attempt_data["event_data"]
-
-
-def test_export_log_file_paths(enable_export_api_write):
-    """Test that log file paths are correctly exported."""
-    state_actor = get_or_create_state_actor()
-
-    # Create a run with a log file path
-    run = _create_mock_train_run(RunStatus.RUNNING)
-    run.log_file_path = "/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log"
-    ray.get(state_actor.create_or_update_train_run.remote(run))
-
-    # Create an attempt with a worker that has a log file path
-    attempt = _create_mock_train_run_attempt(
-        attempt_id="attempt_with_log_path",
-        status=RunAttemptStatus.RUNNING,
-    )
-    attempt.workers[
-        0
-    ].log_file_path = "/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log"
-    ray.get(state_actor.create_or_update_train_run_attempt.remote(attempt))
-
-    # Check that export files were created with log paths
-    data = _get_exported_data()
-    assert len(data) == 2
-
-    # Verify run log path was exported
-    run_data = data[0]
-    assert run_data["source_type"] == "EXPORT_TRAIN_RUN"
-    assert (
-        run_data["event_data"]["log_file_path"]
-        == "/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log"
-    )
-
-    # Verify worker log path was exported
-    attempt_data = data[1]
-    assert attempt_data["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
-    assert (
-        attempt_data["event_data"]["workers"][0]["log_file_path"]
-        == "/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log"
-    )
 
 
 if __name__ == "__main__":
