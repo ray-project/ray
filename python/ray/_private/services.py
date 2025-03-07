@@ -1419,7 +1419,7 @@ def start_api_server(
         if raise_on_failure:
             raise e from e
         else:
-            logger.error(e)
+            logger.error(e, exc_info=True, stack_info=True)
             return None, None
 
 
