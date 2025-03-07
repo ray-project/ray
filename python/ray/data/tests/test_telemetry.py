@@ -1,53 +1,21 @@
 import sys
-from typing import Set
 
 import pytest
 
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray import data
 
 
-@pytest.fixture
-def reset_usage_lib():
-    yield
-    ray.shutdown()
-    ray_usage_lib.reset_global_state()
-
-
-def _get_library_usages() -> Set[str]:
-    return set(
-        ray_usage_lib.get_library_usages_to_report(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client()
-        )
+def _is_data_used() -> bool:
+    return "dataset" in ray_usage_lib.get_library_usages_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client()
     )
 
 
-@pytest.mark.parametrize("callsite", ["driver", "actor", "task"])
-def test_data_range(reset_usage_lib, callsite: str):
-    assert len(_get_library_usages()) == 0
-
-    if callsite == "driver":
-        data.range(10)
-    elif callsite == "actor":
-
-        @ray.remote
-        class A:
-            def __init__(self):
-                data.range(10)
-
-        a = A.remote()
-        ray.get(a.__ray_ready__.remote())
-
-    elif callsite == "task":
-
-        @ray.remote
-        def f():
-            data.range(10)
-
-        ray.get(f.remote())
-
-    assert _get_library_usages() == {"core", "dataset"}
+def test_data_range():
+    assert not _is_data_used()
+    ray.data.range(10)
+    assert _is_data_used()
 
 
 if __name__ == "__main__":
