@@ -215,7 +215,7 @@ class ClientConnection : public ServerConnection {
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    std::string debug_label,
-                   const std::vector<std::string> &message_type_enum_names);
+                   std::vector<std::string> message_type_enum_names);
 
   ClientConnection(const ClientConnection &) = delete;
   ClientConnection &operator=(const ClientConnection &) = delete;
@@ -235,7 +235,7 @@ class ClientConnection : public ServerConnection {
       ConnectionErrorHandler connection_error_handler,
       local_stream_socket &&socket,
       std::string debug_label,
-      const std::vector<std::string> &message_type_enum_names);
+      std::vector<std::string> message_type_enum_names);
 
   std::shared_ptr<ClientConnection> shared_ClientConnection_from_this() {
     return std::static_pointer_cast<ClientConnection>(shared_from_this());
@@ -257,13 +257,13 @@ class ClientConnection : public ServerConnection {
                    ConnectionErrorHandler connection_error_handler,
                    local_stream_socket &&socket,
                    std::string debug_label,
-                   const std::vector<std::string> &message_type_enum_names)
+                   std::vector<std::string> message_type_enum_names)
       : ClientConnection(PrivateTag{},
                          std::move(message_handler),
                          std::move(connection_error_handler),
                          std::move(socket),
                          std::move(debug_label),
-                         message_type_enum_names) {}
+                         std::move(message_type_enum_names)) {}
   /// Process an error from the last operation, then process the  message
   /// header from the client.
   void ProcessMessageHeader(const boost::system::error_code &error);

@@ -418,13 +418,13 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
     ConnectionErrorHandler connection_error_handler,
     local_stream_socket &&socket,
     std::string debug_label,
-    const std::vector<std::string> &message_type_enum_names) {
+    std::vector<std::string> message_type_enum_names) {
   return std::make_shared<ClientConnection>(PrivateTag{},
                                             std::move(message_handler),
                                             std::move(connection_error_handler),
                                             std::move(socket),
                                             std::move(debug_label),
-                                            message_type_enum_names);
+                                            std::move(message_type_enum_names));
 }
 
 ClientConnection::ClientConnection(
@@ -433,13 +433,13 @@ ClientConnection::ClientConnection(
     ConnectionErrorHandler connection_error_handler,
     local_stream_socket &&socket,
     std::string debug_label,
-    const std::vector<std::string> &message_type_enum_names)
+    std::vector<std::string> message_type_enum_names)
     : ServerConnection(std::move(socket)),
       registered_(false),
       message_handler_(std::move(message_handler)),
       connection_error_handler_(std::move(connection_error_handler)),
       debug_label_(std::move(debug_label)),
-      message_type_enum_names_(message_type_enum_names) {}
+      message_type_enum_names_(std::move(message_type_enum_names)) {}
 
 void ClientConnection::Register() {
   RAY_CHECK(!registered_);
