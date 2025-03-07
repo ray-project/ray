@@ -10,13 +10,16 @@ def _setup_logger(logger_name: str):
 
     This function is idempotent and won't set up the same logger multiple times. It will
     Also skip the setup if Serve logger is already setup and has handlers.
+
+    Args:
+        logger_name: logger name used to get the logger.
     """
     logger = logging.getLogger(logger_name)
-    serve_logger = logging.getLogger("ray.data")
+    llm_logger = logging.getLogger("ray.data.llm")
 
     # Skip setup if the logger already has handlers setup or if the parent (Serve
     # logger) has handlers.
-    if logger.handlers or serve_logger.handlers:
+    if logger.handlers or llm_logger.handlers:
         return
 
     # Set up stream handler, which logs to console as plaintext.

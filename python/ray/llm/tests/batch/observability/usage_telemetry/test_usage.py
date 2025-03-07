@@ -59,13 +59,13 @@ def test_push_telemetry_report():
     try:
         assert telemetry == {
             TagKey.LLM_BATCH_PROCESSOR_CONFIG_NAME: "vLLMEngineProcessorConfig",
-            TagKey.LLM_MODEL_SOURCE: "model_opt_125m",
+            TagKey.LLM_BATCH_MODEL_SOURCE: "model_opt_125m",
             TagKey.LLM_BATCH_SIZE: "64",
-            TagKey.LLM_ACCELERATOR_TYPE: "A10G",
-            TagKey.LLM_CONCURRENCY: "4",
-            TagKey.LLM_TASK_TYPE: "chat",
-            TagKey.LLM_PIPELINE_PARALLEL_SIZE: "1",
-            TagKey.LLM_TENSOR_PARALLEL_SIZE: "1",
+            TagKey.LLM_BATCH_ACCELERATOR_TYPE: "A10G",
+            TagKey.LLM_BATCH_CONCURRENCY: "4",
+            TagKey.LLM_BATCH_TASK_TYPE: "chat",
+            TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1",
+            TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1",
         }
     except AttributeError as e:
         # If the key doesn't exist in the TagKey, no telemetry should be logged.

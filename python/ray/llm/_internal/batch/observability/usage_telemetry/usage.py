@@ -9,7 +9,9 @@ from ray import serve
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
-from ray.llm._internal.serve.observability.usage_telemetry.usage import RAYLLM_TELEMETRY_NAMESPACE
+from ray.llm._internal.serve.observability.usage_telemetry.usage import (
+    RAYLLM_TELEMETRY_NAMESPACE,
+)
 from ray.llm._internal.batch.observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -24,13 +26,13 @@ class BatchTelemetryTags(str, Enum):
     """Telemetry tags for RayLLM Batch."""
 
     LLM_BATCH_PROCESSOR_CONFIG_NAME = "LLM_BATCH_PROCESSOR_CONFIG_NAME"
-    LLM_MODEL_SOURCE = "LLM_MODEL_SOURCE"
+    LLM_BATCH_MODEL_SOURCE = "LLM_BATCH_MODEL_SOURCE"
     LLM_BATCH_SIZE = "LLM_BATCH_SIZE"
-    LLM_ACCELERATOR_TYPE = "LLM_ACCELERATOR_TYPE"
-    LLM_CONCURRENCY = "LLM_CONCURRENCY"
-    LLM_TASK_TYPE = "LLM_TASK_TYPE"
-    LLM_PIPELINE_PARALLEL_SIZE = "LLM_PIPELINE_PARALLEL_SIZE"
-    LLM_TENSOR_PARALLEL_SIZE = "LLM_TENSOR_PARALLEL_SIZE"
+    LLM_BATCH_ACCELERATOR_TYPE = "LLM_BATCH_ACCELERATOR_TYPE"
+    LLM_BATCH_CONCURRENCY = "LLM_BATCH_CONCURRENCY"
+    LLM_BATCH_TASK_TYPE = "LLM_BATCH_TASK_TYPE"
+    LLM_BATCH_PIPELINE_PARALLEL_SIZE = "LLM_BATCH_PIPELINE_PARALLEL_SIZE"
+    LLM_BATCH_TENSOR_PARALLEL_SIZE = "LLM_BATCH_TENSOR_PARALLEL_SIZE"
 
 
 @ray.remote(
@@ -75,7 +77,9 @@ class TelemetryAgent:
 
     def set_processor_config_name(self, processor_config_name: str):
         if self._processor_config_name is not None:
-            raise ValueError(f"Processor config name is already set to {self._processor_config_name}. This function should only be called once per processor.")
+            raise ValueError(
+                f"Processor config name is already set to {self._processor_config_name}. This function should only be called once per processor."
+            )
         self._processor_config_name = processor_config_name
 
     def update_record_tag_func(self, record_tag_func: Callable):
@@ -83,7 +87,9 @@ class TelemetryAgent:
 
     def push_telemetry_report(self, telemetries: Optional[Dict[str, str]] = None):
         if self._processor_config_name is None:
-            raise ValueError("Processor config name is not set. Please call set_processor_config_name first.")
+            raise ValueError(
+                "Processor config name is not set. Please call set_processor_config_name first."
+            )
 
         telemetries = telemetries or {}
 
@@ -91,7 +97,9 @@ class TelemetryAgent:
             if key not in BatchTelemetryTags:
                 raise ValueError(f"Invalid telemetry key: {key}.")
 
-        telemetries[BatchTelemetryTags.LLM_BATCH_PROCESSOR_CONFIG_NAME] = self._processor_config_name
+        telemetries[
+            BatchTelemetryTags.LLM_BATCH_PROCESSOR_CONFIG_NAME
+        ] = self._processor_config_name
         ray.get(self.telemetry_agent.record.remote(telemetries))
 
 
