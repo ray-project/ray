@@ -3,7 +3,6 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
-import mock
 import pytest
 
 from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
@@ -369,9 +368,7 @@ def mock_deployment_state_manager(
 
 @pytest.fixture
 def mock_max_per_replica_retry_count():
-    with mock.patch(
-        "ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2
-    ):
+    with patch("ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2):
         yield 2
 
 
