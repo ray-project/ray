@@ -183,6 +183,10 @@ ray_cc_library(
 ray_cc_library(
     name = "type_traits",
     hdrs = ["type_traits.h"],
+    deps = [
+        "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 ray_cc_library(
@@ -371,5 +375,13 @@ ray_cc_library(
     hdrs = ["invoke_once_token.h"],
     deps = [
         ":logging",
+    ],
+)
+
+ray_cc_library(
+    name = "visitor",
+    hdrs = ["visitor.h"],
+    deps = [
+        "@com_google_absl//absl/meta:type_traits",
     ],
 )
