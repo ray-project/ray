@@ -44,23 +44,12 @@
 #include <thread>
 #include <unordered_map>
 
-// TODO(hjiang): Revisit these inclusion when we split `util` dependency targets; keep
-// them here for backward compatibility and avoid breaking too much compilation.
 #include "absl/container/flat_hash_map.h"
-#include "ray/util/cmd_line_utils.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
-#include "ray/util/process.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
-#endif
-
-// Portable code for unreachable
-#if defined(_MSC_VER)
-#define UNREACHABLE __assume(0)
-#else
-#define UNREACHABLE __builtin_unreachable()
 #endif
 
 // Boost forward-declarations (to avoid forcing slow header inclusions)
@@ -72,7 +61,7 @@ class stream_protocol;
 
 }  // namespace boost::asio::generic
 
-// Append append_str to the begining of each line of str.
+// Append append_str to the beginning of each line of str.
 inline std::string AppendToEachLine(const std::string &str,
                                     const std::string &append_str) {
   std::stringstream ss;
@@ -183,31 +172,6 @@ struct EnumClassHash {
   }
 };
 
-/// unordered_map for enum class type.
-template <typename Key, typename T>
-using EnumUnorderedMap = absl::flat_hash_map<Key, T, EnumClassHash>;
-
-inline void setEnv(const std::string &name, const std::string &value) {
-#ifdef _WIN32
-  std::string env = name + "=" + value;
-  int ret = _putenv(env.c_str());
-#else
-  int ret = setenv(name.c_str(), value.c_str(), 1);
-#endif
-  RAY_CHECK_EQ(ret, 0) << "Failed to set env var " << name << " " << value;
-}
-
-inline void unsetEnv(const std::string &name) {
-#ifdef _WIN32
-  // Use _putenv on Windows with an empty value to unset
-  std::string env = name + "=";
-  int ret = _putenv(env.c_str());
-#else
-  int ret = unsetenv(name.c_str());
-#endif
-  RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
-}
-
 namespace ray {
 
 /// Return true if the raylet is failed. This util function is only meant to be used by
@@ -216,11 +180,6 @@ bool IsRayletFailed(const std::string &raylet_pid);
 
 /// Teriminate the process without cleaning up the resources.
 void QuickExit();
-
-/// \param value the value to be formatted to string
-/// \param precision the precision to format the value to
-/// \return the foramtted value
-std::string FormatFloat(float value, int32_t precision);
 
 /// Converts a timeout in milliseconds to a timeout point.
 /// \param[in] timeout_ms The timeout in milliseconds.

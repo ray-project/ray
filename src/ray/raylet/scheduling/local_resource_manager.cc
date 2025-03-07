@@ -14,8 +14,13 @@
 
 #include "ray/raylet/scheduling/local_resource_manager.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <csignal>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"

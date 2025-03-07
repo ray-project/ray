@@ -212,6 +212,7 @@ Iceberg
    :toctree: doc/
 
    read_iceberg
+   Dataset.write_iceberg
 
 Lance
 -----
@@ -221,6 +222,7 @@ Lance
    :toctree: doc/
 
    read_lance
+   Dataset.write_lance
 
 ClickHouse
 ----------

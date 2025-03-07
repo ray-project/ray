@@ -85,12 +85,14 @@ class _FrameStacking(ConnectorV2):
                     new_shape = (len(_sa_episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
                     # Create a strided view of the array.
+                    # But return a copy to avoid non-contiguous memory in the object
+                    # store (which is very expensive to deserialize).
                     return np.transpose(
                         np.lib.stride_tricks.as_strided(
                             s, shape=new_shape, strides=new_strides
                         ),
                         axes=[0, 2, 3, 1],
-                    )
+                    ).copy()
 
                 # Get all observations from the episode in one np array (except for
                 # the very last one, which is the final observation not needed for

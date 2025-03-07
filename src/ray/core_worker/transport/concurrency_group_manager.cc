@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
+#include <optional>
+
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/transport/thread_pool.h"
 
@@ -23,11 +25,14 @@ namespace core {
 template <typename ExecutorType>
 ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
     const std::vector<ConcurrencyGroup> &concurrency_groups,
-    const int32_t max_concurrency_for_default_concurrency_group) {
+    const int32_t max_concurrency_for_default_concurrency_group,
+    std::function<std::function<void()>()> initialize_thread_callback)
+    : initialize_thread_callback_(std::move(initialize_thread_callback)) {
   for (auto &group : concurrency_groups) {
     const auto name = group.name;
     const auto max_concurrency = group.max_concurrency;
     auto executor = std::make_shared<ExecutorType>(max_concurrency);
+    executor_releasers_.push_back(InitializeExecutor(executor));
     auto &fds = group.function_descriptors;
     for (auto fd : fds) {
       functions_to_executor_index_[fd->ToString()] = executor;
@@ -39,10 +44,11 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
   // this actor, the tasks of default group will be performed in main thread instead of
   // any executor pool, otherwise tasks in any concurrency group should be performed in
   // the thread pools instead of main thread.
-  if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) ||
-      !concurrency_groups.empty()) {
+  if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group,
+                                        !concurrency_groups.empty())) {
     default_executor_ =
         std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
+    executor_releasers_.push_back(InitializeExecutor(default_executor_));
   }
 }
 
@@ -65,7 +71,7 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor
         << "the concurrency group " << concurrency_group_name;
     return it->second;
   }
-  /// Code path of that this task wasn't specified in a concurrency group addtionally.
+  /// Code path of that this task wasn't specified in a concurrency group additionally.
   /// Use the predefined concurrency group.
   if (functions_to_executor_index_.find(fd->ToString()) !=
       functions_to_executor_index_.end()) {
@@ -81,9 +87,50 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetDefaultE
   return default_executor_;
 }
 
+template <typename ExecutorType>
+std::optional<std::function<void()>>
+ConcurrencyGroupManager<ExecutorType>::InitializeExecutor(
+    std::shared_ptr<ExecutorType> executor) {
+  if (!initialize_thread_callback_) {
+    return std::nullopt;
+  }
+
+  if constexpr (std::is_same<ExecutorType, BoundedExecutor>::value) {
+    std::promise<void> init_promise;
+    auto init_future = init_promise.get_future();
+    auto initializer = initialize_thread_callback_;
+    std::function<void()> releaser;
+
+    executor->Post([&initializer, &init_promise, &releaser]() {
+      releaser = initializer();
+      init_promise.set_value();
+    });
+
+    // Wait for thread initialization to complete before executing any tasks in the
+    // executor.
+    init_future.wait();
+
+    return [executor, releaser]() {
+      std::promise<void> release_promise;
+      auto release_future = release_promise.get_future();
+      executor->Post([releaser, &release_promise]() {
+        releaser();
+        release_promise.set_value();
+      });
+      release_future.wait();
+    };
+  }
+  return std::nullopt;
+}
+
 /// Stop and join the executors that the this manager owns.
 template <typename ExecutorType>
 void ConcurrencyGroupManager<ExecutorType>::Stop() {
+  for (const auto &releaser : executor_releasers_) {
+    if (releaser.has_value()) {
+      releaser.value()();
+    }
+  }
   if (default_executor_) {
     RAY_LOG(DEBUG) << "Default executor is stopping.";
     default_executor_->Stop();

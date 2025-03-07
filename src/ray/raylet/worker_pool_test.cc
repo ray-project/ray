@@ -17,6 +17,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "absl/time/time.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -144,7 +152,6 @@ class WorkerPoolMock : public WorkerPool {
             [this]() { return absl::FromUnixMillis(current_time_ms_); }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
-        error_message_type_(1),
         client_call_manager_(instrumented_io_service_),
         mock_worker_rpc_clients_(mock_worker_rpc_clients) {
     SetNodeManagerPort(1);
@@ -252,29 +259,27 @@ class WorkerPoolMock : public WorkerPool {
       int runtime_env_hash = 0,
       StartupToken worker_startup_token = 0,
       bool set_process = true) {
-    std::function<void(ClientConnection &)> client_handler =
-        [this](ClientConnection &client) { HandleNewClient(client); };
-    std::function<void(
-        std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &)>
-        message_handler = [this](std::shared_ptr<ClientConnection> client,
-                                 int64_t message_type,
-                                 const std::vector<uint8_t> &message) {
-          HandleMessage(client, message_type, message);
-        };
+    auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
+
+    auto connection_error_handler = [](std::shared_ptr<ClientConnection> client,
+                                       const boost::system::error_code &error) {
+      RAY_CHECK(false) << "Unexpected connection error: " << error.message();
+    };
     local_stream_socket socket(instrumented_io_service_);
-    auto client = ClientConnection::Create(client_handler,
-                                           message_handler,
-                                           std::move(socket),
-                                           "worker",
-                                           {},
-                                           error_message_type_);
+    auto conn = ClientConnection::Create(std::move(noop_message_handler),
+                                         std::move(connection_error_handler),
+                                         std::move(socket),
+                                         "worker",
+                                         {});
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
                                                                runtime_env_hash,
                                                                WorkerID::FromRandom(),
                                                                language,
                                                                worker_type,
                                                                "127.0.0.1",
-                                                               client,
+                                                               conn,
                                                                client_call_manager_,
                                                                worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
@@ -394,14 +399,9 @@ class WorkerPoolMock : public WorkerPool {
   double current_time_ms_ = 0;
   absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
-  int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       &mock_worker_rpc_clients_;
-  void HandleNewClient(ClientConnection &){};
-  void HandleMessage(std::shared_ptr<ClientConnection>,
-                     int64_t,
-                     const std::vector<uint8_t> &){};
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -570,6 +570,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, CompareWorkerProcessObjects) {
   ASSERT_TRUE(!std::equal_to<T>()(a, empty));
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, TestGetRegisteredDriver) {
+  rpc::JobConfig job_config;
+  auto job_id = JobID::FromInt(11111);
+  auto driver = RegisterDriver(Language::PYTHON, job_id, job_config);
+  ASSERT_EQ(worker_pool_->GetRegisteredDriver(driver->WorkerId()), driver);
+  ASSERT_EQ(worker_pool_->GetRegisteredDriver(WorkerID::FromRandom()), nullptr);
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
   auto [proc, token] = worker_pool_->StartWorkerProcess(
@@ -637,6 +645,24 @@ TEST_F(WorkerPoolDriverRegisteredTest, InitialWorkerProcessCount) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
+  // Prestarts 2 workers.
+  worker_pool_->PrestartWorkers(task_spec, 2);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+  // Prestarts 1 more worker.
+  worker_pool_->PrestartWorkers(task_spec, 3);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  // No more needed.
+  worker_pool_->PrestartWorkers(task_spec, 1);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  // Capped by soft limit.
+  worker_pool_->PrestartWorkers(task_spec, 20);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithRuntimeEnv) {
+  auto task_spec = ExampleTaskSpec();
+  task_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
+      "{\"env_vars\": {\"FOO\": \"bar\"}}");
   // Prestarts 2 workers.
   worker_pool_->PrestartWorkers(task_spec, 2);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
@@ -2124,8 +2150,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
   const auto task_spec = ExampleTaskSpec();
-
-  worker_pool_->PrestartDefaultCpuWorkers(ray::Language::PYTHON, 1);
+  worker_pool_->PrestartWorkersInternal(task_spec, /*num_needed=*/1);
   worker_pool_->PushWorkers(0, task_spec.JobId());
   // One worker process has been prestarted.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
@@ -2230,6 +2255,7 @@ int main(int argc, char **argv) {
       argv[0],
       ray::RayLogLevel::INFO,
       ray::RayLog::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
+      ray::RayLog::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
       ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
       ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
