@@ -88,6 +88,7 @@ bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
   RAY_CHECK(out_file.good()) << "Failed to open cgroup file " << subtree_control_path;
   // Able to add memory constraint to the internal cgroup.
   out_file << "+memory";
+  out_file.flush();
   return out_file.good();
 }
 
@@ -96,6 +97,7 @@ void KillAllProc(const std::string &cgroup_folder) {
   const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);
   std::ofstream f{kill_proc_file};
   f << "1";
+  out_file.flush();
   RAY_CHECK(f.good()) << "Fails to kill all processes under the cgroup";
 }
 
@@ -205,6 +207,7 @@ void CgroupSetup::AddInternalProcess(pid_t pid) {
   std::ofstream out_file(cgroup_v2_internal_folder_);
   // Able to add memory constraint to the internal cgroup.
   out_file << pid;
+  out_file.flush();
   RAY_CHECK(out_file.good()) << "Failed to add " << pid << " into cgroup.";
 }
 
@@ -220,6 +223,7 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForIndividualAppCgroup(
   const std::string cgroup_proc_file = ray::JoinPaths(cgroup_folder, "cgroup.procs");
   std::ofstream out_file(cgroup_proc_file);
   out_file << ctx.pid;
+  out_file.flush();
   RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
                              << ctx.max_memory << " into cgroup folder";
 
@@ -241,6 +245,7 @@ ScopedCgroupHandler CgroupSetup::ApplyCgroupForDefaultAppCgroup(
 
   std::ofstream out_file(default_cgroup_proc_file);
   out_file << ctx.pid;
+  out_file.flush();
   RAY_CHECK(out_file.good()) << "Failed to add process " << ctx.pid << " with max memory "
                              << ctx.max_memory << " into cgroup folder";
 
