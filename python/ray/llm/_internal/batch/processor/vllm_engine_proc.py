@@ -19,6 +19,8 @@ from ray.llm._internal.batch.stages import (
     DetokenizeStage,
 )
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
+from ray.llm._internal.batch.observability.usage_telemetry.usage import TelemetryAgent, BatchTelemetryTags
+from ray.llm._internal.serve.observability.usage_telemetry.usage import DEFAULT_GPU_TYPE
 
 
 class vLLMEngineProcessorConfig(ProcessorConfig):
@@ -91,6 +93,7 @@ def build_vllm_engine_processor(
     config: vLLMEngineProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
+    telemetry_agent: Optional[TelemetryAgent] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
     Args:
@@ -186,6 +189,18 @@ def build_vllm_engine_processor(
                 ),
             )
         )
+
+    telemetry_agent.push_telemetry_report(
+        {
+            BatchTelemetryTags.LLM_MODEL_SOURCE: config.model_source,
+            BatchTelemetryTags.LLM_BATCH_SIZE: str(config.batch_size),
+            BatchTelemetryTags.LLM_ACCELERATOR_TYPE: config.accelerator_type or DEFAULT_GPU_TYPE,
+            BatchTelemetryTags.LLM_CONCURRENCY: str(config.concurrency),
+            BatchTelemetryTags.LLM_TASK_TYPE: vLLMTaskType(config.task_type),
+            BatchTelemetryTags.LLM_PIPELINE_PARALLEL_SIZE: config.engine_kwargs.get("pipeline_parallel_size", 1),
+            BatchTelemetryTags.LLM_TENSOR_PARALLEL_SIZE: config.engine_kwargs.get("tensor_parallel_size", 1),
+        }
+    )
 
     processor = Processor(
         config,

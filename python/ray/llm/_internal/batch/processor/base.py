@@ -13,6 +13,7 @@ from ray.llm._internal.batch.stages import (
     wrap_postprocess,
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.batch.observability.usage_telemetry.usage import get_or_create_telemetry_agent
 
 
 class ProcessorConfig(BaseModelExtended):
@@ -197,6 +198,9 @@ class ProcessorBuilder:
                 f"Processor config type {type_name} not registered. "
                 f"Available types: {cls._registry.keys()}"
             )
+        telemetry_agent = get_or_create_telemetry_agent()
+        telemetry_agent.set_processor_config_name(type_name)
+        kwargs.update({"telemetry_agent": telemetry_agent})
         processor = cls._registry[type_name](config, **kwargs)
         if override_stage_config_fn is not None:
             for name, stage in processor.stages.items():
