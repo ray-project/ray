@@ -186,8 +186,6 @@ class SessionFileHandler(logging.Handler):
         self._formatter = None
         self._path = None
 
-        self._try_create_handler()
-
     def emit(self, record):
         if self._handler is None:
             self._try_create_handler()
@@ -200,6 +198,8 @@ class SessionFileHandler(logging.Handler):
         self._formatter = fmt
 
     def get_log_file_path(self) -> Optional[str]:
+        if self._handler is None:
+            self._try_create_handler()
         return self._path
 
     def _try_create_handler(self):
