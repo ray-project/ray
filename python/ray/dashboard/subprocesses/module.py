@@ -1,6 +1,7 @@
 import abc
 import asyncio
 import aiohttp
+import inspect
 import logging
 import sys
 from dataclasses import dataclass
@@ -13,7 +14,6 @@ from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
 )
-from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray._private.ray_logging import setup_component_logger
 
 logger = logging.getLogger(__name__)
@@ -101,10 +101,26 @@ class SubprocessModule(abc.ABC):
             self.socket_path.unlink()
 
         app = aiohttp.web.Application()
-        app.add_routes(
-            [aiohttp.web.get("/api/healthz", self._internal_module_health_check)]
+        routes: list[aiohttp.web.RouteDef] = [
+            aiohttp.web.get("/api/healthz", self._internal_module_health_check)
+        ]
+        handlers = inspect.getmembers(
+            self,
+            lambda x: (
+                inspect.ismethod(x)
+                and hasattr(x, "__route_method__")
+                and hasattr(x, "__route_path__")
+            ),
         )
-        app.add_routes(SubprocessRouteTable.bound_routes_for_module(self))
+        for _, handler in handlers:
+            routes.append(
+                aiohttp.web.route(
+                    handler.__route_method__,
+                    handler.__route_path__,
+                    handler,
+                )
+            )
+        app.add_routes(routes)
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
 

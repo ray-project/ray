@@ -2,16 +2,12 @@ from __future__ import annotations
 
 import collections
 import inspect
-from typing import Callable, TYPE_CHECKING
 
 from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.routes import BaseRouteTable
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 import logging
-
-if TYPE_CHECKING:
-    from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
-    from ray.dashboard.subprocesses.module import SubprocessModule
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +42,6 @@ class SubprocessRouteTable(BaseRouteTable):
 
     _bind_map = collections.defaultdict(dict)
     _routes = aiohttp.web.RouteTableDef()
-    # A map from module name to list of (route_method, route_path, handler)
-    _module_name_bind_map: dict[
-        str, list[tuple[str, str, Callable]]
-    ] = collections.defaultdict(list)
 
     @classmethod
     def bind(cls, instance: "SubprocessModuleHandle"):
@@ -63,21 +55,6 @@ class SubprocessRouteTable(BaseRouteTable):
         handler_routes = inspect.getmembers(instance.module_cls, predicate)
         for _, h in handler_routes:
             cls._bind_map[h.__route_method__][h.__route_path__].instance = instance
-
-    @classmethod
-    def bound_routes_for_module(
-        cls, module: "SubprocessModule"
-    ) -> aiohttp.web.RouteTableDef:
-        """
-        Like bound_routes, but only for a single module.
-        And it binds the routes to SubprocessModule instead of SubprocessModuleHandle.
-        """
-        routes = aiohttp.web.RouteTableDef()
-        for method, path, handler in cls._module_name_bind_map[
-            module.__class__.__name__
-        ]:
-            routes.route(method, path)(lambda req: handler(module, req))
-        return routes
 
     @classmethod
     def _register_route(cls, method, path, websocket=False, **kwargs):
@@ -99,8 +76,6 @@ class SubprocessRouteTable(BaseRouteTable):
             )
 
             cls._bind_map[method][path] = bind_info
-            module_name = handler.__qualname__.split(".")[0]
-            cls._module_name_bind_map[module_name].append((method, path, handler))
 
             async def parent_side_handler(
                 request: aiohttp.web.Request,
