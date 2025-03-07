@@ -8,6 +8,7 @@
 getting-started/raycluster-quick-start
 getting-started/rayjob-quick-start
 getting-started/rayservice-quick-start
+getting-started/notebook
 ```
 
 
