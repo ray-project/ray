@@ -63,7 +63,7 @@ constexpr std::string_view kRootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
 constexpr std::string_view kRootCgroupSubtreeControl =
     "/sys/fs/cgroup/cgroup.subtree_control";
 // Owner can read and write.
-constexpr mode_t kCgroupFilePerm = 0600;
+constexpr mode_t kCgroupFilePerm = S_IRUSR | S_IWUSR;
 
 // Move all pids under [from] to [to].
 bool MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
