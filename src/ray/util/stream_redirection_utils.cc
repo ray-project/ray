@@ -53,11 +53,11 @@ void SyncOnStreamRedirection() {
 // Restore old stream fd.
 #if defined(__APPLE__) || defined(__linux__)
     RAY_CHECK_NE(dup2(handle.saved_stream_handle, stream_fd), -1)
-        << "Fails to restore file descritor " << strerror(errno);
+        << "Fails to restore file descriptor " << strerror(errno);
 #elif defined(_WIN32)
     int duped_fd = _open_osfhandle(reinterpret_cast<intptr_t>(handle.saved_stream_handle),
                                    _O_WRONLY);
-    RAY_CHECK_NE(_dup2(duped_fd, stream_fd), -1) << "Fails to duplicate file descritor.";
+    RAY_CHECK_NE(_dup2(duped_fd, stream_fd), -1) << "Fails to duplicate file descriptor.";
 #endif
 
     handle.redirection_file_handle.Close();
@@ -80,7 +80,7 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
       << "Fails to duplicate stream fd " << stream_fd << " because " << strerror(errno);
 
   RAY_CHECK_NE(dup2(handle.GetWriteHandle(), stream_fd), -1)
-      << "Fails to duplicate file descritor " << strerror(errno);
+      << "Fails to duplicate file descriptor " << strerror(errno);
 #elif defined(_WIN32)
   // Duplicate stream fd for later restoration.
   MEMFD_TYPE_NON_UNIQUE duped_stream_fd;
@@ -96,7 +96,7 @@ void RedirectStream(int stream_fd, const StreamRedirectionOption &opt) {
   int pipe_write_fd =
       _open_osfhandle(reinterpret_cast<intptr_t>(handle.GetWriteHandle()), _O_WRONLY);
   RAY_CHECK_NE(_dup2(pipe_write_fd, stream_fd), -1)
-      << "Fails to duplicate file descritor.";
+      << "Fails to duplicate file descriptor.";
 #endif
 
   RedirectionHandleWrapper handle_wrapper;

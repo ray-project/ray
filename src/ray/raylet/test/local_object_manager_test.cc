@@ -789,7 +789,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
 
   // Now, there's only one object that is current spilling.
   // SpillObjectUptoMaxThroughput will spill one more object (since one worker is
-  // availlable).
+  // available).
   manager.SpillObjectUptoMaxThroughput();
   ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_TRUE(manager.IsSpillingInProgress());
@@ -1253,7 +1253,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, 0);
 
-  // But 1 spilled object shoudl be deleted
+  // But 1 spilled object should be deleted
   ASSERT_EQ(GetCurrentSpilledCount(), free_objects_batch_size - 1);
   ASSERT_EQ(GetCurrentSpilledBytes(), object_size * (free_objects_batch_size - 1));
 
@@ -1404,7 +1404,7 @@ TEST_F(LocalObjectManagerTest, TestRetryDeleteSpilledObjects) {
   io_service_.run_one();
   // assert the request is retried.
   ASSERT_EQ(1, worker_pool.io_worker_client->FailDeleteSpilledObject());
-  // retry exhaused.
+  // retry exhausted.
   io_service_.run_one();
   ASSERT_EQ(0, worker_pool.io_worker_client->FailDeleteSpilledObject());
 }
