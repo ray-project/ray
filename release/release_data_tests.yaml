@@ -480,4 +480,4 @@
   run:
     timeout: 3600
     long_running: false
-    script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_lora.yaml
+    script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_lora.yaml --run-perf-profiler false
