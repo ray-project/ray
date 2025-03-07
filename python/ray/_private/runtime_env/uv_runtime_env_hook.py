@@ -1,17 +1,21 @@
 import argparse
+import copy
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import psutil
 
 
-def _check_working_dir_files(uv_run_args, runtime_env):
-    # Do error checking that should catch the most common cases of how
-    # things are different in Ray, i.e. not the whole file system will
-    # be available on the workers, only the working_dir.
+def _check_working_dir_files(uv_run_args: List[str], runtime_env: Dict[str, Any]) -> None:
+    """
+    Check that the files required by uv are local to the working_dir. This catches
+    the most common cases of how things are different in Ray, i.e. not the whole file
+    system will be available on the workers, only the working_dir.
 
+    The function won't return anything, it just raises a RuntimeError if there is an error.
+    """
     # First parse the arguments we need to check
     uv_run_parser = argparse.ArgumentParser()
     uv_run_parser.add_argument("--with-requirements", nargs="?")
@@ -64,7 +68,7 @@ def _check_working_dir_files(uv_run_args, runtime_env):
 def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Hook that detects if the driver is run in 'uv run' and sets the runtime environment accordingly."""
 
-    runtime_env = copy.deepcopy(runtime_env or {})
+    runtime_env = copy.deepcopy(runtime_env) or {}
 
     # uv spawns the python process as a child process, so to determine if
     # we are running under 'uv run', we check the parent process commandline.
