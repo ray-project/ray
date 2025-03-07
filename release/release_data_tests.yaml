@@ -425,7 +425,7 @@
     script: python tpch_q1.py --sf 100
 
 ##############
-# LLM
+# LLM Serving
 ##############
 
 - name: llm_serving_llama_3dot1_8B_quantized_tp_1
@@ -481,3 +481,41 @@
     timeout: 3600
     long_running: false
     script: python llm_serving_release_tests.py --serve-config-file serve_llama_3dot1_8b_lora.yaml --run-perf-profiler false
+
+##############
+# LLM Batching
+##############
+
+- name: llm_batch_vllm_v1_llama_tp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --tp-size 2 --concurrency 2 --vllm-use-v1
+
+- name: llm_batch_vllm_llama_pp2dp2
+  frequency: nightly
+  python: "3.11"
+  group: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --pp-size 2 --concurrency 2
