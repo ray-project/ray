@@ -1,4 +1,5 @@
 import sys
+import time
 import asyncio
 import logging
 import multiprocessing
@@ -22,6 +23,28 @@ messages to it. Requires non-minimal Ray.
 """
 
 logger = logging.getLogger(__name__)
+
+
+def filter_headers(headers: dict[str, str]) -> dict[str, str]:
+    """
+    Filter out hop-by-hop headers from the headers dict.
+    """
+    HOP_BY_HOP_HEADERS = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+    }
+    filtered_headers = {
+        key: value
+        for key, value in headers.items()
+        if key.lower() not in HOP_BY_HOP_HEADERS
+    }
+    return filtered_headers
 
 
 class SubprocessModuleHandle:
@@ -103,6 +126,15 @@ class SubprocessModuleHandle:
         self.process.start()
 
         socket_path = os.path.join(self.config.socket_dir, self.module_cls.__name__)
+
+        # Wait for the socket to be created.
+        for _ in range(10):
+            if os.path.exists(socket_path):
+                break
+            time.sleep(0.1)
+        else:
+            raise RuntimeError(f"Socket {socket_path} not created in time")
+
         if sys.platform == "win32":
             connector = aiohttp.NamedPipeConnector(socket_path)
         else:
@@ -137,8 +169,12 @@ class SubprocessModuleHandle:
         Currently you get a 200 OK with body = b'success'. Later if we want we can add more
         observability payloads.
         """
-        async with self.session.get("http://localhost/api/healthz") as resp:
-            return resp
+        resp = await self.session.get("http://localhost/api/healthz")
+        return aiohttp.web.Response(
+            status=resp.status,
+            headers=filter_headers(resp.headers),
+            body=await resp.read(),
+        )
 
     async def _do_once_health_check(self):
         """
@@ -198,28 +234,12 @@ class SubprocessModuleHandle:
         url = f"http://localhost{request.path_qs}"
         body = await request.read()
 
-        HOP_BY_HOP_HEADERS = {
-            "connection",
-            "keep-alive",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "te",
-            "trailers",
-            "transfer-encoding",
-            "upgrade",
-        }
-
         async with self.session.request(
             request.method, url, data=body, headers=request.headers
         ) as resp:
             resp_body = await resp.read()
-            filtered_headers = {
-                key: value
-                for key, value in resp.headers.items()
-                if key.lower() not in HOP_BY_HOP_HEADERS
-            }
             return aiohttp.web.Response(
-                status=resp.status, headers=filtered_headers, body=resp_body
+                status=resp.status, headers=filter_headers(resp.headers), body=resp_body
             )
 
     async def proxy_websocket(
