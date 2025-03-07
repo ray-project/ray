@@ -945,6 +945,33 @@ def test_exit_actor_normal_actor_raise_immediately(shutdown_only, tmp_path):
     assert not temp_file_after_exit_actor.exists()
 
 
+def test_exit_actor_normal_actor_in_constructor_should_exit(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = Actor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
 def test_exit_actor_normal_actor_user_catch_err_should_still_exit(
     shutdown_only, tmp_path
 ):
@@ -1017,6 +1044,33 @@ def test_exit_actor_async_actor_raise_immediately(shutdown_only, tmp_path):
     assert not temp_file_after_exit_actor.exists()
 
 
+def test_exit_actor_async_actor_in_constructor_should_exit(shutdown_only, tmp_path):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()  # noqa: F841 # Need to preserve the reference.
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
 def test_exit_actor_async_actor_user_catch_err_should_still_exit(
     shutdown_only, tmp_path
 ):
@@ -1073,6 +1127,38 @@ def test_exit_actor_async_actor_nested_task(shutdown_only, tmp_path):
     ray.get(a.__ray_ready__.remote())
     ray.get(a.start_exit_task.remote(signal))
     ray.get(signal.send.remote())
+
+    def verify():
+        return temp_file_atexit.exists()
+
+    wait_for_condition(verify)
+    time.sleep(3)
+    assert not temp_file_after_exit_actor.exists()
+
+
+def test_exit_actor_async_actor_nested_task_in_constructor_should_exit(
+    shutdown_only, tmp_path
+):
+    temp_file_atexit = tmp_path / "atexit.log"
+    temp_file_after_exit_actor = tmp_path / "after_exit_actor.log"
+    assert not temp_file_atexit.exists()
+    assert not temp_file_after_exit_actor.exists()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                temp_file_atexit.touch()
+
+            atexit.register(f)
+            asyncio.create_task(self.exit())
+
+        async def exit(self):
+            exit_actor()
+            # The following code should not be executed.
+            temp_file_after_exit_actor.touch()
+
+    a = AsyncActor.remote()  # noqa: F841 # Need to preserve the reference.
 
     def verify():
         return temp_file_atexit.exists()
