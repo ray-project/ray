@@ -345,12 +345,18 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
     json.dump(ray.get(f.remote()), out)
 """
 
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+    requirements_content = """
+emoji
+"""
+
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f, tempfile.NamedTemporaryFile("w", delete=False) as requirements:
         f.write(script)
         f.close()
+        requirements.write(requirements_content)
+        requirements.close()
         # Test job submission
         subprocess.run(
-            ["ray", "job", "submit", "--working-dir", ".", "--", uv, "run", f.name],
+            ["ray", "job", "submit", "--working-dir", ".", "--", uv, "run", "--with-requirements", requirements.name, f.name],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
