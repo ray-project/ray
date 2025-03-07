@@ -68,9 +68,9 @@ Here are some common configurations for `TuneConfig`:
     :start-after: __tune_config_start__
     :end-before: __tune_config_end__
 
-See the :class:`TuneConfig API reference <ray.tune.tune_config.TuneConfig>` for more details.
+See the :class:`TuneConfig API reference <ray.tune.TuneConfig>` for more details.
 
-The :class:`RunConfig <ray.train.RunConfig>` contains configurations that are more generic than tuning specific settings.
+The :class:`ray.tune.RunConfig` contains configurations that are more generic than tuning specific settings.
 This includes:
 
 - failure/retry configurations
@@ -81,14 +81,12 @@ This includes:
 - custom callbacks
 - integration with cloud storage
 
-Below we showcase some common configurations of :class:`RunConfig <ray.train.RunConfig>`.
+Below we showcase some common configurations of :class:`ray.tune.RunConfig`.
 
 .. literalinclude:: ../doc_code/tuner.py
     :language: python
     :start-after: __run_config_start__
     :end-before: __run_config_end__
-
-See the :class:`RunConfig API reference <ray.train.RunConfig>` for more details.
 
 
 Search Space configuration
@@ -120,7 +118,7 @@ There are a couple gotchas about parameter specification when using Tuners with 
 
 - By default, configuration dictionaries and config objects will be deep-merged.
 - Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
-- **Exception:** all arguments of the :class:`RunConfig <ray.train.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
+- **Exception:** all arguments of the :class:`ray.tune.RunConfig` and :class:`ray.tune.TuneConfig` are inherently un-tunable.
 
 See :doc:`/tune/tutorials/tune_get_data_in_and_out` for an example.
 
