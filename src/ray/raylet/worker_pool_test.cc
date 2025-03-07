@@ -268,8 +268,11 @@ class WorkerPoolMock : public WorkerPool {
       RAY_CHECK(false) << "Unexpected connection error: " << error.message();
     };
     local_stream_socket socket(instrumented_io_service_);
-    auto conn =
-        ClientConnection::Create(message_handler, std::move(socket), "worker", {});
+    auto conn = ClientConnection::Create(std::move(noop_message_handler),
+                                         std::move(connection_error_handler),
+                                         std::move(socket),
+                                         "worker",
+                                         {});
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
                                                                runtime_env_hash,
                                                                WorkerID::FromRandom(),
