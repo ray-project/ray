@@ -1,32 +1,18 @@
+import sys
 import asyncio
-import concurrent.futures
 import logging
 import multiprocessing
 import os
-import threading
-from dataclasses import dataclass
-from typing import Awaitable, Optional
+from typing import Optional
 
 from ray.dashboard.optional_deps import aiohttp
 
-from ray.dashboard.subprocesses.message import (
-    ChildBoundMessage,
-    ErrorMessage,
-    ParentBoundMessage,
-    RequestMessage,
-    UnaryResponseMessage,
-    StreamResponseDataMessage,
-    StreamResponseEndMessage,
-    StreamResponseStartMessage,
-)
 from ray.dashboard.subprocesses.module import (
     SubprocessModule,
     SubprocessModuleConfig,
     run_module,
 )
 from ray.dashboard.subprocesses.utils import (
-    assert_not_in_asyncio_loop,
-    ThreadSafeDict,
     module_logging_filename,
 )
 
@@ -41,11 +27,12 @@ logger = logging.getLogger(__name__)
 class SubprocessModuleHandle:
     """
     A handle to a module created as a subprocess. Can send messages to the module and
-    receive responses. On destruction, the subprocess is terminated.
+    receive responses. It only acts as a proxy to the aiohttp server running in the
+    subprocess. On destruction, the subprocess is terminated.
 
     Lifecycle:
-    1. In SubprocessModuleHandle creation, the subprocess is started, and 2 queues are
-       created.
+    1. In SubprocessModuleHandle creation, the subprocess is started and runs an aiohttp
+       server.
     2. User must call SubprocessModuleHandle.start_module() before it can handle parent
        bound messages.
     3. SubprocessRouteTable.bind(handle)
@@ -71,26 +58,6 @@ class SubprocessModuleHandle:
     # that need to be re-initialized for a new process.
     mp_context = multiprocessing.get_context("spawn")
 
-    @dataclass
-    class ActiveRequest:
-        request: aiohttp.web.Request
-        # Future to a Response as the result of a aiohttp handler. It's can be a
-        # Response for a unary request, or a StreamResponse for a streaming request.
-        response_fut: Awaitable[aiohttp.web.StreamResponse]
-        # Only exists when the module decides this is a streaming response.
-        # To keep the data sent in order, we use future to synchronize. This assumes
-        # the Messages received from the Queue are in order.
-        # StreamResponseStartMessage expects this to be None. It creates the future,
-        # and in async, prepares a StreamResponse and resolves the future.
-        # StreamResponseDataMessage expects a future. It *replaces* the future with a
-        # new future by a coroutine that awaits the previous future, writes the data and
-        # resolves the new future.
-        # StreamResponseEndMessage expects a future. It resolves the future and sets
-        # the stream_response to None.
-        stream_response: Optional[
-            concurrent.futures.Future[aiohttp.web.StreamResponse]
-        ] = None
-
     def __init__(
         self,
         loop: asyncio.AbstractEventLoop,
@@ -104,14 +71,8 @@ class SubprocessModuleHandle:
         # Increment this when the module is restarted.
         self.incarnation = 0
         # Runtime states, set by start_module(), reset by destroy_module().
-        self.next_request_id = None
-        self.child_bound_queue = None
-        self.parent_bound_queue = None
-        self.active_requests = ThreadSafeDict[
-            int, SubprocessModuleHandle.ActiveRequest
-        ]()
         self.process = None
-        self.dispatch_parent_bound_messages_thread = None
+        self.session = None
         self.health_check_task = None
 
     def str_for_state(self, incarnation: int, pid: Optional[int]):
@@ -123,22 +84,14 @@ class SubprocessModuleHandle:
         )
 
     def __del__(self):
-        self.destroy_module(RuntimeError("SubprocessModuleHandle is being deleted"))
+        logger.info("SubprocessModuleHandle is being deleted")
+        if self.loop.is_running():
+            self.loop.run_until_complete(self.destroy_module())
 
-    def start_module(self, start_dispatch_parent_bound_messages_thread: bool = True):
-        """
-        Params:
-        - start_dispatch_parent_bound_messages_thread: used for testing.
-        """
-        self.next_request_id = 0
-        self.child_bound_queue = self.mp_context.Queue()
-        self.parent_bound_queue = self.mp_context.Queue()
-        self.active_requests.pop_all()
+    def start_module(self):
         self.process = self.mp_context.Process(
             target=run_module,
             args=(
-                self.child_bound_queue,
-                self.parent_bound_queue,
                 self.module_cls,
                 self.config,
                 self.incarnation,
@@ -149,47 +102,27 @@ class SubprocessModuleHandle:
         )
         self.process.start()
 
-        if start_dispatch_parent_bound_messages_thread:
-            self.dispatch_parent_bound_messages_thread = threading.Thread(
-                name=f"{self.module_cls.__name__}-{self.incarnation}-dispatch_parent_bound_messages_thread",
-                target=self.dispatch_parent_bound_messages,
-                daemon=True,
-            )
-            self.dispatch_parent_bound_messages_thread.start()
+        socket_path = os.path.join(self.config.socket_dir, self.module_cls.__name__)
+        if sys.platform == "win32":
+            connector = aiohttp.NamedPipeConnector(socket_path)
+        else:
+            connector = aiohttp.UnixConnector(socket_path)
+        self.session = aiohttp.ClientSession(connector=connector)
 
         self.health_check_task = self.loop.create_task(self._do_periodic_health_check())
 
-    async def destroy_module(self, reason: Exception):
+    async def destroy_module(self):
         """
         Destroy the module. This is called when the module is unhealthy.
-
-        async because we need to set exceptions to the futures.
-
-        Params:
-        - reason: the exception that caused the module to be destroyed. Propagated to
-          active requests so they can be failed.
         """
         self.incarnation += 1
-        self.next_request_id = 0
         if self.process:
             self.process.kill()
             self.process.join()
             self.process = None
 
-        for active_request in self.active_requests.pop_all().values():
-            active_request.response_fut.set_exception(reason)
-
-        if self.parent_bound_queue:
-            self.parent_bound_queue.close()
-            self.parent_bound_queue = None
-
-        if self.child_bound_queue:
-            self.child_bound_queue.close()
-            self.child_bound_queue = None
-
-        # dispatch_parent_bound_messages_thread is daemon so we don't need to join it.
-        if self.dispatch_parent_bound_messages_thread:
-            self.dispatch_parent_bound_messages_thread = None
+        if self.session:
+            await self.session.close()
 
         if self.health_check_task:
             self.health_check_task.cancel()
@@ -201,10 +134,11 @@ class SubprocessModuleHandle:
         This can be used to measure module responsiveness in RTT, it also indicates
         subprocess event loop lag.
 
-        Currently you get a 200 OK with body = b'ok!'. Later if we want we can add more
+        Currently you get a 200 OK with body = b'success'. Later if we want we can add more
         observability payloads.
         """
-        return await self.send_request("_internal_health_check", request=None)
+        async with self.session.get("http://localhost/api/healthz") as resp:
+            return resp
 
     async def _do_once_health_check(self):
         """
@@ -222,14 +156,13 @@ class SubprocessModuleHandle:
         Every 1s, do a health check. If the module is unhealthy:
         1. log the exception
         2. log the last N lines of the log file
-        3. fail all active requests
-        4. restart the module
+        3. restart the module
         """
         incarnation = self.incarnation
         while True:
             try:
                 await self._do_once_health_check()
-            except Exception as e:
+            except Exception:
                 filename = module_logging_filename(
                     self.module_cls.__name__, incarnation, self.config.logging_filename
                 )
@@ -240,191 +173,97 @@ class SubprocessModuleHandle:
                     f"{self.config.log_dir}/{filename} for more details. Failing all "
                     "active requests."
                 )
-                await self.destroy_module(e)
+                await self.destroy_module()
                 self.start_module()
                 return
             await asyncio.sleep(1)
 
-    async def send_request(
-        self, method_name: str, request: Optional[aiohttp.web.Request]
-    ) -> Awaitable[aiohttp.web.StreamResponse]:
-        """
-        Sends a new request. Bookkeeps it in self.active_requests and sends the
-        request to the module. Returns a Future that will be resolved with the response
-        from the module.
-        """
-        request_id = self.next_request_id
-        self.next_request_id += 1
-
-        new_active_request = SubprocessModuleHandle.ActiveRequest(
-            request=request, response_fut=self.loop.create_future()
-        )
-        self.active_requests.put_new(request_id, new_active_request)
-        if request is None:
-            body = b""
-        else:
-            body = await request.read()
-        self._send_message(
-            RequestMessage(request_id=request_id, method_name=method_name, body=body)
-        )
-        return await new_active_request.response_fut
-
-    def _send_message(self, message: ChildBoundMessage):
-        self.child_bound_queue.put(message)
-
-    @staticmethod
-    async def handle_stream_response_start(
-        request: aiohttp.web.Request, first_data: bytes
+    async def proxy_request(
+        self, request: aiohttp.web.Request, websocket=False
     ) -> aiohttp.web.StreamResponse:
-        # TODO: error handling
-        response = aiohttp.web.StreamResponse()
-        response.content_type = "text/plain"
-        await response.prepare(request)
-        await response.write(first_data)
-        return response
+        """
+        Sends a new request to the subprocess and returns the response.
+        """
+        if not websocket:
+            return await self.proxy_http(request)
+        return await self.proxy_websocket(request)
 
-    @staticmethod
-    async def handle_stream_response_data(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse], data: bytes
+    async def proxy_http(
+        self, request: aiohttp.web.Request
     ) -> aiohttp.web.StreamResponse:
-        # TODO: error handling
-        response = await asyncio.wrap_future(prev_fut)
-        await response.write(data)
-        return response
-
-    @staticmethod
-    async def handle_stream_response_end(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse],
-        response_fut: Awaitable[aiohttp.web.StreamResponse],
-    ) -> None:
-        try:
-            response = await asyncio.wrap_future(prev_fut)
-            await response.write_eof()
-            response_fut.set_result(response)
-        except Exception as e:
-            response_fut.set_exception(e)
-
-    @staticmethod
-    async def handle_stream_response_error(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse],
-        exception: Exception,
-        response_fut: Awaitable[aiohttp.web.StreamResponse],
-    ) -> None:
         """
-        When the async iterator in the module raises an error, we need to propagate it
-        to the client and close the stream. However, we already sent a 200 OK to the
-        client and can't change that to a 500. We can't just raise an exception here to
-        aiohttp because that causes it to abruptly close the connection and the client
-        will raise a ClientPayloadError(TransferEncodingError).
-
-        Instead, we write exception to the stream and close the stream.
+        Proxy handler for HTTP API
+        It forwards the method, query string, headers, and body to the backend.
         """
-        try:
-            response = await asyncio.wrap_future(prev_fut)
-            await response.write(str(exception).encode())
-            await response.write_eof()
-            response_fut.set_result(response)
-        except Exception as e:
-            response_fut.set_exception(e)
+        url = f"http://localhost{request.path_qs}"
+        body = await request.read()
 
-    def handle_parent_bound_message(self, message: ParentBoundMessage):
-        """Handles a message from the parent bound queue. This function must run on a
-        dedicated thread, called by dispatch_parent_bound_messages."""
-        loop = self.loop
-        if isinstance(message, UnaryResponseMessage):
-            active_request = self.active_requests.pop_or_raise(message.request_id)
-            # set_result is not thread safe.
-            loop.call_soon_threadsafe(
-                active_request.response_fut.set_result,
-                aiohttp.web.Response(
-                    status=message.status,
-                    body=message.body,
-                ),
-            )
-        elif isinstance(message, StreamResponseStartMessage):
-            active_request = self.active_requests.get_or_raise(message.request_id)
-            assert active_request.stream_response is None
-            # This assignment is thread safe, because a next read will come from another
-            # handle_parent_bound_message call for a Stream.*Message, which will run on
-            # the same thread and hence will happen-after this assignment.
-            active_request.stream_response = asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_start(
-                    active_request.request, message.body
-                ),
-                loop,
-            )
-        elif isinstance(message, StreamResponseDataMessage):
-            active_request = self.active_requests.get_or_raise(message.request_id)
-            assert active_request.stream_response is not None
-            active_request.stream_response = asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_data(
-                    active_request.stream_response, message.body
-                ),
-                loop,
-            )
-        elif isinstance(message, StreamResponseEndMessage):
-            active_request = self.active_requests.pop_or_raise(message.request_id)
-            assert active_request.stream_response is not None
-            asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_end(
-                    active_request.stream_response,
-                    active_request.response_fut,
-                ),
-                loop,
-            )
-        elif isinstance(message, ErrorMessage):
-            # Propagate the error to aiohttp.
-            active_request = self.active_requests.pop_or_raise(message.request_id)
-            if active_request.stream_response is not None:
-                asyncio.run_coroutine_threadsafe(
-                    SubprocessModuleHandle.handle_stream_response_error(
-                        active_request.stream_response,
-                        message.error,
-                        active_request.response_fut,
-                    ),
-                    loop,
-                )
-            else:
-                loop.call_soon_threadsafe(
-                    active_request.response_fut.set_exception, message.error
-                )
-        else:
-            raise ValueError(f"Unknown message type: {type(message)}")
+        HOP_BY_HOP_HEADERS = {
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
+        }
 
-    def dispatch_parent_bound_messages(self):
+        async with self.session.request(
+            request.method, url, data=body, headers=request.headers
+        ) as resp:
+            resp_body = await resp.read()
+            filtered_headers = {
+                key: value
+                for key, value in resp.headers.items()
+                if key.lower() not in HOP_BY_HOP_HEADERS
+            }
+            return aiohttp.web.Response(
+                status=resp.status, headers=filtered_headers, body=resp_body
+            )
+
+    async def proxy_websocket(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.StreamResponse:
         """
-        Dispatch Messages from the module. This function should be run in a separate thread
-        from the asyncio loop of the parent process.
+        Proxy handler for WebSocket API
+        It establishes a WebSocket connection with the client and simultaneously connects
+        to the backend server's WebSocket endpoint. Messages are forwarded in both directions.
         """
-        assert_not_in_asyncio_loop()
-        incarnation = self.incarnation
-        pid = self.process.pid if self.process else None
-        self_str = self.str_for_state(incarnation, pid)
+        ws_from_client = aiohttp.web.WebSocketResponse()
+        await ws_from_client.prepare(request)
 
-        queue = self.parent_bound_queue
-        # Exit if the module has restarted.
-        while incarnation == self.incarnation:
-            message = None
-            try:
-                message = queue.get(timeout=1)
-            except multiprocessing.queues.Empty:
-                # Empty is normal.
-                continue
-            except ValueError:
-                # queue is closed.
-                break
-            except Exception:
-                logger.exception(
-                    f"Error unpickling parent bound message from {self_str}."
-                    " This may result in a http request never being responded to."
-                )
-                continue
-            try:
-                self.handle_parent_bound_message(message)
-            except Exception:
-                logger.exception(
-                    f"Error handling parent bound message from {self_str}."
-                    " This may result in a http request never being responded to."
-                )
+        url = f"http://localhost{request.path_qs}"
 
-        logger.info(f"dispatch_parent_bound_messages thread for {self_str} is exiting")
+        async with self.session.ws_connect(
+            url, headers=request.headers
+        ) as ws_to_backend:
+
+            async def forward(ws_source, ws_target):
+                async for msg in ws_source:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        await ws_target.send_str(msg.data)
+                    elif msg.type == aiohttp.WSMsgType.BINARY:
+                        await ws_target.send_bytes(msg.data)
+                    elif msg.type == aiohttp.WSMsgType.CLOSE:
+                        await ws_target.close()
+                    elif msg.type == aiohttp.WSMsgType.ERROR:
+                        break
+
+            # Set up two tasks to forward messages in both directions.
+            task_client_to_backend = self.loop.create_task(
+                forward(ws_from_client, ws_to_backend)
+            )
+            task_backend_to_client = self.loop.create_task(
+                forward(ws_to_backend, ws_from_client)
+            )
+
+            # Wait until one direction is done, then cancel the other.
+            done, pending = await asyncio.wait(
+                [task_client_to_backend, task_backend_to_client],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+
+        return ws_from_client
