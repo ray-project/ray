@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import signal
 
 from ray.dashboard.optional_deps import aiohttp
 
@@ -88,21 +90,21 @@ class TestModule(SubprocessModule):
     #     # To make sure Python treats this method as an async generator, we yield something.
     #     yield b"Hello, World"
     #
-    # @routes.post("/run_forever")
-    # async def run_forever(self, request_body: bytes) -> aiohttp.web.Response:
-    #     while True:
-    #         await asyncio.sleep(1)
-    #     return aiohttp.web.Response(text="done in the infinite future!")
-    #
-    # @routes.post("/logging_in_module")
-    # async def logging_in_module(self, request_body: bytes) -> aiohttp.web.Response:
-    #     request_body_str = request_body.decode()
-    #     logger.info(f"In /logging_in_module, {request_body_str}.")
-    #     return aiohttp.web.Response(text="done!")
-    #
-    # @routes.post("/kill_self")
-    # async def kill_self(self, request_body: bytes) -> aiohttp.web.Response:
-    #     logger.error("Crashing by sending myself a sigkill")
-    #     os.kill(os.getpid(), signal.SIGKILL)
-    #     asyncio.sleep(1000)
-    #     return aiohttp.web.Response(text="done!")
+    @routes.post("/run_forever")
+    async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        while True:
+            await asyncio.sleep(1)
+        return aiohttp.web.Response(text="done in the infinite future!")
+
+    @routes.post("/logging_in_module")
+    async def logging_in_module(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        request_body_str = await req.text()
+        logger.info(f"In /logging_in_module, {request_body_str}.")
+        return aiohttp.web.Response(text="done!")
+
+    @routes.post("/kill_self")
+    async def kill_self(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        logger.error("Crashing by sending myself a sigkill")
+        os.kill(os.getpid(), signal.SIGKILL)
+        asyncio.sleep(1000)
+        return aiohttp.web.Response(text="done!")
