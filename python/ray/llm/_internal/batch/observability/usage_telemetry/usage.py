@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Callable, Dict, Optional, TYPE_CHECKING
 
 import ray
 
@@ -45,6 +45,9 @@ class _TelemetryAgent:
     def __init__(self):
         self.record_tag_func = record_extra_usage_tag
 
+    def update_record_tag_func(self, record_tag_func: Callable) -> None:
+        self.record_tag_func = record_tag_func
+
     def record(self, telemetries: Dict[str, str]) -> None:
         """Record telemetry model."""
         from ray._private.usage.usage_lib import TagKey
@@ -68,11 +71,15 @@ class TelemetryAgent:
             )
         except ValueError:
             self.telemetry_agent = _TelemetryAgent.remote()
+        self._processor_config_name = None
 
     def set_processor_config_name(self, processor_config_name: str):
         if self._processor_config_name is not None:
             raise ValueError(f"Processor config name is already set to {self._processor_config_name}. This function should only be called once per processor.")
         self._processor_config_name = processor_config_name
+
+    def update_record_tag_func(self, record_tag_func: Callable):
+        self.telemetry_agent.update_record_tag_func.remote(record_tag_func)
 
     def push_telemetry_report(self, telemetries: Optional[Dict[str, str]] = None):
         if self._processor_config_name is None:
