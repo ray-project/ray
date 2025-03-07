@@ -1,3 +1,4 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_library(
@@ -20,7 +21,9 @@ py_test_module_list(
         "test_minimal_installation.py",
     ],
     tags = [
-        "exclusive", "minimal", "team:serve",
+        "exclusive",
+        "minimal",
+        "team:serve",
     ],
     deps = [
         "//python/ray/serve:serve_lib",
@@ -33,6 +36,7 @@ py_test_module_list(
     files = [
         "test_actor_replica_wrapper.py",
         "test_advanced.py",
+        "test_backpressure.py",
         "test_batching.py",
         "test_cluster_node_info_cache.py",
         "test_constructor_failure.py",
@@ -40,7 +44,6 @@ py_test_module_list(
         "test_deployment_version.py",
         "test_expected_versions.py",
         "test_http_cancellation.py",
-        "test_backpressure.py",
         "test_persistence.py",
         "test_proxy.py",
         "test_proxy_actor_wrapper.py",
@@ -184,10 +187,10 @@ py_test_module_list(
     size = "enormous",
     files = [
         "test_deploy_app.py",
-        "test_metrics.py",
         "test_enable_task_events.py",
         "test_kv_store.py",
         "test_long_poll.py",
+        "test_metrics.py",
         "test_regression.py",
     ],
     tags = [
@@ -305,11 +308,11 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
     files = [
-        "test_http_cancellation.py",
         "test_handle_1.py",
         "test_handle_2.py",
         "test_handle_cancellation.py",
         "test_handle_streaming.py",
+        "test_http_cancellation.py",
         "test_multiplex.py",
         "test_request_timeout.py",
     ],
@@ -458,7 +461,6 @@ py_test_module_list(
     ],
 )
 
-
 # Test handle API with local testing mode.
 py_test_module_list(
     size = "small",
@@ -481,7 +483,6 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
-
 
 # Test currently off-by-default behavior to run replica sync methods in a threadpool.
 # TODO(edoakes): remove this once the FF is flipped on by default.

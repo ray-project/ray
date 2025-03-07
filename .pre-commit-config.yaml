@@ -53,9 +53,17 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp)(/[^/]+)*/BUILD$
+        files: ^(src|cpp|python)(/[^/]+)*/BUILD$
+        exclude: |
+          (?x)^(
+            python/ray/data/BUILD
+          )
       - id: buildifier-lint
-        files: ^(src|cpp)(/[^/]+)*/BUILD$
+        files: ^(src|cpp|python)(/[^/]+)*/BUILD$
+        exclude: |
+          (?x)^(
+            python/ray/data/BUILD
+          )
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
