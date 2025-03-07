@@ -315,16 +315,17 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 @pytest.mark.parametrize(
-    "ray_start_cluster_head",
+    "ray_start_cluster_head_with_env_vars",
     [
         {
+            "env_vars": {"RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_runtime_env_hook.hook"},
             "include_dashboard": True,
         }
     ],
     indirect=True,
 )
-def test_uv_run_runtime_env_hook_e2e_job(ray_start_cluster_head, with_uv, temp_dir):
-    cluster = ray_start_cluster_head
+def test_uv_run_runtime_env_hook_e2e_job(ray_start_cluster_head_with_env_vars, with_uv, temp_dir):
+    cluster = ray_start_cluster_head_with_env_vars
     assert wait_until_server_available(cluster.webui_url) is True
     webui_url = format_web_url(cluster.webui_url)
 
@@ -345,24 +346,19 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
     json.dump(ray.get(f.remote()), out)
 """
 
-    requirements_content = """
-emoji
-"""
-
     with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f, tempfile.NamedTemporaryFile("w", delete=False) as requirements:
         f.write(script)
         f.close()
-        requirements.write(requirements_content)
+        requirements.write("emoji\n")
         requirements.close()
         # Test job submission
+        runtime_env_json = '{"env_vars": {"PYTHONPATH": "' + ":".join(sys.path) + '"}, "working_dir": "."}'
         subprocess.run(
-            ["ray", "job", "submit", "--working-dir", ".", "--", uv, "run", "--with-requirements", requirements.name, f.name],
+            ["ray", "job", "submit", "--runtime-env-json", runtime_env_json, "--", "uv", "run", "--with-requirements", requirements.name, "--no-project", f.name],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={
-                "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_runtime_env_hook.hook",
-                "PYTHONPATH": ":".join(sys.path),
                 "PATH": os.environ["PATH"],
                 "RAY_ADDRESS": webui_url,
             },
