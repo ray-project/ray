@@ -22,7 +22,6 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     """
     yield SubprocessModuleConfig(
         cluster_id_hex="test_cluster_id",
-        # until we really need one in tests...
         gcs_address="",
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
