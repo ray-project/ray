@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional
 import psutil
 
 
-def _check_working_dir_files(uv_run_args: List[str], runtime_env: Dict[str, Any]) -> None:
+def _check_working_dir_files(
+    uv_run_args: List[str], runtime_env: Dict[str, Any]
+) -> None:
     """
     Check that the files required by uv are local to the working_dir. This catches
     the most common cases of how things are different in Ray, i.e. not the whole file
