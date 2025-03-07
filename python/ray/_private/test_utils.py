@@ -2304,12 +2304,6 @@ def close_common_connections(pid):
             print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
 
 
-class TelemetryCallsite(Enum):
-    DRIVER = "driver"
-    ACTOR = "actor"
-    TASK = "task"
-
-
 def _get_library_usages() -> Set[str]:
     return set(
         ray_usage_lib.get_library_usages_to_report(
@@ -2324,6 +2318,12 @@ def _get_extra_usage_tags() -> Dict[str, str]:
     )
 
 
+class TelemetryCallsite(Enum):
+    DRIVER = "driver"
+    ACTOR = "actor"
+    TASK = "task"
+
+
 def check_library_usage_telemetry(
     use_lib_fn: Callable[[], None],
     *,
@@ -2331,6 +2331,12 @@ def check_library_usage_telemetry(
     expected_library_usages: List[Set[str]],
     expected_extra_usage_tags: Optional[Dict[str, str]] = None,
 ):
+    """Helper for writing tests to validate library usage telemetry.
+
+    `use_lib_fn` is a callable that will be called from the provided callsite.
+    After calling it, the telemetry data to export will be validated against
+    expected_library_usages and expected_extra_usage_tags.
+    """
     assert len(_get_library_usages()) == 0, _get_library_usages()
 
     if callsite == TelemetryCallsite.DRIVER:
