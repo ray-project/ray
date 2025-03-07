@@ -260,11 +260,11 @@ class WorkerPoolMock : public WorkerPool {
       StartupToken worker_startup_token = 0,
       bool set_process = true) {
     auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
-                                       int64_t message_type,
-                                       const std::vector<uint8_t> &message) {};
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
 
     auto connection_error_handler = [](std::shared_ptr<ClientConnection> client,
-                                           const boost::system::error_code &error) {
+                                       const boost::system::error_code &error) {
       RAY_CHECK(false) << "Unexpected connection error: " << error.message();
     };
     local_stream_socket socket(instrumented_io_service_);
