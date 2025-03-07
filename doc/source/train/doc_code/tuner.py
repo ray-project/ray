@@ -25,7 +25,7 @@ trainer = XGBoostTrainer(
 tuner = Tuner(
     trainer,
     # Add some parameters to tune
-    param_space={"params": {"max_depth": tune.choice([4, 5, 6])}},
+    param_space={"params": {"max_depth": ray.tune.choice([4, 5, 6])}},
     # Specify tuning behavior
     tune_config=ray.tune.TuneConfig(metric="train-logloss", mode="min", num_samples=2),
 )
@@ -64,7 +64,7 @@ param_space = {
         "max_depth": ray.tune.randint(1, 5),
     },
     # Tune the number of distributed workers
-    "scaling_config": ray.train.ScalingConfig(num_workers=tune.grid_search([1, 2])),
+    "scaling_config": ray.train.ScalingConfig(num_workers=ray.tune.grid_search([1, 2])),
 }
 
 tuner = Tuner(
