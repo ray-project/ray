@@ -1,5 +1,4 @@
 import sys
-from typing import Dict, Set
 
 import pytest
 

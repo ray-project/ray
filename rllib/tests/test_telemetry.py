@@ -1,5 +1,4 @@
 import sys
-from typing import Set
 
 import pytest
 
