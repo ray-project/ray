@@ -1,3 +1,24 @@
+import os
+import subprocess
+from pathlib import Path
+
+
+NSIGHT_FAKE_DIR = str(
+    Path(os.path.realpath(__file__)).parents[4]
+    / "python"
+    / "ray"
+    / "tests"
+    / "nsight_fake"
+)
+
+
+subprocess.check_call(
+    ["pip", "install", NSIGHT_FAKE_DIR],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+
+
 # __profiling_setup_start__
 import ray
 import torch
@@ -34,3 +55,9 @@ for i in range(3):
     ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
     assert ray.get(ref) == (i, shape, dtype)
 # __profiling_execution_end__
+
+subprocess.check_call(
+    ["pip", "uninstall", "nsys", "--y"],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
