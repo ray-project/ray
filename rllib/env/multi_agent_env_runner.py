@@ -45,6 +45,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    RLMODULE_INFERENCE_TIMER,
     SAMPLE_TIMER,
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
@@ -310,11 +311,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                             self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                             + ts
                         ) * (self.config.num_env_runners or 1)
-                        to_env = self.module.forward_exploration(
-                            to_module, t=global_env_steps_lifetime
-                        )
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_exploration(
+                                to_module, t=global_env_steps_lifetime
+                            )
                     else:
-                        to_env = self.module.forward_inference(to_module)
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_inference(to_module)
 
                     # Module-to-env connector.
                     to_env = self._module_to_env(
