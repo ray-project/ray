@@ -54,6 +54,8 @@ namespace {
 std::string cgroup_v2_app_folder;
 std::string cgroup_v2_system_folder;
 
+// Directory where cgroup mounts at.
+constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
 // Parent cgroup path.
 constexpr std::string_view kRtootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
 // Cgroup subtree control path.
@@ -88,7 +90,9 @@ bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
 
 namespace internal {
 
-bool CanCurrenUserWriteCgroupV2() { return access("/sys/fs/cgroup", W_OK | X_OK) == 0; }
+bool CanCurrenUserWriteCgroupV2() {
+  return access(kCgroupDirectory.data(), W_OK | X_OK) == 0;
+}
 
 bool IsCgroupV2MountedAsRw(const std::string &path) {
   // Check whether cgroupv2 is mounted solely at `/sys/fs/cgroup`.
