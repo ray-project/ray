@@ -1140,6 +1140,12 @@ provider:
 
         ray.init(address=cluster.address)
 
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "extra_v3")
 
         """
