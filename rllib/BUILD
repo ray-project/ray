@@ -1823,13 +1823,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_telemetry",
-    tags = ["team:rllib", "tests_dir"],
-    size = "small",
-    srcs = ["tests/test_telemetry.py"]
-)
-
-py_test(
     name = "tests/test_ray_client",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
