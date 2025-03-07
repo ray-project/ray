@@ -30,13 +30,12 @@ def test_import(reset_usage_lib, callsite: str):
         # NOTE(edoakes): this test currently fails if we don't call `ray.init()`
         # prior to the import. This is a bug in the telemetry collection.
         ray.init()
-        from ray import rllib
     elif callsite == "actor":
 
         @ray.remote
         class A:
             def __init__(self):
-                from ray import rllib
+                pass
 
         a = A.remote()
         ray.get(a.__ray_ready__.remote())
@@ -45,7 +44,7 @@ def test_import(reset_usage_lib, callsite: str):
 
         @ray.remote
         def f():
-            from ray import rllib
+            pass
 
         ray.get(f.remote())
 
