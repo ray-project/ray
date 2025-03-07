@@ -137,7 +137,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client whose connection the error occurred on.
   /// \param error The error details.
-  void HandleClientConnectionError(const std::shared_ptr<ClientConnection> &client,
+  void HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
                                    const boost::system::error_code &error);
 
   /// Process a message from a client. This method is responsible for

@@ -73,8 +73,8 @@ Client::Client(PrivateTag,
                ray::MessageHandler message_handler,
                ray::ConnectionErrorHandler connection_error_handler,
                ray::local_stream_socket &&socket)
-    : ray::ClientConnection(message_handler,
-                            connection_error_handler,
+    : ray::ClientConnection(std::move(message_handler),
+                            std::move(connection_error_handler),
                             std::move(socket),
                             "worker",
                             object_store_message_enum) {}
@@ -88,7 +88,7 @@ std::shared_ptr<Client> Client::Create(
                         int64_t message_type,
                         const std::vector<uint8_t> &message) {
         Status s = message_handler(
-            std::static_pointer_cast<Client>(client->shared_ClientConnection_from_this()),
+            std::static_pointer_cast<Client>(client),
             (MessageType)message_type,
             message);
         if (!s.ok()) {
@@ -105,7 +105,7 @@ std::shared_ptr<Client> Client::Create(
       [connection_error_handler](std::shared_ptr<ray::ClientConnection> client,
                                  const boost::system::error_code &error) {
         connection_error_handler(
-            std::static_pointer_cast<Client>(client->shared_ClientConnection_from_this()),
+            std::static_pointer_cast<Client>(client),
             error);
       };
 

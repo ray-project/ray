@@ -1184,7 +1184,7 @@ bool NodeManager::UpdateResourceUsage(
 }
 
 void NodeManager::HandleClientConnectionError(
-    const std::shared_ptr<ClientConnection> &client,
+    std::shared_ptr<ClientConnection> client,
     const boost::system::error_code &error) {
   const std::string err_msg = absl::StrCat(
       "Worker unexpectedly exits with a connection error code ",
