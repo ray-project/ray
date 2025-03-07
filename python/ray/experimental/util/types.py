@@ -27,4 +27,4 @@ class Device(Enum):
     CUDA = "cuda"
 
     def __str__(self):
-        return f"{self.name.lower()}"
+        return self.value

@@ -19,7 +19,6 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_communicator,
 )
 from ray._private.test_utils import get_actor_node_id
-from ray.experimental.util.types import Device
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +128,7 @@ def test_p2p(ray_start_cluster):
 
     nccl_id = _init_communicator([sender, receiver])
 
-    chan_typ = TorchTensorType(transport="nccl", device=Device.CPU)
+    chan_typ = TorchTensorType(transport="nccl")
     chan_typ.set_communicator_id(nccl_id)
     chan_ref = sender.create_nccl_channel.remote(chan_typ, [(receiver, receiver_node)])
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
@@ -188,7 +187,7 @@ def test_multiple_receivers(ray_start_cluster):
 
     nccl_id = _init_communicator(workers)
 
-    chan_typ = TorchTensorType(transport="nccl", device=Device.CPU)
+    chan_typ = TorchTensorType(transport="nccl")
     chan_typ.set_communicator_id(nccl_id)
     chan_ref = sender.create_nccl_channel.remote(chan_typ, receiver_to_node)
     receiver_ready = [
@@ -244,7 +243,6 @@ def test_static_shape(ray_start_cluster):
 
     chan_typ = TorchTensorType(
         transport="nccl",
-        device=Device.CPU,
         _static_shape=True,
     )
     chan_typ.set_communicator_id(nccl_id)
@@ -334,7 +332,6 @@ def test_direct_return(ray_start_cluster):
 
     chan_typ = TorchTensorType(
         transport="nccl",
-        device=Device.CPU,
         _direct_return=True,
     )
     chan_typ.set_communicator_id(nccl_id)
@@ -418,7 +415,6 @@ def test_static_shape_and_direct_return(ray_start_cluster):
 
     chan_typ = TorchTensorType(
         transport="nccl",
-        device=Device.CPU,
         _static_shape=True,
         _direct_return=True,
     )
@@ -504,7 +500,6 @@ def test_direct_return_with_cpu_data_channel(ray_start_cluster):
     nccl_id = _init_communicator([sender, receiver])
     chan_typ = TorchTensorType(
         transport="nccl",
-        device=Device.CPU,
         _direct_return=True,
     )
     chan_typ.set_communicator_id(nccl_id)
