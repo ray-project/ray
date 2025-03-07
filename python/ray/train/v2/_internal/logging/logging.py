@@ -226,6 +226,7 @@ def configure_controller_logger(context: TrainRunContext) -> None:
     """
     config = get_controller_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the controller log file path.
 
 
 def configure_worker_logger(context: TrainRunContext) -> None:
@@ -235,6 +236,7 @@ def configure_worker_logger(context: TrainRunContext) -> None:
     """
     config = get_worker_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the controller log file path.
 
 
 def get_log_directory() -> Optional[str]:
@@ -257,6 +259,8 @@ def get_train_application_controller_log_path() -> Optional[str]:
     """
     Return the path to the file train application controller log file.
     """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_controller_logger` function.
     logger = logging.getLogger("ray.train")
     for handler in logger.handlers:
         if (
@@ -271,6 +275,8 @@ def get_train_application_worker_log_path() -> Optional[str]:
     """
     Return the path to the file train application worker log file.
     """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_worker_logger` function.
     logger = logging.getLogger("ray.train")
     for handler in logger.handlers:
         if (
