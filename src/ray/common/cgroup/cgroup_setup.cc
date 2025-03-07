@@ -67,9 +67,9 @@ constexpr mode_t kCgroupFilePerm = 0600;
 
 // Move all pids under [from] to [to].
 bool MoveProcsBetweenCgroups(const std::string &from, const std::string &to) {
-  std::ifstream in_file(to.data());
+  std::ifstream in_file(from.data());
   RAY_CHECK(in_file.good()) << "Failed to open cgroup file " << to;
-  std::ofstream out_file(from.data());
+  std::ofstream out_file(to.data(), std::ios::app | std::ios::out);
   RAY_CHECK(out_file.good()) << "Failed to open cgroup file " << from;
 
   pid_t pid = 0;
@@ -97,8 +97,8 @@ void KillAllProc(const std::string &cgroup_folder) {
   const std::string kill_proc_file = absl::StrFormat("%s/cgroup.kill", cgroup_folder);
   std::ofstream f{kill_proc_file};
   f << "1";
-  out_file.flush();
-  RAY_CHECK(f.good()) << "Fails to kill all processes under the cgroup";
+  f.flush();
+  RAY_CHECK(f.good()) << "Fails to kill all processes under the cgroup " << cgroup_folder;
 }
 
 }  // namespace
@@ -150,11 +150,10 @@ CgroupSetup::CgroupSetup(const std::string &node_id) {
 
 void CgroupSetup::SetupCgroups(const std::string &node_id) {
   // Check cgroup accessibility before setup.
-  RAY_CHECK(internal::CanCurrenUserWriteCgroupV2())
-      << "Current user doesn't have the permission to update cgroup v2.";
-
   RAY_CHECK(internal::IsCgroupV2MountedAsRw())
       << "Cgroup v2 is not mounted in read-write mode.";
+  RAY_CHECK(internal::CanCurrenUserWriteCgroupV2())
+      << "Current user doesn't have the permission to update cgroup v2.";
 
   // Cgroup folder for the current ray node.
   cgroup_v2_folder_ = absl::StrFormat("/sys/fs/cgroup/ray_node_%s", node_id);
