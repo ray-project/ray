@@ -2130,11 +2130,11 @@ def get_gcs_memory_used():
     import psutil
 
     m = {
-        process.name(): process.memory_info().rss
-        for process in psutil.process_iter()
+        proc.info["name"]: proc.info["memory_info"].rss
+        for proc in psutil.process_iter(["status", "name", "memory_info"])
         if (
-            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
-            and process.name() in ("gcs_server", "redis-server")
+            proc.info["status"] not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and proc.info["name"] in ("gcs_server", "redis-server")
         )
     }
     assert "gcs_server" in m
