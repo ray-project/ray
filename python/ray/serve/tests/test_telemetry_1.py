@@ -108,7 +108,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
         "applications": [
             {
                 "name": "stub_app",
-                "import_path": "ray.serve.tests.test_telemetry.stub_app",
+                "import_path": "ray.serve.tests.test_telemetry_1.stub_app",
                 "route_prefix": "/stub",
             },
         ]
@@ -210,7 +210,7 @@ def test_lightweight_config_options(
         "applications": [
             {
                 "name": "test_app",
-                "import_path": "ray.serve.tests.test_telemetry.tester",
+                "import_path": "ray.serve.tests.test_telemetry_1.tester",
                 "deployments": [{"name": "Tester"}],
             },
         ]
