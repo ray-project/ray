@@ -368,9 +368,7 @@ def mock_deployment_state_manager(
 
 @pytest.fixture
 def mock_max_per_replica_retry_count():
-    with patch(
-        "ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2
-    ):
+    with patch("ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2):
         yield 2
 
 
