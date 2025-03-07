@@ -427,13 +427,12 @@ std::shared_ptr<ClientConnection> ClientConnection::Create(
                                             std::move(message_type_enum_names));
 }
 
-ClientConnection::ClientConnection(
-    PrivateTag,
-    MessageHandler message_handler,
-    ConnectionErrorHandler connection_error_handler,
-    local_stream_socket &&socket,
-    std::string debug_label,
-    std::vector<std::string> message_type_enum_names)
+ClientConnection::ClientConnection(PrivateTag,
+                                   MessageHandler message_handler,
+                                   ConnectionErrorHandler connection_error_handler,
+                                   local_stream_socket &&socket,
+                                   std::string debug_label,
+                                   std::vector<std::string> message_type_enum_names)
     : ServerConnection(std::move(socket)),
       registered_(false),
       message_handler_(std::move(message_handler)),
