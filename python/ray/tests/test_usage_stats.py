@@ -1216,10 +1216,7 @@ provider:
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
-        if os.environ.get("RAY_MINIMAL") == "1":
-            assert set(payload["library_usages"]) == set()
-        else:
-            assert set(payload["library_usages"]) == {"core"}
+        assert set(payload["library_usages"]) == {"core"}
         assert payload["hardware_usages"] == ["TestCPU"]
         validate(instance=payload, schema=schema)
         """
