@@ -511,6 +511,7 @@ class TestLoggingAPI:
         actors = state_api.list_actors()
         expected_log_regex = [".*logger with logging config.*"]
         for actor in actors:
+            print(actor["name"])
             if "SERVE_CONTROLLER_ACTOR" == actor["name"]:
                 controller_pid = actor["pid"]
         controller_log_file_name = get_component_file_name(
@@ -854,8 +855,10 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     @serve.deployment(logging_config=logging_config)
     def disable_stdout():
         serve_logger.info("from_serve_logger")
+        print("from_print")
         sys.stdout.write("direct_from_stdout\n")
         sys.stderr.write("direct_from_stderr\n")
+        print("this\nis\nmultiline\nlog\n")
         raise RuntimeError("from_error")
 
     app = disable_stdout.bind()

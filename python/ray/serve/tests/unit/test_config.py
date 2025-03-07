@@ -772,7 +772,6 @@ class TestProtoToDict:
         config = DeploymentConfig.from_default(
             user_configured_option_names=user_configured_option_names,
         )
-        print(config.to_proto())
         proto_bytes = config.to_proto_bytes()
         proto = DeploymentConfigProto.FromString(proto_bytes)
         result = _proto_to_dict(proto)
