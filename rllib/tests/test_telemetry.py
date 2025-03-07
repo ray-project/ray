@@ -5,7 +5,6 @@ import pytest
 
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray import data
 
 
 @pytest.fixture
@@ -24,17 +23,20 @@ def _get_library_usages() -> Set[str]:
 
 
 @pytest.mark.parametrize("callsite", ["driver", "actor", "task"])
-def test_data_range(reset_usage_lib, callsite: str):
+def test_import(reset_usage_lib, callsite: str):
     assert len(_get_library_usages()) == 0
 
     if callsite == "driver":
-        data.range(10)
+        # NOTE(edoakes): this test currently fails if we don't call `ray.init()`
+        # prior to the import. This is a bug in the telemetry collection.
+        ray.init()
+        from ray import rllib
     elif callsite == "actor":
 
         @ray.remote
         class A:
             def __init__(self):
-                data.range(10)
+                from ray import rllib
 
         a = A.remote()
         ray.get(a.__ray_ready__.remote())
@@ -43,11 +45,11 @@ def test_data_range(reset_usage_lib, callsite: str):
 
         @ray.remote
         def f():
-            data.range(10)
+            from ray import rllib
 
         ray.get(f.remote())
 
-    assert _get_library_usages() == {"core", "dataset"}
+    assert _get_library_usages() in [{"rllib", "train"}, {"core", "rllib", "train"}]
 
 
 if __name__ == "__main__":

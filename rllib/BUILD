@@ -1822,6 +1822,13 @@ py_test(
     srcs = ["tests/test_timesteps.py"]
 )
 
+py_test(
+    name = "tests/test_telemetry",
+    tags = ["team:rllib", "tests_dir"],
+    size = "small",
+    srcs = ["tests/test_telemetry.py"]
+)
+
 # --------------------------------------------------------------------
 # examples/ directory
 #
