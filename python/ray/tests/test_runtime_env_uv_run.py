@@ -346,7 +346,9 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
     json.dump(ray.get(f.remote()), out)
 """
 
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f, tempfile.NamedTemporaryFile("w", delete=False) as requirements:
+    with tempfile.NamedTemporaryFile(
+            "w", suffix=".py", delete=False
+    ) as f, tempfile.NamedTemporaryFile("w", delete=False) as requirements:
         f.write(script)
         f.close()
         requirements.write("emoji\n")
@@ -354,7 +356,20 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
         # Test job submission
         runtime_env_json = '{"env_vars": {"PYTHONPATH": "' + ":".join(sys.path) + '"}, "working_dir": "."}'
         subprocess.run(
-            ["ray", "job", "submit", "--runtime-env-json", runtime_env_json, "--", "uv", "run", "--with-requirements", requirements.name, "--no-project", f.name],
+            [
+                "ray",
+                "job",
+                "submit",
+                "--runtime-env-json",
+                runtime_env_json,
+                "--",
+                uv,
+                "run",
+                "--with-requirements",
+                requirements.name,
+                "--no-project",
+                f.name
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
