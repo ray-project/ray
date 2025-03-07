@@ -1830,10 +1830,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_ray_client_integration",
+    name = "tests/test_ray_client",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
-    srcs = ["tests/test_ray_client_integration.py"]
+    srcs = ["tests/test_ray_client.py"]
 )
 
 # --------------------------------------------------------------------
