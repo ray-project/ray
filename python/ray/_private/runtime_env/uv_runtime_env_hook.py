@@ -60,6 +60,7 @@ def _check_working_dir_files(uv_run_args, runtime_env):
             "parameter of the runtime_environment."
         )
 
+
 def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Hook that detects if the driver is run in 'uv run' and sets the runtime environment accordingly."""
 
