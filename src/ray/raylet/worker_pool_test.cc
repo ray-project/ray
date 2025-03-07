@@ -14,6 +14,9 @@
 
 #include "ray/raylet/worker_pool.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <list>
 #include <memory>
 #include <string>
@@ -21,9 +24,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 
 #include "absl/time/time.h"
 #include "nlohmann/json.hpp"
@@ -259,11 +259,11 @@ class WorkerPoolMock : public WorkerPool {
       int runtime_env_hash = 0,
       StartupToken worker_startup_token = 0,
       bool set_process = true) {
-    auto noop_message_handler = [this](std::shared_ptr<ClientConnection> client,
+    auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
                                        int64_t message_type,
                                        const std::vector<uint8_t> &message) {};
 
-    auto connection_error_handler = [this](std::shared_ptr<ClientConnection> client,
+    auto connection_error_handler = [](std::shared_ptr<ClientConnection> client,
                                            const boost::system::error_code &error) {
       RAY_CHECK(false) << "Unexpected connection error: " << error.message();
     };
