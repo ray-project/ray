@@ -201,7 +201,7 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
       [&](const std::shared_ptr<GetRequest> &get_req) { promise3.set_value(true); });
   auto client = std::make_shared<MockClient>();
 
-  /// Test get request of mulitiple objects, one sealed, one timed out.
+  /// Test get request of multiple objects, one sealed, one timed out.
   std::vector<ObjectID> object_ids{object_id1, object_id2};
   MarkObject(object1, ObjectState::PLASMA_SEALED);
   MarkObject(object2, ObjectState::PLASMA_CREATED);
@@ -243,7 +243,7 @@ TEST_F(GetRequestQueueTest, TestFallbackAllocatedFdArePassed) {
       [&](const std::shared_ptr<GetRequest> &get_req) { promise3.set_value(true); });
   auto client = std::make_shared<MockClient>();
 
-  /// Test get request of mulitiple objects, one sealed, one timed out.
+  /// Test get request of multiple objects, one sealed, one timed out.
   /// object1 is in main memory, object2 is fallback-allocated.
 
   std::vector<ObjectID> object_ids{object_id1, object_id2};

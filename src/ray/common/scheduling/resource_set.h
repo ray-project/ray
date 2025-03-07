@@ -123,7 +123,7 @@ class ResourceSet {
   /// \return map of resource in string to size in double.
   absl::flat_hash_map<std::string, double> GetResourceMap() const;
 
-  /// Return the resources in unordered map. This is used for some languate frontend that
+  /// Return the resources in unordered map. This is used for some language frontend that
   /// requires unordered map instead of flat hash map.
   std::unordered_map<std::string, double> GetResourceUnorderedMap() const;
 

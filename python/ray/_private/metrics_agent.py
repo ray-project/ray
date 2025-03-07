@@ -38,6 +38,8 @@ from ray._raylet import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 from ray._private.ray_constants import env_bool
 
+from ray.util.metrics import _is_invalid_metric_name
+
 logger = logging.getLogger(__name__)
 
 # Env var key to decide worker timeout.
@@ -56,6 +58,13 @@ class Gauge(View):
     """
 
     def __init__(self, name, description, unit, tags: List[str]):
+        if _is_invalid_metric_name(name):
+            raise ValueError(
+                f"Invalid metric name: {name}. Metric will be discarded "
+                "and data will not be collected or published. "
+                "Metric names can only contain letters, numbers, _, and :. "
+                "Metric names cannot start with numbers."
+            )
         self._measure = measure_module.MeasureInt(name, description, unit)
         tags = [tag_key_module.TagKey(tag) for tag in tags]
         self._view = View(
