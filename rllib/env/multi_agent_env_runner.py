@@ -30,6 +30,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
+    ENV_TO_MODULE_TIMER,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
@@ -37,6 +38,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
+    MODULE_TO_ENV_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -320,14 +322,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                             to_env = self.module.forward_inference(to_module)
 
                     # Module-to-env connector.
-                    to_env = self._module_to_env(
-                        rl_module=self.module,
-                        batch=to_env,
-                        episodes=episodes,
-                        explore=explore,
-                        shared_data=shared_data,
-                        metrics=self.metrics,
-                    )
+                    with self.metrics.log_time(MODULE_TO_ENV_TIMER):
+                        to_env = self._module_to_env(
+                            rl_module=self.module,
+                            batch=to_env,
+                            episodes=episodes,
+                            explore=explore,
+                            shared_data=shared_data,
+                            metrics=self.metrics,
+                        )
                 # In case all environments had been terminated `to_module` will be
                 # empty and no actions are needed b/c we reset all environemnts.
                 else:
@@ -456,6 +459,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # Run the env-to-module connector pipeline for all done episodes.
                     # Note, this is needed to postprocess last-step data, e.g. if the
                     # user uses a connector that one-hot encodes observations.
+                    # Note, this pipeline run is not timed as the number of episodes
+                    # can differ from `num_envs_per_env_runner` and would bias time
+                    # measurements.
                     self._env_to_module(
                         episodes=done_episodes_to_run_env_to_module,
                         explore=explore,
@@ -463,13 +469,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         shared_data=shared_data,
                         metrics=self.metrics,
                     )
-                self._cached_to_module = self._env_to_module(
-                    episodes=episodes,
-                    explore=explore,
-                    rl_module=self.module,
-                    shared_data=shared_data,
-                    metrics=self.metrics,
-                )
+                with self.metrics.log_time(ENV_TO_MODULE_TIMER):
+                    self._cached_to_module = self._env_to_module(
+                        episodes=episodes,
+                        explore=explore,
+                        rl_module=self.module,
+                        shared_data=shared_data,
+                        metrics=self.metrics,
+                    )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
             # that we need simple `list` objects in the
@@ -541,13 +548,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
-            self._cached_to_module = self._env_to_module(
-                rl_module=self.module,
-                episodes=episodes,
-                explore=explore,
-                shared_data=shared_data,
-                metrics=self.metrics,
-            )
+            with self.metrics.log_time(ENV_TO_MODULE_TIMER):
+                self._cached_to_module = self._env_to_module(
+                    rl_module=self.module,
+                    episodes=episodes,
+                    explore=explore,
+                    shared_data=shared_data,
+                    metrics=self.metrics,
+                )
 
         # Call `on_episode_start()` callbacks (always after reset).
         for env_index in range(self.num_envs):
