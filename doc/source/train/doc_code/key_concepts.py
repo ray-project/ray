@@ -39,17 +39,6 @@ run_config = RunConfig(
 )
 # __run_config_end__
 
-# __failure_config_start__
-from ray.train import RunConfig, FailureConfig
-
-
-# Tries to recover a run up to this many times.
-run_config = RunConfig(failure_config=FailureConfig(max_failures=2))
-
-# No limit on the number of retries.
-run_config = RunConfig(failure_config=FailureConfig(max_failures=-1))
-# __failure_config_end__
-
 # __checkpoint_config_start__
 from ray.train import RunConfig, CheckpointConfig
 
