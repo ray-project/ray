@@ -13,7 +13,9 @@ from pyarrow import parquet as pq
 
 import ray
 from ray._private.test_utils import run_string_as_driver
-from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorArray,
+)
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor, ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array

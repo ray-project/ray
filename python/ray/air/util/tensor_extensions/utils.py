@@ -9,20 +9,21 @@ if TYPE_CHECKING:
     from pandas.core.dtypes.generic import ABCSeries
 
 
-def _is_ndarray_tensor(arr: np.ndarray) -> bool:
-    """Return whether the provided NumPy ndarray is comprised of tensors.
+def _is_ndarray_tensor(t: Any) -> bool:
+    """Return whether provided ndarray is a tensor (ie ndim > 1).
 
     NOTE: Tensor is defined as a NumPy array such that `len(arr.shape) > 1`
     """
 
+    if not isinstance(t, np.ndarray):
+        return False
+
     # Case of uniform-shaped (ie non-ragged) tensor
-    if arr.ndim > 1:
+    if t.ndim > 1:
         return True
 
     # Case of ragged tensor (as produced by `create_ragged_ndarray` utility)
-    elif (
-        arr.dtype.type is np.object_ and len(arr) > 0 and isinstance(arr[0], np.ndarray)
-    ):
+    elif t.dtype.type is np.object_ and len(t) > 0 and isinstance(t[0], np.ndarray):
         return True
 
     return False

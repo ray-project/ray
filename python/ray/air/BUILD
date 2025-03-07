@@ -49,7 +49,7 @@ py_test(
 py_test(
     name = "test_arrow",
     size = "small",
-    srcs = ["tests/test_arrow.py"],
+    srcs = ["tests/test_arrow.py", "conftest"],
     tags = ["team:ml", "team:data", "ray_data", "exclusive"],
     deps = [":ml_lib"]
 )

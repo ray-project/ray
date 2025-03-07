@@ -22,7 +22,6 @@ from ray.air.util.tensor_extensions.arrow import (
     pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
@@ -130,14 +129,12 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
-        pa_cols: Dict[str, pyarrow.Array] = dict()
-
-        for col_name, col_vals in columns.items():
-            np_col_vals = convert_to_numpy(col_vals)
-
-            pa_cols[col_name] = convert_to_pyarrow_array(np_col_vals, col_name)
-
-        return pyarrow_table_from_pydict(pa_cols)
+        return pyarrow_table_from_pydict(
+            {
+                column_name: convert_to_pyarrow_array(column_values, column_name)
+                for column_name, column_values in columns.items()
+            }
+        )
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
