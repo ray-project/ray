@@ -10,6 +10,7 @@ import tempfile
 
 import ray
 from ray._private.test_utils import (
+    format_web_url,
     wait_until_server_available,
 )
 
@@ -314,18 +315,18 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 @pytest.mark.parametrize(
-    "ray_start_cluster_head_with_env_vars",
+    "ray_start_cluster_head",
     [
         {
             "include_dashboard": True,
-            "env_vars": {},
         }
     ],
     indirect=True,
 )
-def test_uv_run_runtime_env_hook_e2e_job(ray_start_cluster_head_with_env_vars, with_uv, temp_dir):
-    cluster = ray_start_cluster_head_with_env_vars
+def test_uv_run_runtime_env_hook_e2e_job(ray_start_cluster_head, with_uv, temp_dir):
+    cluster = ray_start_cluster_head
     assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = format_web_url(cluster.webui_url)
 
     uv = with_uv
     tmp_out_dir = Path(temp_dir)
@@ -357,7 +358,7 @@ with open("{tmp_out_dir / "output.txt"}", "w") as out:
                 "RAY_RUNTIME_ENV_HOOK": "ray._private.runtime_env.uv_runtime_env_hook.hook",
                 "PYTHONPATH": ":".join(sys.path),
                 "PATH": os.environ["PATH"],
-                "RAY_ADDRESS": cluster.webui_url,
+                "RAY_ADDRESS": webui_url,
             },
             cwd=os.path.dirname(uv),
             check=True,
