@@ -35,6 +35,15 @@ class ClientConnectionTest : public ::testing::Test {
   std::pair<std::shared_ptr<ClientConnection>, std::shared_ptr<ClientConnection>>
   CreateConnectionPair(std::optional<MessageHandler> client_message_handler,
                        std::optional<MessageHandler> server_message_handler) {
+    return CreateConnectionPair(
+        client_message_handler, server_message_handler, std::nullopt, std::nullopt);
+  }
+
+  std::pair<std::shared_ptr<ClientConnection>, std::shared_ptr<ClientConnection>>
+  CreateConnectionPair(std::optional<MessageHandler> client_message_handler,
+                       std::optional<MessageHandler> server_message_handler,
+                       std::optional<ConnectionErrorHandler> client_error_handler,
+                       std::optional<ConnectionErrorHandler> server_error_handler) {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
     boost::asio::local::stream_protocol::socket in(io_service_), out(io_service_);
     boost::asio::local::connect_pair(in, out);
@@ -48,30 +57,37 @@ class ClientConnectionTest : public ::testing::Test {
     acceptor.accept(in);
 #endif
 
-    ClientHandler noop_client_handler = [](ClientConnection &client) {};
     MessageHandler noop_message_handler = [](std::shared_ptr<ClientConnection> client,
                                              int64_t message_type,
                                              const std::vector<uint8_t> &message) {};
+    ConnectionErrorHandler check_no_error = [](std::shared_ptr<ClientConnection> client,
+                                               const boost::system::error_code &error) {
+      RAY_CHECK(false) << "Unexpected connection error: " << error.message();
+    };
 
     if (!client_message_handler) {
       client_message_handler = noop_message_handler;
     }
-    auto client = ClientConnection::Create(noop_client_handler,
-                                           client_message_handler.value(),
+    if (!client_error_handler) {
+      client_error_handler = check_no_error;
+    }
+    auto client = ClientConnection::Create(client_message_handler.value(),
+                                           client_error_handler.value(),
                                            std::move(out),
                                            "client",
-                                           {},
-                                           /*error_message_type=*/1);
+                                           {});
 
     if (!server_message_handler) {
       server_message_handler = noop_message_handler;
     }
-    auto server = ClientConnection::Create(noop_client_handler,
-                                           server_message_handler.value(),
+    if (!server_error_handler) {
+      server_error_handler = check_no_error;
+    }
+    auto server = ClientConnection::Create(server_message_handler.value(),
+                                           server_error_handler.value(),
                                            std::move(in),
                                            "server",
-                                           {},
-                                           /*error_message_type=*/1);
+                                           {});
 
     return std::make_pair(std::move(client), std::move(server));
   }
@@ -79,6 +95,46 @@ class ClientConnectionTest : public ::testing::Test {
  protected:
   instrumented_io_context io_service_;
 };
+
+/*
+Check that the ConnectionErrorHandler is called when an unexpected connection
+error occurs.
+*/
+TEST_F(ClientConnectionTest, UnexpectedConnectionError) {
+  const uint8_t arr[5] = {1, 2, 3, 4, 5};
+  int num_messages = 0;
+  MessageHandler server_message_handler = [&arr, &num_messages](
+                                              std::shared_ptr<ClientConnection> client,
+                                              int64_t message_type,
+                                              const std::vector<uint8_t> &message) {
+    ASSERT_TRUE(!std::memcmp(arr, message.data(), 5));
+    num_messages += 1;
+  };
+
+  bool err_handler_called = false;
+  ConnectionErrorHandler server_error_handler =
+      [&err_handler_called](std::shared_ptr<ClientConnection> client,
+                            const boost::system::error_code &error) {
+        err_handler_called = true;
+      };
+
+  auto [client, server] = CreateConnectionPair(
+      std::nullopt, server_message_handler, std::nullopt, server_error_handler);
+
+  RAY_CHECK_OK(client->WriteMessage(0, 5, arr));
+  server->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(num_messages, 1);
+  ASSERT_FALSE(err_handler_called);
+
+  io_service_.restart();
+
+  client->Close();
+  server->ProcessMessages();
+  io_service_.run();
+  ASSERT_EQ(num_messages, 1);
+  ASSERT_TRUE(err_handler_called);
+}
 
 TEST_F(ClientConnectionTest, UnidirectionalWriteSync) {
   const uint8_t arr[5] = {1, 2, 3, 4, 5};
