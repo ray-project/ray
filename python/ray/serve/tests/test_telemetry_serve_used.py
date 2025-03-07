@@ -23,6 +23,13 @@ def reset_usage_lib(ray_shutdown):
     ray_usage_lib.reset_global_state()
 
 
+def test_not_used_on_import(reset_usage_lib):
+    assert len(_get_library_usages()) == 0
+    from ray import serve  # noqa: F401
+
+    assert len(_get_library_usages()) == 0
+
+
 @pytest.mark.parametrize("callsite", ["driver", "actor", "task"])
 def test_serve_start(reset_usage_lib, callsite: str):
     assert len(_get_library_usages()) == 0
