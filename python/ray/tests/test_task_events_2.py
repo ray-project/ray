@@ -1126,9 +1126,11 @@ class TestIsActorTaskRunning:
                 assert _is_actor_task_running(pid, "check")
                 assert psutil.Process(pid).name() == "ray::A.check"
                 assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                return pid
 
         a = A.remote()
-        ray.get(a.check.remote())
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
 
     def test_main_thread_long_comm(self, ray_start_regular):
         """
@@ -1144,9 +1146,11 @@ class TestIsActorTaskRunning:
                 assert _is_actor_task_running(pid, "check_long_comm")
                 assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
                 assert psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+                return pid
 
         a = Actor.remote()
-        ray.get(a.check_long_comm.remote())
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
 
     def test_main_thread_options_name_short_comm(self, ray_start_regular):
         """
@@ -1161,9 +1165,11 @@ class TestIsActorTaskRunning:
                 assert _is_actor_task_running(pid, task_name)
                 assert psutil.Process(pid).name() == f"ray::{task_name}"
                 assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
 
         a = A.remote()
-        ray.get(a.check.options(name=task_name).remote())
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
     def test_main_thread_options_name_long_comm(self, ray_start_regular):
         """
@@ -1179,9 +1185,11 @@ class TestIsActorTaskRunning:
                 assert _is_actor_task_running(pid, task_name)
                 assert psutil.Process(pid).name() == f"ray::{task_name}"
                 assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
 
         a = A.remote()
-        ray.get(a.check.options(name=task_name).remote())
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
     def test_default_thread_short_comm(self, ray_start_regular):
         """
@@ -1196,9 +1204,11 @@ class TestIsActorTaskRunning:
                 assert _is_actor_task_running(pid, "check")
                 assert psutil.Process(pid).name() == "ray::A"
                 assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                return pid
 
         a = A.remote()
-        ray.get(a.check.remote())
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
 
     def test_default_thread_long_comm(self, ray_start_regular):
         """
@@ -1222,9 +1232,11 @@ class TestIsActorTaskRunning:
                     psutil.Process(pid).cmdline()[0]
                     == "ray::VeryLongCommActor.check_long_comm"
                 )
+                return pid
 
         a = VeryLongCommActor.remote()
-        ray.get(a.check_long_comm.remote())
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
 
     def test_default_thread_options_name_short_comm(self, ray_start_regular):
         """
@@ -1240,9 +1252,11 @@ class TestIsActorTaskRunning:
                 assert _is_actor_task_running(pid, task_name)
                 assert psutil.Process(pid).name() == "ray::A"
                 assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
 
         a = A.remote()
-        ray.get(a.check.options(name=task_name).remote())
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
     def test_default_thread_options_name_long_comm(self, ray_start_regular):
         task_name = "hello"
@@ -1254,11 +1268,19 @@ class TestIsActorTaskRunning:
                 assert _is_actor_task_running(pid, task_name)
                 assert psutil.Process(pid).name() == "ray::Actor"
                 assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
 
         a = Actor.remote()
-        ray.get(a.check_long_comm.options(name=task_name).remote())
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
     def test_default_thread_options_name_long_comm_2(self, ray_start_regular):
+        """
+        `/proc/PID/comm` is truncated to 15 characters, so the process title
+        is "ray::VeryLongCo". `psutil.Process.name()` doesn't return `cmdline()[0]`
+        because `cmdline()[0]` doesn't start with "ray::VeryLongCo". This is the
+        implementation detail of `psutil`.
+        """
         task_name = "hello"
 
         @ray.remote(concurrency_groups={"io": 1})
@@ -1269,9 +1291,11 @@ class TestIsActorTaskRunning:
                 # The first 15 characters of "ray::VeryLongCommActor"
                 assert psutil.Process(pid).name() == "ray::VeryLongCo"
                 assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
 
         a = VeryLongCommActor.remote()
-        ray.get(a.check_long_comm.options(name=task_name).remote())
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
 
 if __name__ == "__main__":

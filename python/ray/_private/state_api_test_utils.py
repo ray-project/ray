@@ -422,17 +422,51 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
     if not psutil.pid_exists(actor_pid):
         return False
 
+    """
+    Why use both `psutil.Process.name()` and `psutil.Process.cmdline()`?
+
+    1. Core worker processes call `setproctitle` to set the process title before
+    and after executing tasks. However, the definition of "title" is a bit
+    complex.
+
+    [ref]: https://github.com/dvarrazzo/py-setproctitle
+
+    > The process title is usually visible in files such as /proc/PID/cmdline,
+    /proc/PID/status, /proc/PID/comm, depending on the operating system and
+    kernel version. This information is used by user-space tools such as ps
+    and top.
+
+    Ideally, we would only need to check `psutil.Process.cmdline()`, but I decided
+    to check both `psutil.Process.name()` and `psutil.Process.cmdline()` based on
+    the definition of "title" stated above.
+
+    2. Additionally, the definition of `psutil.Process.name()` is not consistent
+    with the definition of "title" in `setproctitle`. The length of `/proc/PID/comm` and
+    the prefix of `/proc/PID/cmdline` affect the return value of
+    `psutil.Process.name()`.
+
+    In addition, executing `setproctitle` in different threads within the same
+    process may result in different outcomes.
+
+    To learn more details, please refer to the source code of `psutil`:
+
+    [ref]:
+    https://github.com/giampaolo/psutil/blob/a17550784b0d3175da01cdb02cee1bc6b61637dc/psutil/__init__.py#L664-L693
+
+    3. `/proc/PID/comm` will be truncated to TASK_COMM_LEN (16) characters
+    (including the terminating null byte).
+
+    [ref]:
+    https://man7.org/linux/man-pages/man5/proc_pid_comm.5.html
+    """
     name = psutil.Process(actor_pid).name()
-    if task_name in name:
+    if task_name in name and name.startswith("ray::"):
         return True
 
-    # By default, `psutil.Process.name()` returns `/proc/pid/comm`. However,
-    # it's only modified by the leader thread. Hence, if `setproctitle` is
-    # executed on other threads, the `psutil.Process.name()` value may not be
-    # updated. Therefore, we not only need to check `psutil.Process.name()`
-    # but also check `psutil.Process.cmdline()`.
     cmdline = psutil.Process(actor_pid).cmdline()
-    if cmdline and task_name in cmdline[0]:
+    # If `options.name` is set, the format is `ray::<task_name>`. If not,
+    # the format is `ray::<actor_name>.<task_name>`.
+    if cmdline and task_name in cmdline[0] and cmdline[0].startswith("ray::"):
         return True
     return False
 
