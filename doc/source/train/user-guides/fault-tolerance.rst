@@ -136,7 +136,8 @@ If the ``storage_path`` or ``name`` do not match, Ray Train will not be able to 
 .. note::
     Job driver crashes and interrupts do not count toward the ``max_failures`` limit of :ref:`worker fault tolerance <train-worker-fault-tolerance>`.
 
-Here's an example training script that highlights best practices regarding job driver fault tolerance:
+
+Here's an example training script that highlights best practices for job driver fault tolerance:
 
 .. literalinclude:: ../doc_code/fault_tolerance.py
     :language: python
@@ -148,11 +149,11 @@ Then, the entrypoint script can be launched with the following command:
 
 .. code-block:: bash
 
-    python entrypoint.py --storage_path s3://my_bucket/ --run_name unique_run_name-id=da823d5
+    python entrypoint.py --storage_path s3://my_bucket/ --run_name unique_run_id=da823d5
 
 
 If the job is interrupted, the same command can be used to resume training.
-The ``da823d5`` id in this example should be determined by the one launching the job, which can often be used for other purposes such as setting the ``wandb`` or ``mlflow`` run id.
+This example shows a ``da823d5`` id, which is determined by the one launching the job. The id can often be used for other purposes such as setting the ``wandb`` or ``mlflow`` run id.
 
 
 Illustrated Example
@@ -188,30 +189,49 @@ Consider the following example of a cluster containing a CPU head node and 2 GPU
 
 .. _train-fault-tolerance-deprecation-info:
 
-``<Framework>Trainer.restore`` API Deprecation 
-----------------------------------------------
+Fault Tolerance API Deprecations
+--------------------------------
 
-The ``<Framework>Trainer.restore`` API is deprecated as of Ray 2.43 and will be removed in a future release. 
+``<Framework>Trainer.restore`` API Deprecation 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``<Framework>Trainer.restore`` and ``<Framework>Trainer.can_restore`` APIs are deprecated as of Ray 2.43 and will be removed in a future release. 
 
 Motivation
-~~~~~~~~~~
+**********
 
 This API change provides several benefits:
 
 1. **Avoid saving user code to pickled files**: The old API saved user code to pickled files, which could lead to issues with deserialization, leading to unrecoverable runs.
-2. **Improved configuration experience**: While some configurations are loaded from the pickled files, certain arguments are required to be re-specified, and another subset of arguments can even be optionally re-specified. This confuses users about the set of configurations that are actually being used in the restored run.
+2. **Improved configuration experience**: While some configurations were loaded from the pickled files, certain arguments were required to be re-specified, and another subset of arguments could even be optionally re-specified. This confused users about the set of configurations that are actually being used in the restored run.
 
 Migration Steps
-~~~~~~~~~~~~~~~
+***************
 
 To migrate from the old ``<Framework>Trainer.restore`` API to the new pattern:
 
 1. Enable the environment variable ``RAY_TRAIN_V2_ENABLED=1``.
 2. Replace ``<Framework>Trainer.restore`` with the regular ``<Framework>Trainer`` constructor, making sure to pass in the same ``storage_path`` and ``name`` as the previous run.
 
+``<Framework>Trainer(restore_from_checkpoint)`` API Deprecation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``<Framework>Trainer(restore_from_checkpoint)`` API is deprecated as of Ray 2.43 and will be removed in a future release.
+
+Motivation
+**********
+
+This API was a common source of confusion that provided minimal value. It was only used to set the initial value of ``ray.train.get_checkpoint()`` but did not load any other run state.
+
+Migration Steps
+***************
+
+Simply pass in the initial checkpoint through the ``train_loop_config`` argument. See the migration guide linked below for a code example.
+
+
 Additional Resources
 ~~~~~~~~~~~~~~~~~~~~
 
-* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
 * `Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_: Full migration guide for Train V2
+* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
 * :ref:`train-fault-tolerance-deprecated-api`: Documentation for the old API
