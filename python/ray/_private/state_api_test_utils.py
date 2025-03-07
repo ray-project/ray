@@ -418,6 +418,12 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
 
     Returns:
       True if the actor task is running, False otherwise.
+
+    Limitation:
+        If the actor task name is set using options.name and is a substring of
+        the actor name, this function may return true even if the task is not
+        running on the actor process. To resolve this issue, we can possibly
+        pass in the actor name.
     """
     if not psutil.pid_exists(actor_pid):
         return False
