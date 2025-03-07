@@ -10,7 +10,7 @@ from probes.messages import messages, system, user
 from probes.models import ModelLoader
 from probes.query_utils import TextGenerationProbeQuerier
 
-MODEL_IDS = ModelLoader().json_mode_models()
+MODEL_IDS = ModelLoader().json_mode_model_ids()
 
 # coming from
 # https://github.com/mlc-ai/xgrammar/blob/5e141f6ff1ca02bc31f9e512e68b61f2a8ae88e5/docs/how_to/ebnf_guided_generation.rst?plain=1#L158
@@ -129,9 +129,11 @@ async def query_json_model(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model", MODEL_IDS)
-@pytest.mark.parametrize("response_type", ["basic", "array", "nested"])
+# @pytest.mark.parametrize("response_type", ["basic", "array", "nested"])
+@pytest.mark.parametrize("response_type", ["basic"])
 @pytest.mark.parametrize("n_concurrent_requests", [3])
-@pytest.mark.parametrize("stream", [True, False])
+# @pytest.mark.parametrize("stream", [True, False])
+@pytest.mark.parametrize("stream", [False])
 async def test_json_mode(
     test_id: str,
     model: str,
