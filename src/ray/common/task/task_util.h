@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
@@ -303,5 +305,9 @@ class TaskSpecBuilder {
  private:
   std::shared_ptr<rpc::TaskSpec> message_;
 };
+
+// Get a unique attempt id for the given task.
+// Task attempt is is formatted as <task-id>_<attempt-id>.
+std::string GetTaskAttemptId(const TaskID &task_id);
 
 }  // namespace ray

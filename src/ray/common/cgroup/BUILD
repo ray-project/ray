@@ -58,3 +58,13 @@ ray_cc_library(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+ray_cc_library(
+    name = "cgroup_manager",
+    srcs = ["cgroup_manager.cc"],
+    hdrs = ["cgroup_manager.h"],
+    deps = [
+        ":base_cgroup_setup",
+        "@com_github_gflags_gflags//:gflags",
+    ],
+)

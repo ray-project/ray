@@ -16,6 +16,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/cgroup/base_cgroup_setup.h"
+#include "ray/common/cgroup/scoped_cgroup_handle.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
@@ -297,9 +299,7 @@ class LocalTaskManager : public ILocalTaskManager {
           capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the running task ids in this scheduling class.
-    ///
-    /// TODO(hjiang): Store cgroup manager along with task id as the value for map.
-    absl::flat_hash_set<TaskID> running_tasks;
+    absl::flat_hash_map<TaskID, std::unique_ptr<ScopedCgroupHandler>> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     const uint64_t capacity;
     /// The next time that a new task of this scheduling class may be dispatched.
