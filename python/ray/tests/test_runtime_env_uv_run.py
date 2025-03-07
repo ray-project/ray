@@ -339,6 +339,7 @@ import os
 def f():
     import emoji
     return {{"working_dir_files": os.listdir(os.getcwd())}}
+
 with open("{tmp_out_dir / "output.txt"}", "w") as out:
     json.dump(ray.get(f.remote()), out)
 """
