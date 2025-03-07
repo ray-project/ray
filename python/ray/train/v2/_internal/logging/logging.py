@@ -186,6 +186,8 @@ class SessionFileHandler(logging.Handler):
         self._formatter = None
         self._path = None
 
+        self._try_create_handler()
+
     def emit(self, record):
         if self._handler is None:
             self._try_create_handler()
@@ -196,6 +198,9 @@ class SessionFileHandler(logging.Handler):
         if self._handler is not None:
             self._handler.setFormatter(fmt)
         self._formatter = fmt
+
+    def get_log_file_path(self) -> Optional[str]:
+        return self._path
 
     def _try_create_handler(self):
         assert self._handler is None
@@ -246,3 +251,31 @@ def get_log_directory() -> Optional[str]:
 
     root_dir = global_node.get_session_dir_path()
     return os.path.join(root_dir, "logs", "train")
+
+
+def get_train_app_controller_log_path() -> Optional[str]:
+    """
+    Return the path to the file train app controller log file.
+    """
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-controller" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None
+
+
+def get_train_app_worker_log_path() -> Optional[str]:
+    """
+    Return the path to the file train app worker log file.
+    """
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-worker" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None
