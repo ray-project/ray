@@ -1,6 +1,5 @@
 import os
-import threading
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -27,37 +26,3 @@ def module_logging_filename(
         return ""
     stem, extension = os.path.splitext(logging_filename)
     return f"{stem}-{module_name}-{incarnation}{extension}"
-
-
-class ThreadSafeDict(Generic[K, V]):
-    """A thread-safe dictionary that only allows certain operations."""
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._dict: dict[K, V] = {}
-
-    def put_new(self, key: K, value: V):
-        with self._lock:
-            if key in self._dict:
-                raise KeyError(f"Key {key} already exists in {self._dict}")
-            self._dict[key] = value
-
-    def get_or_raise(self, key: K) -> V:
-        with self._lock:
-            value = self._dict.get(key)
-            if value is None:
-                raise KeyError(f"Key {key} not found in {self._dict}")
-            return value
-
-    def pop_or_raise(self, key: K) -> V:
-        with self._lock:
-            value = self._dict.pop(key)
-            if value is None:
-                raise KeyError(f"Key {key} not found in {self._dict}")
-            return value
-
-    def pop_all(self) -> dict[K, V]:
-        with self._lock:
-            d = self._dict
-            self._dict = {}
-            return d
