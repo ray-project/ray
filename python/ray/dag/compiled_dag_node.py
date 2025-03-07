@@ -542,9 +542,9 @@ class ExecutableTask:
 
     def destroy_cuda_event(self):
         """
-        If this executable task has produced a GPU future that is not yet waited,
-        that future is in the channel context cache. Pop the future from the cache
-        and destroy the CUDA event it contains.
+        If this executable task has created a GPU future that is not yet waited on,
+        that future is in the channel context cache. Remove the future from the cache
+        and destroy its CUDA event.
         """
         from ray.experimental.channel.common import ChannelContext
 

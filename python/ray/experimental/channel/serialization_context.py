@@ -80,8 +80,7 @@ class _SerializationContext:
             fut: GPU future to be cached.
         """
         if fut_id in self.gpu_futures:
-            # Old future from a previous execution was not waited
-            # because of an exception.
+            # The old future was not waited on because of an execution exception.
             self.gpu_futures.pop(fut_id).destroy_event()
         self.gpu_futures[fut_id] = fut
 
