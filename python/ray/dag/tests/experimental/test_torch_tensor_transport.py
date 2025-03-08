@@ -39,92 +39,141 @@ class Actor:
         return tensor_dict
 
 
+def run_driver_to_worker_dag(actor, device, tensor_input, is_dict=False):
+    """Create and execute a DAG with tensor transport for driver to worker tests.
+
+    Args:
+        actor: Ray actor to use
+        device: Target device ("cpu", "cuda", or "default")
+        tensor_input: Input tensor(s) to execute with
+        is_dict: Whether to use dict version of the method
+
+    Returns:
+        ray.ObjectRef: Result reference
+    """
+    with InputNode() as inp:
+        method = actor.echo_dict_device if is_dict else actor.echo_device
+        dag = method.bind(inp.with_tensor_transport(device=device))
+    compiled_dag = dag.experimental_compile()
+    return compiled_dag.execute(tensor_input)
+
+
+def run_worker_to_worker_dag(sender, receiver, device, input_device, is_dict=False):
+    """Create and execute a DAG with tensor transport for worker to worker tests.
+
+    Args:
+        sender: Sender Ray actor
+        receiver: Receiver Ray actor
+        device: Target device for tensor transport
+        input_device: Device string to pass to sender
+        is_dict: Whether to use dict version of the methods
+
+    Returns:
+        ray.ObjectRef: Result reference or ValueError for compilation errors
+    """
+    with InputNode() as inp:
+        if is_dict:
+            tensor = sender.send_dict.bind(inp)
+            dag = receiver.echo_dict_device.bind(
+                tensor.with_tensor_transport(device=device)
+            )
+        else:
+            tensor = sender.send.bind(inp)
+            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device=device))
+    compiled_dag = dag.experimental_compile()
+    return compiled_dag.execute(input_device)
+
+
+def run_worker_to_driver_dag(actor, device, input_device, is_dict=False):
+    """Create and execute a DAG with tensor transport for worker to driver tests.
+
+    Args:
+        actor: Ray actor to use
+        device: Target device for tensor transport
+        input_device: Device string to pass to actor
+        is_dict: Whether to use dict version of the method
+
+    Returns:
+        ray.ObjectRef: Result reference
+    """
+    with InputNode() as inp:
+        if is_dict:
+            dag = actor.send_dict.bind(inp).with_tensor_transport(device=device)
+        else:
+            dag = actor.send.bind(inp).with_tensor_transport(device=device)
+    compiled_dag = dag.experimental_compile()
+    return compiled_dag.execute(input_device)
+
+
 class TestDriverToWorkerDeviceCPU:
     """Tests driver to worker tensor transport with CPU device."""
 
+    def create_and_execute_dag(self, actor, device, tensor_input, is_dict=False):
+        """Create a DAG with tensor transport and execute it."""
+        with InputNode() as inp:
+            method = actor.echo_dict_device if is_dict else actor.echo_device
+            dag = method.bind(inp.with_tensor_transport(device=device))
+        compiled_dag = dag.experimental_compile()
+        return compiled_dag.execute(tensor_input)
+
     def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1]))
+        ref = run_driver_to_worker_dag(actor, "cpu", torch.tensor([1]))
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1], device="cuda"))
+        ref = run_driver_to_worker_dag(actor, "cpu", torch.tensor([1], device="cuda"))
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1]))
+        ref = run_driver_to_worker_dag(actor, "cpu", torch.tensor([1]))
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1], device="cuda"))
+        ref = run_driver_to_worker_dag(actor, "cpu", torch.tensor([1], device="cuda"))
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_dict_device.bind(inp.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(
-            {
-                "cpu_tensor": torch.tensor([1]),
-                "gpu_tensor": torch.tensor([1], device="cuda"),
-            }
-        )
-
+        tensor_dict = {
+            "cpu_tensor": torch.tensor([1]),
+            "gpu_tensor": torch.tensor([1], device="cuda"),
+        }
+        ref = run_driver_to_worker_dag(actor, "cpu", tensor_dict, is_dict=True)
         assert ray.get(ref) == {"cpu_tensor": "cpu", "gpu_tensor": "cpu"}
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_dict_device.bind(inp.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(
-            {
-                "cpu_tensor": torch.tensor([1]),
-                "gpu_tensor": torch.tensor([1], device="cuda"),
-            }
-        )
-
+        tensor_dict = {
+            "cpu_tensor": torch.tensor([1]),
+            "gpu_tensor": torch.tensor([1], device="cuda"),
+        }
+        ref = run_driver_to_worker_dag(actor, "cpu", tensor_dict, is_dict=True)
         assert ray.get(ref) == {"cpu_tensor": "cpu", "gpu_tensor": "cpu"}
 
 
 class TestDriverToWorkerDeviceGPU:
     """Tests driver to worker tensor transport with GPU device."""
 
+    def create_and_execute_dag(self, actor, device, tensor_input, is_dict=False):
+        """Create a DAG with tensor transport and execute it."""
+        with InputNode() as inp:
+            method = actor.echo_dict_device if is_dict else actor.echo_device
+            dag = method.bind(inp.with_tensor_transport(device=device))
+        compiled_dag = dag.experimental_compile()
+        return compiled_dag.execute(tensor_input)
+
     def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1]))
-
+        ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1]))
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -133,11 +182,7 @@ class TestDriverToWorkerDeviceGPU:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1], device="cuda"))
+        ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1], device="cuda"))
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -146,36 +191,23 @@ class TestDriverToWorkerDeviceGPU:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1]))
+        ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1]))
         assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1], device="cuda"))
+        ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1], device="cuda"))
         assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_dict_device.bind(inp.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(
-            {
-                "cpu_tensor": torch.tensor([1]),
-                "gpu_tensor": torch.tensor([1], device="cuda"),
-            }
-        )
+        tensor_dict = {
+            "cpu_tensor": torch.tensor([1]),
+            "gpu_tensor": torch.tensor([1], device="cuda"),
+        }
+        ref = run_driver_to_worker_dag(actor, "cuda", tensor_dict, is_dict=True)
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -184,40 +216,36 @@ class TestDriverToWorkerDeviceGPU:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_dict_device.bind(inp.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(
-            {
-                "cpu_tensor": torch.tensor([1]),
-                "gpu_tensor": torch.tensor([1], device="cuda"),
-            }
-        )
-
+        tensor_dict = {
+            "cpu_tensor": torch.tensor([1]),
+            "gpu_tensor": torch.tensor([1], device="cuda"),
+        }
+        ref = run_driver_to_worker_dag(actor, "cuda", tensor_dict, is_dict=True)
         assert ray.get(ref) == {"cpu_tensor": "cuda:0", "gpu_tensor": "cuda:0"}
 
 
 class TestDriverToWorkerDeviceDefault:
     """Tests driver to worker tensor transport with default device."""
 
+    def create_and_execute_dag(self, actor, device, tensor_input, is_dict=False):
+        """Create a DAG with tensor transport and execute it."""
+        with InputNode() as inp:
+            method = actor.echo_dict_device if is_dict else actor.echo_device
+            dag = method.bind(inp.with_tensor_transport(device=device))
+        compiled_dag = dag.experimental_compile()
+        return compiled_dag.execute(tensor_input)
+
     def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="default"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1]))
+        ref = run_driver_to_worker_dag(actor, "default", torch.tensor([1]))
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="default"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1], device="cuda"))
+        ref = run_driver_to_worker_dag(
+            actor, "default", torch.tensor([1], device="cuda")
+        )
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -226,39 +254,25 @@ class TestDriverToWorkerDeviceDefault:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="default"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1]))
+        ref = run_driver_to_worker_dag(actor, "default", torch.tensor([1]))
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_device.bind(inp.with_tensor_transport(device="default"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(torch.tensor([1], device="cuda"))
+        ref = run_driver_to_worker_dag(
+            actor, "default", torch.tensor([1], device="cuda")
+        )
         assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_dict_device.bind(
-                inp.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(
-            {
-                "cpu_tensor": torch.tensor([1]),
-                "gpu_tensor": torch.tensor([1], device="cuda"),
-            }
-        )
-
+        tensor_dict = {
+            "cpu_tensor": torch.tensor([1]),
+            "gpu_tensor": torch.tensor([1], device="cuda"),
+        }
+        ref = run_driver_to_worker_dag(actor, "default", tensor_dict, is_dict=True)
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -267,19 +281,11 @@ class TestDriverToWorkerDeviceDefault:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_gpu_node(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.echo_dict_device.bind(
-                inp.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(
-            {
-                "cpu_tensor": torch.tensor([1]),
-                "gpu_tensor": torch.tensor([1], device="cuda"),
-            }
-        )
-
+        tensor_dict = {
+            "cpu_tensor": torch.tensor([1]),
+            "gpu_tensor": torch.tensor([1], device="cuda"),
+        }
+        ref = run_driver_to_worker_dag(actor, "default", tensor_dict, is_dict=True)
         assert ray.get(ref) == {"cpu_tensor": "cpu", "gpu_tensor": "cuda:0"}
 
 
@@ -289,38 +295,21 @@ class TestWorkerToWorkerDeviceCPU:
     def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular):
         sender = Actor.remote()
         receiver = Actor.remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
-
         sender = Actor.remote()
         receiver = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
-
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device="cpu"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
@@ -329,27 +318,22 @@ class TestWorkerToWorkerDeviceCPU:
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options(num_gpus=1).remote()
 
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device="cpu"))
         with pytest.raises(
             ValueError, match="NCCL transport is not supported with CPU target device."
         ):
-            dag.experimental_compile()
+            run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options().remote()
-
-        with InputNode() as inp:
-            tensor = sender.send_dict.bind(inp)
-            dag = receiver.echo_dict_device.bind(
-                tensor.with_tensor_transport(device="cpu")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
-
+        ref = run_worker_to_worker_dag(
+            sender,
+            receiver,
+            "cpu",
+            {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
+            is_dict=True,
+        )
         assert ray.get(ref) == {"cpu_tensor": "cpu", "gpu_tensor": "cpu"}
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
@@ -358,15 +342,16 @@ class TestWorkerToWorkerDeviceCPU:
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options(num_gpus=1).remote()
 
-        with InputNode() as inp:
-            tensor = sender.send_dict.bind(inp)
-            dag = receiver.echo_dict_device.bind(
-                tensor.with_tensor_transport(device="cpu")
-            )
         with pytest.raises(
             ValueError, match="NCCL transport is not supported with CPU target device."
         ):
-            dag.experimental_compile()
+            run_worker_to_worker_dag(
+                sender,
+                receiver,
+                "cpu",
+                {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
+                is_dict=True,
+            )
 
 
 class TestWorkerToWorkerDeviceGPU:
@@ -376,14 +361,7 @@ class TestWorkerToWorkerDeviceGPU:
     def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular, gpu_device):
         sender = Actor.remote()
         receiver = Actor.remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(
-                tensor.with_tensor_transport(device=gpu_device)
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_worker_dag(sender, receiver, gpu_device, "cpu")
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -393,24 +371,14 @@ class TestWorkerToWorkerDeviceGPU:
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
         sender = Actor.remote()
         receiver = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_worker_dag(sender, receiver, "cuda", "cpu")
         assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cuda")
+        ref = run_worker_to_worker_dag(sender, receiver, "cuda", "cuda")
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -422,26 +390,22 @@ class TestWorkerToWorkerDeviceGPU:
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options(num_gpus=1).remote()
 
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(tensor.with_tensor_transport(device="cuda"))
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cuda")
-        assert ray.get(ref) == "cuda:0"
+        with pytest.raises(
+            ValueError, match="NCCL transport is not supported with CPU target device."
+        ):
+            run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options().remote()
-
-        with InputNode() as inp:
-            tensor = sender.send_dict.bind(inp)
-            dag = receiver.echo_dict_device.bind(
-                tensor.with_tensor_transport(device="cuda")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
-
+        ref = run_worker_to_worker_dag(
+            sender,
+            receiver,
+            "cuda",
+            {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
+            is_dict=True,
+        )
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -454,14 +418,13 @@ class TestWorkerToWorkerDeviceGPU:
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options(num_gpus=1).remote()
 
-        with InputNode() as inp:
-            tensor = sender.send_dict.bind(inp)
-            dag = receiver.echo_dict_device.bind(
-                tensor.with_tensor_transport(device=gpu_device)
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
-
+        ref = run_worker_to_worker_dag(
+            sender,
+            receiver,
+            gpu_device,
+            {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
+            is_dict=True,
+        )
         assert ray.get(ref) == {"cpu_tensor": "cuda:0", "gpu_tensor": "cuda:0"}
 
 
@@ -471,42 +434,21 @@ class TestWorkerToWorkerDeviceDefault:
     def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular):
         sender = Actor.remote()
         receiver = Actor.remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(
-                tensor.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_worker_dag(sender, receiver, "default", "cpu")
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_cpu_tensor_dst_gpu_node(self, ray_start_regular):
         sender = Actor.remote()
         receiver = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(
-                tensor.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_worker_dag(sender, receiver, "default", "cpu")
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.remote()
-
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(
-                tensor.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cuda")
+        ref = run_worker_to_worker_dag(sender, receiver, "default", "cuda")
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -518,28 +460,22 @@ class TestWorkerToWorkerDeviceDefault:
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options(num_gpus=1).remote()
 
-        with InputNode() as inp:
-            tensor = sender.send.bind(inp)
-            dag = receiver.echo_device.bind(
-                tensor.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cuda")
-        assert ray.get(ref) == "cuda:0"
+        with pytest.raises(
+            ValueError, match="NCCL transport is not supported with CPU target device."
+        ):
+            run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options().remote()
-
-        with InputNode() as inp:
-            tensor = sender.send_dict.bind(inp)
-            dag = receiver.echo_dict_device.bind(
-                tensor.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
-
+        ref = run_worker_to_worker_dag(
+            sender,
+            receiver,
+            "default",
+            {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
+            is_dict=True,
+        )
         with pytest.raises(
             RayTaskError, match="RuntimeError: No CUDA GPUs are available"
         ):
@@ -550,15 +486,13 @@ class TestWorkerToWorkerDeviceDefault:
     def test_src_mix_tensors_dst_gpu_node(self, ray_start_regular):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            tensor = sender.send_dict.bind(inp)
-            dag = receiver.echo_dict_device.bind(
-                tensor.with_tensor_transport(device="default")
-            )
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
-
+        ref = run_worker_to_worker_dag(
+            sender,
+            receiver,
+            "default",
+            {"cpu_tensor": "cpu", "gpu_tensor": "cuda"},
+            is_dict=True,
+        )
         assert ray.get(ref) == {"cpu_tensor": "cpu", "gpu_tensor": "cuda:0"}
 
 
@@ -567,32 +501,23 @@ class TestWorkerToDriverDeviceCPU:
 
     def test_src_cpu_tensor(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.send.bind(inp).with_tensor_transport(device="cpu")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_driver_dag(actor, "cpu", "cpu")
         tensor = ray.get(ref)
         assert str(tensor.device) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-        with InputNode() as inp:
-            dag = actor.send.bind(inp).with_tensor_transport(device="cpu")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cuda")
+        ref = run_worker_to_driver_dag(actor, "cpu", "cuda")
         tensor = ray.get(ref)
         assert str(tensor.device) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.send_dict.bind(inp).with_tensor_transport(device="cpu")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
+        ref = run_worker_to_driver_dag(
+            actor, "cpu", {"cpu_tensor": "cpu", "gpu_tensor": "cuda"}, is_dict=True
+        )
         tensor = ray.get(ref)
         assert str(tensor["cpu_tensor"].device) == "cpu"
         assert str(tensor["gpu_tensor"].device) == "cpu"
@@ -603,11 +528,7 @@ class TestWorkerToDriverDeviceGPU:
 
     def test_src_cpu_tensor(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.send.bind(inp).with_tensor_transport(device="cuda")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_driver_dag(actor, "cuda", "cpu")
 
         # different behavior between a driver node with GPU and without GPU
         if torch.cuda.is_available():
@@ -622,11 +543,7 @@ class TestWorkerToDriverDeviceGPU:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.send.bind(inp).with_tensor_transport(device="cuda")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cuda")
+        ref = run_worker_to_driver_dag(actor, "cuda", "cuda")
 
         # different behavior between a driver node with GPU and without GPU
         if torch.cuda.is_available():
@@ -641,11 +558,9 @@ class TestWorkerToDriverDeviceGPU:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.send_dict.bind(inp).with_tensor_transport(device="cuda")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
+        ref = run_worker_to_driver_dag(
+            actor, "cuda", {"cpu_tensor": "cpu", "gpu_tensor": "cuda"}, is_dict=True
+        )
 
         # different behavior between a driver node with GPU and without GPU
         if torch.cuda.is_available():
@@ -664,22 +579,14 @@ class TestWorkerToDriverDeviceDefault:
 
     def test_src_cpu_tensor(self, ray_start_regular):
         actor = Actor.remote()
-
-        with InputNode() as inp:
-            dag = actor.send.bind(inp).with_tensor_transport(device="default")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cpu")
+        ref = run_worker_to_driver_dag(actor, "default", "cpu")
         tensor = ray.get(ref)
         assert str(tensor.device) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_gpu_tensor(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.send.bind(inp).with_tensor_transport(device="default")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute("cuda")
+        ref = run_worker_to_driver_dag(actor, "default", "cuda")
 
         # different behavior between a driver node with GPU and without GPU
         if torch.cuda.is_available():
@@ -694,11 +601,9 @@ class TestWorkerToDriverDeviceDefault:
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
     def test_src_mix_tensors(self, ray_start_regular):
         actor = Actor.options(num_gpus=1).remote()
-
-        with InputNode() as inp:
-            dag = actor.send_dict.bind(inp).with_tensor_transport(device="default")
-        compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute({"cpu_tensor": "cpu", "gpu_tensor": "cuda"})
+        ref = run_worker_to_driver_dag(
+            actor, "default", {"cpu_tensor": "cpu", "gpu_tensor": "cuda"}, is_dict=True
+        )
 
         # different behavior between a driver node with GPU and without GPU
         if torch.cuda.is_available():
