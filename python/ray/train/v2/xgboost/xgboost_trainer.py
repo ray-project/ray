@@ -69,7 +69,7 @@ class XGBoostTrainer(DataParallelTrainer):
         train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
         trainer = XGBoostTrainer(
-            train_loop_per_worker=train_fn_per_worker,
+            train_fn_per_worker,
             datasets={"train": train_ds, "validation": eval_ds},
             scaling_config=ray.train.ScalingConfig(num_workers=4),
         )
