@@ -68,6 +68,7 @@ def test(overlap_gpu_communication):
         assert result == [(i, shape, dtype)] * num_senders
     duration = time.monotonic() - start
     print(f"{overlap_gpu_communication=}, {duration=}")
+    compiled_dag.teardown(kill_actors=True)
 
 
 for overlap_gpu_communication in [False, True]:

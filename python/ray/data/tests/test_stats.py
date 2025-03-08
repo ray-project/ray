@@ -1522,8 +1522,8 @@ def test_stats_actor_metrics():
 
     args = update_fn.call_args_list[-1].args
     assert args[0] == f"dataset_{ds._uuid}"
-    assert args[2][0] == "Input0"
-    assert args[2][1] == "ReadRange->MapBatches(<lambda>)1"
+    assert args[2][0] == "Input_0"
+    assert args[2][1] == "ReadRange->MapBatches(<lambda>)_1"
 
     def sleep_three(x):
         import time
@@ -1647,8 +1647,8 @@ def test_stats_actor_datasets(ray_start_cluster):
 
     operators = dataset["operators"]
     assert len(operators) == 2
-    assert "Input0" in operators
-    assert "ReadRange->MapBatches(<lambda>)1" in operators
+    assert "Input_0" in operators
+    assert "ReadRange->MapBatches(<lambda>)_1" in operators
     for value in operators.values():
         assert value["name"] in ["Input", "ReadRange->MapBatches(<lambda>)"]
         assert value["progress"] == 20

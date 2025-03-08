@@ -18,19 +18,10 @@ def deterministic_querier(openai_async_client):
 
 HELLO_WORLD_RESPONSES_BY_MODEL = {
     "default": ("Hello world.", "'Hello world.'"),
-    "codellama/CodeLlama-70b-Instruct-hf": ('😊 "Hello world."'),
-    "google/gemma-7b-it": (
-        "Hello world.\n\nThis is a direct",
-        "Sure, here is the exact repeat of",
-        "Hello world.\n\nThe user requested that",
-        "Sure, here is the exact repetition of",
-    ),
 }
 
 COUNTING_PATTERN_RESPONSES_BY_MODEL = {
     "default": ["Five", "five", "Five.", "five."],
-    "codellama/CodeLlama-70b-Instruct-hf": ["5", "5 😊"],
-    "google/gemma-7b-it": ["The next item in the sequence is five"],
 }
 
 

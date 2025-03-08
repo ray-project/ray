@@ -1183,6 +1183,22 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
+void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
+                                              const boost::system::error_code &error) {
+  const std::string err_msg = absl::StrCat(
+      "Worker unexpectedly exits with a connection error code ",
+      error.value(),
+      ". ",
+      error.message(),
+      ". There are some potential root causes. (1) The process is killed by "
+      "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
+      "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
+      "unexpected errors.");
+
+  // Disconnect the client and don't process more messages.
+  DisconnectClient(client, ray::rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
+}
+
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
                                        int64_t message_type,
                                        const uint8_t *message_data) {

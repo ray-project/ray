@@ -3157,6 +3157,11 @@ void CoreWorker::RunTaskExecutionLoop() {
     signal_checker->RunFnPeriodically(
         [this] {
           /// The overhead of this is only a single digit microsecond.
+          if (worker_context_.GetCurrentActorShouldExit()) {
+            Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                 "User requested to exit the actor.",
+                 nullptr);
+          }
           auto status = options_.check_signals();
           if (status.IsIntentionalSystemExit()) {
             Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,

@@ -15,6 +15,7 @@ from ray.util.state import list_tasks
 import ray
 from ray.actor import ActorHandle
 from ray.util.state import list_workers
+import psutil
 
 from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray.util.state.state_manager import StateDataSourceClient
@@ -406,6 +407,76 @@ class PidActor:
         self.name_to_pid[name] = (pid, state)
 
 
+def _is_actor_task_running(actor_pid: int, task_name: str):
+    """
+    Check whether the actor task `task_name` is running on the actor process
+    with pid `actor_pid`.
+
+    Args:
+      actor_pid: The pid of the actor process.
+      task_name: The name of the actor task.
+
+    Returns:
+      True if the actor task is running, False otherwise.
+
+    Limitation:
+        If the actor task name is set using options.name and is a substring of
+        the actor name, this function may return true even if the task is not
+        running on the actor process. To resolve this issue, we can possibly
+        pass in the actor name.
+    """
+    if not psutil.pid_exists(actor_pid):
+        return False
+
+    """
+    Why use both `psutil.Process.name()` and `psutil.Process.cmdline()`?
+
+    1. Core worker processes call `setproctitle` to set the process title before
+    and after executing tasks. However, the definition of "title" is a bit
+    complex.
+
+    [ref]: https://github.com/dvarrazzo/py-setproctitle
+
+    > The process title is usually visible in files such as /proc/PID/cmdline,
+    /proc/PID/status, /proc/PID/comm, depending on the operating system and
+    kernel version. This information is used by user-space tools such as ps
+    and top.
+
+    Ideally, we would only need to check `psutil.Process.cmdline()`, but I decided
+    to check both `psutil.Process.name()` and `psutil.Process.cmdline()` based on
+    the definition of "title" stated above.
+
+    2. Additionally, the definition of `psutil.Process.name()` is not consistent
+    with the definition of "title" in `setproctitle`. The length of `/proc/PID/comm` and
+    the prefix of `/proc/PID/cmdline` affect the return value of
+    `psutil.Process.name()`.
+
+    In addition, executing `setproctitle` in different threads within the same
+    process may result in different outcomes.
+
+    To learn more details, please refer to the source code of `psutil`:
+
+    [ref]:
+    https://github.com/giampaolo/psutil/blob/a17550784b0d3175da01cdb02cee1bc6b61637dc/psutil/__init__.py#L664-L693
+
+    3. `/proc/PID/comm` will be truncated to TASK_COMM_LEN (16) characters
+    (including the terminating null byte).
+
+    [ref]:
+    https://man7.org/linux/man-pages/man5/proc_pid_comm.5.html
+    """
+    name = psutil.Process(actor_pid).name()
+    if task_name in name and name.startswith("ray::"):
+        return True
+
+    cmdline = psutil.Process(actor_pid).cmdline()
+    # If `options.name` is set, the format is `ray::<task_name>`. If not,
+    # the format is `ray::<actor_name>.<task_name>`.
+    if cmdline and task_name in cmdline[0] and cmdline[0].startswith("ray::"):
+        return True
+    return False
+
+
 def verify_tasks_running_or_terminated(
     task_pids: Dict[str, Tuple[int, Optional[str]]], expect_num_tasks: int
 ):
@@ -419,8 +490,6 @@ def verify_tasks_running_or_terminated(
         task_pids: A dict of task name to (pid, expected terminal state).
 
     """
-    import psutil
-
     assert len(task_pids) == expect_num_tasks, task_pids
     for task_name, pid_and_state in task_pids.items():
         tasks = list_tasks(detail=True, filters=[("name", "=", task_name)])
@@ -438,7 +507,7 @@ def verify_tasks_running_or_terminated(
             if expected_state is not None:
                 assert task["state"] == expected_state, task
             continue
-        if psutil.pid_exists(pid) and task_name in psutil.Process(pid).name():
+        if _is_actor_task_running(pid, task_name):
             assert (
                 "ray::IDLE" not in task["name"]
             ), "One should not name it 'IDLE' since it's reserved in Ray"

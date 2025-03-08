@@ -312,9 +312,19 @@ void PlasmaStore::ConnectClient(const boost::system::error_code &error) {
   if (!error) {
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = Client::Create(
-        // NOLINTNEXTLINE : handler must be of boost::AcceptHandler type.
-        boost::bind(&PlasmaStore::ProcessMessage, this, ph::_1, ph::_2, ph::_3),
+        /*message_handler=*/
+        [this](std::shared_ptr<Client> client,
+               fb::MessageType message_type,
+               const std::vector<uint8_t> &message) -> Status {
+          return ProcessClientMessage(std::move(client), message_type, message);
+        },
+        /*connection_error_handler=*/
+        [this](std::shared_ptr<Client> client, const boost::system::error_code &error)
+            -> void { return HandleClientConnectionError(std::move(client), error); },
         std::move(socket_));
+
+    // Start receiving messages.
+    new_connection->ProcessMessages();
   }
 
   if (error != boost::asio::error::operation_aborted) {
@@ -355,9 +365,17 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   create_request_queue_.RemoveDisconnectedClientRequests(client);
 }
 
-Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
-                                   fb::MessageType type,
-                                   const std::vector<uint8_t> &message) {
+void PlasmaStore::HandleClientConnectionError(std::shared_ptr<Client> client,
+                                              const boost::system::error_code &error) {
+  absl::MutexLock lock(&mutex_);
+  RAY_LOG(WARNING) << "Disconnecting client due to connection error with code "
+                   << error.value() << ": " << error.message();
+  DisconnectClient(client);
+}
+
+Status PlasmaStore::ProcessClientMessage(std::shared_ptr<Client> client,
+                                         fb::MessageType type,
+                                         const std::vector<uint8_t> &message) {
   absl::MutexLock lock(&mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
   const uint8_t *input = const_cast<uint8_t *>(message.data());

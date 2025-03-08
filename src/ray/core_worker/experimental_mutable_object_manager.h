@@ -19,7 +19,6 @@
 #include <mutex>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/node_hash_map.h"
 #include "gtest/gtest_prod.h"
@@ -27,10 +26,6 @@
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/object_manager/plasma/common.h"
-#include "ray/object_manager/plasma/plasma.h"
-#include "ray/util/visibility.h"
-#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace experimental {

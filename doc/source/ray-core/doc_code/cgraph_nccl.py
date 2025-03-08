@@ -1,5 +1,6 @@
 # __cgraph_nccl_setup_start__
 import torch
+import ray
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 ray.init()
