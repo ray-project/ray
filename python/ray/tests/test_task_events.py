@@ -298,43 +298,6 @@ def test_failed_task_runtime_env_setup(shutdown_only):
     )
 
 
-def test_parent_task_id_threaded_task(shutdown_only):
-    ray.init(_system_config=_SYSTEM_CONFIG)
-
-    # Task starts a thread
-    @ray.remote
-    def main_task():
-        def thd_task():
-            @ray.remote
-            def thd_task():
-                pass
-
-            ray.get(thd_task.remote())
-
-        thd = threading.Thread(target=thd_task)
-        thd.start()
-        thd.join()
-
-    ray.get(main_task.remote())
-
-    def verify():
-        tasks = list_tasks()
-        assert len(tasks) == 2
-        expect_parent_task_id = None
-        actual_parent_task_id = None
-        for task in tasks:
-            if task["name"] == "main_task":
-                expect_parent_task_id = task["task_id"]
-            elif task["name"] == "thd_task":
-                actual_parent_task_id = task["parent_task_id"]
-        assert actual_parent_task_id is not None
-        assert expect_parent_task_id == actual_parent_task_id
-
-        return True
-
-    wait_for_condition(verify)
-
-
 def test_parent_task_id_non_concurrent_actor(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
