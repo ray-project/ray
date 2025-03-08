@@ -1,8 +1,10 @@
 import os
-from typing import TypeVar
+from typing import TypeVar, Literal
 
 K = TypeVar("K")
 V = TypeVar("V")
+
+ResponseType = Literal["http", "stream", "websocket"]
 
 
 def module_logging_filename(
