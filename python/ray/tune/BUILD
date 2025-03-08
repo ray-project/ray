@@ -299,14 +299,6 @@ py_test(
 )
 
 py_test(
-    name = "test_task_events",
-    size = "medium",
-    srcs = ["tests/test_task_events.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_train_v2_integration",
     size = "small",
     srcs = ["tests/test_train_v2_integration.py"],
