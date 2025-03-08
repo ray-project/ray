@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import signal
+from typing import AsyncIterator
 
 from ray.dashboard.optional_deps import aiohttp
 
@@ -56,40 +57,50 @@ class TestModule(SubprocessModule):
         # https://github.com/ray-project/ray/pull/49732#discussion_r1919292428
         raise aiohttp.web.HTTPForbidden(reason="you shall not pass")
 
-    # @routes.post("/streamed_iota", streaming=True)
-    # async def streamed_iota(self, request_body: bytes) -> AsyncIterator[bytes]:
-    #     """
-    #     Streams the numbers 0 to N.
-    #     """
-    #     n = int(request_body)
-    #     for i in range(n):
-    #         await asyncio.sleep(0.001)
-    #         yield f"{i}\n".encode()
-    #
-    # @routes.post("/streamed_iota_with_503", streaming=True)
-    # async def streamed_iota_with_503(self, request_body: bytes) -> AsyncIterator[bytes]:
-    #     """
-    #     Streams the numbers 0 to N, then raises an error.
-    #     """
-    #     n = int(request_body)
-    #     for i in range(n):
-    #         await asyncio.sleep(0.001)
-    #         yield f"{i}\n".encode()
-    #     raise aiohttp.web.HTTPServiceUnavailable(
-    #         reason=f"Service Unavailable after {n} numbers"
-    #     )
-    #
-    # @routes.post("/streamed_401", streaming=True)
-    # async def streamed_401(self, request_body: bytes) -> AsyncIterator[bytes]:
-    #     """
-    #     Raises an error directly in a streamed handler before yielding any data.
-    #     """
-    #     raise aiohttp.web.HTTPUnauthorized(
-    #         reason="Unauthorized although I am not a teapot"
-    #     )
-    #     # To make sure Python treats this method as an async generator, we yield something.
-    #     yield b"Hello, World"
-    #
+    @routes.post("/streamed_iota", resp_type="stream")
+    async def streamed_iota(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
+        """
+        Streams the numbers 0 to N.
+        """
+        request_body = await req.text()
+        try:
+            n = int(request_body)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(reason="Request body must be an integer")
+        for i in range(n):
+            await asyncio.sleep(0.001)
+            yield f"{i}\n".encode()
+
+    @routes.post("/streamed_iota_with_503", resp_type="stream")
+    async def streamed_iota_with_503(
+        self, req: aiohttp.web.Request
+    ) -> AsyncIterator[bytes]:
+        """
+        Streams the numbers 0 to N, then raises an error.
+        """
+        request_body = await req.text()
+        try:
+            n = int(request_body)
+        except ValueError:
+            raise aiohttp.web.HTTPBadRequest(reason="Request body must be an integer")
+        for i in range(n):
+            await asyncio.sleep(0.001)
+            yield f"{i}\n".encode()
+        raise aiohttp.web.HTTPServiceUnavailable(
+            reason=f"Service Unavailable after {n} numbers"
+        )
+
+    @routes.post("/streamed_401", resp_type="stream")
+    async def streamed_401(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
+        """
+        Raises an error directly in a streamed handler before yielding any data.
+        """
+        raise aiohttp.web.HTTPUnauthorized(
+            reason="Unauthorized although I am not a teapot"
+        )
+        # To make sure Python treats this method as an async generator, we yield something.
+        yield b"Hello, World"
+
     @routes.post("/run_forever")
     async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         while True:
