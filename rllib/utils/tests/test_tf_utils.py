@@ -260,6 +260,10 @@ def test_remote_training_loss(ray_init_2_cpus):
 
 
 if __name__ == "__main__":
+    # TODO(can): No tensorflow for python 3.12
+    if sys.version_info >= (3, 12):
+        sys.exit(0)
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
