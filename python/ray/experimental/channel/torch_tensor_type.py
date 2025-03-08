@@ -42,10 +42,10 @@ class TorchTensorType(ChannelOutputType):
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
-            device: Defines the target device for transporting a torch.Tensor.
-                If "default" is set, it retains the same device type as in the sender.
-                If "cpu" is set, it moves the tensor to the CPU on the receiver.
-                If "gpu" or "cuda" is set, it moves the tensor to the GPU on the receiver.
+            device: Target device for tensor transport. Options:
+                - "default": Retains the same device type as the sender.
+                - "cpu": Moves tensor to CPU on the receiver. Not compatible with NCCL transport.
+                - "gpu" or "cuda": Moves tensor to GPU on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
@@ -82,6 +82,8 @@ class TorchTensorType(ChannelOutputType):
                 "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, "
                 "or TorchTensorType.CPU"
             )
+        if device == Device.CPU and transport == self.NCCL:
+            raise ValueError("NCCL transport is not supported with CPU target device.")
         self.transport = transport
 
         self._communicator_id: Optional[str] = None
