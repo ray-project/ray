@@ -826,6 +826,7 @@ def _unflatten(vector, shapes):
     return arrays
 
 
+@DeveloperAPI
 class TensorFlowVariables:
     """A class used to set and get weights for Tensorflow networks.
 
