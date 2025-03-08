@@ -132,6 +132,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
+  /// Handle an unexpected error that occurred on a client connection.
+  /// The client will be disconnected and no more messages will be processed.
+  ///
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
+                                   const boost::system::error_code &error);
+
   /// Process a message from a client. This method is responsible for
   /// explicitly listening for more messages from the client if the client is
   /// still alive.

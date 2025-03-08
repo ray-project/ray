@@ -230,7 +230,7 @@ std::string json_escape_string(const std::string &s) noexcept {
 /// A logger that prints logs to stderr.
 /// This is the default logger if logging is not initialized.
 /// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
-/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
+/// variable so core worker process can invoke `RAY_LOG` in its whole lifecycle.
 class DefaultStdErrLogger final {
  public:
   std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
