@@ -172,7 +172,7 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
-/// Inteface for getting resource reports.
+/// Interface for getting resource reports.
 class ResourceTrackingInterface {
  public:
   virtual void GetResourceLoad(

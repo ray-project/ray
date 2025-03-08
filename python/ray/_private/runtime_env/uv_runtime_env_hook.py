@@ -1,49 +1,23 @@
 import argparse
+import copy
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import psutil
 
 
-def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Hook that detects if the driver is run in 'uv run' and sets the runtime environment accordingly."""
+def _check_working_dir_files(
+    uv_run_args: List[str], runtime_env: Dict[str, Any]
+) -> None:
+    """
+    Check that the files required by uv are local to the working_dir. This catches
+    the most common cases of how things are different in Ray, i.e. not the whole file
+    system will be available on the workers, only the working_dir.
 
-    runtime_env = runtime_env or {}
-
-    # uv spawns the python process as a child process, so to determine if
-    # we are running under 'uv run', we check the parent process commandline.
-    parent = psutil.Process().parent()
-    cmdline = parent.cmdline()
-    if os.path.basename(cmdline[0]) != "uv" or cmdline[1] != "run":
-        # This means the driver was not run with 'uv run' -- in this case
-        # we leave the runtime environment unchanged
-        return runtime_env
-
-    # Extract the arguments of 'uv run' that are not arguments of the script.
-    # First we get the arguments of this script (without the executable):
-    script_args = psutil.Process().cmdline()[1:]
-    # Then, we remove those arguments from the parent process commandline:
-    uv_run_args = cmdline[: len(cmdline) - len(script_args)]
-
-    # Remove the "--directory" argument since it has already been taken into
-    # account when setting the current working directory of the current process
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--directory", nargs="?")
-    _, remaining_uv_run_args = parser.parse_known_args(uv_run_args)
-
-    runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
-
-    # If the user specified a working_dir, we always honor it, otherwise
-    # use the same working_dir that uv run would use
-    if "working_dir" not in runtime_env:
-        runtime_env["working_dir"] = os.getcwd()
-
-    # In the last part of the function we do some error checking that should catch
-    # the most common cases of how things are different in Ray, i.e. not the whole
-    # file system will be available on the workers, only the working_dir.
-
+    The function won't return anything, it just raises a RuntimeError if there is an error.
+    """
     # First parse the arguments we need to check
     uv_run_parser = argparse.ArgumentParser()
     uv_run_parser.add_argument("--with-requirements", nargs="?")
@@ -91,6 +65,41 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "working directory before running 'uv run', or by using the 'working_dir' "
             "parameter of the runtime_environment."
         )
+
+
+def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Hook that detects if the driver is run in 'uv run' and sets the runtime environment accordingly."""
+
+    runtime_env = copy.deepcopy(runtime_env) or {}
+
+    # uv spawns the python process as a child process, so to determine if
+    # we are running under 'uv run', we check the parent process commandline.
+    parent = psutil.Process().parent()
+    cmdline = parent.cmdline()
+    if os.path.basename(cmdline[0]) != "uv" or cmdline[1] != "run":
+        # This means the driver was not run with 'uv run' -- in this case
+        # we leave the runtime environment unchanged
+        return runtime_env
+
+    # Extract the arguments of 'uv run' that are not arguments of the script.
+    # First we get the arguments of this script (without the executable):
+    script_args = psutil.Process().cmdline()[1:]
+    # Then, we remove those arguments from the parent process commandline:
+    uv_run_args = cmdline[: len(cmdline) - len(script_args)]
+
+    # Remove the "--directory" argument since it has already been taken into
+    # account when setting the current working directory of the current process
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--directory", nargs="?")
+    _, remaining_uv_run_args = parser.parse_known_args(uv_run_args)
+
+    runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
+
+    # If the user specified a working_dir, we always honor it, otherwise
+    # use the same working_dir that uv run would use
+    if "working_dir" not in runtime_env:
+        runtime_env["working_dir"] = os.getcwd()
+        _check_working_dir_files(uv_run_args, runtime_env)
 
     return runtime_env
 

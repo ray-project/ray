@@ -37,12 +37,12 @@ def get_top_n_memory_usage(n: int = 10):
     Returns:
         (str) The formatted string of top n process memory usage.
     """
-    pids = psutil.pids()
     proc_stats = []
-    for pid in pids:
+    for proc in psutil.process_iter(["memory_info", "cmdline"]):
         try:
-            proc = psutil.Process(pid)
-            proc_stats.append((get_rss(proc.memory_info()), pid, proc.cmdline()))
+            proc_stats.append(
+                (get_rss(proc.info["memory_info"]), proc.pid, proc.info["cmdline"])
+            )
         except psutil.NoSuchProcess:
             # We should skip the process that has exited. Refer this
             # issue for more detail:
@@ -125,7 +125,7 @@ class MemoryMonitor:
         except IOError:
             self.cgroup_memory_limit_gb = sys.maxsize / (1024**3)
         if not psutil:
-            logger.warn(
+            logger.warning(
                 "WARNING: Not monitoring node memory since `psutil` "
                 "is not installed. Install this with "
                 "`pip install psutil` to enable "

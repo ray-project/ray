@@ -1365,7 +1365,7 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
-        num_blocks: int,
+        num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
         shuffle: bool = False,
@@ -1407,9 +1407,10 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            num_blocks: The number of blocks.
+            num_blocks: Number of blocks after repartitioning.
             target_num_rows_per_block: The target number of rows per block to
-                repartition.
+                repartition. Note that either `num_blocks` or
+                `target_num_rows_per_block` must be set, but not both.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1419,14 +1420,21 @@ class Dataset:
 
             Note that either `num_blocks` or `target_num_rows_per_block` must be set
             here, but not both.
+            Additionally, note that, this operation will materialized whole dataset in memory
+            when shuffle is set to True.
 
         Returns:
             The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
-        if (num_blocks is not None) == (target_num_rows_per_block is not None):
+        if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
-                "Either `num_blocks` or `target_num_rows_per_block` must be set, "
+                "Either `num_blocks` or `target_num_rows_per_block` must be set"
+            )
+
+        if (num_blocks is not None) and (target_num_rows_per_block is not None):
+            raise ValueError(
+                "Only one of `num_blocks` or `target_num_rows_per_block` must be set, "
                 "but not both."
             )
 
