@@ -2,12 +2,11 @@ import pytest
 import sys
 
 import ray
-from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray.util.state import StateApiClient
+from ray.util.state import list_tasks
 
 
 @pytest.fixture
@@ -55,17 +54,6 @@ analysis = tune.run(
 """
 
     run_string_as_driver(script)
-    client = StateApiClient()
-
-    def list_tasks():
-        return client.list(
-            StateResource.TASKS,
-            # Filter out this driver
-            options=ListApiOptions(
-                exclude_driver=False, filters=[("job_id", "!=", job_id)], limit=1000
-            ),
-            raise_on_missing_output=True,
-        )
 
     def verify():
         tasks = list_tasks()
