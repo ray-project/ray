@@ -19,7 +19,7 @@ class ReduceOp(_CollectiveOp):
         return f"{self.name.lower()}"
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 class Device(Enum):
     DEFAULT = "default"
     CPU = "cpu"
