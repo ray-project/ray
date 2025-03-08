@@ -7,13 +7,13 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray.util.state import StateApiClient, list_tasks
+from ray.util.state import StateApiClient
 
 
 @pytest.fixture
 def ray_init_with_system_config():
     yield ray.init(
-        _system_config= {
+        _system_config={
             "task_events_report_interval_ms": 100,
             "metrics_report_interval_ms": 200,
             "enable_timeline": False,
