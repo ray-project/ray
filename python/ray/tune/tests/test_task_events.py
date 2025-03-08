@@ -11,19 +11,12 @@ from ray.util.state import StateApiClient
 
 
 @pytest.fixture
-def ray_init_with_system_config():
-    yield ray.init(
-        _system_config={
-            "task_events_report_interval_ms": 100,
-            "metrics_report_interval_ms": 200,
-            "enable_timeline": False,
-            "gcs_mark_task_failed_on_job_done_delay_ms": 1000,
-        }
-    )
+def ray_init_2_cpus():
+    yield ray.init(num_cpus=2)
     ray.shutdown()
 
 
-def test_no_missing_parent_task_ids(ray_init_with_system_config):
+def test_no_missing_parent_task_ids(ray_init_2_cpus):
     """Verify that an e2e Tune workload doesn't have any missing parent_task_ids."""
     job_id = ray.get_runtime_context().get_job_id()
     script = """
