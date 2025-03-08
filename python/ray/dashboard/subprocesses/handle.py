@@ -15,6 +15,7 @@ from ray.dashboard.subprocesses.module import (
 )
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
+    ResponseType,
 )
 
 """
@@ -215,14 +216,18 @@ class SubprocessModuleHandle:
             await asyncio.sleep(1)
 
     async def proxy_request(
-        self, request: aiohttp.web.Request, websocket=False
+        self, request: aiohttp.web.Request, resp_type: ResponseType = "http"
     ) -> aiohttp.web.StreamResponse:
         """
         Sends a new request to the subprocess and returns the response.
         """
-        if not websocket:
+        if resp_type == "http":
             return await self.proxy_http(request)
-        return await self.proxy_websocket(request)
+        if resp_type == "stream":
+            return await self.proxy_stream(request)
+        if resp_type == "websocket":
+            return await self.proxy_websocket(request)
+        raise ValueError(f"Unknown response type: {resp_type}")
 
     async def proxy_http(
         self, request: aiohttp.web.Request
@@ -241,6 +246,27 @@ class SubprocessModuleHandle:
             return aiohttp.web.Response(
                 status=resp.status, headers=filter_headers(resp.headers), body=resp_body
             )
+
+    async def proxy_stream(
+        self, request: aiohttp.web.Request
+    ) -> aiohttp.web.StreamResponse:
+        """
+        Proxy handler for streaming responses.
+        It forwards the method, query string, and body to the backend.
+        """
+        url = f"http://localhost{request.path_qs}"
+        body = await request.read()
+
+        async with self.session.request(
+            request.method, url, data=body, headers=request.headers
+        ) as backend_resp:
+            client_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
+            await client_resp.prepare(request)
+
+            async for chunk in backend_resp.content.iter_chunked(1024):
+                await client_resp.write(chunk)
+            await client_resp.write_eof()
+            return client_resp
 
     async def proxy_websocket(
         self, request: aiohttp.web.Request

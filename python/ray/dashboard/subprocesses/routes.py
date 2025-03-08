@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import collections
 import inspect
+import functools
 
 from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.routes import BaseRouteTable
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+from ray.dashboard.subprocesses.utils import ResponseType
+from ray.dashboard.subprocesses.module import SubprocessModule
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,7 +60,7 @@ class SubprocessRouteTable(BaseRouteTable):
             cls._bind_map[h.__route_method__][h.__route_path__].instance = instance
 
     @classmethod
-    def _register_route(cls, method, path, websocket=False, **kwargs):
+    def _register_route(cls, method, path, resp_type: ResponseType = "http", **kwargs):
         """
         Register a route to the module and return the decorated handler.
         """
@@ -77,12 +80,21 @@ class SubprocessRouteTable(BaseRouteTable):
 
             cls._bind_map[method][path] = bind_info
 
+            if resp_type == "http":
+                handler = handler
+            elif resp_type == "stream":
+                handler = decorate_stream_handler(handler)
+            elif resp_type == "websocket":
+                handler = decorate_websocket_handler(handler)
+            else:
+                raise ValueError(f"Unknown resp_type: {resp_type}")
+
             async def parent_side_handler(
                 request: aiohttp.web.Request,
             ) -> aiohttp.web.Response:
                 bind_info = cls._bind_map[method][path]
                 subprocess_module_handle = bind_info.instance
-                return await subprocess_module_handle.proxy_request(request, websocket)
+                return await subprocess_module_handle.proxy_request(request, resp_type)
 
             # Used in bind().
             handler.__route_method__ = method
@@ -96,3 +108,34 @@ class SubprocessRouteTable(BaseRouteTable):
             return handler
 
         return _wrapper
+
+
+def decorate_stream_handler(handler):
+    assert inspect.isasyncgenfunction(handler)
+
+    @functools.wraps(handler)
+    async def wrapper(
+        self: SubprocessModule, req: aiohttp.web.Request, *args, **kwargs
+    ):
+        resp = aiohttp.web.StreamResponse()
+        iter = handler(self, req, *args, **kwargs)
+        try:
+            chunk = await iter.__anext__()
+            await resp.prepare(req)
+            await resp.write(chunk)
+        except StopAsyncIteration:
+            pass
+        try:
+            async for chunk in iter:
+                await resp.write(chunk)
+        except aiohttp.web.HTTPException as e:
+            await resp.write(e.reason.encode())
+        finally:
+            await resp.write_eof()
+        return resp
+
+    return wrapper
+
+
+def decorate_websocket_handler(handler):
+    pass
