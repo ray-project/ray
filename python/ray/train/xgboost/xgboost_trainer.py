@@ -9,7 +9,6 @@ import ray.train
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.trainer import GenDataset
-from ray.train.utils import _log_deprecation_warning
 from ray.train.xgboost import RayTrainReportCallback, XGBoostConfig
 from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
 from ray.util.annotations import PublicAPI
@@ -180,6 +179,17 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         metadata: Dict that should be made available via
             `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
+        label_column: [Deprecated] Name of the label column. A column with this name
+            must be present in the training dataset.
+        params: [Deprecated] XGBoost training parameters.
+            Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
+            for a list of possible parameters.
+        num_boost_round: [Deprecated] Target number of boosting iterations (trees in the model).
+            Note that unlike in ``xgboost.train``, this is the target number
+            of trees, meaning that if you set ``num_boost_round=10`` and pass a model
+            that has already been trained for 5 iterations, it will be trained for 5
+            iterations more, instead of 10 more.
+        **train_kwargs: (Deprecated) Additional kwargs passed to ``xgboost.train()`` function.
     """
 
     _handles_checkpoint_freq = True
@@ -187,10 +197,10 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
 
     def __init__(
         self,
-        *,
         train_loop_per_worker: Optional[
             Union[Callable[[], None], Callable[[Dict], None]]
         ] = None,
+        *,
         train_loop_config: Optional[Dict] = None,
         xgboost_config: Optional[XGBoostConfig] = None,
         scaling_config: Optional[ray.train.ScalingConfig] = None,
@@ -222,6 +232,15 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 datasets=datasets,
             )
             train_loop_config = params or {}
+        elif train_kwargs:
+            # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
+            # _log_deprecation_warning(
+            #     "Passing `xgboost.train` kwargs to `XGBoostTrainer` is deprecated. "
+            #     "Please pass in a `train_loop_per_worker` function instead, "
+            #     "which has full flexibility on the call to `xgboost.train(**kwargs)`. "
+            #     f"{LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE}"
+            # )
+            pass
 
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
@@ -259,7 +278,8 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
 
         num_boost_round = num_boost_round or 10
 
-        _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
+        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
+        # _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
         callbacks = xgboost_train_kwargs.get("callbacks", [])
