@@ -10,12 +10,12 @@ from ray.util.state import list_tasks
 
 
 @pytest.fixture
-def ray_init_8_cpus():
-    yield ray.init(num_cpus=8)
+def ray_init_4_cpus():
+    yield ray.init(num_cpus=4)
     ray.shutdown()
 
 
-def test_no_missing_parent_task_ids(ray_init_8_cpus):
+def test_no_missing_parent_task_ids(ray_init_4_cpus):
     """Verify that an e2e Tune workload doesn't have any missing parent_task_ids."""
     script = """
 import time
