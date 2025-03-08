@@ -189,7 +189,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             of trees, meaning that if you set ``num_boost_round=10`` and pass a model
             that has already been trained for 5 iterations, it will be trained for 5
             iterations more, instead of 10 more.
-        **train_kwargs: (Deprecated) Additional kwargs passed to ``xgboost.train()`` function.
+        **train_kwargs: [Deprecated] Additional kwargs passed to ``xgboost.train()`` function.
     """
 
     _handles_checkpoint_freq = True
