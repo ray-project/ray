@@ -36,6 +36,9 @@ class Client;
 using PlasmaStoreMessageHandler = std::function<ray::Status(
     std::shared_ptr<Client>, flatbuf::MessageType, const std::vector<uint8_t> &)>;
 
+using PlasmaStoreConnectionErrorHandler =
+    std::function<void(std::shared_ptr<Client>, const boost::system::error_code &)>;
+
 class ClientInterface {
  public:
   virtual ~ClientInterface() {}
@@ -55,8 +58,14 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
  public:
   Client(PrivateTag,
-         ray::MessageHandler &message_handler,
+         ray::MessageHandler message_handler,
+         ray::ConnectionErrorHandler connection_error_handler,
          ray::local_stream_socket &&socket);
+
+  static std::shared_ptr<Client> Create(
+      PlasmaStoreMessageHandler message_handler,
+      PlasmaStoreConnectionErrorHandler connection_error_handler,
+      ray::local_stream_socket &&socket);
 
   static std::shared_ptr<Client> Create(PlasmaStoreMessageHandler message_handler,
                                         ray::local_stream_socket &&socket);
