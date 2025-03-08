@@ -508,6 +508,24 @@ def _generate_transform_fn_for_map_rows(
     return transform_fn
 
 
+def _generate_transform_fn_for_flat_map(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[Row, Row]:
+    if inspect.iscoroutinefunction(fn):
+        # UDF is a callable class with async generator `__call__` method.
+        transform_fn = _generate_transform_fn_for_async_flat_map(fn)
+
+    else:
+
+        def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
+            for row in rows:
+                for out_row in fn(row):
+                    _validate_row_output(out_row)
+                    yield out_row
+
+    return transform_fn
+
+
 def _generate_transform_fn_for_async_flat_map(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Row, Row]:
@@ -561,24 +579,6 @@ def _generate_transform_fn_for_async_flat_map(
                 raise out_row
             _validate_row_output(out_row)
             yield out_row
-
-    return transform_fn
-
-
-def _generate_transform_fn_for_flat_map(
-    fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
-    if inspect.iscoroutinefunction(fn):
-        # UDF is a callable class with async generator `__call__` method.
-        transform_fn = _generate_transform_fn_for_async_flat_map(fn)
-
-    else:
-
-        def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-            for row in rows:
-                for out_row in fn(row):
-                    _validate_row_output(out_row)
-                    yield out_row
 
     return transform_fn
 
