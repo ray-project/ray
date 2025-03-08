@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 if TYPE_CHECKING:
     import numpy as np
     import torch
-    import ray
 
 
 _TORCH_WARNING_FILTER_ACTIVATE = True
@@ -32,9 +31,6 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
-        # Caching GPU futures ensures CUDA events associated with futures are propoerly
-        # destroyed instead of relying on garbage collection.
-        self.gpu_futures: Dict[int, "ray.dag.dag_operation_future.GPUFuture"] = {}
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
@@ -69,29 +65,6 @@ class _SerializationContext:
     def reset_data(self, channel_id: str) -> None:
         self.intra_process_channel_buffers.pop(channel_id, None)
         self.channel_id_to_num_readers.pop(channel_id, None)
-
-    def add_gpu_future(
-        self, fut_id: int, fut: "ray.dag.dag_operation_future.GPUFuture"
-    ) -> None:
-        """
-        Cache the GPU future.
-        Args:
-            fut_id: GPU future ID.
-            fut: GPU future to be cached.
-        """
-        if fut_id in self.gpu_futures:
-            # The old future was not waited on because of an execution exception.
-            self.gpu_futures.pop(fut_id).destroy_event()
-        self.gpu_futures[fut_id] = fut
-
-    def remove_gpu_future(self, fut_id: int) -> None:
-        """
-        Remove the cached GPU future and destroy its CUDA event.
-        Args:
-            fut_id: GPU future ID.
-        """
-        if fut_id in self.gpu_futures:
-            self.gpu_futures.pop(fut_id).destroy_event()
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self._use_external_transport = use_external_transport

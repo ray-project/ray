@@ -546,10 +546,7 @@ class ExecutableTask:
         that future is in the channel context cache. Remove the future from the cache
         and destroy its CUDA event.
         """
-        from ray.experimental.channel.common import ChannelContext
-
-        ctx = ChannelContext.get_current().serialization_context
-        ctx.remove_gpu_future(self.task_idx)
+        GPUFuture.remove_gpu_future(self.task_idx)
 
     def prepare(self, overlap_gpu_communication: bool = False):
         """

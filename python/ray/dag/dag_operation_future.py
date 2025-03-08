@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar, Dict
 from ray.util.annotations import DeveloperAPI
 
 
@@ -65,6 +65,41 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
+    # Caching GPU futures ensures CUDA events associated with futures are properly
+    # destroyed instead of relying on garbage collection. The CUDA event contained
+    # in a GPU future is destroyed right before removing the future from the cache.
+    # The dictionary key is the future ID, which is the task idx of the dag operation
+    # that produced the future. When a future is created, it is immediately added to
+    # the cache. When a future has been waited on, it is removed from the cache.
+    # When adding a future, if its ID is already a key in the cache, the old future
+    # is removed. This can happen when an exception is thrown in a previous execution
+    # of the dag, in which case the old future is never waited on.
+    # Upon dag teardown, all pending futures produced by the dag are removed.
+    gpu_futures: Dict[int, "GPUFuture"] = {}
+
+    @staticmethod
+    def add_gpu_future(fut_id: int, fut: "GPUFuture") -> None:
+        """
+        Cache the GPU future.
+        Args:
+            fut_id: GPU future ID.
+            fut: GPU future to be cached.
+        """
+        if fut_id in GPUFuture.gpu_futures:
+            # The old future was not waited on because of an execution exception.
+            GPUFuture.gpu_futures.pop(fut_id).destroy_event()
+        GPUFuture.gpu_futures[fut_id] = fut
+
+    @staticmethod
+    def remove_gpu_future(fut_id: int) -> None:
+        """
+        Remove the cached GPU future and destroy its CUDA event.
+        Args:
+            fut_id: GPU future ID.
+        """
+        if fut_id in GPUFuture.gpu_futures:
+            GPUFuture.gpu_futures.pop(fut_id).destroy_event()
+
     def __init__(
         self, buf: Any, fut_id: int, stream: Optional["cp.cuda.Stream"] = None
     ):
@@ -90,8 +125,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         self._waited: bool = False
 
         # Cache the GPU future such that its CUDA event is properly destroyed.
-        ctx = ChannelContext.get_current().serialization_context
-        ctx.add_gpu_future(fut_id, self)
+        GPUFuture.add_gpu_future(fut_id, self)
 
     def wait(self) -> Any:
         """
@@ -106,8 +140,7 @@ class GPUFuture(DAGOperationFuture[Any]):
             self._waited = True
             current_stream.wait_event(self._event)
             # Destroy the CUDA event after it is waited on.
-            ctx = ChannelContext.get_current().serialization_context
-            ctx.remove_gpu_future(self._fut_id)
+            GPUFuture.remove_gpu_future(self._fut_id)
 
         return self._buf
 
