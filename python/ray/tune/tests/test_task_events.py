@@ -15,9 +15,8 @@ def ray_init_8_cpus():
     ray.shutdown()
 
 
-def test_no_missing_parent_task_ids(ray_init_2_cpus):
+def test_no_missing_parent_task_ids(ray_init_8_cpus):
     """Verify that an e2e Tune workload doesn't have any missing parent_task_ids."""
-    job_id = ray.get_runtime_context().get_job_id()
     script = """
 import time
 
