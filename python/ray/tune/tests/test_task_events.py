@@ -10,8 +10,8 @@ from ray.util.state import list_tasks
 
 
 @pytest.fixture
-def ray_init_2_cpus():
-    yield ray.init(num_cpus=2)
+def ray_init_8_cpus():
+    yield ray.init(num_cpus=8)
     ray.shutdown()
 
 
