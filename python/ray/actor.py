@@ -202,6 +202,13 @@ class ActorMethod:
     def bind(self, *args, **kwargs):
         """
         Bind arguments to the actor method for Ray DAG building.
+
+        This method generates and returns an intermediate representation (IR)
+        node that indicates the actor method will be called with the given
+        arguments at execution time.
+
+        This method is used in both :ref:`Ray DAG <ray-dag-guide>` and
+        :ref:`Ray Compiled Graph <ray-compiled-graph>` for building a DAG.
         """
         return self._bind(args, kwargs)
 
