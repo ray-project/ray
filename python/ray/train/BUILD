@@ -651,6 +651,14 @@ py_test(
     deps = [":train_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_telemetry",
+    size = "small",
+    srcs = ["tests/test_telemetry.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
+)
+
 ### E2E Data + Train
 py_test(
     name = "test_datasets_train",
