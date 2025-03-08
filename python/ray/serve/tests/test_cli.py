@@ -6,7 +6,6 @@ from copy import deepcopy
 from tempfile import NamedTemporaryFile
 from typing import Dict, List, Optional
 
-from click.testing import CliRunner
 import pytest
 import requests
 import yaml
@@ -18,7 +17,6 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.util.state import list_actors
-from ray.serve.scripts import cli
 
 
 def assert_deployments_live(ids: List[DeploymentID]):
@@ -32,53 +30,49 @@ def assert_deployments_live(ids: List[DeploymentID]):
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
 
 
-@pytest.fixture
-def runner():
-    return CliRunner()
-
-
-def test_start_shutdown(ray_start_stop, runner):
-    runner.invoke(cli, ["start"])
+def test_start_shutdown(ray_start_stop):
+    subprocess.check_output(["serve", "start"])
     # deploy a simple app
     import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
 
-    result = runner.invoke(cli, ["deploy", import_path])
-    assert result.exit_code == 0
+    deploy_response = subprocess.check_output(["serve", "deploy", import_path])
+    assert b"Sent deploy request successfully." in deploy_response
+
     wait_for_condition(
         check_http_response,
         expected_text="DEFAULT",
         timeout=15,
     )
-    ret = runner.invoke(cli, ["shutdown", "-y"])
-    assert "Sent shutdown request" in ret.output
+
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert b"Serve shutdown successfully." in ret
 
     def check_no_apps():
-        status = runner.invoke(cli, ["status"])
-        return "applications: {}" in status.output
+        status = subprocess.check_output(["serve", "status"])
+        return b"applications: {}" in status
 
     wait_for_condition(check_no_apps, timeout=15)
 
-    ret = runner.invoke(cli, ["shutdown", "-y"])
-    assert "there are no applications currently deployed" in ret.output
-    assert "Sent shutdown request" not in ret.output
-
-    serve.shutdown()
-    ray.shutdown()
-
-
-def test_start_shutdown_without_serve_running(ray_start_stop, runner):
-    ret = runner.invoke(cli, ["shutdown", "-y"])
-    assert "there are no applications currently deployed" in ret.output
-    assert "Sent shutdown request" not in ret.output
-
-    serve.shutdown()
-    ray.shutdown()
+    # Test shutdown when no Serve instance is running
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"There is no Serve instance running" in e.value.output
+    assert b"Serve shutdown successfully" not in e.value.output
 
 
-def test_start_shutdown_without_ray_running(runner):
-    ret = runner.invoke(cli, ["shutdown", "-y"])
-    assert "Cannot shutdown Serve applications" in ret.output
-    assert "Sent shutdown request" not in ret.output
+def test_start_shutdown_without_serve_running(ray_start_stop):
+    # Test shutdown when no Serve instance is running
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"There is no Serve instance running" in e.value.output
+    assert b"Serve shutdown successfully" not in e.value.output
+
+
+def test_start_shutdown_without_ray_running():
+    # Test shutdown when Ray is not running
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"Could not find any running Ray instance." in e.value.output
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
