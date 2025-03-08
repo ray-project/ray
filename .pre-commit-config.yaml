@@ -146,6 +146,37 @@ repos:
 
   - repo: local
     hooks:
+      - id: bazel_team_owner_check
+        name: Check for bazel team owner tagging violations
+        entry: python ci/lint/check_bazel_team_owner.py
+        language: python
+        types: [python]
+
+  - repo: local
+    hooks:
+      - id: copyright_format_check
+        name: Check for file copyright format violations
+        entry: ci/lint/copyright-format.sh
+        language: system
+        args: ["-c"]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: code_format_check
+        name: Check for code format violations
+        entry: ci/lint/format.sh
+        language: system
+
+  - repo: local
+    hooks:
+      - id: documentation_style_check
+        name: Check for documentation style violations
+        entry: ci/lint/check-documentation-style.sh
+        language: system
+
+  - repo: local
+    hooks:
       - id: check-import-order
         name: Check for Ray import order violations
         entry: python ci/lint/check_import_order.py
