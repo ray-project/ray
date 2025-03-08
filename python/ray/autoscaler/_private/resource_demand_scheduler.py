@@ -568,7 +568,7 @@ class ResourceDemandScheduler:
         for bundles in strict_spreads:
             # Try to pack as many bundles of this group as possible on existing
             # nodes. The remaining will be allocated on new nodes.
-            unfulfilled, node_resources = get_bin_pack_residual(
+            unfulfilled, updated_node_resources = get_bin_pack_residual(
                 node_resources, bundles, strict_spread=True
             )
             max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
@@ -582,8 +582,6 @@ class ResourceDemandScheduler:
                 utilization_scorer=utilization_scorer,
                 strict_spread=True,
             )
-            _inplace_add(node_type_counts, to_launch)
-            _inplace_add(to_add, to_launch)
             new_node_resources = _node_type_counts_to_node_resources(
                 self.node_types, to_launch
             )
@@ -592,8 +590,14 @@ class ResourceDemandScheduler:
             unfulfilled, including_reserved = get_bin_pack_residual(
                 new_node_resources, unfulfilled, strict_spread=True
             )
-            assert not unfulfilled
-            node_resources += including_reserved
+            if unfulfilled:
+                logger.debug(
+                    "Unfulfilled strict spread placement group: {}".format(bundles)
+                )
+                continue
+            _inplace_add(node_type_counts, to_launch)
+            _inplace_add(to_add, to_launch)
+            node_resources = updated_node_resources + including_reserved
         return to_add, node_resources, node_type_counts
 
     def debug_string(

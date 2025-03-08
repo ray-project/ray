@@ -18,6 +18,8 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <regex>
 #include <tuple>
 #include <unordered_map>
 #include <utility>  // std::pair
@@ -111,6 +113,8 @@ class Metric {
 
   Metric &operator()() { return *this; }
 
+  static const std::regex &GetMetricNameRegex();
+
   /// Get the name of this metric.
   std::string GetName() const { return name_; }
 
@@ -139,9 +143,11 @@ class Metric {
   std::vector<opencensus::tags::TagKey> tag_keys_;
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 
-  // For making sure thread-safe to all of metric registrations.
-  static absl::Mutex registration_mutex_;
+ private:
+  const std::regex &name_regex_;
 
+  // For making sure thread-safe to all of metric registrations.
+  inline static absl::Mutex registration_mutex_;
 };  // class Metric
 
 class Gauge : public Metric {
@@ -405,7 +411,7 @@ class Stats {
 /*
   Syntax sugar to define a metrics:
       DEFINE_stats(name,
-        desctiption,
+        description,
         (tag1, tag2, ...),
         (bucket1, bucket2, ...),
         type1,

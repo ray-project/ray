@@ -80,7 +80,7 @@ public final class Ray extends RayCall {
    * Get an object by `ObjectRef` from the object store.
    *
    * @param objectRef The reference of the object to get.
-   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @param timeoutMs The maximum amount of time in milliseconds to wait before returning.
    * @return The Java object.
    * @throws RayTimeoutException If it's timeout to get the object.
    */
@@ -102,7 +102,7 @@ public final class Ray extends RayCall {
    * Get a list of objects by `ObjectRef`s from the object store.
    *
    * @param objectList A list of object references.
-   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @param timeoutMs The maximum amount of time in milliseconds to wait before returning.
    * @return A list of Java objects.
    * @throws RayTimeoutException If it's timeout to get the object.
    */

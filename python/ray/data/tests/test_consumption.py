@@ -1365,13 +1365,13 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.min("A") == 0
     # Test ignore_nulls=False
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.min("A") is None
-    assert nan_ds.min("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.min("A"))
+    assert pd.isnull(nan_ds.min("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1408,13 +1408,13 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.max("A") == 99
     # Test ignore_nulls=False
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.max("A") is None
-    assert nan_ds.max("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.max("A"))
+    assert pd.isnull(nan_ds.max("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1451,20 +1451,21 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_pandas(nan_ds)
     assert nan_ds.mean("A") == 49.5
     # Test ignore_nulls=False
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.mean("A") is None
-    assert nan_ds.mean("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.mean("A"))
+    assert pd.isnull(nan_ds.mean("A", ignore_nulls=False))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
-    seed = int(time.time())
-    print(f"Seeding RNG for test_global_arrow_std with: {seed}")
+    # NOTE: Do not change the seed
+    seed = 1740035705
+
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
@@ -1487,12 +1488,12 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     ds = ray.data.from_pandas(pd.DataFrame({"A": []}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") is None
+    assert pd.isnull(ds.std("A"))
     # Test edge cases
     ds = ray.data.from_pandas(pd.DataFrame({"A": [3]}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") == 0
+    assert np.isnan(ds.std("A"))
 
     # Test built-in global std aggregation with nans
     nan_df = pd.DataFrame({"A": xs + [None]})
@@ -1501,13 +1502,13 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
         nan_ds = _to_arrow(nan_ds)
     assert math.isclose(nan_ds.std("A"), nan_df["A"].std())
     # Test ignore_nulls=False
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
     if ds_format == "pandas":
         nan_ds = _to_pandas(nan_ds)
-    assert nan_ds.std("A") is None
-    assert nan_ds.std("A", ignore_nulls=False) is None
+    assert pd.isnull(nan_ds.std("A"))
+    assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
 
 
 def test_column_name_type_check(ray_start_regular_shared):

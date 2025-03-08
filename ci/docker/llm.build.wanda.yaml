@@ -5,8 +5,10 @@ srcs:
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
   - ci/suppress_output
-  - python/requirements_compiled_rayllm_test_py311.txt
+  - python/requirements_compiled_rayllm_test_py311_cpu.txt
+  - python/requirements_compiled_rayllm_test_py311_cu121.txt
 tags:
   - cr.ray.io/rayproject/$IMAGE_TO
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=$IMAGE_FROM
+  - RAY_CUDA_CODE=$RAY_CUDA_CODE

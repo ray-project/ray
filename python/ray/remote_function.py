@@ -317,6 +317,14 @@ class RemoteFunction:
         worker = ray._private.worker.global_worker
         worker.check_connected()
 
+        if worker.mode != ray._private.worker.WORKER_MODE:
+            # Only need to record on the driver side
+            # since workers are created via tasks or actors
+            # launched from the driver.
+            from ray._private.usage import usage_lib
+
+            usage_lib.record_library_usage("core")
+
         # We cannot do this when the function is first defined, because we need
         # ray.init() to have been called when this executes
         with self._inject_lock:

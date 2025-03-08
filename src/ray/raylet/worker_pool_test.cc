@@ -17,6 +17,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "absl/time/time.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -144,7 +152,6 @@ class WorkerPoolMock : public WorkerPool {
             [this]() { return absl::FromUnixMillis(current_time_ms_); }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
-        error_message_type_(1),
         client_call_manager_(instrumented_io_service_),
         mock_worker_rpc_clients_(mock_worker_rpc_clients) {
     SetNodeManagerPort(1);
@@ -252,29 +259,27 @@ class WorkerPoolMock : public WorkerPool {
       int runtime_env_hash = 0,
       StartupToken worker_startup_token = 0,
       bool set_process = true) {
-    std::function<void(ClientConnection &)> client_handler =
-        [this](ClientConnection &client) { HandleNewClient(client); };
-    std::function<void(
-        std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &)>
-        message_handler = [this](std::shared_ptr<ClientConnection> client,
-                                 int64_t message_type,
-                                 const std::vector<uint8_t> &message) {
-          HandleMessage(client, message_type, message);
-        };
+    auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
+
+    auto connection_error_handler = [](std::shared_ptr<ClientConnection> client,
+                                       const boost::system::error_code &error) {
+      RAY_CHECK(false) << "Unexpected connection error: " << error.message();
+    };
     local_stream_socket socket(instrumented_io_service_);
-    auto client = ClientConnection::Create(client_handler,
-                                           message_handler,
-                                           std::move(socket),
-                                           "worker",
-                                           {},
-                                           error_message_type_);
+    auto conn = ClientConnection::Create(std::move(noop_message_handler),
+                                         std::move(connection_error_handler),
+                                         std::move(socket),
+                                         "worker",
+                                         {});
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
                                                                runtime_env_hash,
                                                                WorkerID::FromRandom(),
                                                                language,
                                                                worker_type,
                                                                "127.0.0.1",
-                                                               client,
+                                                               conn,
                                                                client_call_manager_,
                                                                worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
@@ -394,14 +399,9 @@ class WorkerPoolMock : public WorkerPool {
   double current_time_ms_ = 0;
   absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
-  int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       &mock_worker_rpc_clients_;
-  void HandleNewClient(ClientConnection &){};
-  void HandleMessage(std::shared_ptr<ClientConnection>,
-                     int64_t,
-                     const std::vector<uint8_t> &){};
 };
 
 class WorkerPoolTest : public ::testing::Test {

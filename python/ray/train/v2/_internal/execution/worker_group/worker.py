@@ -40,6 +40,10 @@ class ActorMetadata:
     pid: int
     accelerator_ids: Dict[str, List[Union[int, str]]]
 
+    @property
+    def gpu_ids(self) -> List[Union[int, str]]:
+        return self.accelerator_ids.get("GPU", [])
+
     @cached_property
     def _repr(self) -> str:
         indent = "  "
@@ -53,6 +57,7 @@ class ActorMetadata:
         non_empty_accelerator_ids = {k: v for k, v in self.accelerator_ids.items() if v}
         if non_empty_accelerator_ids:
             repr_lines.append(f"{indent}accelerator_ids={non_empty_accelerator_ids},")
+
         repr_lines.append(")")
         return "\n".join(repr_lines)
 
@@ -64,7 +69,9 @@ class ActorMetadata:
 class Worker:
     actor: ActorHandle
     metadata: ActorMetadata
+    resources: Dict[str, float]
     distributed_context: Optional[DistributedContext] = None
+    log_file_path: Optional[str] = None
 
     @cached_property
     def _repr(self) -> str:
@@ -77,6 +84,7 @@ class Worker:
             f"{indent}actor={repr(self.actor)},",
             f"{indent}metadata={metadata_repr},",
             f"{indent}distributed_context={context_repr},",
+            f"{indent}log_file_path={repr(self.log_file_path)},",
             ")",
         ]
         return "\n".join(repr_lines)

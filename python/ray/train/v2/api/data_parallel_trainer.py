@@ -10,7 +10,7 @@ from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
     _TRAINER_RESTORE_DEPRECATION_WARNING,
 )
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
@@ -23,6 +23,7 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     DEFAULT_RUN_CONTROLLER_AS_ACTOR,
@@ -33,7 +34,7 @@ from ray.train.v2._internal.constants import (
 from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
-from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
+from ray.train.v2._internal.execution.failure_handling import create_failure_policy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.callback import UserCallback
@@ -106,7 +107,7 @@ class DataParallelTrainer:
         result = self._initialize_and_run_controller(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
+            failure_policy=create_failure_policy(self.run_config.failure_config),
             train_run_context=self.train_run_context,
             callbacks=self._create_default_callbacks(),
         )
@@ -143,6 +144,9 @@ class DataParallelTrainer:
         if env_bool(METRICS_ENABLED_ENV_VAR, True):
             callbacks.append(ControllerMetricsCallback(self.train_run_context))
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
+
+        if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
+            callbacks.append(StateManagerCallback(self.train_run_context))
 
         # Add internal callback that invokes all user-defined callbacks.
         user_callbacks = [
