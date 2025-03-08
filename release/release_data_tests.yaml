@@ -27,10 +27,10 @@
       s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
       --iter-bundles
 
-    variations:
-    - __suffix__: fixed_size_compute
-      cluster:
-        cluster_compute: fixed_size_cpu_compute.yaml
+  variations:
+  - __suffix__: fixed_size_compute
+    cluster:
+      cluster_compute: fixed_size_cpu_compute.yaml
 
 - name: read_images
   run:
