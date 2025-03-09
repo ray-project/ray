@@ -43,19 +43,15 @@ class WorkerHealthCheckFailedError(RayTrainError):
 
 
 class TrainingFailedError(RayTrainError):
-    """Exception raised when training fails."""
+    """Exception raised by `<Framework>Trainer.fit()` when training fails."""
 
-    def __init__(self, worker_failures: Dict[int, Exception]):
-        super().__init__(
-            "Training failed due to worker errors. "
-            "Please inspect the error logs above, "
-            "or access the latest worker failures in this "
-            "exception's `worker_failures` attribute."
-        )
+    def __init__(self, error_message: str, worker_failures: Dict[int, Exception]):
+        super().__init__("Training failed due to worker errors:\n" + error_message)
+        self._error_message = error_message
         self.worker_failures = worker_failures
 
     def __reduce__(self):
-        return (self.__class__, (self.worker_failures,))
+        return (self.__class__, (self._error_message, self.worker_failures))
 
 
 class WorkerGroupStartupTimeoutError(RayTrainError):

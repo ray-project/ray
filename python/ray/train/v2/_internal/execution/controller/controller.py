@@ -207,6 +207,9 @@ class TrainController:
             )
 
         errors_str = worker_group_status.get_error_string()
+        training_failed_error = TrainingFailedError(
+            error_message=errors_str, worker_failures=worker_group_status.errors
+        )
 
         if failure_decision == FailureDecision.RESTART:
             logger.error(
@@ -214,12 +217,7 @@ class TrainController:
                 f"failures on {len(worker_group_status.errors)} worker(s):\n"
                 f"{errors_str}"
             )
-            training_failed_error = TrainingFailedError(
-                worker_failures=worker_group_status.errors
-            )
-            next_state = RestartingState(
-                training_failed_error=training_failed_error,
-            )
+            next_state = RestartingState(training_failed_error=training_failed_error)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -232,12 +230,7 @@ class TrainController:
                 f"failure(s) on {len(worker_group_status.errors)} worker(s):\n"
                 f"{errors_str}"
             )
-            training_failed_error = TrainingFailedError(
-                worker_failures=worker_group_status.errors
-            )
-            next_state = ErroredState(
-                training_failed_error=training_failed_error,
-            )
+            next_state = ErroredState(training_failed_error=training_failed_error)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
