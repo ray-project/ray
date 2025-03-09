@@ -368,8 +368,22 @@ directory you launched the training script from.
 Deprecated
 ----------
 
+The following sections describe behavior that is deprecated as of Ray 2.43 and will not be supported in Ray Train V2,
+which is an overhaul of Ray Train's implementation and select APIs.
+
+See the following resources for more information:
+
+* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
+* `Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_: Full migration guide for Train V2
+
 (Deprecated) Persisting training artifacts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+    This feature of persisting training worker artifacts is deprecated as of Ray 2.43.
+    The feature relied on Ray Tune's local working directory abstraction,
+    where the local files of each worker would be copied to storage.
+    Ray Train V2 decouples the two libraries, so this API, which already provided limited value, has been deprecated.
 
 In the example above, we saved some artifacts within the training loop to the worker's
 *current working directory*.
@@ -434,6 +448,9 @@ Here's an example of what the Train run output directory looks like, with the wo
 
 (Deprecated) Setting the local staging directory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note::
+    This section describes behavior depending on Ray Tune implementation details that no longer applies to Ray Train V2.
 
 .. warning::
 
