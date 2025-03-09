@@ -30,6 +30,8 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
+    ENV_STEP_TIMER,
+    ENV_TO_MODULE_TIMER,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
@@ -37,6 +39,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
+    MODULE_TO_ENV_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -45,6 +48,7 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    RLMODULE_INFERENCE_TIMER,
     SAMPLE_TIMER,
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
@@ -310,21 +314,24 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                             self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                             + ts
                         ) * (self.config.num_env_runners or 1)
-                        to_env = self.module.forward_exploration(
-                            to_module, t=global_env_steps_lifetime
-                        )
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_exploration(
+                                to_module, t=global_env_steps_lifetime
+                            )
                     else:
-                        to_env = self.module.forward_inference(to_module)
+                        with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                            to_env = self.module.forward_inference(to_module)
 
                     # Module-to-env connector.
-                    to_env = self._module_to_env(
-                        rl_module=self.module,
-                        batch=to_env,
-                        episodes=episodes,
-                        explore=explore,
-                        shared_data=shared_data,
-                        metrics=self.metrics,
-                    )
+                    with self.metrics.log_time(MODULE_TO_ENV_TIMER):
+                        to_env = self._module_to_env(
+                            rl_module=self.module,
+                            batch=to_env,
+                            episodes=episodes,
+                            explore=explore,
+                            shared_data=shared_data,
+                            metrics=self.metrics,
+                        )
                 # In case all environments had been terminated `to_module` will be
                 # empty and no actions are needed b/c we reset all environemnts.
                 else:
@@ -339,7 +346,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             actions = to_env.pop(Columns.ACTIONS, [{} for _ in episodes])
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Try stepping the environment.
-            results = self._try_env_step(actions_for_env)
+            with self.metrics.log_time(ENV_STEP_TIMER):
+                results = self._try_env_step(actions_for_env)
             if results == ENV_STEP_FAILURE:
                 return self._sample(
                     num_timesteps=num_timesteps,
@@ -453,6 +461,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     # Run the env-to-module connector pipeline for all done episodes.
                     # Note, this is needed to postprocess last-step data, e.g. if the
                     # user uses a connector that one-hot encodes observations.
+                    # Note, this pipeline run is not timed as the number of episodes
+                    # can differ from `num_envs_per_env_runner` and would bias time
+                    # measurements.
                     self._env_to_module(
                         episodes=done_episodes_to_run_env_to_module,
                         explore=explore,
@@ -460,13 +471,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         shared_data=shared_data,
                         metrics=self.metrics,
                     )
-                self._cached_to_module = self._env_to_module(
-                    episodes=episodes,
-                    explore=explore,
-                    rl_module=self.module,
-                    shared_data=shared_data,
-                    metrics=self.metrics,
-                )
+                with self.metrics.log_time(ENV_TO_MODULE_TIMER):
+                    self._cached_to_module = self._env_to_module(
+                        episodes=episodes,
+                        explore=explore,
+                        rl_module=self.module,
+                        shared_data=shared_data,
+                        metrics=self.metrics,
+                    )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
             # that we need simple `list` objects in the
@@ -538,13 +550,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
-            self._cached_to_module = self._env_to_module(
-                rl_module=self.module,
-                episodes=episodes,
-                explore=explore,
-                shared_data=shared_data,
-                metrics=self.metrics,
-            )
+            with self.metrics.log_time(ENV_TO_MODULE_TIMER):
+                self._cached_to_module = self._env_to_module(
+                    rl_module=self.module,
+                    episodes=episodes,
+                    explore=explore,
+                    shared_data=shared_data,
+                    metrics=self.metrics,
+                )
 
         # Call `on_episode_start()` callbacks (always after reset).
         for env_index in range(self.num_envs):
