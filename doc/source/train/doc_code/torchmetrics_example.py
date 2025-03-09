@@ -6,6 +6,9 @@
 # First, pip install torchmetrics
 # This code is tested with torchmetrics==0.7.3 and torch==1.12.1
 
+import os
+import tempfile
+
 import ray.train.torch
 from ray import train
 from ray.train import ScalingConfig
@@ -62,13 +65,19 @@ def train_func(config):
         mape_collected = mape.compute().item()
         mean_valid_loss_collected = mean_valid_loss.compute().item()
 
-        train.report(
-            {
-                "mape_collected": mape_collected,
-                "valid_loss": valid_loss,
-                "mean_valid_loss_collected": mean_valid_loss_collected,
-            }
-        )
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            torch.save(
+                model.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
+            )
+
+            train.report(
+                {
+                    "mape_collected": mape_collected,
+                    "valid_loss": valid_loss,
+                    "mean_valid_loss_collected": mean_valid_loss_collected,
+                },
+                checkpoint=train.Checkpoint.from_directory(temp_checkpoint_dir),
+            )
 
         # reset for next epoch
         mape.reset()

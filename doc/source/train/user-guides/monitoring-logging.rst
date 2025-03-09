@@ -6,53 +6,12 @@ Monitoring and Logging Metrics
 Ray Train provides an API for attaching metrics to :ref:`checkpoints <train-checkpointing>` from the training function by calling :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`.
 The results will be collected from the distributed workers and passed to the Ray Train driver process for book-keeping.
 
-.. warning::
+The primary use-case for reporting is for metrics (accuracy, loss, etc.) at the end of each training epoch. See :ref:`train-dl-saving-checkpoints` for usage examples.
 
-    Only the result reported by the rank 0 worker will be attached to the checkpoint.
-    However, in order to ensure consistency, ``train.report()`` acts as a barrier and must be called on each worker.
-    To aggregate results from multiple workers, see :ref:`train-aggregating-results`.
+Only the result reported by the rank 0 worker will be attached to the checkpoint.
+However, in order to ensure consistency, ``train.report()`` acts as a barrier and must be called on each worker.
+To aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
-The primary use-case for reporting is for metrics (accuracy, loss, etc.) at the end of each training epoch.
-
-.. tab-set::
-
-    .. tab-item:: PyTorch
-
-        .. testcode::
-
-            from ray import train
-
-            def train_func():
-                ...
-                for i in range(num_epochs):
-                    result = model.train(...)
-                    train.report({"result": result})
-
-    .. tab-item:: PyTorch Lightning
-
-        In PyTorch Lightning, we use a callback to call ``train.report()``.
-
-        .. testcode::
-            :skipif: True
-
-            from ray import train
-            import pytorch_lightning as pl
-            from pytorch_lightning.callbacks import Callback
-
-            class MyRayTrainReportCallback(Callback):
-                def on_train_epoch_end(self, trainer, pl_module):
-                    metrics = trainer.callback_metrics
-                    metrics = {k: v.item() for k, v in metrics.items()}
-
-                    train.report(metrics=metrics)
-
-            def train_func_per_worker():
-                ...
-                trainer = pl.Trainer(
-                    # ...
-                    callbacks=[MyRayTrainReportCallback()]
-                )
-                trainer.fit()
 
 .. _train-aggregating-results:
 
@@ -76,3 +35,25 @@ metrics from multiple workers.
         .. literalinclude:: ../doc_code/torchmetrics_example.py
             :language: python
             :start-after: __start__
+
+
+(Deprecated) Reporting free-floating metrics
+--------------------------------------------
+
+Reporting metrics with ``ray.train.report(metrics, checkpoint=None)`` from every worker writes the metrics to a Ray Tune log file (``progress.csv``, ``result.json``)
+and is accessible via the ``Result.metrics_dataframe`` on the :class:`~ray.train.Result` returned by ``trainer.fit()``.
+
+As of Ray 2.43, this behavior is deprecated and will not be supported in Ray Train V2,
+which is an overhaul of Ray Train's implementation and select APIs.
+
+Ray Train V2 only keeps a slim set of experiment tracking features that are necessary for fault tolerance, so it does not support reporting free-floating metrics that are not attached to checkpoints.
+
+The recommendation for metric tracking is to report metrics directly from the workers to experiment tracking tools such as MLFlow and WandB.
+See :ref:`train-experiment-tracking-native` for examples.
+
+In Ray Train V2, reporting only metrics from all workers is a no-op. However, it is still possible to access the results reported by all workers to implement custom metric-handling logic.
+
+See the following resources for more information:
+
+* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
+* `Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_: Full migration guide for Train V2
