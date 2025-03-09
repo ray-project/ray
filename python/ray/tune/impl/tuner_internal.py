@@ -19,6 +19,7 @@ import pyarrow.fs
 
 import ray.cloudpickle as pickle
 import ray.train
+import ray.tune
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.train._internal.storage import StorageContext, get_fs_and_path
@@ -119,15 +120,6 @@ class TunerInternal:
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = copy.copy(run_config) or RunConfig()
-
-        if not isinstance(self._run_config, RunConfig):
-            if _v2_migration_warnings_enabled():
-                _log_deprecation_warning(
-                    "The `RunConfig` class should be imported from `ray.tune` "
-                    "when passing it to the Tuner. Please update your imports. "
-                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
-                )
-
         self._entrypoint = _entrypoint
 
         # Restore from Tuner checkpoint.
@@ -144,6 +136,16 @@ class TunerInternal:
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
+
+        if self._entrypoint == AirEntrypoint.TUNER and not isinstance(
+            self._run_config, ray.tune.RunConfig
+        ):
+            if _v2_migration_warnings_enabled():
+                _log_deprecation_warning(
+                    "The `RunConfig` class should be imported from `ray.tune` "
+                    "when passing it to the Tuner. Please update your imports. "
+                    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+                )
 
         self.trainable = trainable
         assert self.converted_trainable
