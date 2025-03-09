@@ -15,7 +15,10 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 
 #include <fstream>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -94,7 +97,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
   // Init grpc based pubsub on GCS.
-  // TODO: Move this into GcsPublisher.
+  // TODO(yic): Move this into GcsPublisher.
   inner_publisher = std::make_unique<pubsub::Publisher>(
       /*channels=*/
       std::vector<rpc::ChannelType>{
@@ -575,7 +578,7 @@ void GcsServer::InitUsageStatsClient() {
 }
 
 void GcsServer::InitKVManager() {
-  // TODO (yic): Use a factory with configs
+  // TODO(yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   switch (storage_type_) {

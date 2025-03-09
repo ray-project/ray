@@ -13,6 +13,12 @@
 // limitations under the License.
 #pragma once
 
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -30,7 +36,6 @@
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-
 namespace gcs {
 
 class GcsPlacementGroup;
@@ -226,8 +231,8 @@ class LeaseStatusTracker {
   void MarkPlacementGroupScheduleCancelled();
 
   /// Mark that the commit phase is started.
-  /// There's no need to mark commit phase is done because in that case, we won't need the
-  /// status tracker anymore.
+  /// There's no need to mark commit phase is done because in that case, we won't need
+  /// the status tracker anymore.
   void MarkCommitPhaseStarted();
 
  private:
@@ -285,8 +290,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Create a GcsPlacementGroupScheduler
   ///
   /// \param io_context The main event loop.
-  /// \param placement_group_info_accessor Used to flush placement_group info to storage.
-  /// \param gcs_node_manager The node manager which is used when scheduling.
+  /// \param placement_group_info_accessor Used to flush placement_group info to
+  /// storage. \param gcs_node_manager The node manager which is used when scheduling.
   /// \param cluster_resource_scheduler The resource scheduler which is used when
   /// scheduling.
   /// \param lease_client_factory Factory to create remote lease client.
@@ -367,8 +372,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
-  /// NOTE: All of given bundles will be prepared on the same node. It is guaranteed that
-  /// all of bundles are atomically prepared on a given node.
+  /// NOTE: All of given bundles will be prepared on the same node. It is guaranteed
+  /// that all of bundles are atomically prepared on a given node.
   ///
   /// \param bundles Bundles to be scheduled on a node.
   /// \param node A node to prepare resources for given bundles.

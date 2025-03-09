@@ -16,6 +16,10 @@
 #include <gtest/gtest_prod.h>
 
 #include <queue>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
