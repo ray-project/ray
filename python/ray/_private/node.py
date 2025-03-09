@@ -1228,6 +1228,7 @@ class Node:
     def start_raylet(
         self,
         plasma_directory: str,
+        fallback_directory: str,
         object_store_memory: int,
         use_valgrind: bool = False,
         use_profiler: bool = False,
@@ -1262,6 +1263,7 @@ class Node:
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
+            fallback_directory,
             object_store_memory,
             self.session_name,
             is_head_node=self.is_head(),
@@ -1458,13 +1460,15 @@ class Node:
         resource_spec = self.get_resource_spec()
         (
             plasma_directory,
+            fallback_directory,
             object_store_memory,
         ) = ray._private.services.determine_plasma_store_config(
             resource_spec.object_store_memory,
             plasma_directory=self._ray_params.plasma_directory,
+            fallback_directory=self._ray_params.fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-        self.start_raylet(plasma_directory, object_store_memory)
+        self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 
