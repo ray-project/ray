@@ -1,13 +1,20 @@
-from numpy.testing import assert_almost_equal
 import os
 import sys
 import pytest
 
+from numpy.testing import assert_almost_equal
+
 import ray
-import ray.experimental.tf_utils
+from ray.rllib.utils import tf_utils
 from ray.rllib.utils.framework import try_import_tf
 
 tf, _, _ = try_import_tf()
+
+
+@pytest.fixture(scope="module")
+def ray_init_2_cpus():
+    yield ray.init(num_cpus=2)
+    ray.shutdown()
 
 
 def make_linear_network(w_name=None, b_name=None):
@@ -36,7 +43,7 @@ class LossActor:
             loss, init, _, _ = make_linear_network()
             sess = tf.Session()
             # Additional code for setting and getting the weights.
-            weights = ray.experimental.tf_utils.TensorFlowVariables(
+            weights = tf_utils.TensorFlowVariables(
                 loss if use_loss else None, sess, input_variables=var
             )
         # Return all of the data needed to use the network.
@@ -59,7 +66,7 @@ class NetActor:
             loss, init, _, _ = make_linear_network()
             sess = tf.Session()
             # Additional code for setting and getting the weights.
-            variables = ray.experimental.tf_utils.TensorFlowVariables(loss, sess)
+            variables = tf_utils.TensorFlowVariables(loss, sess)
         # Return all of the data needed to use the network.
         self.values = [variables, init, sess]
         sess.run(init)
@@ -79,7 +86,7 @@ class TrainActor:
         with tf.Graph().as_default():
             loss, init, x_data, y_data = make_linear_network()
             sess = tf.Session()
-            variables = ray.experimental.tf_utils.TensorFlowVariables(loss, sess)
+            variables = tf_utils.TensorFlowVariables(loss, sess)
             optimizer = tf.train.GradientDescentOptimizer(0.9)
             grads = optimizer.compute_gradients(loss)
             train = optimizer.apply_gradients(grads)
@@ -98,12 +105,12 @@ class TrainActor:
         return self.values[1].get_weights()
 
 
-def test_tensorflow_variables(ray_start_2_cpus):
+def test_tensorflow_variables(ray_init_2_cpus):
     sess = tf.Session()
     loss, init, _, _ = make_linear_network()
     sess.run(init)
 
-    variables = ray.experimental.tf_utils.TensorFlowVariables(loss, sess)
+    variables = tf_utils.TensorFlowVariables(loss, sess)
     weights = variables.get_weights()
 
     for (name, val) in weights.items():
@@ -115,7 +122,7 @@ def test_tensorflow_variables(ray_start_2_cpus):
     loss2, init2, _, _ = make_linear_network("w", "b")
     sess.run(init2)
 
-    variables2 = ray.experimental.tf_utils.TensorFlowVariables(loss2, sess)
+    variables2 = tf_utils.TensorFlowVariables(loss2, sess)
     weights2 = variables2.get_weights()
 
     for (name, val) in weights2.items():
@@ -128,14 +135,14 @@ def test_tensorflow_variables(ray_start_2_cpus):
     assert_almost_equal(flat_weights, variables2.get_flat())
 
     sess = tf.Session()
-    variables3 = ray.experimental.tf_utils.TensorFlowVariables([loss2], sess=sess)
+    variables3 = tf_utils.TensorFlowVariables([loss2], sess=sess)
     assert variables3.sess == sess
 
 
 # Test that the variable names for the two different nets are not
 # modified by TensorFlow to be unique (i.e., they should already
 # be unique because of the variable prefix).
-def test_variable_name_collision(ray_start_2_cpus):
+def test_variable_name_collision(ray_init_2_cpus):
     net1 = NetActor()
     net2 = NetActor()
 
@@ -146,7 +153,7 @@ def test_variable_name_collision(ray_start_2_cpus):
 
 # Test that TensorFlowVariables can take in addition variables through
 # input_variables arg and with no loss.
-def test_additional_variables_no_loss(ray_start_2_cpus):
+def test_additional_variables_no_loss(ray_init_2_cpus):
     net = LossActor(use_loss=False)
     assert len(net.values[0].variables.items()) == 1
     assert len(net.values[0].placeholders.items()) == 1
@@ -156,7 +163,7 @@ def test_additional_variables_no_loss(ray_start_2_cpus):
 
 # Test that TensorFlowVariables can take in addition variables through
 # input_variables arg and with a loss.
-def test_additional_variables_with_loss(ray_start_2_cpus):
+def test_additional_variables_with_loss(ray_init_2_cpus):
     net = LossActor()
     assert len(net.values[0].variables.items()) == 3
     assert len(net.values[0].placeholders.items()) == 3
@@ -166,7 +173,7 @@ def test_additional_variables_with_loss(ray_start_2_cpus):
 
 # Test that different networks on the same worker are independent and
 # we can get/set their weights without any interaction.
-def test_networks_independent(ray_start_2_cpus):
+def test_networks_independent(ray_init_2_cpus):
     # Note we use only one worker to ensure that all of the remote
     # functions run on the same worker.
     net1 = NetActor()
@@ -195,11 +202,11 @@ def test_networks_independent(ray_start_2_cpus):
 
 # This test creates an additional network on the driver so that the
 # tensorflow variables on the driver and the worker differ.
-def test_network_driver_worker_independent(ray_start_2_cpus):
+def test_network_driver_worker_independent(ray_init_2_cpus):
     # Create a network on the driver locally.
     sess1 = tf.Session()
     loss1, init1, _, _ = make_linear_network()
-    ray.experimental.tf_utils.TensorFlowVariables(loss1, sess1)
+    tf_utils.TensorFlowVariables(loss1, sess1)
     sess1.run(init1)
 
     net2 = ray.remote(NetActor).remote()
@@ -209,12 +216,12 @@ def test_network_driver_worker_independent(ray_start_2_cpus):
     assert weights2 == new_weights2
 
 
-def test_variables_control_dependencies(ray_start_2_cpus):
+def test_variables_control_dependencies(ray_init_2_cpus):
     # Creates a network and appends a momentum optimizer.
     sess = tf.Session()
     loss, init, _, _ = make_linear_network()
     minimizer = tf.train.MomentumOptimizer(0.9, 0.9).minimize(loss)
-    net_vars = ray.experimental.tf_utils.TensorFlowVariables(minimizer, sess)
+    net_vars = tf_utils.TensorFlowVariables(minimizer, sess)
     sess.run(init)
 
     # Tests if all variables are properly retrieved, 2 variables and 2
@@ -222,12 +229,12 @@ def test_variables_control_dependencies(ray_start_2_cpus):
     assert len(net_vars.variables.items()) == 4
 
 
-def test_remote_training_step(ray_start_2_cpus):
+def test_remote_training_step(ray_init_2_cpus):
     net = ray.remote(TrainActor).remote()
     ray.get(net.training_step.remote(net.get_weights.remote()))
 
 
-def test_remote_training_loss(ray_start_2_cpus):
+def test_remote_training_loss(ray_init_2_cpus):
     net = ray.remote(TrainActor).remote()
     net_values = TrainActor().values
     loss, variables, _, sess, grads, train, placeholders = net_values

@@ -1594,6 +1594,13 @@ py_test(
 )
 
 py_test(
+    name = "test_tf_utils",
+    tags = ["team:rllib", "utils"],
+    size = "medium",
+    srcs = ["utils/tests/test_tf_utils.py"]
+)
+
+py_test(
     name = "test_torch_utils",
     tags = ["team:rllib", "utils", "gpu"],
     size = "medium",

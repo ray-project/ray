@@ -10,7 +10,6 @@ import logging
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
-import ray.experimental.tf_utils
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     postprocess_nstep_and_prio,
     PRIO_WEIGHTS,
