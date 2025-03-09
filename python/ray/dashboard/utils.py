@@ -358,6 +358,31 @@ def address_tuple(address):
     return ip, int(port)
 
 
+def node_stats_to_dict(message):
+    decode_keys = {
+        "actorId",
+        "jobId",
+        "taskId",
+        "parentTaskId",
+        "sourceActorId",
+        "callerId",
+        "rayletId",
+        "workerId",
+        "placementGroupId",
+    }
+    core_workers_stats = message.core_workers_stats
+    message.ClearField("core_workers_stats")
+    try:
+        result = message_to_dict(message, decode_keys)
+        result["coreWorkersStats"] = [
+            message_to_dict(m, decode_keys, always_print_fields_with_no_presence=True)
+            for m in core_workers_stats
+        ]
+        return result
+    finally:
+        message.core_workers_stats.extend(core_workers_stats)
+
+
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, bytes):

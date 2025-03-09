@@ -59,33 +59,6 @@ def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     )
 
 
-def node_stats_to_dict(message):
-    decode_keys = {
-        "actorId",
-        "jobId",
-        "taskId",
-        "parentTaskId",
-        "sourceActorId",
-        "callerId",
-        "rayletId",
-        "workerId",
-        "placementGroupId",
-    }
-    core_workers_stats = message.core_workers_stats
-    message.ClearField("core_workers_stats")
-    try:
-        result = dashboard_utils.message_to_dict(message, decode_keys)
-        result["coreWorkersStats"] = [
-            dashboard_utils.message_to_dict(
-                m, decode_keys, always_print_fields_with_no_presence=True
-            )
-            for m in core_workers_stats
-        ]
-        return result
-    finally:
-        message.core_workers_stats.extend(core_workers_stats)
-
-
 class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, config: dashboard_utils.DashboardHeadModuleConfig):
         super().__init__(config)
@@ -422,7 +395,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         f"Error updating node stats of {node_id}.", exc_info=response
                     )
                 else:
-                    new_node_stats[node_id] = node_stats_to_dict(response)
+                    new_node_stats[node_id] = dashboard_utils.node_stats_to_dict(
+                        response
+                    )
 
             return new_node_stats
 
