@@ -312,7 +312,11 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
         RunningState(),
-        RestartingState(training_failed_error=TrainingFailedError(worker_failures={})),
+        RestartingState(
+            training_failed_error=TrainingFailedError(
+                error_message="", worker_failures={}
+            )
+        ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
