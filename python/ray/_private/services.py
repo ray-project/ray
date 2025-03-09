@@ -2049,8 +2049,8 @@ def determine_plasma_store_config(
         huge_pages: The user-specified huge pages parameter.
 
     Returns:
-        A tuple of plasma directory to use, the object store memory to use and the
-        fallback directory to use. If it is specified by the user, then that value will
+        A tuple of plasma directory to use, the fallback directory to use, and the
+        object store memory to use. If it is specified by the user, then that value will
         be preserved.
     """
     if not isinstance(object_store_memory, int):
