@@ -13,7 +13,6 @@ from ray.train.v2._internal.constants import (
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
-    TrainingFailedError,
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
@@ -62,8 +61,9 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 )
 from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
-from ray.train.v2.api.result import Result
 from ray.train.v2.api.callback import RayTrainCallback
+from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.train.v2.api.result import Result
 
 logger = logging.getLogger(__name__)
 
