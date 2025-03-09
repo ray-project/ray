@@ -861,6 +861,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "stats_opentelemetry",
+    srcs = ["src/ray/stats/opentelemetry_metrics.cc"],
+    deps = [
+        "@io_opentelemetry_cpp//sdk/src/logs:logs",
+        "@io_opentelemetry_cpp//sdk/src/trace:trace",
+    ],
+)
+
+ray_cc_library(
     name = "stats_metric",
     srcs = [
         "src/ray/stats/metric.cc",

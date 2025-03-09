@@ -197,6 +197,11 @@ class SessionFileHandler(logging.Handler):
             self._handler.setFormatter(fmt)
         self._formatter = fmt
 
+    def get_log_file_path(self) -> Optional[str]:
+        if self._handler is None:
+            self._try_create_handler()
+        return self._path
+
     def _try_create_handler(self):
         assert self._handler is None
 
@@ -221,6 +226,7 @@ def configure_controller_logger(context: TrainRunContext) -> None:
     """
     config = get_controller_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the controller log file path.
 
 
 def configure_worker_logger(context: TrainRunContext) -> None:
@@ -230,6 +236,7 @@ def configure_worker_logger(context: TrainRunContext) -> None:
     """
     config = get_worker_logger_config_dict(context)
     logging.config.dictConfig(config)
+    # TODO: Return the worker log file path.
 
 
 def get_log_directory() -> Optional[str]:
@@ -246,3 +253,35 @@ def get_log_directory() -> Optional[str]:
 
     root_dir = global_node.get_session_dir_path()
     return os.path.join(root_dir, "logs", "train")
+
+
+def get_train_application_controller_log_path() -> Optional[str]:
+    """
+    Return the path to the file train application controller log file.
+    """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_controller_logger` function.
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-controller" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None
+
+
+def get_train_application_worker_log_path() -> Optional[str]:
+    """
+    Return the path to the file train application worker log file.
+    """
+    # TODO: This is a temporary solution. We should return the log file path in
+    # the `configure_worker_logger` function.
+    logger = logging.getLogger("ray.train")
+    for handler in logger.handlers:
+        if (
+            isinstance(handler, SessionFileHandler)
+            and "ray-train-app-worker" in handler._filename
+        ):
+            return handler.get_log_file_path()
+    return None

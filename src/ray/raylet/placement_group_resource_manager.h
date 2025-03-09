@@ -57,7 +57,7 @@ class PlacementGroupResourceManager {
   /// Convert the required resources to placement group resources(like CPU ->
   /// CPU_group_i). This is phase two of 2PC.
   ///
-  /// \param bundle_spec Specification of bundle whose resources will be commited.
+  /// \param bundle_spec Specification of bundle whose resources will be committed.
   virtual void CommitBundles(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
 
