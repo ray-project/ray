@@ -23,8 +23,8 @@ Here are some capabilities that persistent storage enables:
 - **Checkpointing and fault tolerance**: Saving checkpoints to a persistent storage location
   allows you to resume training from the last checkpoint in case of a node failure.
   See :ref:`train-checkpointing` for a detailed guide on how to set up checkpointing.
-- **Post-experiment analysis**: A consolidated location storing data from all trials is useful for post-experiment analysis
-  such as accessing the best checkpoints and hyperparameter configs after the cluster has already been terminated.
+- **Post-experiment analysis**: A consolidated location storing data such as the best checkpoints and
+  hyperparameter configs after the Ray cluster has already been terminated.
 - **Bridge training/fine-tuning with downstream serving and batch inference tasks**: You can easily access the models
   and artifacts to share them with others or use them in downstream tasks.
 
@@ -177,7 +177,7 @@ Implement custom storage upload and download logic by providing an implementatio
         run_config=train.RunConfig(
             storage_filesystem=fs,
             storage_path="bucket-name/sub-path",
-            name="experiment_name",
+            name="unique-run-id",
         )
     )
 
@@ -233,7 +233,7 @@ Note that including these as query parameters in the ``storage_path`` URI direct
         ...,
         run_config=train.RunConfig(
             storage_path="s3://bucket-name/sub-path?endpoint_override=http://localhost:9000",
-            name="experiment_name",
+            name="unique-run-id",
         )
     )
 
