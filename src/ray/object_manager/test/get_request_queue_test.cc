@@ -22,9 +22,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-// Removed: using namespace ray;
-// Removed: using namespace testing;
-
 using ray::ObjectID;
 using ray::ObjectInfo;
 using ray::Status;
