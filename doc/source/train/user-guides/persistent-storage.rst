@@ -355,16 +355,11 @@ directory you launched the training script from.
         # NOTE: The working directory is copied to each worker and is read only.
         assert os.path.exists("./data.txt"), os.getcwd()
 
-        # To use artifact syncing with `SyncConfig(sync_artifacts=True)`,
-        # write artifacts here, instead of the current working directory:
-        ray.train.get_context().get_trial_dir()
-
     trainer = TorchTrainer(
         train_fn_per_worker,
         scaling_config=ray.train.ScalingConfig(num_workers=2),
         run_config=ray.train.RunConfig(
             # storage_path=...,
-            sync_config=ray.train.SyncConfig(sync_artifacts=True),
         ),
     )
     trainer.fit()
