@@ -14,9 +14,9 @@
 
 #include "ray/object_manager/plasma/get_request_queue.h"
 
+#include <memory>
 #include <unordered_set>
 #include <utility>
-#include <memory>
 #include <vector>
 
 #include "gmock/gmock.h"
@@ -25,14 +25,13 @@
 // Removed: using namespace ray;
 // Removed: using namespace testing;
 
-
 using ray::ObjectID;
 using ray::ObjectInfo;
 using ray::Status;
-using testing::Test;
 using testing::_;
-using testing::Return;
 using testing::Eq;
+using testing::Return;
+using testing::Test;
 
 namespace plasma {
 

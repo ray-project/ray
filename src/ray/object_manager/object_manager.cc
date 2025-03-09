@@ -14,13 +14,13 @@
 
 #include "ray/object_manager/object_manager.h"
 
-#include <chrono>
 #include <algorithm>
-#include <unordered_set>
-#include <vector>
+#include <chrono>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "ray/common/common_protocol.h"
 #include "ray/object_manager/plasma/store.h"

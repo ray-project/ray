@@ -14,11 +14,10 @@
 
 #pragma once
 
-#include <string>
 #include <memory>
+#include <string>
 
 #include "ray/object_manager/spilled_object_reader.h"
-
 
 namespace ray {
 

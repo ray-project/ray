@@ -13,12 +13,11 @@
 // limitations under the License.
 
 #include <boost/endian/conversion.hpp>
-
 #include <fstream>
 #include <memory>
-#include <vector>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
@@ -237,10 +236,10 @@ MemoryObjectReader CreateMemoryObjectReader(std::string &data,
                                             std::string &metadata,
                                             rpc::Address owner_address) {
   plasma::ObjectBuffer object_buffer;
-  object_buffer.data =
-      std::make_shared<SharedMemoryBuffer>(reinterpret_cast<uint8_t *>(const_cast<char *>(data.c_str())), data.size());
-  object_buffer.metadata =
-      std::make_shared<SharedMemoryBuffer>(reinterpret_cast<uint8_t *>(const_cast<char *>(metadata.c_str())), metadata.size());
+  object_buffer.data = std::make_shared<SharedMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(const_cast<char *>(data.c_str())), data.size());
+  object_buffer.metadata = std::make_shared<SharedMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(const_cast<char *>(metadata.c_str())), metadata.size());
   object_buffer.device_num = 0;
   return MemoryObjectReader(std::move(object_buffer), owner_address);
 }

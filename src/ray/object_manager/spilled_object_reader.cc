@@ -16,8 +16,8 @@
 
 #include <fstream>
 #include <regex>
-#include <utility>
 #include <string>
+#include <utility>
 
 #include "ray/util/logging.h"
 
