@@ -33,12 +33,6 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
-        # The device to which tensors should be deserialized.
-        self._target_device: Device = Device.DEFAULT
-
-    @property
-    def target_device(self) -> Device:
-        return self._target_device
 
     def set_target_device(self, device: Device) -> None:
         self._target_device = device
@@ -93,15 +87,6 @@ class _SerializationContext:
         self._deserialized_tensor_placeholders = set()
         return prev_tensors, deserialized_tensor_placeholders
 
-    def get_target_device_type(self, tensor_device_type: str) -> str:
-        if self.target_device == Device.DEFAULT:
-            target_device_type = tensor_device_type
-        elif self.target_device in [Device.GPU, Device.CUDA]:
-            target_device_type = "cuda"
-        else:
-            target_device_type = "cpu"
-        return target_device_type
-
     def serialize_tensor(
         self, tensor: "torch.Tensor"
     ) -> Union[int, Tuple["np.ndarray", "torch.dtype", str]]:
@@ -140,7 +125,9 @@ class _SerializationContext:
         return (tensor.view(torch.uint8).numpy(), tensor.dtype, tensor_device_type)
 
     def deserialize_tensor(
-        self, val: Union[Tuple["np.ndarray", "torch.dtype", str], int]
+        self,
+        val: Union[Tuple["np.ndarray", "torch.dtype", str], int],
+        target_device: Device,
     ):
 
         # Found a placeholder for a tensor that was serialized via NCCL.
@@ -150,19 +137,30 @@ class _SerializationContext:
             self._deserialized_tensor_placeholders.add(placeholder)
             assert placeholder < len(self._out_of_band_tensors)
             tensor = self._out_of_band_tensors[placeholder]
-            if self.target_device == Device.CPU:
+            if target_device == Device.CPU:
                 tensor = tensor.to("cpu")
             return tensor
 
         np_array, dtype, tensor_device_type = val
-        return self.deserialize_from_numpy(np_array, dtype, tensor_device_type)
+        return self.deserialize_from_numpy(
+            np_array, dtype, tensor_device_type, target_device
+        )
 
     def deserialize_from_numpy(
-        self, np_array: "np.ndarray", dtype: "torch.dtype", tensor_device_type: str
+        self,
+        np_array: "np.ndarray",
+        dtype: "torch.dtype",
+        tensor_device_type: str,
+        target_device: Device,
     ):
         import torch
 
-        target_device_type = self.get_target_device_type(tensor_device_type)
+        if target_device == Device.DEFAULT:
+            target_device_type = tensor_device_type
+        elif target_device in [Device.GPU, Device.CUDA]:
+            target_device_type = "cuda"
+        else:
+            target_device_type = "cpu"
 
         # TODO(swang): Support local P2P transfers if available.
         if target_device_type == "cuda":

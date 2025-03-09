@@ -9,6 +9,7 @@ import ray
 import ray.dag
 import ray.experimental.channel as ray_channel
 from ray.experimental.channel.communicator import TorchTensorAllocator
+from ray.experimental.util.types import Device
 
 
 @ray.remote(num_cpus=0)
@@ -26,11 +27,14 @@ class Barrier:
         self.data = {}
         # Buffer for the number of actors seen, each entry is one p2p op.
         self.num_actors_seen = defaultdict(int)
-        ctx_get_device_patcher = mock.patch(
-            "ray.experimental.channel.serialization_context._SerializationContext.get_target_device_type",
-            return_value="cpu",
+
+        # Add a new mock for the TorchTensorType.device property
+        device_property_patcher = mock.patch(
+            "ray.experimental.channel.torch_tensor_type.TorchTensorType.device",
+            new_callable=mock.PropertyMock,
+            return_value=Device.CPU,
         )
-        ctx_get_device_patcher.start()
+        device_property_patcher.start()
 
     async def wait(self, idx: int, data=None):
         """
@@ -149,11 +153,14 @@ def start_nccl_mock():
         lambda shape, dtype: torch.zeros(shape, dtype=dtype),
     )
     tensor_allocator_patcher.start()
-    ctx_get_device_patcher = mock.patch(
-        "ray.experimental.channel.serialization_context._SerializationContext.get_target_device_type",
-        return_value="cpu",
+
+    # Add a new mock for the TorchTensorType.device property
+    device_property_patcher = mock.patch(
+        "ray.experimental.channel.torch_tensor_type.TorchTensorType.device",
+        new_callable=mock.PropertyMock,
+        return_value=Device.CPU,
     )
-    ctx_get_device_patcher.start()
+    device_property_patcher.start()
 
     ctx = ray_channel.ChannelContext.get_current()
     ctx.set_torch_device(torch.device("cuda"))
