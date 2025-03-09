@@ -5,9 +5,7 @@
 Configuring Persistent Storage
 ==============================
 
-A Ray Train run produces a history of :ref:`reported metrics <train-monitoring-and-logging>`,
-:ref:`checkpoints <train-checkpointing>`, and :ref:`other artifacts <train-artifacts>`.
-You can configure these to be saved to a persistent storage location.
+A Ray Train run produces :ref:`checkpoints <train-checkpointing>` that can be saved to a persistent storage location.
 
 .. figure:: ../images/persistent_storage_checkpoint.png
     :align: center
@@ -257,20 +255,14 @@ and how they're structured in storage.
     import os
     import tempfile
 
-    from ray import train
+    import ray.train
     from ray.train import Checkpoint
     from ray.train.torch import TorchTrainer
 
     def train_fn(config):
         for i in range(10):
             # Training logic here
-
             metrics = {"loss": ...}
-
-            # Save arbitrary artifacts to the working directory
-            rank = train.get_context().get_world_rank()
-            with open(f"artifact-rank={rank}-iter={i}.txt", "w") as f:
-                f.write("data")
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 torch.save(..., os.path.join(temp_checkpoint_dir, "checkpoint.pt"))
@@ -281,11 +273,10 @@ and how they're structured in storage.
 
     trainer = TorchTrainer(
         train_fn,
-        scaling_config=train.ScalingConfig(num_workers=2),
-        run_config=train.RunConfig(
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
             storage_path="s3://bucket-name/sub-path/",
-            name="experiment_name",
-            sync_config=train.SyncConfig(sync_artifacts=True),
+            name="unique-run-id",
         )
     )
     result: train.Result = trainer.fit()
@@ -295,21 +286,12 @@ Here's a rundown of all files that will be persisted to storage:
 
 .. code-block:: text
 
-    s3://bucket-name/sub-path (RunConfig.storage_path)
-    └── experiment_name (RunConfig.name)          <- The "experiment directory"
-        ├── experiment_state-*.json
-        ├── basic-variant-state-*.json
-        ├── trainer.pkl
-        ├── tuner.pkl
-        └── TorchTrainer_46367_00000_0_...        <- The "trial directory"
-            ├── events.out.tfevents...            <- Tensorboard logs of reported metrics
-            ├── result.json                       <- JSON log file of reported metrics
-            ├── checkpoint_000000/                <- Checkpoints
-            ├── checkpoint_000001/
-            ├── ...
-            ├── artifact-rank=0-iter=0.txt        <- Worker artifacts (see the next section)
-            ├── artifact-rank=1-iter=0.txt
-            └── ...
+    {RunConfig.storage_path}  (ex: "s3://bucket-name/sub-path/")
+    └── {RunConfig.name}      (ex: "unique-run-id")               <- Train run output directory
+        ├── *_snapshot.json                                       <- Train run metadata files (DeveloperAPI)
+        ├── checkpoint_epoch=0/                                   <- Checkpoints
+        ├── checkpoint_epoch=1/
+        └── ...
 
 The :class:`~ray.train.Result` and :class:`~ray.train.Checkpoint` objects returned by
 ``trainer.fit`` are the easiest way to access the data in these files:
@@ -318,118 +300,19 @@ The :class:`~ray.train.Result` and :class:`~ray.train.Checkpoint` objects return
     :skipif: True
 
     result.filesystem, result.path
-    # S3FileSystem, "bucket-name/sub-path/experiment_name/TorchTrainer_46367_00000_0_..."
+    # S3FileSystem, "bucket-name/sub-path/unique-run-id"
 
     result.checkpoint.filesystem, result.checkpoint.path
-    # S3FileSystem, "bucket-name/sub-path/experiment_name/TorchTrainer_46367_00000_0_.../checkpoint_000009"
+    # S3FileSystem, "bucket-name/sub-path/unique-run-id/checkpoint_epoch=0"
 
 
 See :ref:`train-inspect-results` for a full guide on interacting with training :class:`Results <ray.train.Result>`.
-
-
-.. _train-artifacts:
-
-Persisting training artifacts
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In the example above, we saved some artifacts within the training loop to the worker's
-*current working directory*.
-If you were training a stable diffusion model, you could save
-some sample generated images every so often as a training artifact.
-
-By default, Ray Train changes the current working directory of each worker to be inside the run's
-:ref:`local staging directory <train-local-staging-dir>`.
-This way, all distributed training workers share the same absolute path as the working directory.
-See :ref:`below <train-working-directory>` for how to disable this default behavior,
-which is useful if you want your training workers to keep their original working directories.
-
-If :class:`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then
-all artifacts saved in this directory will be persisted to storage.
-
-The frequency of artifact syncing can be configured via :class:`SyncConfig <ray.train.SyncConfig>`.
-Note that this behavior is off by default.
-
-.. figure:: ../images/persistent_storage_artifacts.png
-    :align: center
-    :width: 600px
-
-    Multiple workers spread across multiple nodes save artifacts to their local
-    working directory, which is then persisted to storage.
-
-.. warning::
-
-    Artifacts saved by *every worker* will be synced to storage. If you have multiple workers
-    co-located on the same node, make sure that workers don't delete files within their
-    shared working directory.
-
-    A best practice is to only write artifacts from a single worker unless you
-    really need artifacts from multiple.
-
-    .. testcode::
-        :skipif: True
-
-        from ray import train
-
-        if train.get_context().get_world_rank() == 0:
-            # Only the global rank 0 worker saves artifacts.
-            ...
-
-        if train.get_context().get_local_rank() == 0:
-            # Every local rank 0 worker saves artifacts.
-            ...
 
 
 .. _train-storage-advanced:
 
 Advanced configuration
 ----------------------
-
-.. _train-local-staging-dir:
-
-Setting the local staging directory
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. warning::
-
-    Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable and ``RunConfig(local_dir)``
-    were ways to configure the local staging directory to be outside of the home directory (``~/ray_results``).
-
-    **These configurations are no longer used to configure the local staging directory.
-    Please instead use** ``RunConfig(storage_path)`` **to configure where your
-    run's outputs go.**
-
-
-Apart from files such as checkpoints written directly to the ``storage_path``,
-Ray Train also writes some logfiles and metadata files to an intermediate
-*local staging directory* before they get persisted (copied/uploaded) to the ``storage_path``.
-The current working directory of each worker is set within this local staging directory.
-
-By default, the local staging directory is a sub-directory of the Ray session
-directory (e.g., ``/tmp/ray/session_latest``), which is also where other temporary Ray files are dumped.
-
-Customize the location of the staging directory by :ref:`setting the location of the
-temporary Ray session directory <temp-dir-log-files>`.
-
-Here's an example of what the local staging directory looks like:
-
-.. code-block:: text
-
-    /tmp/ray/session_latest/artifacts/<ray-train-job-timestamp>/
-    └── experiment_name
-        ├── driver_artifacts    <- These are all uploaded to storage periodically
-        │   ├── Experiment state snapshot files needed for resuming training
-        │   └── Metrics logfiles
-        └── working_dirs        <- These are uploaded to storage if `SyncConfig(sync_artifacts=True)`
-            └── Current working directory of training workers, which contains worker artifacts
-
-.. warning::
-
-    You should not need to look into the local staging directory.
-    The ``storage_path`` should be the only path that you need to interact with.
-
-    The structure of the local staging directory is subject to change
-    in future versions of Ray Train -- do not rely on these local staging files in your application.
-
 
 .. _train-working-directory:
 
@@ -485,3 +368,115 @@ directory you launched the training script from.
         ),
     )
     trainer.fit()
+
+
+Deprecated
+----------
+
+(Deprecated) Persisting training artifacts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the example above, we saved some artifacts within the training loop to the worker's
+*current working directory*.
+If you were training a stable diffusion model, you could save
+some sample generated images every so often as a training artifact.
+
+By default, Ray Train changes the current working directory of each worker to be inside the run's
+:ref:`local staging directory <train-local-staging-dir>`.
+This way, all distributed training workers share the same absolute path as the working directory.
+See :ref:`below <train-working-directory>` for how to disable this default behavior,
+which is useful if you want your training workers to keep their original working directories.
+
+If :class:`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then
+all artifacts saved in this directory will be persisted to storage.
+
+The frequency of artifact syncing can be configured via :class:`SyncConfig <ray.train.SyncConfig>`.
+Note that this behavior is off by default.
+
+Here's an example of what the Train run output directory looks like, with the worker artifacts:
+
+.. code-block:: text
+
+    s3://bucket-name/sub-path (RunConfig.storage_path)
+    └── experiment_name (RunConfig.name)          <- The "experiment directory"
+        ├── experiment_state-*.json
+        ├── basic-variant-state-*.json
+        ├── trainer.pkl
+        ├── tuner.pkl
+        └── TorchTrainer_46367_00000_0_...        <- The "trial directory"
+            ├── events.out.tfevents...            <- Tensorboard logs of reported metrics
+            ├── result.json                       <- JSON log file of reported metrics
+            ├── checkpoint_000000/                <- Checkpoints
+            ├── checkpoint_000001/
+            ├── ...
+            ├── artifact-rank=0-iter=0.txt        <- Worker artifacts
+            ├── artifact-rank=1-iter=0.txt
+            └── ...
+
+.. warning::
+
+    Artifacts saved by *every worker* will be synced to storage. If you have multiple workers
+    co-located on the same node, make sure that workers don't delete files within their
+    shared working directory.
+
+    A best practice is to only write artifacts from a single worker unless you
+    really need artifacts from multiple.
+
+    .. testcode::
+        :skipif: True
+
+        from ray import train
+
+        if train.get_context().get_world_rank() == 0:
+            # Only the global rank 0 worker saves artifacts.
+            ...
+
+        if train.get_context().get_local_rank() == 0:
+            # Every local rank 0 worker saves artifacts.
+            ...
+
+.. _train-local-staging-dir:
+
+(Deprecated) Setting the local staging directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. warning::
+
+    Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable and ``RunConfig(local_dir)``
+    were ways to configure the local staging directory to be outside of the home directory (``~/ray_results``).
+
+    **These configurations are no longer used to configure the local staging directory.
+    Please instead use** ``RunConfig(storage_path)`` **to configure where your
+    run's outputs go.**
+
+
+Apart from files such as checkpoints written directly to the ``storage_path``,
+Ray Train also writes some logfiles and metadata files to an intermediate
+*local staging directory* before they get persisted (copied/uploaded) to the ``storage_path``.
+The current working directory of each worker is set within this local staging directory.
+
+By default, the local staging directory is a sub-directory of the Ray session
+directory (e.g., ``/tmp/ray/session_latest``), which is also where other temporary Ray files are dumped.
+
+Customize the location of the staging directory by :ref:`setting the location of the
+temporary Ray session directory <temp-dir-log-files>`.
+
+Here's an example of what the local staging directory looks like:
+
+.. code-block:: text
+
+    /tmp/ray/session_latest/artifacts/<ray-train-job-timestamp>/
+    └── experiment_name
+        ├── driver_artifacts    <- These are all uploaded to storage periodically
+        │   ├── Experiment state snapshot files needed for resuming training
+        │   └── Metrics logfiles
+        └── working_dirs        <- These are uploaded to storage if `SyncConfig(sync_artifacts=True)`
+            └── Current working directory of training workers, which contains worker artifacts
+
+.. warning::
+
+    You should not need to look into the local staging directory.
+    The ``storage_path`` should be the only path that you need to interact with.
+
+    The structure of the local staging directory is subject to change
+    in future versions of Ray Train -- do not rely on these local staging files in your application.
