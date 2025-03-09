@@ -27,12 +27,7 @@ from ray._private.test_utils import (
 )
 
 from ray.tests.conftest import *  # noqa
-from ray.experimental.util.types import (
-    ReduceOp,
-    AllGatherOp,
-    AllReduceOp,
-    ReduceScatterOp,
-)
+from ray.experimental.util.types import ReduceOp
 
 logger = logging.getLogger(__name__)
 
@@ -1542,14 +1537,14 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize(
-    "operation, op",
+    "operation",
     [
-        (collective.allgather, AllGatherOp()),
-        (collective.allreduce, AllReduceOp()),
-        (collective.reducescatter, ReduceScatterOp()),
+        collective.allgather,
+        collective.allreduce,
+        collective.reducescatter,
     ],
 )
-def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, op):
+def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation):
     """
     Test basic collective operations.
     """
@@ -1569,7 +1564,7 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, op):
         computes = [
             worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
         ]
-        collectives = operation.bind(computes, op)
+        collectives = operation.bind(computes)
         recvs = [
             worker.recv_tensor.bind(collective)
             for worker, collective in zip(workers, collectives)
@@ -1644,7 +1639,7 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
         t = workers[0].send.bind(shape, dtype, inp)
         t.with_tensor_transport(transport="nccl")
 
-        collectives = collective.allreduce.bind([x, y], AllReduceOp())
+        collectives = collective.allreduce.bind([x, y])
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
@@ -1680,7 +1675,7 @@ def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
     with InputNode() as inp:
         t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
         t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
-        tensors = collective.allreduce.bind([t1, t4], AllReduceOp())
+        tensors = collective.allreduce.bind([t1, t4])
         dag = MultiOutputNode(tensors + [t2, t3])
 
     compiled_dag = dag.experimental_compile()

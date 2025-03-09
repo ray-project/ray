@@ -10,6 +10,7 @@ from ray.dag.constants import (
 )
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import (
+    ReduceOp,
     AllGatherOp,
     AllReduceOp,
     ReduceScatterOp,
@@ -88,10 +89,9 @@ class AllGatherWrapper:
     def bind(
         self,
         input_nodes: List["ray.dag.DAGNode"],
-        op: AllGatherOp = AllGatherOp(),
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        return _bind(input_nodes, op, transport)
+        return _bind(input_nodes, AllGatherOp(), transport)
 
     def __call__(
         self,
@@ -110,13 +110,13 @@ class AllReduceWrapper:
     def bind(
         self,
         input_nodes: List["ray.dag.DAGNode"],
-        op: AllReduceOp = AllReduceOp(),
+        op: ReduceOp = ReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        if not isinstance(op, AllReduceOp):
+        if not isinstance(op, ReduceOp):
             raise ValueError(f"Unexpected operation: {op}")
 
-        return _bind(input_nodes, op, transport)
+        return _bind(input_nodes, AllReduceOp(reduceOp=op), transport)
 
     def __call__(
         self,
@@ -135,13 +135,13 @@ class ReduceScatterWrapper:
     def bind(
         self,
         input_nodes: List["ray.dag.DAGNode"],
-        op: ReduceScatterOp = ReduceScatterOp(),
+        op: ReduceOp = ReduceOp.SUM,
         transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
-        if not isinstance(op, ReduceScatterOp):
+        if not isinstance(op, ReduceOp):
             raise ValueError(f"Unexpected operation: {op}")
 
-        return _bind(input_nodes, op, transport)
+        return _bind(input_nodes, ReduceScatterOp(reduceOp=op), transport)
 
     def __call__(
         self,
