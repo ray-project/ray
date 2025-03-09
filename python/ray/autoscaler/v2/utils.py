@@ -356,6 +356,17 @@ class ClusterStatusFormatter:
     def _node_usage_report(
         active_nodes: List[NodeInfo], idle_nodes: List[NodeInfo]
     ) -> str:
+        """[Example]:
+        Node: raycluster-autoscaler-small-group-worker-n8hrw (small-group)
+         Id: cc22041297e5fc153b5357e41f184c8000869e8de97252cc0291fd17
+         Usage:
+          1.0/1.0 CPU
+          0B/953.67MiB memory
+          0B/251.76MiB object_store_memory
+         Activity:
+          Resource: CPU currently in use.
+          Busy workers on node.
+        """
         node_id_to_usage = {}
         node_id_to_type = {}
         node_id_to_idle_time = {}
