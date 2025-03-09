@@ -140,6 +140,8 @@ Fault tolerance on the Ray Train side is configured and handled separately. See 
     :end-before: __fault_tolerance_end__
 
 
+.. _train-with-tune-callbacks:
+
 Advanced: Using Ray Tune callbacks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

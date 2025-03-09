@@ -1,6 +1,11 @@
 # flake8: noqa
 # isort: skip_file
 
+import os
+
+os.environ["RAY_TRAIN_V2_ENABLED"] = "1"
+
+
 # __torchmetrics_start__
 
 # First, pip install torchmetrics
@@ -94,3 +99,36 @@ print(result.metrics["valid_loss"], result.metrics["mean_valid_loss_collected"])
 # 0.5109779238700867 0.5512474775314331
 
 # __torchmetrics_end__
+
+# __report_callback_start__
+import os
+
+assert os.environ["RAY_TRAIN_V2_ENABLED"] == "1"
+
+from typing import Any, Dict, List, Optional
+
+import ray.train
+import ray.train.torch
+
+
+def train_fn_per_worker(config): ...
+
+
+class CustomMetricsCallback(ray.train.UserCallback):
+    def after_report(
+        self,
+        run_context,
+        metrics: List[Dict[str, Any]],
+        checkpoint: Optional[ray.train.Checkpoint],
+    ):
+        print(metrics)
+        # Ex: Write metrics to a file...
+
+
+trainer = ray.train.torch.TorchTrainer(
+    train_fn_per_worker,
+    scaling_config=ray.train.ScalingConfig(num_workers=2),
+    run_config=ray.train.RunConfig(callbacks=[CustomMetricsCallback()]),
+)
+
+# __report_callback_end__

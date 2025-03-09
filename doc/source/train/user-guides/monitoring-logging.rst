@@ -48,13 +48,20 @@ As of Ray 2.43, this behavior is deprecated and will not be supported in Ray Tra
 which is an overhaul of Ray Train's implementation and select APIs.
 
 Ray Train V2 only keeps a slim set of experiment tracking features that are necessary for fault tolerance, so it does not support reporting free-floating metrics that are not attached to checkpoints.
-
 The recommendation for metric tracking is to report metrics directly from the workers to experiment tracking tools such as MLFlow and WandB.
 See :ref:`train-experiment-tracking-native` for examples.
 
 In Ray Train V2, reporting only metrics from all workers is a no-op. However, it is still possible to access the results reported by all workers to implement custom metric-handling logic.
 
+.. literalinclude:: ../doc_code/metric_logging.py
+    :language: python
+    :start-after: __report_callback_start__
+    :end-before: __report_callback_end__
+
+
+To use Ray Tune :class:`Callback <ray.tune.Callback>` that depend on free-floating metrics reported by workers, :ref:`run Ray Train as a single Ray Tune trial. <train-with-tune-callbacks>`
+
 See the following resources for more information:
 
-* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API change
+* `Train V2 REP <https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md>`_: Technical details about the API changes in Train V2
 * `Train V2 Migration Guide <https://github.com/ray-project/ray/issues/49454>`_: Full migration guide for Train V2
