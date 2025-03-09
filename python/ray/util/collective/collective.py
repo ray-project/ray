@@ -49,7 +49,9 @@ class GroupManager(object):
         self._name_group_map = {}
         self._group_name_map = {}
 
-    def create_collective_group(self, backend, world_size, rank, group_name):
+    def create_collective_group(
+        self, backend, world_size, rank, group_name, gloo_timeout
+    ):
         """The entry to create new collective groups in the manager.
 
         Put the registration and the group information into the manager
@@ -66,6 +68,7 @@ class GroupManager(object):
                 group_name,
                 store_type="ray_internal_kv",
                 device_type="tcp",
+                gloo_timeout=gloo_timeout,
             )
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -118,7 +121,11 @@ def is_group_initialized(group_name):
 
 
 def init_collective_group(
-    world_size: int, rank: int, backend=types.Backend.NCCL, group_name: str = "default"
+    world_size: int,
+    rank: int,
+    backend=types.Backend.NCCL,
+    group_name: str = "default",
+    gloo_timeout: int = 30000,
 ):
     """Initialize a collective group inside an actor process.
 
@@ -145,7 +152,9 @@ def init_collective_group(
     assert world_size > 0
     assert rank >= 0
     assert rank < world_size
-    _group_mgr.create_collective_group(backend, world_size, rank, group_name)
+    _group_mgr.create_collective_group(
+        backend, world_size, rank, group_name, gloo_timeout
+    )
 
 
 def create_collective_group(
@@ -154,6 +163,7 @@ def create_collective_group(
     ranks: List[int],
     backend=types.Backend.NCCL,
     group_name: str = "default",
+    gloo_timeout: int = 30000,
 ):
     """Declare a list of actors as a collective group.
 
@@ -209,7 +219,7 @@ def create_collective_group(
     actors_id = [a._ray_actor_id for a in actors]
     # TODO (Dacheng): how do we recycle this name actor?
     info = Info.options(name=name, lifetime="detached").remote()
-    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend)])
+    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend, gloo_timeout)])
 
 
 # TODO (we need a declarative destroy() API here.)
@@ -267,7 +277,7 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
     g.allreduce([tensor], opts)
@@ -289,7 +299,7 @@ def allreduce_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
     g.allreduce(tensor_list, opts)
@@ -304,7 +314,7 @@ def barrier(group_name: str = "default"):
     Returns:
         None
     """
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     g.barrier()
 
 
@@ -323,7 +333,7 @@ def reduce(
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check dst rank
     _check_rank_valid(g, dst_rank)
@@ -358,7 +368,7 @@ def reduce_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check dst rank
     _check_rank_valid(g, dst_rank)
@@ -382,7 +392,7 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check src rank
     _check_rank_valid(g, src_rank)
@@ -409,7 +419,7 @@ def broadcast_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
 
     # check src rank
     _check_rank_valid(g, src_rank)
@@ -433,7 +443,7 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     """
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     if len(tensor_list) != g.world_size:
         # Typically CLL lib requires len(tensor_list) >= world_size;
         # Here we make it more strict: len(tensor_list) == world_size.
@@ -464,7 +474,7 @@ def allgather_multigpu(
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(output_tensor_lists)
     _check_tensor_list_input(input_tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.AllGatherOptions()
     g.allgather(output_tensor_lists, input_tensor_list, opts)
 
@@ -488,7 +498,7 @@ def reducescatter(
     """
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
@@ -522,7 +532,7 @@ def reducescatter_multigpu(
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(input_tensor_lists)
     _check_tensor_list_input(output_tensor_list)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
     g.reducescatter(output_tensor_list, input_tensor_lists, opts)
@@ -540,7 +550,7 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
@@ -575,7 +585,7 @@ def send_multigpu(
     if not types.cupy_available():
         raise RuntimeError("send_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError(
@@ -603,7 +613,7 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
         None
     """
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
@@ -636,7 +646,7 @@ def recv_multigpu(
     if not types.cupy_available():
         raise RuntimeError("recv_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
-    g = _check_and_get_group(group_name)
+    g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError(
@@ -668,8 +678,15 @@ def synchronize(gpu_id: int):
     cp.cuda.Device(gpu_id).synchronize()
 
 
-def _check_and_get_group(group_name):
-    """Check the existence and return the group handle."""
+def get_group_handle(group_name: str = "default"):
+    """Check if the group is initialized and return the group handle.
+
+    Args:
+        group_name: the name of the collective group.
+
+    Returns:
+        The collective group handle.
+    """
     _check_inside_actor()
     global _group_mgr
     if not is_group_initialized(group_name):
@@ -679,11 +696,15 @@ def _check_and_get_group(group_name):
             # get and create the group.
             name = "info_" + group_name
             mgr = ray.get_actor(name=name)
-            ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
+            ids, world_size, rank, backend, gloo_timeout = ray.get(
+                mgr.get_info.remote()
+            )
             worker = ray._private.worker.global_worker
             id_ = worker.core_worker.get_actor_id()
             r = rank[ids.index(id_)]
-            _group_mgr.create_collective_group(backend, world_size, r, group_name)
+            _group_mgr.create_collective_group(
+                backend, world_size, r, group_name, gloo_timeout
+            )
         except ValueError as exc:
             # check if this group is initialized using options()
             if (
@@ -693,8 +714,9 @@ def _check_and_get_group(group_name):
                 rank = int(os.environ["collective_rank"])
                 world_size = int(os.environ["collective_world_size"])
                 backend = os.environ["collective_backend"]
+                gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
                 _group_mgr.create_collective_group(
-                    backend, world_size, rank, group_name
+                    backend, world_size, rank, group_name, gloo_timeout
                 )
             else:
                 raise RuntimeError(
