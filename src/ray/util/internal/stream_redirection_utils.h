@@ -12,30 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This file contains a few logging related util functions.
-
 #pragma once
 
-#include "ray/util/internal/stream_redirection_utils.h"
-#include "ray/util/stream_redirection_options.h"
+#include <memory>
 
-namespace ray {
+#include "ray/util/pipe_logger.h"
+#include "ray/util/scoped_dup2_wrapper.h"
 
-// Util functions to redirect stdout / stderr stream.
-//
-// NOTICE:
-// 1. This function should be called **at most once** per process; redirected stream
-// will be flushed and synchronized at process termination to guarantee no data loss.
-// 2. This function is _NOT_ thread-safe.
-void RedirectStdoutForOnce(const StreamRedirectionOption &opt);
-void RedirectStderrForOnce(const StreamRedirectionOption &opt);
+namespace ray::internal {
+
+struct RedirectionHandleWrapper {
+  RedirectionFileHandle redirection_file_handle;
+  // Used for restoration.
+  std::unique_ptr<ScopedDup2Wrapper> scoped_dup2_wrapper;
+};
+
+// Util functions to redirect stdout / stderr stream based on the given redirection option
+// [opt]. This function is _NOT_ thread-safe.
+RedirectionHandleWrapper RedirectStreamImpl(MEMFD_TYPE_NON_UNIQUE stream_fd,
+                                            const StreamRedirectionOption &opt);
+
+// Synchronize on redirection handler in blocking style.
+void SyncOnStreamRedirection(RedirectionHandleWrapper &redirection_handle_wrapper);
 
 // Flush on redirected stream synchronously.
 //
 // TODO(hjiang): Current implementation is naive, which directly flushes on spdlog logger
 // and could miss those in the pipe; it's acceptable because we only use it in the unit
 // test for now.
-void FlushOnRedirectedStdout();
-void FlushOnRedirectedStderr();
+void FlushOnRedirectedStream(RedirectionHandleWrapper &redirection_handle_wrapper);
 
-}  // namespace ray
+}  // namespace ray::internal
