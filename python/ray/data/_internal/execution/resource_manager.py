@@ -20,6 +20,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 
@@ -101,7 +102,9 @@ class ResourceManager:
             )
         )
 
-    def _estimate_object_store_memory(self, op, state) -> int:
+    def _estimate_object_store_memory(
+        self, op: "PhysicalOperator", state: "OpState"
+    ) -> int:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):

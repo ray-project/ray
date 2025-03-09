@@ -63,11 +63,14 @@ To understand the following content better, you should understand the difference
   * `ttlSecondsAfterFinished` (Optional): Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
   * `activeDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Complete` or `Failed` within `activeDeadlineSeconds`, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed`, citing `DeadlineExceeded` as the reason.
   * `DELETE_RAYJOB_CR_AFTER_JOB_FINISHES` (Optional, added in version 1.2.0): Set this environment variable for the KubeRay operator, not the RayJob resource. If you set this environment variable to true, the RayJob custom resource itself is deleted if you also set `shutdownAfterJobFinishes` to true. Note that KubeRay deletes all resources created by the RayJob, including the Kubernetes Job.
+* Others
+  * `suspend` (Optional): If `suspend` is true, KubeRay deletes both the RayCluster and the submitter. Note that Kueue also implements scheduling strategies by mutating this field. Avoid manually updating this field if you use Kueue to schedule RayJob.
   * `deletionPolicy` (Optional, alpha in v1.3.0): Indicates what resources of the RayJob are deleted upon job completion. Valid values are `DeleteCluster`, `DeleteWorkers`, `DeleteSelf` or `DeleteNone`. If unset, deletion policy is based on `spec.shutdownAfterJobFinishes`. This field requires the `RayJobDeletionPolicy` feature gate to be enabled.
     * `DeleteCluster` - Deletion policy to delete the RayCluster custom resource, and its Pods, on job completion.
     * `DeleteWorkers` - Deletion policy to delete only the worker Pods on job completion.
     * `DeleteSelf` - Deletion policy to delete the RayJob custom resource (and all associated resources) on job completion.
     * `DeleteNone` - Deletion policy to delete no resources on job completion.
+
 
 ## Example: Run a simple Ray job with RayJob
 

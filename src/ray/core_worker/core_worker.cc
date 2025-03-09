@@ -422,6 +422,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         task_execution_service_,
         *task_event_buffer_,
         execute_task,
+        options_.initialize_thread_callback,
         [this] { return local_raylet_client_->ActorCreationTaskDone(); });
   }
 
@@ -1171,8 +1172,7 @@ void CoreWorker::Exit(
     exiting_detail_ = std::optional<std::string>{detail};
   }
   // Release the resources early in case draining takes a long time.
-  auto status =
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << "Failed to notify Raylet. It is either the raylet is already dead or the "
@@ -1367,7 +1367,7 @@ void CoreWorker::InternalHeartbeat() {
     actor_task_submitter_->CheckTimeoutTasks();
   }
 
-  // Periodically report the lastest backlog so that
+  // Periodically report the latest backlog so that
   // local raylet will have the eventually consistent view of worker backlogs
   // even in cases where backlog reports from normal_task_submitter
   // are lost or reordered.
@@ -3157,6 +3157,11 @@ void CoreWorker::RunTaskExecutionLoop() {
     signal_checker->RunFnPeriodically(
         [this] {
           /// The overhead of this is only a single digit microsecond.
+          if (worker_context_.GetCurrentActorShouldExit()) {
+            Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                 "User requested to exit the actor.",
+                 nullptr);
+          }
           auto status = options_.check_signals();
           if (status.IsIntentionalSystemExit()) {
             Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
@@ -3237,7 +3242,7 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
-  // If the worker is exitted via Exit API, we shouldn't execute
+  // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);

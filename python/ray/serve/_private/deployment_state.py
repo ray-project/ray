@@ -36,6 +36,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+    MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
@@ -1257,14 +1258,12 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
-        _save_checkpoint_func: Callable,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
-        self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -1281,7 +1280,7 @@ class DeploymentState:
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
-        self.replica_average_ongoing_requests: Dict[str, float] = dict()
+        self.replica_average_ongoing_requests: Dict[str, float] = {}
 
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
@@ -1391,7 +1390,7 @@ class DeploymentState:
     def _failed_to_start_threshold(self) -> int:
         return min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
+            self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
     @property
@@ -1508,15 +1507,11 @@ class DeploymentState:
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
-
-        # We must write ahead the target state in case of GCS failure (we don't
-        # want to set the target state, then fail because we can't checkpoint it).
         target_state = DeploymentTargetState.create(
             info=self._target_state.info,
             target_num_replicas=0,
             deleting=True,
         )
-        self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         self._target_state = target_state
         self._curr_status_info = self._curr_status_info.handle_transition(
@@ -1540,13 +1535,9 @@ class DeploymentState:
                 should attempt to run.
             status_trigger: The driver that triggered this change of state.
         """
-
-        # We must write ahead the target state in case of GCS failure (we don't
-        # want to set the target state, then fail because we can't checkpoint it).
         new_target_state = DeploymentTargetState.create(
             target_info, target_num_replicas, deleting=False
         )
-        self._save_checkpoint_func(writeahead_checkpoints={self._id: new_target_state})
 
         if self._target_state.version == new_target_state.version:
             # Record either num replica or autoscaling config lightweight update
@@ -2225,8 +2216,8 @@ class DeploymentState:
             deadlines: The current draining node deadlines.
             min_replicas_to_stop: The minimum number of replicas to stop.
         """
-        to_stop = list()
-        remaining = list()
+        to_stop = []
+        remaining = []
 
         # Stop replicas whose deadline is up
         for replica in replicas:
@@ -2364,7 +2355,9 @@ class DeploymentStateManager:
         )
         self._autoscaling_state_manager = autoscaling_state_manager
 
-        self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
+        self._shutting_down = False
+
+        self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
 
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names
@@ -2381,7 +2374,6 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
-            self._save_checkpoint_func,
         )
 
     def _map_actor_names_to_deployment(
@@ -2502,6 +2494,7 @@ class DeploymentStateManager:
         One can send multiple shutdown signals but won't effectively make any
         difference compare to calling it once.
         """
+        self._shutting_down = True
 
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
@@ -2520,27 +2513,22 @@ class DeploymentStateManager:
         Check there are no deployment states and no checkpoints.
         """
         return (
-            len(self._deployment_states) == 0
+            self._shutting_down
+            and len(self._deployment_states) == 0
             and self._kv_store.get(CHECKPOINT_KEY) is None
         )
 
-    def _save_checkpoint_func(
-        self, *, writeahead_checkpoints: Optional[Dict[str, Tuple]]
-    ) -> None:
-        """Write a checkpoint of all deployment states.
-        By default, this checkpoints the current in-memory state of each
-        deployment. However, these can be overwritten by passing
-        `writeahead_checkpoints` in order to checkpoint an update before
-        applying it to the in-memory state.
-        """
+    def save_checkpoint(self) -> None:
+        """Write a checkpoint of all deployment states."""
+        if self._shutting_down:
+            # Once we're told to shut down, stop writing checkpoints.
+            # Calling .shutdown() deletes any existing checkpoint.
+            return
 
         deployment_state_info = {
             deployment_id: deployment_state.get_checkpoint_data()
             for deployment_id, deployment_state in self._deployment_states.items()
         }
-
-        if writeahead_checkpoints is not None:
-            deployment_state_info.update(writeahead_checkpoints)
 
         self._kv_store.put(
             CHECKPOINT_KEY,
@@ -2724,6 +2712,10 @@ class DeploymentStateManager:
             if deleted:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
+
+        # Take a checkpoint before actually affecting the state of the cluster
+        # by starting/stopping replicas.
+        self.save_checkpoint()
 
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(

@@ -128,6 +128,48 @@ bool ClusterTaskManager::CancelTasks(
   return tasks_cancelled;
 }
 
+bool ClusterTaskManager::CancelTasksWithResourceShapes(
+    const std::vector<ResourceSet> target_resource_shapes) {
+  auto predicate = [target_resource_shapes,
+                    this](const std::shared_ptr<internal::Work> &work) {
+    return this->IsWorkWithResourceShape(work, target_resource_shapes);
+  };
+
+  const std::string resource_shapes_str =
+      ray::VectorToString(target_resource_shapes, &ResourceSet::DebugString);
+  RAY_LOG(WARNING) << "Cancelling infeasible tasks with resource shapes "
+                   << resource_shapes_str;
+
+  bool task_cancelled = CancelTasks(
+      predicate,
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+      absl::StrCat(
+          "Tasks or actors with resource shapes ",
+          resource_shapes_str,
+          " failed to schedule because there are not enough resources for the tasks "
+          "or actors on the whole cluster."));
+
+  RAY_LOG(INFO) << "Infeasible tasks cancellation complete with result=" << task_cancelled
+                << ",resource shapes=" << resource_shapes_str;
+
+  return task_cancelled;
+}
+
+bool ClusterTaskManager::IsWorkWithResourceShape(
+    const std::shared_ptr<internal::Work> &work,
+    const std::vector<ResourceSet> &target_resource_shapes) {
+  SchedulingClass scheduling_class =
+      work->task.GetTaskSpecification().GetSchedulingClass();
+  ResourceSet resource_set =
+      TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).resource_set;
+  for (const auto &target_resource_shape : target_resource_shapes) {
+    if (resource_set == target_resource_shape) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool ClusterTaskManager::CancelAllTaskOwnedBy(
     const WorkerID &worker_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,

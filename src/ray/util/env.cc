@@ -14,8 +14,10 @@
 
 #include "ray/util/env.h"
 
+#include <cstdlib>
 #include <string>
 
+#include "absl/strings/ascii.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -39,6 +41,15 @@ void UnsetEnv(const std::string &name) {
   int ret = unsetenv(name.c_str());
 #endif
   RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
+}
+
+bool IsEnvTrue(const std::string &name) {
+  const char *val = ::getenv(name.data());
+  if (val == nullptr) {
+    return false;
+  }
+  const std::string lower_case_val = absl::AsciiStrToLower(val);
+  return lower_case_val == "true" || lower_case_val == "1";
 }
 
 }  // namespace ray

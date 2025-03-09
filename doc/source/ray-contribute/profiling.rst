@@ -82,54 +82,66 @@ documentation:
 Memory profiling
 ----------------
 
-To run memory profiling on Ray core components, use Jemalloc (https://github.com/jemalloc/jemalloc).
-Ray supports environment variables to override LD_PRELOAD on core components.
+To run memory profiling on Ray core components, use `jemalloc <https://github.com/jemalloc/jemalloc>`_.
+Ray supports environment variables that override `LD_PRELOAD` on core components.
 
 You can find the component name from `ray_constants.py`. For example, if you'd like to profile gcs_server, 
 search `PROCESS_TYPE_GCS_SERVER` in `ray_constants.py`. You can see the value is `gcs_server`.
 
 Users are supposed to provide 3 env vars for memory profiling.
 
-- RAY_JEMALLOC_LIB_PATH: The path to the jemalloc shared library `.so`.
-- RAY_JEMALLOC_CONF: The MALLOC_CONF of jemalloc (comma separated).
-- RAY_JEMALLOC_PROFILE: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
+* `RAY_JEMALLOC_LIB_PATH`: The path to the jemalloc shared library `libjemalloc.so`
+* `RAY_JEMALLOC_CONF`: The MALLOC_CONF configuration for jemalloc, using comma-separated values. Read `jemalloc docs <http://jemalloc.net/jemalloc.3.html>`_ for more details.
+* `RAY_JEMALLOC_PROFILE`: Comma separated Ray components to run Jemalloc `.so`. e.g., ("raylet,gcs_server"). Note that the components should match the process type in `ray_constants.py`. (It means "RAYLET,GCS_SERVER" won't work).
 
 .. code-block:: bash
 
   # Install jemalloc
   wget https://github.com/jemalloc/jemalloc/releases/download/5.2.1/jemalloc-5.2.1.tar.bz2 
   tar -xf jemalloc-5.2.1.tar.bz2 
-  cd jemalloc-5.2.1 
+  cd jemalloc-5.2.1
+  export JEMALLOC_DIR=$PWD
   ./configure --enable-prof --enable-prof-libunwind 
   make
-  make install
+  sudo make install
 
+  # Verify jeprof is installed.
+  which jeprof
 
-  # Set jemalloc configs through MALLOC_CONF env variable.
-  # Read http://jemalloc.net/jemalloc.3.html#opt.lg_prof_interval.
-  # for all jemalloc configs
-  # Ray start will profile the GCS server component.
-  RAY_JEMALLOC_CONF=prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true \
-  RAY_JEMALLOC_LIB_PATH=~/jemalloc-5.2.1/lib/libjemalloc.so \
+  # Start a Ray head node with jemalloc enabled.
+  # (1) `prof_prefix` defines the path to the output profile files and the prefix of their file names.
+  # (2) This example only profiles the GCS server component.
+  RAY_JEMALLOC_CONF=prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true,prof_prefix:$PATH_TO_OUTPUT_DIR/jeprof.out \
+  RAY_JEMALLOC_LIB_PATH=$JEMALLOC_DIR/lib/libjemalloc.so \
   RAY_JEMALLOC_PROFILE=gcs_server \
   ray start --head
 
-  # You should see the following logs.
-  2021-10-20 19:45:08,175	INFO services.py:622 -- Jemalloc profiling will be used for gcs_server. env vars: {'LD_PRELOAD': '/Users/sangbincho/jemalloc-5.2.1/lib/libjemalloc.so', 'MALLOC_CONF': 'prof:true,lg_prof_interval:33,lg_prof_sample:17,prof_final:true,prof_leak:true'}
+  # Check the output files. You should see files with the format of "jeprof.<pid>.0.f.heap".
+  # Example: jeprof.out.1904189.0.f.heap
+  ls $PATH_TO_OUTPUT_DIR/
 
-Visualizing the memory profile
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The output files are at the path where you call "ray start".
-For the example of profile file "jeprof.15786.0.f.heap", use following commands to generate the .svg plot.
+  # If you don't see any output files, try stopping the Ray cluster to force it to flush the
+  # profile data since `prof_final:true` is set.
+  ray stop
 
-.. code-block:: bash
+  # Use jeprof to view the profile data. The first argument is the binary of GCS server.
+  # Note that you can also use `--pdf` or `--svg` to generate different formats of the profile data.
+  jeprof --text $YOUR_RAY_SRC_DIR/python/ray/core/src/ray/gcs/gcs_server $PATH_TO_OUTPUT_DIR/jeprof.out.1904189.0.f.heap
 
-  # Use the appropriate path.
-  RAYLET=ray/python/ray/core/src/ray/raylet/raylet
-
-  sudo jeprof $RAYLET jeprof.15786.0.f.heap --svg > /tmp/prof.svg
-  # Then open the .svg file with Chrome.
-
+  # [Example output]
+  Using local file ../ray/core/src/ray/gcs/gcs_server.
+  Using local file jeprof.out.1904189.0.f.heap.
+  addr2line: DWARF error: section .debug_info is larger than its filesize! (0x93f189 vs 0x530e70)
+  Total: 1.0 MB
+      0.3  25.9%  25.9%      0.3  25.9% absl::lts_20230802::container_internal::InitializeSlots
+      0.1  12.9%  38.7%      0.1  12.9% google::protobuf::DescriptorPool::Tables::CreateFlatAlloc
+      0.1  12.4%  51.1%      0.1  12.4% ::do_tcp_client_global_init
+      0.1  12.3%  63.4%      0.1  12.3% grpc_core::Server::Start
+      0.1  12.2%  75.6%      0.1  12.2% std::__cxx11::basic_string::_M_assign
+      0.1  12.2%  87.8%      0.1  12.2% std::__cxx11::basic_string::_M_mutate
+      0.1  12.2% 100.0%      0.1  12.2% std::__cxx11::basic_string::reserve
+      0.0   0.0% 100.0%      0.8  75.4% EventTracker::RecordExecution
+  ...
 
 
 Running microbenchmarks

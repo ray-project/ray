@@ -89,7 +89,13 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Get a resource load
+  /// Cancel tasks with certain resource shapes
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         CancelTasksWithResourceShapes,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  /// Notify GCS restart.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          NotifyGCSRestart,
                          grpc_client_,

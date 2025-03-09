@@ -17,6 +17,9 @@
 
 #include "ray/object_manager/plasma/object_store.h"
 
+#include <memory>
+#include <utility>
+
 namespace plasma {
 
 ObjectStore::ObjectStore(IAllocator &allocator)
