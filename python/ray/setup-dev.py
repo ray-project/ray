@@ -90,9 +90,10 @@ def do_link(package, force=False, skip_list=None, local_path=None):
         if package == "serve":
             tmp_generated_folder = os.path.join(temp_dir, "generated")
             package_generated_folder = os.path.join(package_home, "generated")
-            subprocess.check_call(
-                ["mv", tmp_generated_folder, package_generated_folder]
-            )
+            if not os.path.exists(package_generated_folder):
+                subprocess.check_call(
+                    ["mv", tmp_generated_folder, package_generated_folder]
+                )
 
 
 if __name__ == "__main__":
