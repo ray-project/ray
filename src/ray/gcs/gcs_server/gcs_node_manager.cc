@@ -14,8 +14,12 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 
+#include <limits>
+#include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"

@@ -15,6 +15,10 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"

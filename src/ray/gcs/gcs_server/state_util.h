@@ -13,6 +13,9 @@
 // limitations under the License.
 #pragma once
 
+#include <functional>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "src/ray/protobuf/gcs.pb.h"
 

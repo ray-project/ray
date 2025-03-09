@@ -14,6 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
+#include <limits>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric.h"
 
