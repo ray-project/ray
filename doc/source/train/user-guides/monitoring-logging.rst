@@ -32,9 +32,10 @@ metrics from multiple workers.
 
         Here is an example of reporting both the aggregated R2 score and mean train and validation loss from all workers.
 
-        .. literalinclude:: ../doc_code/torchmetrics_example.py
+        .. literalinclude:: ../doc_code/metric_logging.py
             :language: python
-            :start-after: __start__
+            :start-after: __torchmetrics_start__
+            :end-before: __torchmetrics_end__
 
 
 (Deprecated) Reporting free-floating metrics

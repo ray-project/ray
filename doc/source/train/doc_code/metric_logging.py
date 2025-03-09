@@ -1,7 +1,7 @@
 # flake8: noqa
 # isort: skip_file
 
-# __start__
+# __torchmetrics_start__
 
 # First, pip install torchmetrics
 # This code is tested with torchmetrics==0.7.3 and torch==1.12.1
@@ -92,3 +92,5 @@ trainer = TorchTrainer(
 result = trainer.fit()
 print(result.metrics["valid_loss"], result.metrics["mean_valid_loss_collected"])
 # 0.5109779238700867 0.5512474775314331
+
+# __torchmetrics_end__
