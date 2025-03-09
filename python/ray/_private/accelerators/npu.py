@@ -4,10 +4,11 @@ import logging
 from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
-from ray._private.ray_constants import (
-    ASCEND_RT_VISIBLE_DEVICES_ENV_VAR,
-    NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR,
+
+NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES"
 )
+ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"
 
 logger = logging.getLogger(__name__)
 

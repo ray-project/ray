@@ -6,9 +6,10 @@ import subprocess
 from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
-from ray._private.ray_constants import (
-    NEURON_RT_VISIBLE_CORES_ENV_VAR,
-    NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR,
+
+NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
+NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
 )
 
 logger = logging.getLogger(__name__)
