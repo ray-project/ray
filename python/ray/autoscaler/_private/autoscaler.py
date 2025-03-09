@@ -47,6 +47,7 @@ from ray.autoscaler._private.resource_demand_scheduler import (
     ResourceDemandScheduler,
     ResourceDict,
     get_bin_pack_residual,
+    placement_groups_to_resource_demands,
 )
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.util import (
@@ -495,11 +496,9 @@ class StandardAutoscaler:
         )
 
         # Don't terminate nodes needed by request_resources()
-        nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
-        if self.load_metrics.get_resource_requests():
-            nodes_not_allowed_to_terminate = (
-                self._get_nodes_needed_for_request_resources(sorted_node_ids)
-            )
+        nodes_not_allowed_to_terminate = self._get_nodes_needed_for_request_resources(
+            sorted_node_ids
+        )
 
         # Tracks counts of nodes we intend to keep for each node type.
         node_type_counts = defaultdict(int)
@@ -893,6 +892,20 @@ class StandardAutoscaler:
         assert self.provider
 
         nodes_not_allowed_to_terminate: Set[NodeID] = set()
+
+        (
+            placement_group_demand_vector,
+            strict_spreads,
+        ) = placement_groups_to_resource_demands(
+            self.load_metrics.get_pending_placement_groups()
+        )
+
+        resource_demands = (
+            placement_group_demand_vector + self.load_metrics.get_resource_requests()
+        )
+        if not resource_demands and not strict_spreads:
+            return frozenset(nodes_not_allowed_to_terminate)
+
         static_node_resources: Dict[
             NodeIP, ResourceDict
         ] = self.load_metrics.get_static_node_resources_by_ip()
@@ -926,9 +939,18 @@ class StandardAutoscaler:
         # Since it is sorted based on last used, we "keep" nodes that are
         # most recently used when we binpack. We assume get_bin_pack_residual
         # is following the given order here.
-        used_resource_requests: List[ResourceDict]
+        used_resource_requests: List[ResourceDict] = copy.deepcopy(max_node_resources)
+
+        for bundles in strict_spreads:
+            unfulfilled, updated_node_resources = get_bin_pack_residual(
+                used_resource_requests, bundles, strict_spread=True
+            )
+            if unfulfilled:
+                continue
+            used_resource_requests = updated_node_resources
+
         _, used_resource_requests = get_bin_pack_residual(
-            max_node_resources, self.load_metrics.get_resource_requests()
+            used_resource_requests, resource_demands
         )
         # Remove the first entry (the head node).
         max_node_resources.pop(0)
