@@ -7,12 +7,12 @@ from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
+logger = logging.getLogger(__name__)
+
 NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
 NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
     "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
 )
-
-logger = logging.getLogger(__name__)
 
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch

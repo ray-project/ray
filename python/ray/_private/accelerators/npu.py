@@ -5,12 +5,12 @@ from typing import Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
+logger = logging.getLogger(__name__)
+
+ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"
 NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = (
     "RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES"
 )
-ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"
-
-logger = logging.getLogger(__name__)
 
 
 class NPUAcceleratorManager(AcceleratorManager):
