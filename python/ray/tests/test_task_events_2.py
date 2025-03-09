@@ -1114,90 +1114,13 @@ def test_task_events_gc_default_policy(shutdown_only):
 
 
 class TestIsActorTaskRunning:
-    def test_main_thread_short_comm(self, ray_start_regular):
-        """
-        Test that the main thread's comm is not truncated.
-        """
-
-        @ray.remote
-        class A:
-            def check(self):
-                pid = os.getpid()
-                assert _is_actor_task_running(pid, "check")
-                assert psutil.Process(pid).name() == "ray::A.check"
-                assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
-                return pid
-
-        a = A.remote()
-        pid = ray.get(a.check.remote())
-        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
-
-    def test_main_thread_long_comm(self, ray_start_regular):
-        """
-        In this case, the process comm should be truncated because of the
-        name is more than 15 characters ("ray::Actor.check_long_comm"). Hence,
-        `psutil.Process.name()` will return `cmdline()[0]` instead.
-        """
-
-        @ray.remote
-        class Actor:
-            def check_long_comm(self):
-                pid = os.getpid()
-                assert _is_actor_task_running(pid, "check_long_comm")
-                assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
-                assert psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
-                return pid
-
-        a = Actor.remote()
-        pid = ray.get(a.check_long_comm.remote())
-        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
-
-    def test_main_thread_options_name_short_comm(self, ray_start_regular):
-        """
-        The task name is passed in as `options.name`.
-        """
-        task_name = "hello"
-
-        @ray.remote
-        class A:
-            def check(self):
-                pid = os.getpid()
-                assert _is_actor_task_running(pid, task_name)
-                assert psutil.Process(pid).name() == f"ray::{task_name}"
-                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
-                return pid
-
-        a = A.remote()
-        pid = ray.get(a.check.options(name=task_name).remote())
-        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
-
-    def test_main_thread_options_name_long_comm(self, ray_start_regular):
-        """
-        The task name is passed in as `options.name`, and it's longer than 15
-        characters. `psutil.Process.name()` will return `cmdline()[0]` instead.
-        """
-        task_name = "very_long_task_name_1234567890"
-
-        @ray.remote
-        class A:
-            def check(self):
-                pid = os.getpid()
-                assert _is_actor_task_running(pid, task_name)
-                assert psutil.Process(pid).name() == f"ray::{task_name}"
-                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
-                return pid
-
-        a = A.remote()
-        pid = ray.get(a.check.options(name=task_name).remote())
-        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
-
     def test_default_thread_short_comm(self, ray_start_regular):
         """
         `check` is not running in the main thread, so `/proc/pid/comm` will
         not be updated but `/proc/pid/cmdline` will still be updated.
         """
 
-        @ray.remote(concurrency_groups={"io": 1})
+        @ray.remote
         class A:
             def check(self):
                 pid = os.getpid()
@@ -1219,7 +1142,7 @@ class TestIsActorTaskRunning:
         characters, `psutil.Process.name()` will return `cmdline()[0]` instead.
         """
 
-        @ray.remote(concurrency_groups={"io": 1})
+        @ray.remote
         class VeryLongCommActor:
             def check_long_comm(self):
                 pid = os.getpid()
@@ -1245,7 +1168,7 @@ class TestIsActorTaskRunning:
         """
         task_name = "hello"
 
-        @ray.remote(concurrency_groups={"io": 1})
+        @ray.remote
         class A:
             def check(self):
                 pid = os.getpid()
@@ -1261,7 +1184,7 @@ class TestIsActorTaskRunning:
     def test_default_thread_options_name_long_comm(self, ray_start_regular):
         task_name = "hello"
 
-        @ray.remote(concurrency_groups={"io": 1})
+        @ray.remote
         class Actor:
             def check_long_comm(self):
                 pid = os.getpid()
@@ -1283,7 +1206,7 @@ class TestIsActorTaskRunning:
         """
         task_name = "hello"
 
-        @ray.remote(concurrency_groups={"io": 1})
+        @ray.remote
         class VeryLongCommActor:
             def check_long_comm(self):
                 pid = os.getpid()
