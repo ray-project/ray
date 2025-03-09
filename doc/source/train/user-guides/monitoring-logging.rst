@@ -38,6 +38,8 @@ metrics from multiple workers.
             :end-before: __torchmetrics_end__
 
 
+.. _train-metric-only-reporting-deprecation:
+
 (Deprecated) Reporting free-floating metrics
 --------------------------------------------
 
