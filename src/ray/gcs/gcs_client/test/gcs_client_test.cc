@@ -678,10 +678,9 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
   WaitForExpectedCount(job_update_count, 1);
   RestartGcsServer();
 
-  // The GCS client will fetch data from the GCS server after the GCS server is
-  restarted,
-      // and the GCS server keeps a job record, so `job_update_count` plus one.
-      WaitForExpectedCount(job_update_count, 2);
+  // The GCS client will fetch data from the GCS server after the GCS server is restarted,
+  // and the GCS server keeps a job record, so `job_update_count` plus one.
+  WaitForExpectedCount(job_update_count, 2);
 
   ASSERT_TRUE(MarkJobFinished(job_id));
   WaitForExpectedCount(job_update_count, 3);
