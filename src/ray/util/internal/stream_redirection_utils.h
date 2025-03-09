@@ -14,22 +14,32 @@
 
 #pragma once
 
-#include "ray/util/scoped_dup2_wrapper.h"
+#include <memory>
+
 #include "ray/util/pipe_logger.h"
+#include "ray/util/scoped_dup2_wrapper.h"
 
 namespace ray::internal {
 
 struct RedirectionHandleWrapper {
-	RedirectionFileHandle redirection_file_handle;
-	// Used for restoration.
-	std::unique_ptr<ScopedDup2Wrapper> scoped_dup2_wrapper;
+  RedirectionFileHandle redirection_file_handle;
+  // Used for restoration.
+  std::unique_ptr<ScopedDup2Wrapper> scoped_dup2_wrapper;
 };
 
-// Util functions to redirect stdout / stderr stream based on the given redirection option [opt].
-// This function is _NOT_ thread-safe.
-RedirectionHandleWrapper RedirectStdoutImpl(const StreamRedirectionOption &opt);
-RedirectionHandleWrapper RedirectStderrImpl(const StreamRedirectionOption &opt);
+// Util functions to redirect stdout / stderr stream based on the given redirection option
+// [opt]. This function is _NOT_ thread-safe.
+RedirectionHandleWrapper RedirectStreamImpl(MEMFD_TYPE_NON_UNIQUE stream_fd,
+                                            const StreamRedirectionOption &opt);
 
-void SyncOnStreamRedirection()
+// Synchronize on redirection handler in blocking style.
+void SyncOnStreamRedirection(RedirectionHandleWrapper &redirection_handle_wrapper);
+
+// Flush on redirected stream synchronously.
+//
+// TODO(hjiang): Current implementation is naive, which directly flushes on spdlog logger
+// and could miss those in the pipe; it's acceptable because we only use it in the unit
+// test for now.
+void FlushOnRedirectedStream(RedirectionHandleWrapper &redirection_handle_wrapper);
 
 }  // namespace ray::internal

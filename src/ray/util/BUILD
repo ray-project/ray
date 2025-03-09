@@ -302,6 +302,7 @@ ray_cc_library(
         ":scoped_dup2_wrapper",
         ":stream_redirection_options",
         ":util",
+        "//src/ray/util/internal:stream_redirection_utils",
     ],
 )
 

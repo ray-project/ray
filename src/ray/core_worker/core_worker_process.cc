@@ -147,7 +147,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
             ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
         stdout_redirection_options.rotation_max_file_count =
             ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-        ray::RedirectStdout(stdout_redirection_options);
+        ray::RedirectStdoutForOnce(stdout_redirection_options);
       }
 
       // Setup redirection for stderr.
@@ -162,7 +162,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
             ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
         stderr_redirection_options.rotation_max_file_count =
             ray::RayLog::GetRayLogRotationBackupCountOrDefault();
-        ray::RedirectStderr(stderr_redirection_options);
+        ray::RedirectStderrForOnce(stderr_redirection_options);
       }
     }
 

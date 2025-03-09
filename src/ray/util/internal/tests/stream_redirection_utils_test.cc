@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/util/stream_redirection_utils.h"
+#include "ray/util/internal/stream_redirection_utils.h"
 
 #include <gtest/gtest.h>
 
@@ -26,7 +26,7 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
-namespace ray {
+namespace ray::internal {
 
 namespace {
 constexpr std::string_view kLogLine1 = "hello\n";
@@ -63,7 +63,7 @@ TEST(LoggingUtilTest, RedirectStderr) {
   opts.tee_to_stderr = true;
   opts.rotation_max_size = 5;
   opts.rotation_max_file_count = 2;
-  RedirectStderrForOnce(opts);
+  auto redirection_handle = RedirectStreamImpl(GetStderrHandle(), opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;
@@ -71,7 +71,7 @@ TEST(LoggingUtilTest, RedirectStderr) {
   // TODO(hjiang): Current implementation is flaky intrinsically, sleep for a while to
   // make sure pipe content has been read over to spdlog.
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  FlushOnRedirectedStderr();
+  FlushOnRedirectedStream(redirection_handle);
 
   // Check log content after completion.
   const auto actual_content1 = ReadEntireFile(log_file_path1);
@@ -87,6 +87,7 @@ TEST(LoggingUtilTest, RedirectStderr) {
   EXPECT_EQ(stderr_content, absl::StrFormat("%s%s", kLogLine1, kLogLine2));
 
   // Make sure flush hook works fine and process terminates with no problem.
+  SyncOnStreamRedirection(redirection_handle);
 }
 
-}  // namespace ray
+}  // namespace ray::internal
