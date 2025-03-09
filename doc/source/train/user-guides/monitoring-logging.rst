@@ -3,20 +3,16 @@
 Monitoring and Logging Metrics
 ==============================
 
-Ray Train provides an API for reporting intermediate
-results and checkpoints from the training function (run on distributed workers) up to the
-``Trainer`` (where your python script is executed) by calling ``train.report(metrics)``.
-The results will be collected from the distributed workers and passed to the driver to
-be logged and displayed.
+Ray Train provides an API for attaching metrics to :ref:`checkpoints <train-checkpointing>` from the training function by calling :func:`ray.train.report(metrics, checkpoint) <ray.train.report>`.
+The results will be collected from the distributed workers and passed to the Ray Train driver process for book-keeping.
 
 .. warning::
 
-    Only the results from rank 0 worker will be used. However, in order to ensure
-    consistency, ``train.report()`` has to be called on each worker. If you
-    want to aggregate results from multiple workers, see :ref:`train-aggregating-results`.
+    Only the result reported by the rank 0 worker will be attached to the checkpoint.
+    However, in order to ensure consistency, ``train.report()`` acts as a barrier and must be called on each worker.
+    To aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
-The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
-the end of each training epoch.
+The primary use-case for reporting is for metrics (accuracy, loss, etc.) at the end of each training epoch.
 
 .. tab-set::
 
