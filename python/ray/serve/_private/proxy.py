@@ -27,11 +27,11 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import (
-    DEFAULT_LATENCY_BUCKET_MS,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
     RAY_SERVE_PROXY_GC_THRESHOLD,
+    REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -182,13 +182,15 @@ class GenericProxy(ABC):
             ),
         )
 
+        # log REQUEST_LATENCY_BUCKET_MS
+        logger.debug(f"REQUEST_LATENCY_BUCKET_MS: {REQUEST_LATENCY_BUCKETS_MS}")
         self.processing_latency_tracker = metrics.Histogram(
             f"serve_{self.protocol.lower()}_request_latency_ms",
             description=(
                 f"The end-to-end latency of {self.protocol} requests "
                 f"(measured from the Serve {self.protocol} proxy)."
             ),
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
             tag_keys=(
                 "method",
                 "route",
@@ -982,7 +984,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            is_error=not status_code.startswith("2"),
+                            is_error=status_code.startswith(("4", "5")),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":

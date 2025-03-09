@@ -21,8 +21,12 @@
 #include <boost/asio/write.hpp>
 #include <boost/bind/bind.hpp>
 #include <chrono>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
@@ -43,7 +47,7 @@ namespace {
 // Don't care what exact type is in windows... Looks like to be an asio specific type.
 template <typename NativeHandleType>
 void SetFdCloseOnExec(const NativeHandleType &handle) {
-  // In Windows we don't need to do anything, beacuse in CreateProcess we pass
+  // In Windows we don't need to do anything, because in CreateProcess we pass
   // bInheritHandles = false which means we don't inherit handles or sockets.
   // https://github.com/ray-project/ray/blob/928183b3acab3c4ad73ef3001203a7aaf009bc87/src/ray/util/process.cc#L148
   // https://learn.microsoft.com/en-us/windows/win32/sysinfo/handle-inheritance
@@ -115,10 +119,10 @@ Status ConnectSocketRetry(local_stream_socket &socket,
 }
 
 std::shared_ptr<ServerConnection> ServerConnection::Create(local_stream_socket &&socket) {
-  return std::make_shared<ServerConnection>(Tag{}, std::move(socket));
+  return std::make_shared<ServerConnection>(PrivateTag{}, std::move(socket));
 }
 
-ServerConnection::ServerConnection(Tag, local_stream_socket &&socket)
+ServerConnection::ServerConnection(PrivateTag, local_stream_socket &&socket)
     : socket_(std::move(socket)),
       async_write_max_messages_(1),
       async_write_queue_(),
@@ -410,36 +414,31 @@ void ServerConnection::DoAsyncWrites() {
 }
 
 std::shared_ptr<ClientConnection> ClientConnection::Create(
-    ClientHandler &client_handler,
-    MessageHandler &message_handler,
+    MessageHandler message_handler,
+    ConnectionErrorHandler connection_error_handler,
     local_stream_socket &&socket,
-    const std::string &debug_label,
-    const std::vector<std::string> &message_type_enum_names,
-    int64_t error_message_type) {
-  auto self = std::make_shared<ClientConnection>(Tag{},
-                                                 message_handler,
-                                                 std::move(socket),
-                                                 debug_label,
-                                                 message_type_enum_names,
-                                                 error_message_type);
-  // Let our manager process our new connection.
-  client_handler(*self);
-  return self;
+    std::string debug_label,
+    std::vector<std::string> message_type_enum_names) {
+  return std::make_shared<ClientConnection>(PrivateTag{},
+                                            std::move(message_handler),
+                                            std::move(connection_error_handler),
+                                            std::move(socket),
+                                            std::move(debug_label),
+                                            std::move(message_type_enum_names));
 }
 
-ClientConnection::ClientConnection(
-    Tag,
-    MessageHandler &message_handler,
-    local_stream_socket &&socket,
-    const std::string &debug_label,
-    const std::vector<std::string> &message_type_enum_names,
-    int64_t error_message_type)
+ClientConnection::ClientConnection(PrivateTag,
+                                   MessageHandler message_handler,
+                                   ConnectionErrorHandler connection_error_handler,
+                                   local_stream_socket &&socket,
+                                   std::string debug_label,
+                                   std::vector<std::string> message_type_enum_names)
     : ServerConnection(std::move(socket)),
       registered_(false),
-      message_handler_(message_handler),
-      debug_label_(debug_label),
-      message_type_enum_names_(message_type_enum_names),
-      error_message_type_(error_message_type) {}
+      message_handler_(std::move(message_handler)),
+      connection_error_handler_(std::move(connection_error_handler)),
+      debug_label_(std::move(debug_label)),
+      message_type_enum_names_(std::move(message_type_enum_names)) {}
 
 void ClientConnection::Register() {
   RAY_CHECK(!registered_);
@@ -551,29 +550,13 @@ std::string ClientConnection::RemoteEndpointInfo() {
 }
 
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
+  auto this_ptr = shared_ClientConnection_from_this();
   if (error) {
-    flatbuffers::FlatBufferBuilder fbb;
-    const auto &disconnect_detail = fbb.CreateString(absl::StrCat(
-        "Worker unexpectedly exits with a connection error code ",
-        error.value(),
-        ". ",
-        error.message(),
-        ". There are some potential root causes. (1) The process is killed by "
-        "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
-        "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
-        "unexpected errors."));
-    protocol::DisconnectClientBuilder builder(fbb);
-    builder.add_disconnect_type(static_cast<int>(ray::rpc::WorkerExitType::SYSTEM_ERROR));
-    builder.add_disconnect_detail(disconnect_detail);
-    fbb.Finish(builder.Finish());
-    std::vector<uint8_t> error_data(fbb.GetBufferPointer(),
-                                    fbb.GetBufferPointer() + fbb.GetSize());
-    read_type_ = error_message_type_;
-    read_message_ = error_data;
+    return connection_error_handler_(std::move(this_ptr), error);
   }
 
   int64_t start_ms = current_time_ms();
-  message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_);
+  message_handler_(std::move(this_ptr), read_type_, read_message_);
   int64_t interval = current_time_ms() - start_ms;
   if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     std::string message_type;
