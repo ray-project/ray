@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 import time
-from threading import RLock
+from threading import RLock, Thread
 from types import ModuleType
 from typing import Any, Dict, Optional
 
@@ -263,6 +263,8 @@ class FakeMultiNodeProvider(NodeProvider):
         # Whether to launch multiple nodes at once, or one by one regardless of
         # the count (default)
         self._launch_multiple = provider_config.get("launch_multiple", False)
+        # Whether to delay the start of a new node (seconds)
+        self._start_node_delay_s = provider_config.get("start_node_delay_s", 0)
 
         # These are injected errors for testing purposes. If not None,
         # these will be raised on `create_node_with_resources_and_labels`` and
@@ -303,7 +305,11 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def is_running(self, node_id):
         with self.lock:
-            return node_id in self._nodes
+            return node_id in self._nodes and (
+                # head node doesn't have a "node" key
+                "node" not in self._nodes[node_id]
+                or self._nodes[node_id]["node"] is not None
+            )
 
     def is_terminated(self, node_id):
         with self.lock:
@@ -377,9 +383,12 @@ class FakeMultiNodeProvider(NodeProvider):
                     ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
                 },
             )
-            node = ray._private.node.Node(
-                ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
-            )
+
+            def start_node():
+                return ray._private.node.Node(
+                    ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
+                )
+
             all_tags = {
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
                 TAG_RAY_USER_NODE_TYPE: node_type,
@@ -389,8 +398,20 @@ class FakeMultiNodeProvider(NodeProvider):
             all_tags.update(tags)
             self._nodes[next_id] = {
                 "tags": all_tags,
-                "node": node,
+                "node": None,
             }
+            if self._start_node_delay_s <= 0:
+                self._nodes[next_id]["node"] = start_node()
+            else:
+
+                def _start_node_delay():
+                    time.sleep(self._start_node_delay_s)
+                    with self.lock:
+                        if next_id in self._nodes:
+                            self._nodes[next_id]["node"] = start_node()
+
+                thread = Thread(target=_start_node_delay, daemon=True)
+                thread.start()
 
     def terminate_node(self, node_id):
         with self.lock:
@@ -405,7 +426,8 @@ class FakeMultiNodeProvider(NodeProvider):
             self._terminate_node(node)
 
     def _terminate_node(self, node):
-        node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
+        if "node" in node and node["node"] is not None:
+            node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod
     def bootstrap_config(cluster_config):
