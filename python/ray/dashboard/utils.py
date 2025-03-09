@@ -358,7 +358,9 @@ def address_tuple(address):
     return ip, int(port)
 
 
-def node_stats_to_dict(message):
+def node_stats_to_dict(
+    message: "ray.core.generated.node_manager_pb2.GetNodeStatsReply",
+):
     decode_keys = {
         "actorId",
         "jobId",
