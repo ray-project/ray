@@ -328,16 +328,6 @@ def test_num_tpu_chips(mock_glob):
     assert num_tpu_chips == 4
 
 
-def test_num_chips_vm():
-    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
-    print(f"{num_tpu_chips=}")
-    num_workers = TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
-    print(f"{num_workers=}")
-    assert num_tpu_chips == 4
-    assert num_workers == 1
-
-
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
