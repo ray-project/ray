@@ -1107,7 +1107,8 @@ void CoreWorker::Disconnect(
       if (status.ok()) {
         RAY_LOG(INFO) << "Disconnected from the local raylet.";
       } else {
-        RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status.ToString();
+        RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: "
+                         << status.ToString();
       }
     }
   }
