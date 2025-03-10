@@ -13,7 +13,7 @@ Compiled Graph is a new feature and has some limitations:
   - Only the process that compiles the Compiled Graph may call it.
 
   - A Compiled Graph has a maximum number of in-flight executions. When using the DAG API, 
-     if there aren't enough resources at the time of ``dag.execute()``, Ray will queue the
+    if there aren't enough resources at the time of ``dag.execute()``, Ray will queue the
     tasks for later execution. Ray Compiled Graph currently doesn't support queuing past its
     maximum capacity. Therefore, you may need to consume some results using ``ray.get()``
     before submitting more executions. As a stopgap,
