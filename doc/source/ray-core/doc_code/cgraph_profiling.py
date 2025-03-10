@@ -27,6 +27,9 @@ from ray.dag import InputNode
 
 @ray.remote(num_gpus=1, runtime_env={"nsight": "default"})
 class RayActor:
+    def __init__():
+        self.device = torch_utils.get_devices()[0]
+
     def send(self, shape, dtype, value: int):
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 

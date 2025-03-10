@@ -3,7 +3,7 @@ import torch
 import ray
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-ray.init()
+
 # Note that the following example requires at least 2 GPUs.
 assert (
     ray.available_resources().get("GPU") >= 2
