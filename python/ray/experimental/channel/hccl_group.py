@@ -41,12 +41,14 @@ class StreamContext:
     """
     Context-manager that selects a given stream.
 
-    Stream context, in which torch.npu.current_stream will be set to the value in the context. This class comes from pytorch because torch for NPU does not implement this context
+    Stream context, in which torch.npu.current_stream will be set to the value
+    in the context. This class comes from pytorch because torch for NPU does
+    not implement this context
 
     Args:
-        Stream (Stream): selected stream. This manager is a no-op if it's
-            ``None``.
-    note:: Streams are per-device.
+        stream: selected stream. This context manager is a no-op if
+        it's ``None``.
+    note:: streams are per-device.
     """
 
     cur_stream: Optional["torch.npu.Stream"]
@@ -60,8 +62,8 @@ class StreamContext:
         if self.idx is None:
             self.idx = -1
 
-        self.src_prev_stream = None
-        self.dst_prev_stream = None
+        self.src_prev_stream: Optional["torch.npu.Stream"] = None
+        self.dst_prev_stream: Optional["torch.npu.Stream"] = None
 
     def __enter__(self):
         import torch
