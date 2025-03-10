@@ -16,7 +16,6 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.scripts import remove_ansi_escape_sequences
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
 
@@ -33,7 +32,42 @@ def assert_deployments_live(ids: List[DeploymentID]):
 
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
-    subprocess.check_output(["serve", "shutdown", "-y"])
+    # deploy a simple app
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
+
+    deploy_response = subprocess.check_output(["serve", "deploy", import_path])
+    assert b"Sent deploy request successfully." in deploy_response
+
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
+    )
+
+    ret = subprocess.check_output(["serve", "shutdown", "-y"])
+    assert b"Sent shutdown request; applications will be deleted asynchronously" in ret
+
+    def check_no_apps():
+        status = subprocess.check_output(["serve", "status"])
+        return b"applications: {}" in status
+
+    wait_for_condition(check_no_apps, timeout=15)
+
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
+
+
+def test_start_shutdown_without_serve_running(ray_start_stop):
+    # Test shutdown when no Serve instance is running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"No Serve instance found running" in ret
+
+
+def test_start_shutdown_without_ray_running():
+    # Test shutdown when Ray is not running
+    ret = subprocess.check_output(["serve", "shutdown", "-y"], stderr=subprocess.STDOUT)
+    assert b"Unable to shutdown Serve on the cluster" in ret
 
 
 def check_http_response(expected_text: str, json: Optional[Dict] = None):
