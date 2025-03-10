@@ -1,7 +1,7 @@
 .. _ray-compiled-graph:
 
-Ray Compiled Graph
-==================
+Ray Compiled Graph (beta)
+=========================
 
 .. warning::
 
