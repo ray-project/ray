@@ -1034,7 +1034,8 @@ class Learner(Checkpointable):
 
         # Data iterator provided.
         if training_data.data_iterators:
-            if "num_iters" not in kwargs:
+            num_iters = kwargs.pop("num_iters", None)
+            if num_iters is None:
                 raise ValueError(
                     "Learner.update(data_iterators=..) requires `num_iters` kwarg!"
                 )
@@ -1051,7 +1052,20 @@ class Learner(Checkpointable):
             batch_iter = MiniBatchRayDataIterator(
                 iterator=self.iterator,
                 finalize_fn=_finalize_fn,
+                num_iters=num_iters,
                 **kwargs,
+            )
+            # Record the number of batches pulled from the dataset.
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
+                num_iters,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
+                num_iters,
+                reduce="sum",
             )
         else:
             batch = self._make_batch_if_necessary(training_data=training_data)
@@ -1122,8 +1136,10 @@ class Learner(Checkpointable):
 
             self._set_slicing_by_batch_id(tensor_minibatch, value=False)
 
-            # Log all timesteps (env, agent, modules) based on given episodes/batch.
-            self._log_steps_trained_metrics(tensor_minibatch)
+        # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
+        #  cover the minibatch/epoch logic.
+        # Log all timesteps (env, agent, modules) based on given episodes/batch.
+        self._log_steps_trained_metrics(batch)
 
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -1145,19 +1161,6 @@ class Learner(Checkpointable):
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
-
-        # Record the number of batches pulled from the dataset in this RLlib iteration.
-        self.metrics.log_value(
-            (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
-            i,
-            reduce="sum",
-            clear_on_reduce=True,
-        )
-        self.metrics.log_value(
-            (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
-            i,
-            reduce="sum",
-        )
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod

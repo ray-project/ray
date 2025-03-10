@@ -570,7 +570,11 @@ class EnvRunnerGroup:
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         rl_module_state = None
         if self.num_remote_workers() or from_worker_or_learner_group is not None:
-            weights_src = from_worker_or_learner_group or self.local_env_runner
+            weights_src = (
+                from_worker_or_learner_group
+                if from_worker_or_learner_group is not None
+                else self.local_env_runner
+            )
 
             if weights_src is None:
                 raise ValueError(
