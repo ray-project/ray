@@ -119,7 +119,7 @@ Be aware that:
 -------------------
 
 If your Compiled Graph driver is running in an ``asyncio`` event loop, use the ``async`` APIs to ensure that executing
-the Compiled Graph and getting the results doesn't block the event loop. This requires a few changes for now.
+the Compiled Graph and getting the results doesn't block the event loop.
 First, pass ``enable_async=True`` to the ``dag.experimental_compile()``:
 
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
