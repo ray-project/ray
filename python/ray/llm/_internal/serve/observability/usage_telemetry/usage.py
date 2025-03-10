@@ -7,6 +7,7 @@ import ray
 from botocore.exceptions import ClientError
 from ray import serve
 
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -61,6 +62,7 @@ class TelemetryModel(BaseModelExtended):
 @ray.remote(
     name=LLM_SERVE_TELEMETRY_ACTOR_NAME,
     namespace=LLM_SERVE_TELEMETRY_NAMESPACE,
+    resources={HEAD_NODE_RESOURCE_NAME: 0.001},
     num_cpus=0,
     lifetime="detached",
 )
