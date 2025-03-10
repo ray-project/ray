@@ -1,5 +1,4 @@
 import sys
-import time
 import asyncio
 import logging
 import multiprocessing
@@ -113,6 +112,8 @@ class SubprocessModuleHandle:
             self.loop.run_until_complete(self.destroy_module())
 
     def start_module(self):
+        ready_event = self.mp_context.Event()
+
         self.process = self.mp_context.Process(
             target=run_module,
             args=(
@@ -120,22 +121,15 @@ class SubprocessModuleHandle:
                 self.config,
                 self.incarnation,
                 os.getpid(),
+                ready_event,
             ),
             daemon=True,
             name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
+        ready_event.wait()
 
         socket_path = os.path.join(self.config.socket_dir, self.module_cls.__name__)
-
-        # Wait for the socket to be created.
-        for _ in range(10):
-            if os.path.exists(socket_path):
-                break
-            time.sleep(0.1)
-        else:
-            raise RuntimeError(f"Socket {socket_path} not created in time")
-
         if sys.platform == "win32":
             connector = aiohttp.NamedPipeConnector(socket_path)
         else:
