@@ -190,7 +190,7 @@ class SchedulingNode:
         labels: Dict[str, str],
         status: SchedulingNodeStatus,
         im_instance_id: str = "",
-        im_instance_status: str = "",
+        im_instance_status: str = None,
         ray_node_id: str = "",
         idle_duration_ms: int = 0,
         launch_config_hash: str = "",
