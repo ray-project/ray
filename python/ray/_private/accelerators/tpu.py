@@ -73,7 +73,7 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
 
 
 def _accelerator_type_check(accelerator_type: str):
-    valid_prefixes = ("v2", "v3", "v4", "v5", "v5litepod", "v6e")
+    valid_prefixes = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e")
     if not accelerator_type.startswith(valid_prefixes):
         raise ValueError(
             f"Invalid accelerator type: {accelerator_type}. Must start with one of: {valid_prefixes}"
@@ -82,6 +82,8 @@ def _accelerator_type_check(accelerator_type: str):
 
 def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
+    # Accelerators that are 4 chips per host: v2, v3, v4, v5p
+    # 8 chips per host: v5e, v6e
     single_host_8chips_accelerators = ("v5litepod", "v6e")
     if accelerator_type.startswith(single_host_8chips_accelerators):
         return 8
@@ -91,7 +93,8 @@ def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
 
 def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
-
+    # Accelerators that are 2 cores per chip: v2, v3, v4, v5p
+    # Accelerators that are 1 core per chip: v5e, v6e
     single_core_accelerator_types = ("v5litepod", "v6e")
     if accelerator_type.startswith(single_core_accelerator_types):
         return 1
