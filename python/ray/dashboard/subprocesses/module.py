@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import os
 import setproctitle
 import pathlib
+import multiprocessing
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -97,9 +98,6 @@ class SubprocessModule(abc.ABC):
         """
         Start the aiohttp server.
         """
-        if self.socket_path.exists():
-            self.socket_path.unlink()
-
         app = aiohttp.web.Application()
         routes: list[aiohttp.web.RouteDef] = [
             aiohttp.web.get("/api/healthz", self._internal_module_health_check)
@@ -181,6 +179,7 @@ async def run_module_inner(
     config: SubprocessModuleConfig,
     incarnation: int,
     parent_process_pid: int,
+    ready_event: multiprocessing.Event,
 ):
 
     module_name = cls.__name__
@@ -197,6 +196,7 @@ async def run_module_inner(
         # First init the module, then start the aiohttp server.
         await module.init()
         await module.start_server()
+        ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
         while True:
             await asyncio.sleep(3600)  # sleep forever
@@ -210,6 +210,7 @@ def run_module(
     config: SubprocessModuleConfig,
     incarnation: int,
     parent_process_pid: int,
+    ready_event: multiprocessing.Event,
 ):
     """
     Entrypoint for a subprocess module.
@@ -241,6 +242,7 @@ def run_module(
             config,
             incarnation,
             parent_process_pid,
+            ready_event,
         )
     )
     # TODO: do graceful shutdown.
