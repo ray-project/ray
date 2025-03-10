@@ -386,3 +386,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "type_traits_test",
+    size = "small",
+    srcs = ["type_traits_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:type_traits",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
