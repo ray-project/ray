@@ -897,7 +897,7 @@ class Learner(Checkpointable):
         use the `forward_train()` outputs of the RLModule(s) to compute the required
         loss tensors.
         See here for a custom loss function example script:
-        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py  # noqa
+        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py  # noqa
 
         Args:
             fwd_out: Output from a call to the `forward_train()` method of the
@@ -1163,8 +1163,8 @@ class Learner(Checkpointable):
                 fwd_out, loss_per_module, tensor_metrics = self._update(
                     batch.policy_batches
                 )
-                # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-                # to actual (numpy) values.
+                # Convert logged tensor metrics (logged during tensor-mode of
+                # MetricsLogger) to actual (numpy) values.
                 self.metrics.tensors_to_numpy(tensor_metrics)
 
                 self._set_slicing_by_batch_id(batch, value=False)
@@ -1246,6 +1246,7 @@ class Learner(Checkpointable):
 
         state = {
             "should_module_be_updated": self.config.policies_to_train,
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
         }
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
@@ -1256,7 +1257,6 @@ class Learner(Checkpointable):
                 ),
                 **kwargs,
             )
-            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
 
@@ -1342,7 +1342,7 @@ class Learner(Checkpointable):
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         num_total_minibatches: int = 0,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    ) -> None:
 
         self._check_is_built()
 
@@ -1401,9 +1401,14 @@ class Learner(Checkpointable):
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
-        # If we have already an `MultiAgentBatch` but with `numpy` array, convert to tensors.
-        elif isinstance(batch, MultiAgentBatch) and isinstance(
-            next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+        # If we have already an `MultiAgentBatch` but with `numpy` array, convert to
+        # tensors.
+        elif (
+            isinstance(batch, MultiAgentBatch)
+            and batch.policy_batches
+            and isinstance(
+                next(iter(batch.policy_batches.values()))["obs"], numpy.ndarray
+            )
         ):
             batch = self._convert_batch_type(batch)
 
@@ -1422,6 +1427,8 @@ class Learner(Checkpointable):
         for module_id in list(batch.policy_batches.keys()):
             if not self.should_module_be_updated(module_id, batch):
                 del batch.policy_batches[module_id]
+        if not batch.policy_batches:
+            return
 
         # Log all timesteps (env, agent, modules) based on given episodes/batch.
         self._log_steps_trained_metrics(batch)
@@ -1717,7 +1724,7 @@ class Learner(Checkpointable):
     @staticmethod
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
-        """Returns the gradient clipping function to use, given the framework."""
+        """Returns the gradient clipping function to use."""
 
     @staticmethod
     @abc.abstractmethod

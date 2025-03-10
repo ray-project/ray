@@ -14,6 +14,12 @@
 
 #include "ray/raylet_client/raylet_client.h"
 
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/synchronization/notification.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
@@ -21,7 +27,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
-#include "ray/util/util.h"
 
 using MessageType = ray::protocol::MessageType;
 
@@ -78,30 +83,22 @@ Status RayletClient::Disconnect(
                          creation_task_exception_pb_bytes->Size());
   }
   const auto &fb_exit_detail = fbb.CreateString(exit_detail);
-  protocol::DisconnectClientBuilder builder(fbb);
+  protocol::DisconnectClientRequestBuilder builder(fbb);
+  builder.add_disconnect_type(static_cast<int>(exit_type));
+  builder.add_disconnect_detail(fb_exit_detail);
   // Add to table builder here to avoid nested construction of flatbuffers
   if (creation_task_exception_pb_bytes != nullptr) {
     builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
   }
-  builder.add_disconnect_type(static_cast<int>(exit_type));
-  builder.add_disconnect_detail(fb_exit_detail);
   fbb.Finish(builder.Finish());
-  auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
-  // Don't be too strict for disconnection errors.
-  // Just create logs and prevent it from crash.
-  // TODO (myan): In the current implementation, if raylet is already terminated in the
-  // "WriteMessage" function above, the worker process will exit early in the function
-  // and will not reach here. However, the code path here is shared between graceful
-  // shutdown and force termination. We need to make sure the above early exit
-  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
-  // leak if early exit is triggered
-  if (!status.ok()) {
-    RAY_LOG(WARNING)
-        << status.ToString()
-        << " [RayletClient] Failed to disconnect from raylet. This means the "
-           "raylet the worker is connected is probably already dead.";
-  }
-  return Status::OK();
+  std::vector<uint8_t> reply;
+  // NOTE(edoakes): AtomicRequestReply will fast fail and exit the process if the raylet
+  // is already dead.
+  // TODO(edoakes): we should add a timeout to this call in case the raylet is overloaded.
+  return conn_->AtomicRequestReply(MessageType::DisconnectClientRequest,
+                                   MessageType::DisconnectClientReply,
+                                   &reply,
+                                   &fbb);
 }
 
 // TODO(hjiang): After we merge register client and announce port, should delete this
@@ -160,9 +157,9 @@ Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
+Status RayletClient::NotifyDirectCallTaskBlocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
+  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
@@ -174,12 +171,12 @@ Status RayletClient::NotifyDirectCallTaskUnblocked() {
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }
 
-Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
-                          const std::vector<rpc::Address> &owner_addresses,
-                          int num_returns,
-                          int64_t timeout_milliseconds,
-                          const TaskID &current_task_id,
-                          WaitResultPair *result) {
+StatusOr<absl::flat_hash_set<ObjectID>> RayletClient::Wait(
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<rpc::Address> &owner_addresses,
+    int num_returns,
+    int64_t timeout_milliseconds,
+    const TaskID &current_task_id) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(fbb,
@@ -194,17 +191,13 @@ Status RayletClient::Wait(const std::vector<ObjectID> &object_ids,
       MessageType::WaitRequest, MessageType::WaitReply, &reply, &fbb));
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<protocol::WaitReply>(reply.data());
-  auto found = reply_message->found();
+  auto *found = reply_message->found();
+  absl::flat_hash_set<ObjectID> result;
+  result.reserve(found->size());
   for (size_t i = 0; i < found->size(); i++) {
-    ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
-    result->first.push_back(object_id);
+    result.insert(ObjectID::FromBinary(found->Get(i)->str()));
   }
-  auto remaining = reply_message->remaining();
-  for (size_t i = 0; i < remaining->size(); i++) {
-    ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
-    result->second.push_back(object_id);
-  }
-  return Status::OK();
+  return result;
 }
 
 Status RayletClient::WaitForDirectActorCallArgs(
@@ -364,7 +357,7 @@ void RayletClient::PushMutableObject(
     // metadata).
     request.set_payload(static_cast<char *>(data) + offset, chunk_size);
 
-    // TODO: Add failure recovery, retries, and timeout.
+    // TODO(jackhumphries): Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
         request, [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
           RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
@@ -518,6 +511,21 @@ void RayletClient::GetResourceLoad(
     const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
   rpc::GetResourceLoadRequest request;
   grpc_client_->GetResourceLoad(request, callback);
+}
+
+void RayletClient::CancelTasksWithResourceShapes(
+    const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
+    const rpc::ClientCallback<rpc::CancelTasksWithResourceShapesReply> &callback) {
+  rpc::CancelTasksWithResourceShapesRequest request;
+
+  for (const auto &resource_shape : resource_shapes) {
+    rpc::CancelTasksWithResourceShapesRequest::ResourceShape *resource_shape_proto =
+        request.add_resource_shapes();
+    resource_shape_proto->mutable_resource_shape()->insert(resource_shape.begin(),
+                                                           resource_shape.end());
+  }
+
+  grpc_client_->CancelTasksWithResourceShapes(request, callback);
 }
 
 void RayletClient::NotifyGCSRestart(

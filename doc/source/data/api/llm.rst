@@ -5,7 +5,7 @@ Large Language Model (LLM) API
 
 .. currentmodule:: ray.data.llm
 
-LLM Processor Builder
+LLM processor builder
 ---------------------
 
 .. autosummary::
@@ -23,12 +23,14 @@ Processor
 
     ~Processor
 
-Processor Configs
+Processor configs
 -----------------
 
 .. autosummary::
     :nosignatures:
+    :template: autosummary/class_without_autosummary_noinheritance.rst
     :toctree: doc/
 
     ~ProcessorConfig
     ~HttpRequestProcessorConfig
+    ~vLLMEngineProcessorConfig

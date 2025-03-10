@@ -19,13 +19,16 @@
 namespace ray {
 namespace core {
 
-BoundedExecutor::BoundedExecutor(int max_concurrency) : pool_(max_concurrency){};
+BoundedExecutor::BoundedExecutor(int max_concurrency) {
+  RAY_CHECK(max_concurrency > 0) << "max_concurrency must be greater than 0";
+  pool_ = std::make_unique<boost::asio::thread_pool>(max_concurrency);
+}
 
 /// Stop the thread pool.
-void BoundedExecutor::Stop() { pool_.stop(); }
+void BoundedExecutor::Stop() { pool_->stop(); }
 
 /// Join the thread pool.
-void BoundedExecutor::Join() { pool_.join(); }
+void BoundedExecutor::Join() { pool_->join(); }
 
 }  // namespace core
 }  // namespace ray

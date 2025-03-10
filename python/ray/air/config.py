@@ -1,6 +1,7 @@
 import logging
 from collections import Counter, defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
+import os
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -13,14 +14,14 @@ from typing import (
     Tuple,
     Union,
 )
+import warnings
 
 import pyarrow.fs
 
 from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
@@ -674,15 +675,20 @@ class RunConfig:
             )
 
         if self.storage_path is None:
-            # TODO(justinvyu): [Deprecated] Remove in 2.30
             self.storage_path = DEFAULT_STORAGE_PATH
 
-            # If no remote path is set, try to get Ray Storage URI
-            ray_storage_uri: Optional[str] = _get_storage_uri()
+            # TODO(justinvyu): [Deprecated]
+            ray_storage_uri: Optional[str] = os.environ.get("RAY_STORAGE")
             if ray_storage_uri is not None:
                 logger.info(
                     "Using configured Ray Storage URI as the `storage_path`: "
                     f"{ray_storage_uri}"
+                )
+                warnings.warn(
+                    "The `RAY_STORAGE` environment variable is deprecated. "
+                    "Please use `RunConfig(storage_path)` instead.",
+                    RayDeprecationWarning,
+                    stacklevel=2,
                 )
                 self.storage_path = ray_storage_uri
 
@@ -695,6 +701,8 @@ class RunConfig:
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
 
+        # Save the original verbose value to check for deprecations
+        self._verbose = self.verbose
         if self.verbose is None:
             # Default `verbose` value. For new output engine,
             # this is AirVerbosity.DEFAULT.

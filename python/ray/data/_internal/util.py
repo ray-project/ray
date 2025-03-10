@@ -77,10 +77,10 @@ class _NullSentinel:
         return isinstance(other, _NullSentinel)
 
     def __gt__(self, other):
-        return True
+        return not self.__le__(other)
 
     def __ge__(self, other):
-        return True
+        return not self.__lt__(other)
 
     def __hash__(self):
         return id(self)
@@ -318,9 +318,8 @@ def _check_import(obj, *, module: str, package: str) -> None:
         importlib.import_module(module)
     except ImportError:
         raise ImportError(
-            f"`{obj.__class__.__name__}` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
+            f"`{obj.__class__.__name__}` depends on '{module}', but Ray Data couldn't "
+            f"import it. Install '{module}' by running `pip install {package}`."
         )
 
 
@@ -718,7 +717,7 @@ def unify_block_metadata_schema(
             pa = None
         # If the result contains PyArrow schemas, unify them
         if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
-            return unify_schemas(schemas_to_unify)
+            return unify_schemas(schemas_to_unify, promote_types=True)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
         return schemas_to_unify[0]
@@ -1087,10 +1086,6 @@ def make_async_gen(
                 else:
                     non_empty_queues.append(output_queue)
                     yield item
-
-            assert (
-                non_empty_queues + empty_queues == remaining_output_queues
-            ), "Exhausted non-trailing queue!"
 
             remaining_output_queues = non_empty_queues
 
@@ -1504,3 +1499,16 @@ def keys_equal(keys1, keys2):
         if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
             return False
     return True
+
+
+def get_total_obj_store_mem_on_node() -> int:
+    """Return the total object store memory on the current node.
+
+    This function incurs an RPC. Use it cautiously.
+    """
+    node_id = ray.get_runtime_context().get_node_id()
+    total_resources_per_node = ray._private.state.total_resources_per_node()
+    assert (
+        node_id in total_resources_per_node
+    ), f"Expected node '{node_id}' to be in resources: {total_resources_per_node}"
+    return total_resources_per_node[node_id]["object_store_memory"]

@@ -14,7 +14,11 @@
 
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <string>
+
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {

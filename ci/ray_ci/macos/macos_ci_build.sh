@@ -17,7 +17,9 @@ export TORCHVISION_VERSION=0.15.2
 build_x86_64() {
   # Cleanup environments
   rm -rf /tmp/bazel_event_logs
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+  # shellcheck disable=SC2317
+  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }
+  trap cleanup EXIT
   (which bazel && bazel clean) || true
   # TODO(simon): make sure to change both PR and wheel builds
   # Special setup for jar builds (will be installed to the machine instead)
@@ -54,7 +56,9 @@ build_x86_64() {
 build_aarch64() {
   # Cleanup environments
   rm -rf /tmp/bazel_event_logs
-  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+  # shellcheck disable=SC2317
+  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }
+  trap cleanup EXIT
   (which bazel && bazel clean) || true
   brew install pkg-config nvm node || true
   # TODO(simon): make sure to change both PR and wheel builds

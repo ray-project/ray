@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <utility>
+
 #include "ray/gcs/store_client/store_client.h"
 
 namespace ray {

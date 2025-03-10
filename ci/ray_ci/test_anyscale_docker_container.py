@@ -52,6 +52,22 @@ class TestAnyscaleDockerContainer(RayCITestBase):
                 f"docker push {gcp_prj}:123456-{pv}",
             ]
 
+    def test_requirements_file(self) -> None:
+        container = AnyscaleDockerContainer("3.11", "cu12.1.1-cudnn8", "ray-ml")
+        assert container._get_requirement_file() == "requirements_ml_byod_3.11.txt"
+
+        container = AnyscaleDockerContainer("3.9", "cu12.1.1-cudnn8", "ray-ml")
+        assert container._get_requirement_file() == "requirements_ml_byod_3.9.txt"
+
+        container = AnyscaleDockerContainer("3.11", "cu12.4.1-cudnn", "ray-llm")
+        assert container._get_requirement_file() == "requirements_llm_byod_3.11.txt"
+
+        container = AnyscaleDockerContainer("3.9", "cpu", "ray")
+        assert container._get_requirement_file() == "requirements_byod_3.9.txt"
+
+        container = AnyscaleDockerContainer("3.12", "cpu", "ray")
+        assert container._get_requirement_file() == "requirements_byod_3.12.txt"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))

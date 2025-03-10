@@ -677,7 +677,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     async def _get_stub_address_by_ip(
         self, ip: str
-    ) -> Optional[Tuple[NodeID, str, int, int]]:
+    ) -> Optional[Tuple[str, str, int, int]]:
         agent_addr_json = await self.gcs_aio_client.internal_kv_get(
             f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
             namespace=KV_NAMESPACE_DASHBOARD,
@@ -686,7 +686,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if not agent_addr_json:
             return None
         node_id, http_port, grpc_port = json.loads(agent_addr_json)
-        return node_id, ip, http_port, grpc_port
+        return NodeID.from_hex(node_id), ip, http_port, grpc_port
 
     def _make_stub(
         self, ip_port: str

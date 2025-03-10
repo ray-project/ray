@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime
 import inspect
 import fnmatch
 import functools
@@ -14,13 +13,16 @@ import socket
 import subprocess
 import sys
 import tempfile
+import uuid
 import time
 import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional, Tuple
-import uuid
+from datetime import datetime
+from enum import Enum
+
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass
 
 import requests
@@ -37,6 +39,7 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
+import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
@@ -193,7 +196,6 @@ def start_redis_instance(
     stdout_file: Optional[str] = None,
     stderr_file: Optional[str] = None,
     password: Optional[str] = None,
-    redis_max_memory: Optional[int] = None,
     fate_share: Optional[bool] = None,
     port_denylist: Optional[List[int]] = None,
     listen_to_localhost_only: bool = False,
@@ -224,9 +226,6 @@ def start_redis_instance(
             no redirection should happen, then this should be None.
         password: Prevents external clients without the password
             from connecting to Redis if provided.
-        redis_max_memory: The max amount of memory (in bytes) to allow redis
-            to use, or None for no limit. Once the limit is exceeded, redis
-            will start LRU eviction of entries.
         port_denylist: A set of denylist ports that shouldn't
             be used when allocating a new port.
         listen_to_localhost_only: Redis server only listens to
@@ -1520,11 +1519,13 @@ class ResourceKillerActor:
         self,
         head_node_id,
         kill_interval_s: float = 60,
+        kill_delay_s: float = 0,
         max_to_kill: int = 2,
         batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
         self.kill_interval_s = kill_interval_s
+        self.kill_delay_s = kill_delay_s
         self.is_running = False
         self.head_node_id = head_node_id
         self.killed = set()
@@ -1541,6 +1542,9 @@ class ResourceKillerActor:
 
     async def run(self):
         self.is_running = True
+
+        time.sleep(self.kill_delay_s)
+
         while self.is_running:
             to_kills = await self._find_resources_to_kill()
 
@@ -1676,21 +1680,8 @@ class EC2InstanceTerminator(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
-    def __init__(
-        self,
-        head_node_id,
-        kill_interval_s: float = 60,
-        max_to_kill: int = 2,
-        batch_size_to_kill: int = 1,
-        kill_filter_fn: Optional[Callable] = None,
-    ):
-        super().__init__(
-            head_node_id,
-            kill_interval_s,
-            max_to_kill,
-            batch_size_to_kill,
-            kill_filter_fn,
-        )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
@@ -1787,6 +1778,7 @@ def get_and_run_resource_killer(
     ).remote(
         head_node_id,
         kill_interval_s=kill_interval_s,
+        kill_delay_s=kill_delay_s,
         max_to_kill=max_to_kill,
         batch_size_to_kill=batch_size_to_kill,
         kill_filter_fn=kill_filter_fn,
@@ -1795,7 +1787,6 @@ def get_and_run_resource_killer(
     ray.get(resource_killer.ready.remote())
     print("ResourceKiller is ready now.")
     if not no_start:
-        time.sleep(kill_delay_s)
         resource_killer.run.remote()
     return resource_killer
 
@@ -2141,11 +2132,11 @@ def get_gcs_memory_used():
     import psutil
 
     m = {
-        process.name(): process.memory_info().rss
-        for process in psutil.process_iter()
+        proc.info["name"]: proc.info["memory_info"].rss
+        for proc in psutil.process_iter(["status", "name", "memory_info"])
         if (
-            process.status() not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
-            and process.name() in ("gcs_server", "redis-server")
+            proc.info["status"] not in (psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD)
+            and proc.info["name"] in ("gcs_server", "redis-server")
         )
     }
     assert "gcs_server" in m
@@ -2173,9 +2164,10 @@ def safe_write_to_results_json(
     if the job gets interrupted in the middle of writing.
     """
     test_output_json = os.environ.get(env_var, default_file_name)
-    test_output_json_tmp = test_output_json + ".tmp"
+    test_output_json_tmp = f"{test_output_json}.tmp.{str(uuid.uuid4())}"
     with open(test_output_json_tmp, "wt") as f:
         json.dump(result, f)
+        f.flush()
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))
@@ -2310,3 +2302,69 @@ def close_common_connections(pid):
         if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
             os.close(fd)
             print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
+
+
+def _get_library_usages() -> Set[str]:
+    return set(
+        ray_usage_lib.get_library_usages_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+    )
+
+
+def _get_extra_usage_tags() -> Dict[str, str]:
+    return ray_usage_lib.get_extra_usage_tags_to_report(
+        ray.experimental.internal_kv.internal_kv_get_gcs_client()
+    )
+
+
+class TelemetryCallsite(Enum):
+    DRIVER = "driver"
+    ACTOR = "actor"
+    TASK = "task"
+
+
+def check_library_usage_telemetry(
+    use_lib_fn: Callable[[], None],
+    *,
+    callsite: TelemetryCallsite,
+    expected_library_usages: List[Set[str]],
+    expected_extra_usage_tags: Optional[Dict[str, str]] = None,
+):
+    """Helper for writing tests to validate library usage telemetry.
+
+    `use_lib_fn` is a callable that will be called from the provided callsite.
+    After calling it, the telemetry data to export will be validated against
+    expected_library_usages and expected_extra_usage_tags.
+    """
+    assert len(_get_library_usages()) == 0, _get_library_usages()
+
+    if callsite == TelemetryCallsite.DRIVER:
+        use_lib_fn()
+    elif callsite == TelemetryCallsite.ACTOR:
+
+        @ray.remote
+        class A:
+            def __init__(self):
+                use_lib_fn()
+
+        a = A.remote()
+        ray.get(a.__ray_ready__.remote())
+    elif callsite == TelemetryCallsite.TASK:
+
+        @ray.remote
+        def f():
+            use_lib_fn()
+
+        ray.get(f.remote())
+    else:
+        assert False, f"Unrecognized callsite: {callsite}"
+
+    library_usages = _get_library_usages()
+    extra_usage_tags = _get_extra_usage_tags()
+
+    assert library_usages in expected_library_usages, library_usages
+    if expected_extra_usage_tags:
+        assert all(
+            [extra_usage_tags[k] == v for k, v in expected_extra_usage_tags.items()]
+        ), extra_usage_tags

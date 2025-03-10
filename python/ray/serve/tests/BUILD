@@ -13,6 +13,20 @@ py_library(
     ],
 )
 
+# Minimal installation test (should *not* include conftest).
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_minimal_installation.py",
+    ],
+    tags = [
+        "exclusive", "minimal", "team:serve",
+    ],
+    deps = [
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Small tests.
 py_test_module_list(
     size = "small",
@@ -26,7 +40,7 @@ py_test_module_list(
         "test_deployment_version.py",
         "test_expected_versions.py",
         "test_http_cancellation.py",
-        "test_max_queued_requests.py",
+        "test_backpressure.py",
         "test_persistence.py",
         "test_proxy.py",
         "test_proxy_actor_wrapper.py",
@@ -71,6 +85,7 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_target_capacity.py",
+        "test_telemetry.py",
     ],
     tags = [
         "exclusive",
@@ -112,7 +127,7 @@ py_test_module_list(
         "test_deploy_2.py",
         "test_standalone.py",
         "test_standalone_3.py",
-        "test_telemetry.py",
+        "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
     tags = [

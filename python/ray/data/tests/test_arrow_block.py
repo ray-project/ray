@@ -275,6 +275,31 @@ def test_append_column(ray_start_regular_shared):
     assert actual_block.equals(expected_block)
 
 
+def test_random_shuffle(ray_start_regular_shared):
+    TOTAL_ROWS = 10000
+    table = pa.table({"id": pa.array(range(TOTAL_ROWS))})
+    block_accessor = ArrowBlockAccessor(table)
+
+    # Perform the random shuffle
+    shuffled_table = block_accessor.random_shuffle(random_seed=None)
+    assert shuffled_table.num_rows == TOTAL_ROWS
+
+    # Access the shuffled data
+    block_accessor = ArrowBlockAccessor(shuffled_table)
+    shuffled_data = block_accessor.to_pandas()["id"].tolist()
+    original_data = list(range(TOTAL_ROWS))
+
+    # Ensure the shuffled data is not identical to the original
+    assert (
+        shuffled_data != original_data
+    ), "Shuffling should result in a different order"
+
+    # Ensure the entire set of original values is still in the shuffled dataset
+    assert (
+        sorted(shuffled_data) == original_data
+    ), "The shuffled data should contain all the original values"
+
+
 def test_register_arrow_types(tmp_path):
     # Test that our custom arrow extension types are registered on initialization.
     ds = ray.data.from_items(np.zeros((8, 8, 8), dtype=np.int64))

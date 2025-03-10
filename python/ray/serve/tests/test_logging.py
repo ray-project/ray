@@ -430,7 +430,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
                 f'"component_name": "replica", '
-                f'"timestamp_ns": \d+}}.*'
+                rf'"timestamp_ns": \d+}}.*'
             )
             user_class_method_log_regex = (
                 '.*"message": "user log message from class method".*'
@@ -446,7 +446,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
                 f'"component_name": "replica", '
-                f'"timestamp_ns": \d+}}.*'
+                rf'"timestamp_ns": \d+}}.*'
             )
         else:
             user_method_log_regex = f".*{resp['request_id']} -- user func.*"

@@ -1,4 +1,5 @@
 import asyncio
+import queue
 from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
 
@@ -7,12 +8,12 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="beta")
-class Empty(Exception):
+class Empty(queue.Empty):
     pass
 
 
 @PublicAPI(stability="beta")
-class Full(Exception):
+class Full(queue.Full):
     pass
 
 
