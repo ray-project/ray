@@ -1,6 +1,8 @@
 import asyncio
 import sys
 import time
+import os
+import psutil
 from functools import reduce
 from itertools import chain
 
@@ -649,6 +651,52 @@ def test_placement_group_strict_pack_soft_target_node_id(ray_start_cluster):
         )
         == head_node_id
     )
+
+
+def test_remove_placement_group_when_a_actor_queued(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    pg = ray.util.placement_group([{"CPU": 1}])
+
+    @ray.remote
+    class Actor:
+        def get_raylet_pid(self):
+            return os.getppid()
+
+    actor = Actor.options(
+        lifetime="detached",
+        num_cpus=1.0,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        ),
+    ).remote()
+
+    raylet = psutil.Process(ray.get(actor.get_raylet_pid.remote()))
+
+    _ = Actor.options(
+        # Ensure that it can still be scheduled when the job ends.
+        lifetime="detached",
+        num_cpus=1.0,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        ),
+    ).remote()
+
+    assert raylet.is_running()
+
+    # trigger GCS remove pg
+    ray.shutdown()
+
+    # Ensure GCS finish remove pg.
+    with pytest.raises(psutil.TimeoutExpired):
+        raylet.wait(10)
+
+    # check raylet pass raycheck:
+    # `RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec))`
+    assert raylet.is_running()
 
 
 if __name__ == "__main__":
