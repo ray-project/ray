@@ -1005,8 +1005,6 @@ class CompiledDAG:
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
-        # Set of actors present in the DAG.
-        self.actor_refs = set()
         self.actor_to_tasks: Dict[
             "ray.actor.ActorHandle", List["CompiledTask"]
         ] = defaultdict(list)
@@ -1666,7 +1664,6 @@ class CompiledDAG:
                     task.output_node_idxs.append(self.dag_node_to_idx[downstream_node])
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
-                self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
             elif (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -2177,7 +2174,7 @@ class CompiledDAG:
                     outer._dag_submitter.close()
                     outer._dag_output_fetcher.close()
 
-                    for actor in outer.actor_refs:
+                    for actor in outer.actor_to_executable_tasks.keys():
                         logger.info(f"Cancelling compiled worker on actor: {actor}")
                     # Cancel all actor loops in parallel.
                     cancel_refs = [
