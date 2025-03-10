@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
+from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
@@ -113,21 +113,21 @@ class PandasBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
+        from ray.data.extensions.tensor_extension import TensorArray
+
         pandas = lazy_import_pandas()
 
-        pd_columns: Dict[str, Any] = {}
-
-        for col_name, col_vals in columns.items():
-            np_col_vals = convert_to_numpy(col_vals)
-
-            if col_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(np_col_vals):
-                from ray.data.extensions.tensor_extension import TensorArray
-
-                pd_columns[col_name] = TensorArray(np_col_vals)
-            else:
-                pd_columns[col_name] = np_col_vals
-
-        return pandas.DataFrame(pd_columns)
+        return pandas.DataFrame(
+            {
+                column_name: (
+                    TensorArray(convert_to_numpy(column_values))
+                    if len(column_values) > 0
+                    and _should_convert_to_tensor(column_values, column_name)
+                    else column_values
+                )
+                for column_name, column_values in columns.items()
+            }
+        )
 
     @staticmethod
     def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":

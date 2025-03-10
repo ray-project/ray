@@ -1,44 +1,16 @@
 import logging
-import typing
 from datetime import datetime
-from typing import Any, List, Union
+from typing import Any, List
 
 import numpy as np
 
 from ray.air.util.tensor_extensions.utils import (
     create_ragged_ndarray,
-    _is_ndarray_tensor,
+    is_ndarray_like,
 )
 from ray.data._internal.util import _truncated_repr
 
 logger = logging.getLogger(__name__)
-
-
-class ArrayLike(typing.Protocol):
-    """Protocol matching ndarray-like objects (like torch.Tensor)"""
-
-    def __array__(self):
-        ...
-
-    def __len__(self):
-        ...
-
-
-def _is_tensor(t: Union[List[Any], np.ndarray, ArrayLike]):
-    """Checks whether provided value is a Numpy or Array-like tensor (for ex, torch.Tensor)"""
-
-    return _is_ndarray_tensor(t) or _is_ndarray_like(t)
-
-
-def _is_ndarray_like(value: ArrayLike) -> bool:
-    """Checks whether objects are ndarray-like (for ex, torch.Tensor)
-    but NOT and ndarray itself"""
-
-    return (
-        not isinstance(value, np.ndarray)
-        and hasattr(value, "__array__")
-        and hasattr(value, "__len__")
-    )
 
 
 def _is_valid_column_values(column_values: Any) -> bool:
@@ -50,7 +22,7 @@ def _is_valid_column_values(column_values: Any) -> bool:
     return (
         isinstance(column_values, list)
         or isinstance(column_values, np.ndarray)
-        or _is_ndarray_like(column_values)
+        or is_ndarray_like(column_values)
     )
 
 
@@ -177,8 +149,8 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         # `str` are also Iterable.
         try:
             # Convert array-like objects (like torch.Tensor) to `np.ndarray`s
-            if all(_is_ndarray_like(e) for e in column_values):
-                # Use np.asarray() instead of np.array() to avoid copying if possible.
+            if all(is_ndarray_like(e) for e in column_values):
+                # Use `np.asarray` instead of `np.array` to avoid copying if possible.
                 column_values = [np.asarray(e) for e in column_values]
 
             shapes = set()
@@ -222,10 +194,10 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 f"({_truncated_repr(column_values)}): {e}."
             ) from e
 
-    elif _is_ndarray_like(column_values):
+    elif is_ndarray_like(column_values):
         # Converts other array-like objects such as torch.Tensor.
         try:
-            # Use np.asarray() instead of np.array() to avoid copying if possible.
+            # Use `np.asarray` instead of `np.array` to avoid copying if possible.
             return np.asarray(column_values)
         except Exception as e:
             logger.error(
