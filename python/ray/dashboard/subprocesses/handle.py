@@ -294,6 +294,7 @@ class SubprocessModuleHandle:
                     elif msg.type == aiohttp.WSMsgType.CLOSE:
                         await ws_target.close()
                     elif msg.type == aiohttp.WSMsgType.ERROR:
+                        await ws_target.close(message=msg.data)
                         break
 
             # Set up two tasks to forward messages in both directions.
@@ -312,4 +313,5 @@ class SubprocessModuleHandle:
             for task in pending:
                 task.cancel()
 
+        await ws_from_client.close()
         return ws_from_client
