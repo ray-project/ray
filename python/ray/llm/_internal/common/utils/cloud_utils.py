@@ -50,7 +50,7 @@ class CloudMirrorConfig(BaseModelExtended):
         if value is None:
             return value
 
-        if not (value.startswith("s3://") or value.startswith("gs://")):
+        if not value.startswith("s3://") and not value.startswith("gs://"):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
                 'Expected a URI that starts with "s3://" or "gs://".'
@@ -77,11 +77,15 @@ class LoraMirrorConfig(BaseModelExtended):
 
     @field_validator("bucket_uri")
     @classmethod
-    def validate_bucket_uri(cls, value: str):
-        # TODO(tchordia): remove this. this is a short term fix.
-        # We should fix this on the LLM-forge side
+    def check_uri_format(cls, value):
+        if value is None:
+            return value
+
         if not value.startswith("s3://") and not value.startswith("gs://"):
-            value = "s3://" + value
+            raise ValueError(
+                f'Got invalid value "{value}" for bucket_uri. '
+                'Expected a URI that starts with "s3://" or "gs://".'
+            )
         return value
 
     @property
