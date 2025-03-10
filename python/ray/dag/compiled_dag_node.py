@@ -324,6 +324,9 @@ def do_profile_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
+    # CUDA events should be destroyed before other CUDA resources.
+    for task in tasks:
+        task.destroy_cuda_event()
     for task in tasks:
         task.cancel()
 
@@ -565,6 +568,14 @@ class ExecutableTask:
         self.input_reader.close()
         self.output_writer.close()
 
+    def destroy_cuda_event(self):
+        """
+        If this executable task has created a GPU future that is not yet waited on,
+        that future is in the channel context cache. Remove the future from the cache
+        and destroy its CUDA event.
+        """
+        GPUFuture.remove_gpu_future(self.task_idx)
+
     def prepare(self, overlap_gpu_communication: bool = False):
         """
         Prepare the task for execution. The `exec_operation` function can only
@@ -624,7 +635,7 @@ class ExecutableTask:
         assert self._intermediate_future is None
 
         if wrap_in_gpu_future:
-            future = GPUFuture(val)
+            future = GPUFuture(val, self.task_idx)
         else:
             future = ResolvedFuture(val)
         self._intermediate_future = future
