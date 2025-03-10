@@ -1,6 +1,7 @@
 # __cgraph_cpu_to_gpu_actor_start__
 import torch
 import ray
+import ray.dag
 
 @ray.remote(num_gpus=1)
 class GPUActor:
@@ -12,10 +13,8 @@ actor = GPUActor.remote()
 # __cgraph_cpu_to_gpu_actor_end__
 
 # __cgraph_cpu_to_gpu_start__
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
 with ray.dag.InputNode() as inp:
-  inp = inp.with_type_hint(TorchTensorType())
+  inp = inp.with_tensor_transport(device="cuda")
   dag = actor.process.bind(inp)
 
 cdag = dag.experimental_compile()
