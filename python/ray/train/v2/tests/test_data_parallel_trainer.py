@@ -65,10 +65,9 @@ def test_result_output(tmp_path):
     assert isinstance(result.filesystem, pyarrow.fs.FileSystem)
 
 
-def test_no_report():
-    trainer = DataParallelTrainer(
-        lambda: "not used", scaling_config=ScalingConfig(num_workers=2)
-    )
+def test_no_optional_arguments():
+    """Check that the DataParallelTrainer can be instantiated without optional arguments."""
+    trainer = DataParallelTrainer(lambda: "not used")
     trainer.fit()
 
 
