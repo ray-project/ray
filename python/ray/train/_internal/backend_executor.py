@@ -86,6 +86,7 @@ class BackendExecutor:
             requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
+        placement_group: An optional placement group.
     """
 
     def __init__(
@@ -152,7 +153,8 @@ class BackendExecutor:
         train_cls_kwargs: Optional[Dict] = None,
     ):
         """Starts the worker group."""
-        self._create_placement_group()
+        if not self._placement_group:
+            self._create_placement_group()
         placement_group = self._placement_group or "default"
         self.worker_group = WorkerGroup(
             num_workers=self._num_workers,
@@ -231,7 +233,8 @@ class BackendExecutor:
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
 
-        If a placement group is already detected (Tune) this will be a no-op.
+        If a placement group is already detected (Tune or provided by the user)
+        this will be a no-op.
 
         By default the placement group will be created with PACK strategy.
         This is optimized for colocating GPUs on a minimal number of nodes.
@@ -251,7 +254,7 @@ class BackendExecutor:
             or not should_capture_child_tasks_in_placement_group
         )
 
-        if should_create_placement_group and not self._placement_group:
+        if should_create_placement_group:
             bundles = [
                 self._resources_per_worker.copy() for _ in range(self._num_workers)
             ]

@@ -347,7 +347,10 @@ class WorkerGroup:
             actor_options = {
                 "placement_group": self._placement_group,
             }
-            if isinstance(self._placement_group, PlacementGroup):
+            if (
+                isinstance(self._placement_group, PlacementGroup)
+                and self._placement_group.bundle_count > 1
+            ):
                 actor_options.update(
                     {
                         "placement_group_bundle_index": i,
