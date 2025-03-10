@@ -112,6 +112,10 @@ export const JobRow = ({ job }: JobRowProps) => {
               Log
             </Link>
             <br />
+            <Link component={RouterLink} to={`${jobId}/graph`}>
+              Insight
+            </Link>
+            <br />
           </React.Fragment>
         )}
         <CpuStackTraceLink

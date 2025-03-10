@@ -957,6 +957,8 @@ cdef prepare_args_internal(
                 put_id = CObjectID.FromBinary(
                         core_worker.put_serialized_object_and_increment_local_ref(
                             serialized_arg, inline_small_object=False))
+                from ray.util.insight import record_object_arg_put
+                record_object_arg_put(put_id.Hex().decode(), size, function_descriptor.repr)
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(
                             put_id,
@@ -1834,6 +1836,8 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
+    from ray.util.insight import record_object_arg_get
+
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
          ray._private.worker._changeproctitle(title, next_title):
         task_exception = False
@@ -1846,6 +1850,10 @@ cdef void execute_task(
                     object_refs = VectorToObjectRefs(
                             c_arg_refs,
                             skip_adding_local_ref=False)
+
+                    for object_ref in object_refs:
+                        record_object_arg_get(object_ref.hex())
+
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
@@ -4360,12 +4368,17 @@ cdef class CoreWorker:
                     check_status(
                         CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
                             return_id, return_ptr[0], generator_id, caller_address))
+
+            from ray.util.insight import record_object_return_put
+            record_object_return_put(return_id.Hex().decode(), data_size)
             return True
         else:
             with nogil:
                 success = (
                     CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
                         return_id, return_ptr, generator_id, caller_address))
+            from ray.util.insight import record_object_return_put
+            record_object_return_put(return_id.Hex().decode(), data_size)
             return success
 
     cdef store_task_outputs(self,

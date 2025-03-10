@@ -8,6 +8,7 @@ import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
+import ActorGraph from "./pages/job/ActorGraph";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
 import {
   JobDetailActorDetailWrapper,
@@ -239,6 +240,7 @@ const App = () => {
                   </Route>
                   <Route element={<JobsLayout />} path="jobs">
                     <Route element={<JobList />} path="" />
+                    <Route element={<ActorGraph />} path=":jobId/graph" />
                     <Route element={<JobPage />} path=":id">
                       <Route element={<JobDetailLayout />} path="">
                         <Route
