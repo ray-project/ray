@@ -44,6 +44,9 @@ if [[ "$RAY_INSTALL_MASK" != "" ]]; then
   if [[ "$RAY_INSTALL_MASK" =~ serve ]]; then
     rm -rf python/ray/serve
   fi
+  if [[ "$RAY_INSTALL_MASK" =~ tune ]]; then
+    rm -rf python/ray/tune
+  fi
 fi
 
 echo "--- Build dashboard"
