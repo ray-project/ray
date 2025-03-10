@@ -1423,6 +1423,7 @@ def init(
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
         _plasma_directory: Override the plasma mmap file directory.
+        _fallback_directory: Override the object store fallback directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
@@ -1481,6 +1482,7 @@ def init(
         "_enable_object_reconstruction", False
     )
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
+    _fallback_directory: Optional[str] = kwargs.pop("_fallback_directory", None)
     _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
         "_driver_object_store_memory", None
@@ -1718,6 +1720,7 @@ def init(
             redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
+            fallback_directory=_fallback_directory,
             huge_pages=None,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
