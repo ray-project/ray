@@ -1,4 +1,3 @@
-from collections import defaultdict
 import copy
 from functools import partial
 import itertools
@@ -24,7 +23,6 @@ from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import (
@@ -275,12 +273,13 @@ class LearnerGroup(Checkpointable):
                 )
             # Solve all ray refs locally already here.
             training_data.solve_refs()
+            if return_state:
+                kwargs["return_state"] = return_state
             # Return the single Learner's update results.
             return [
                 self._learner.update(
                     training_data=training_data,
                     timesteps=timesteps,
-                    return_state=return_state,
                     **kwargs,
                 )
             ]
@@ -616,25 +615,6 @@ class LearnerGroup(Checkpointable):
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
-
-    @staticmethod
-    def _compute_num_total_minibatches(
-        episodes,
-        num_shards,
-        minibatch_size,
-        num_epochs,
-    ):
-        # Count total number of timesteps per module ID.
-        if isinstance(episodes[0], MultiAgentEpisode):
-            per_mod_ts = defaultdict(int)
-            for ma_episode in episodes:
-                for sa_episode in ma_episode.agent_episodes.values():
-                    per_mod_ts[sa_episode.module_id] += len(sa_episode)
-            max_ts = max(per_mod_ts.values())
-        else:
-            max_ts = sum(map(len, episodes))
-
-        return int((num_epochs * max_ts) / (num_shards * minibatch_size))
 
     def _get_results(self, results):
         processed_results = []

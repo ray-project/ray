@@ -1,9 +1,11 @@
+from collections import defaultdict
 import dataclasses
 from typing import List, Optional
 
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
@@ -121,3 +123,22 @@ class TrainingData:
                         pass
             self.episodes = episodes
             self.episodes_refs = None
+
+    @staticmethod
+    def _compute_num_total_minibatches(
+        episodes,
+        num_shards,
+        minibatch_size,
+        num_epochs,
+    ):
+        # Count total number of timesteps per module ID.
+        if isinstance(episodes[0], MultiAgentEpisode):
+            per_mod_ts = defaultdict(int)
+            for ma_episode in episodes:
+                for sa_episode in ma_episode.agent_episodes.values():
+                    per_mod_ts[sa_episode.module_id] += len(sa_episode)
+            max_ts = max(per_mod_ts.values())
+        else:
+            max_ts = sum(map(len, episodes))
+
+        return int((num_epochs * max_ts) / (num_shards * minibatch_size))

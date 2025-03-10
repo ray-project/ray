@@ -1146,21 +1146,6 @@ class Learner(Checkpointable):
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
 
-    def update_from_iterator(
-        self,
-        iterator,
-        *,
-        timesteps: Optional[Dict[str, Any]] = None,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = None,
-        **kwargs,
-    ):
-        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
-            # Note, the incoming batch is a dictionary with a numpy array
-            # holding the `MultiAgentBatch`.
-            batch = self._convert_batch_type(batch["batch"][0])
-            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
-
         # Record the number of batches pulled from the dataset in this RLlib iteration.
         self.metrics.log_value(
             (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
