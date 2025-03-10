@@ -2345,6 +2345,8 @@ def drain_node(
 
     Manually drain a worker node.
     """
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
     if node_id is None:
         node_id = ray.get_runtime_context().get_node_id()
     deadline_timestamp_ms = 0
@@ -2360,8 +2362,6 @@ def drain_node(
 
     if ray.NodeID.from_hex(node_id) == ray.NodeID.nil():
         raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
-
-    address = services.canonicalize_bootstrap_address_or_die(address)
 
     gcs_client = ray._raylet.GcsClient(address=address)
     _check_ray_version(gcs_client)
