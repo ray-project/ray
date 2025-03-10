@@ -1594,6 +1594,13 @@ py_test(
 )
 
 py_test(
+    name = "test_tf_utils",
+    tags = ["team:rllib", "utils"],
+    size = "medium",
+    srcs = ["utils/tests/test_tf_utils.py"]
+)
+
+py_test(
     name = "test_torch_utils",
     tags = ["team:rllib", "utils", "gpu"],
     size = "medium",
@@ -1820,6 +1827,20 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "small",
     srcs = ["tests/test_timesteps.py"]
+)
+
+py_test(
+    name = "tests/test_ray_client",
+    tags = ["team:rllib", "tests_dir"],
+    size = "medium",
+    srcs = ["tests/test_ray_client.py"]
+)
+
+py_test(
+    name = "tests/test_telemetry",
+    tags = ["team:rllib", "tests_dir"],
+    size = "small",
+    srcs = ["tests/test_telemetry.py"]
 )
 
 # --------------------------------------------------------------------

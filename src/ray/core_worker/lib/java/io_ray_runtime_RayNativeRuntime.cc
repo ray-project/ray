@@ -190,7 +190,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             creation_task_exception_pb = SerializeActorCreationException(env, throwable);
             status_to_return = Status::CreationTaskError("");
           } else {
-            RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
+            RAY_LOG(ERROR) << "Unknown java exception was thrown while executing tasks.";
           }
           *application_error = status_to_return.ToString();
           env->ExceptionClear();

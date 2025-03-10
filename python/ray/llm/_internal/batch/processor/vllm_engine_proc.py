@@ -25,8 +25,8 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     """The configuration for the vLLM engine processor."""
 
     # vLLM stage configurations.
-    model: str = Field(
-        description="The model to use for the vLLM engine.",
+    model_source: str = Field(
+        description="The model source to use for the vLLM engine.",
     )
     engine_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
@@ -122,7 +122,7 @@ def build_vllm_engine_processor(
         stages.append(
             ChatTemplateStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model,
+                    model=config.model_source,
                     chat_template=config.chat_template,
                 ),
                 map_batches_kwargs=dict(
@@ -137,7 +137,7 @@ def build_vllm_engine_processor(
         stages.append(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model,
+                    model=config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
@@ -152,7 +152,7 @@ def build_vllm_engine_processor(
     stages.append(
         vLLMEngineStage(
             fn_constructor_kwargs=dict(
-                model=config.model,
+                model=config.model_source,
                 engine_kwargs=config.engine_kwargs,
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
@@ -177,7 +177,7 @@ def build_vllm_engine_processor(
         stages.append(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
-                    model=config.model,
+                    model=config.model_source,
                 ),
                 map_batches_kwargs=dict(
                     zero_copy_batch=True,
