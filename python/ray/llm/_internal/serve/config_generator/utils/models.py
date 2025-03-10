@@ -12,8 +12,6 @@ MODEL_ID_TO_DEFAULT_CONFIG_FILE: Dict[str, str] = {
     "mistralai/Mistral-7B-Instruct-v0.1": "mistralai--Mistral-7B-Instruct-v0.1.yaml",
     "mistralai/Mixtral-8x7B-Instruct-v0.1": "mistralai--Mixtral-8x7B-Instruct-v0.1.yaml",
     "mistralai/Mixtral-8x22B-Instruct-v0.1": "mistralai--Mixtral-8x22B-Instruct-v0.1.yaml",
-    "google/gemma-7b-it": "google--gemma-7b-it.yaml",
-    "llava-hf/llava-v1.6-mistral-7b-hf": "llava-hf--llava-v1.6-mistral-7b-hf.yaml",
     "mistral-community/pixtral-12b": "mistral-community--pixtral-12b.yaml",
     "meta-llama/Llama-3.2-11B-Vision-Instruct": "meta-llama--Llama-3.2-11b-Vision-Instruct.yaml",
     "meta-llama/Llama-3.2-90B-Vision-Instruct": "meta-llama--Llama-3.2-90b-Vision-Instruct.yaml",

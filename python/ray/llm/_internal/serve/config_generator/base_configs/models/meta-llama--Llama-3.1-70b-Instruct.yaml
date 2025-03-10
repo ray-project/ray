@@ -1,31 +1,10 @@
-deployment_config:
-  autoscaling_config:
-    target_ongoing_requests: 16
-  max_ongoing_requests: 32
+deployment_config: {}
 
 model_loading_config:
   model_id: meta-llama/Meta-Llama-3.1-70B-Instruct
 
-generation_config:
-  prompt_format:
-    system: "<|start_header_id|>system<|end_header_id|>\n\n{instruction}<|eot_id|>"
-    assistant: "<|start_header_id|>assistant<|end_header_id|>\n\n{instruction}<|eot_id|>"
-    trailing_assistant: "<|start_header_id|>assistant<|end_header_id|>\n\n"
-    user: "<|start_header_id|>user<|end_header_id|>\n\n{instruction}<|eot_id|>"
-    system_in_user: false
-    bos: "<|begin_of_text|>"
-    default_system_message: ""
-  stopping_sequences: []
-  stopping_tokens: [128001, 128009]  # <|end_of_text|>, <|eot_id|>
-
-llm_engine: VLLMEngine
 
 engine_kwargs:
-  trust_remote_code: true
-  tokenizer_pool_size: 2
-  tokenizer_pool_extra_config:
-    runtime_env:
-      pip: null
   # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
   max_model_len: 8192
   tensor_parallel_size: 8

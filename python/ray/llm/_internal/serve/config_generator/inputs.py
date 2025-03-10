@@ -194,12 +194,8 @@ def get_input_model_via_interactive_inputs() -> TextCompletionModelConfig:
     tensor_parallelism = BoldIntPrompt.ask(
         "Tensor parallelism", default=default_tensor_parallelism
     )
-    # TODO(xwjiang): Support LoRA with LLaVA.
-    if base_model_info.id != "llava-hf/llava-v1.6-mistral-7b-hf":
-        is_lora_enabled = Confirm.ask("[bold]Enable LoRA serving", default=False)
-    else:
-        is_lora_enabled = False
-        print("LoRA is not supported with llava-hf/llava-v1.6-mistral-7b-hf now.")
+    
+    is_lora_enabled = Confirm.ask("[bold]Enable LoRA serving", default=False)
 
     if is_lora_enabled:
         default_lora_uri = get_lora_storage_uri()

@@ -7,17 +7,17 @@ model_id_to_gpu_deployment_configs:
       enable_chunked_prefill: true
     L4: *base_llama_31_8b_config
     L40S: *base_llama_31_8b_config
-    A100_40G: *base_llama_31_8b_config
-    A100_80G: *base_llama_31_8b_config
+    A100-40G: *base_llama_31_8b_config
+    A100-80G: *base_llama_31_8b_config
     H100: *base_llama_31_8b_config
 
   meta-llama/Meta-Llama-3.1-70B-Instruct:
-    A100_40G:
+    A100-40G:
       max_ongoing_requests: 128
       max_num_batched_tokens: 2048
       tensor_parallelism: 8
       enable_chunked_prefill: true
-    A100_80G:
+    A100-80G:
       max_ongoing_requests: 128
       max_num_batched_tokens: 2048
       tensor_parallelism: 4
@@ -35,16 +35,6 @@ model_id_to_gpu_deployment_configs:
       tensor_parallelism: 8
       enable_chunked_prefill: true
 
-  google/gemma-7b-it:
-    A10G: &gemma_7b_base_config
-      max_ongoing_requests: 64
-      max_num_batched_tokens: 4096
-      tensor_parallelism: 1
-    L4: *gemma_7b_base_config
-    L40S: *gemma_7b_base_config
-    A100_40G: *gemma_7b_base_config
-    A100_80G: *gemma_7b_base_config
-    H100: *gemma_7b_base_config
 
   mistralai/Mistral-7B-Instruct-v0.1:
     A10G:
@@ -59,19 +49,19 @@ model_id_to_gpu_deployment_configs:
       max_ongoing_requests: 32
       max_num_batched_tokens: 12464
       tensor_parallelism: 1
-    A100_40G: &large_gpu_mistral_7b_config
+    A100-40G: &large_gpu_mistral_7b_config
       max_ongoing_requests: 200
       max_num_batched_tokens: 16384
       tensor_parallelism: 1
-    A100_80G: *large_gpu_mistral_7b_config
+    A100-80G: *large_gpu_mistral_7b_config
     H100: *large_gpu_mistral_7b_config
 
   mistralai/Mixtral-8x7B-Instruct-v0.1:
-    A100_40G:
+    A100-40G:
       max_ongoing_requests: 192
       max_num_batched_tokens: 32768
       tensor_parallelism: 8
-    A100_80G:
+    A100-80G:
       max_ongoing_requests: 192
       max_num_batched_tokens: 32768
       tensor_parallelism: 4
@@ -81,31 +71,21 @@ model_id_to_gpu_deployment_configs:
       tensor_parallelism: 4
 
   mistralai/Mixtral-8x22B-Instruct-v0.1:
-    A100_80G:
+    A100-80G:
       max_ongoing_requests: 192
       tensor_parallelism: 8
     H100:
       max_ongoing_requests: 192
       tensor_parallelism: 8
 
-  llava-hf/llava-v1.6-mistral-7b-hf:
-    A10G: &llava_base_7b_config
-      max_ongoing_requests: 8
-      max_num_batched_tokens: 4096
-      tensor_parallelism: 1
-    L4: *llava_base_7b_config
-    L40S: *llava_base_7b_config
-    A100_40G: *llava_base_7b_config
-    A100_80G: *llava_base_7b_config
-    H100: *llava_base_7b_config
 
   mistral-community/pixtral-12b:
     L40S: &pixtral_base_12b_config
       max_ongoing_requests: 8
       max_num_batched_tokens: 16384
       tensor_parallelism: 1
-    A100_40G: *pixtral_base_12b_config
-    A100_80G: *pixtral_base_12b_config
+    A100-40G: *pixtral_base_12b_config
+    A100-80G: *pixtral_base_12b_config
     H100: *pixtral_base_12b_config
 
   meta-llama/Llama-3.2-11B-Vision-Instruct:
@@ -113,14 +93,14 @@ model_id_to_gpu_deployment_configs:
       max_ongoing_requests: 8
       max_num_batched_tokens: 16384
       tensor_parallelism: 1
-    A100_40G: *llama_32_base_11b_config
-    A100_80G: *llama_32_base_11b_config
+    A100-40G: *llama_32_base_11b_config
+    A100-80G: *llama_32_base_11b_config
     H100: *llama_32_base_11b_config
 
   meta-llama/Llama-3.2-90B-Vision-Instruct:
-    A100_40G: &llama_32_base_90b_config
+    A100-40G: &llama_32_base_90b_config
       max_ongoing_requests: 8
       max_num_batched_tokens: 16384
       tensor_parallelism: 1
-    A100_80G: *llama_32_base_90b_config
+    A100-80G: *llama_32_base_90b_config
     H100: *llama_32_base_90b_config
