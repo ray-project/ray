@@ -1099,17 +1099,11 @@ void CoreWorker::Disconnect(
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
-    RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
+    RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
     if (local_raylet_client_) {
-      Status status = local_raylet_client_->Disconnect(
-          exit_type, exit_detail, creation_task_exception_pb_bytes);
-      if (status.ok()) {
-        RAY_LOG(INFO) << "Disconnected from the local raylet.";
-      } else {
-        RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: "
-                         << status.ToString();
-      }
+      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(
+          exit_type, exit_detail, creation_task_exception_pb_bytes));
     }
   }
 }
@@ -3430,7 +3424,7 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "Finished executing task, status=" << status.ToString();
+      << "Finished executing task, status=" << status;
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
@@ -3450,7 +3444,7 @@ Status CoreWorker::ExecuteTask(
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
-    RAY_LOG(FATAL) << "Unexpected task status type : " << status.ToString();
+    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
   return status;
 }
@@ -3645,7 +3639,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
-              << status.ToString();
+              << status;
         }
         waiter->HandleObjectReported(num_objects_consumed);
       });

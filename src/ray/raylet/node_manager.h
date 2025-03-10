@@ -704,16 +704,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Disconnect a client.
   ///
   /// \param client The client that sent the message.
-  /// \param graceful Indicates if this was a graceful disconnect initiated by the
-  ///        worker or a non-graceful disconnect initiated by the raylet. On graceful
-  ///        disconnect, a DisconnectClientReply will be sent to the worker prior to
-  ///        closing the connection.
   /// \param disconnect_type The reason to disconnect the specified client.
   /// \param disconnect_detail Disconnection information in details.
   /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
-                        bool graceful,
                         rpc::WorkerExitType disconnect_type,
                         const std::string &disconnect_detail,
                         const rpc::RayException *creation_task_exception = nullptr);
