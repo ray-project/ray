@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <future>
+#include <string>
 #include <string_view>
 
 #include "ray/common/test/testing.h"
@@ -127,7 +128,7 @@ TEST_P(PipeLoggerTest, RotatedRedirectionWithTee) {
   EXPECT_EQ(*actual_content2, kLogLine1);
 }
 
-// Testing senario: log to stdout and file; check whether these two sinks generate
+// Testing scenario: log to stdout and file; check whether these two sinks generate
 // expected output.
 TEST_P(PipeLoggerTest, CompatibilityTest) {
   const std::string pipe_buffer_size = absl::StrFormat("%d", GetParam());

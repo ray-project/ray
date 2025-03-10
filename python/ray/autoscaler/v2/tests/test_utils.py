@@ -555,10 +555,10 @@ Idle:
 Pending:
  worker_node, 1 launching
  worker_node_gpu, 1 launching
- 127.0.0.3: worker_node, starting ray
+ instance4: worker_node, starting ray
 Recent failures:
  worker_node: LaunchFailed (latest_attempt: 02:46:40) - Insufficient capacity
- worker_node: NodeTerminated (ip: 127.0.0.5)
+ worker_node: NodeTerminated (instance_id: instance5)
 
 Resources
 --------------------------------------------------------
@@ -573,20 +573,29 @@ Total Demands:
  {'GPU': 2} * 1 (STRICT_PACK): 2+ pending placement groups
  {'GPU': 2, 'CPU': 100}: 2+ from request_resources()
 
-Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00001
+Node: instance1 (head_node)
+ Id: fffffffffffffffffffffffffffffffffffffffffffffffffff00001
  Usage:
   0.5/1.0 CPU
   0.0/2.0 GPU
   5.42KiB/10.04KiB object_store_memory
+ Activity:
+  (no activity)
 
-Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
+Node: instance2 (worker_node)
+ Id: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
  Usage:
   0/1.0 CPU
   0/2.0 GPU
+ Activity:
+  (no activity)
 
-Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
+Node: instance3 (worker_node)
+ Id: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
  Usage:
-  0.0/1.0 CPU"""
+  0.0/1.0 CPU
+ Activity:
+  (no activity)"""
     assert actual == expected
 
 

@@ -14,19 +14,20 @@
 
 #include "ray/util/util.h"
 
-#include <stdio.h>
-
 #include <boost/asio/generic/basic_endpoint.hpp>
 #include <boost/process/child.hpp>
 #include <chrono>
+#include <cstdio>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 
 namespace ray {
 

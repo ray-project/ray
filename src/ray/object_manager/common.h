@@ -21,6 +21,7 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <functional>
+#include <string>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -186,7 +187,7 @@ struct PlasmaObjectHeader {
   /// Helper method to acquire a semaphore while failing if the error bit is set. This
   /// method is idempotent.
   ///
-  /// \param sem The semaphor to acquire.
+  /// \param sem The semaphore to acquire.
   /// \param timeout_point The time point when to timeout if the semaphore is not
   /// acquired. If this is nullptr, then there is no timeout and the method will block
   /// indefinitely until the semaphore is acquired. If timeout_point is already passed,

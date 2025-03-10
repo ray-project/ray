@@ -31,8 +31,13 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
@@ -57,12 +62,12 @@ constexpr char kLogFormatJsonPattern[] =
     "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\",\"levelname\":\"%L\"%v}";
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
-std::string RayLog::app_name_ = "";
-std::string RayLog::component_name_ = "";
+std::string RayLog::app_name_ = "";        // NOLINT
+std::string RayLog::component_name_ = "";  // NOLINT
 bool RayLog::log_format_json_ = false;
-std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
+std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;  // NOLINT
 
-std::string RayLog::logger_name_ = "ray_log_sink";
+std::string RayLog::logger_name_ = "ray_log_sink";  // NOLINT
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
@@ -225,7 +230,7 @@ std::string json_escape_string(const std::string &s) noexcept {
 /// A logger that prints logs to stderr.
 /// This is the default logger if logging is not initialized.
 /// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
-/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
+/// variable so core worker process can invoke `RAY_LOG` in its whole lifecycle.
 class DefaultStdErrLogger final {
  public:
   std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
@@ -310,17 +315,20 @@ void RayLog::InitLogFormat() {
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
+#if defined(__APPLE__) || defined(__linux__)
   if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
-    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
+    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size)) {
       return max_size;
     }
   }
-  return std::numeric_limits<size_t>::max();
+#endif
+  return 0;
 }
 
 /*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
+#if defined(__APPLE__) || defined(__linux__)
   if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
       ray_rotation_backup_count != nullptr) {
     size_t file_num = 0;
@@ -328,6 +336,7 @@ void RayLog::InitLogFormat() {
       return file_num;
     }
   }
+#endif
   return 1;
 }
 
@@ -399,8 +408,13 @@ void RayLog::InitLogFormat() {
       spdlog::drop(RayLog::GetLoggerName());
     }
 
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    spdlog::sink_ptr file_sink;
+    if (log_rotation_max_size_ == 0) {
+      file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(log_filepath);
+    } else {
+      file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    }
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
@@ -412,8 +426,13 @@ void RayLog::InitLogFormat() {
 
   // Set sink for stderr.
   if (!err_log_filepath.empty()) {
-    auto err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    spdlog::sink_ptr err_sink;
+    if (log_rotation_max_size_ == 0) {
+      err_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>(err_log_filepath);
+    } else {
+      err_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          err_log_filepath, log_rotation_max_size_, log_rotation_file_num_);
+    }
     err_sink->set_level(spdlog::level::err);
     sinks[1] = std::move(err_sink);
   } else {

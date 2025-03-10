@@ -1,11 +1,7 @@
 import copy
-import functools
 import logging
 import queue
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
-
-import numpy as np
-import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
@@ -41,7 +37,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -390,24 +385,6 @@ class IMPALAConfig(AlgorithmConfig):
                 setting_name="entropy_coeff",
                 description="entropy coefficient",
             )
-            # Learner API specific checks.
-            # GPU-bound single Learner must be local (faster than remote Learner,
-            # b/c GPU can update in parallel through the learner thread).
-            if self.num_gpus_per_learner > 0 and self.num_learners == 1:
-                self._value_error(
-                    "When running with 1 GPU Learner, this Learner should be local! "
-                    "Set `config.learners(num_learners=0)` to configure a local "
-                    "Learner instance."
-                )
-            # CPU-bound single Learner must be remote (faster than local Learner,
-            # b/c learner thread would compete with main thread for resources).
-            elif self.num_gpus_per_learner == 0 and self.num_learners == 0:
-                self._value_error(
-                    "When running with a CPU Learner, this Learner should be remote! "
-                    "Set `config.learners(num_learners=1)` to configure a single "
-                    "remote Learner instance."
-                )
-
             if self.minibatch_size is not None and not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.total_train_batch_size
@@ -557,8 +534,8 @@ class IMPALA(Algorithm):
         self.local_mixin_buffer = None  # @OldAPIStack
         self._batch_being_built = []  # @OldAPIStack
 
-        # Create extra aggregation workers and assign each rollout worker to
-        # one of them.
+        # Create extra aggregation workers and assign each rollout worker to one of
+        # them.
         self._episode_packs_being_built = []
         self._ma_batches_being_built: Dict[int, list] = {
             i: [] for i in range(self.config.num_learners or 1)
@@ -645,10 +622,6 @@ class IMPALA(Algorithm):
             )
 
             while data_packages_for_aggregators:
-
-                def _func(actor, p):
-                    return actor.get_batch(p)
-
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
@@ -657,7 +630,8 @@ class IMPALA(Algorithm):
                     data_packages_for_aggregators[num_agg:],
                 )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
-                    func=[functools.partial(_func, p=p) for p in packs],
+                    func="get_batch",
+                    kwargs=[dict(episode_refs=p) for p in packs],
                     tag="batches",
                 )
                 self.metrics.log_value(
@@ -694,14 +668,15 @@ class IMPALA(Algorithm):
             rl_module_state = None
             num_learner_group_results_received = 0
 
-            for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
-                return_state = (
-                    self.metrics.peek(
-                        NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-                        default=0,
-                    )
-                    >= self.config.broadcast_interval
+            return_state = (
+                self.metrics.peek(
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+                    default=0,
                 )
+                >= self.config.broadcast_interval
+            )
+
+            for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
                 timesteps = {
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
@@ -734,15 +709,12 @@ class IMPALA(Algorithm):
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
-                # TODO (sven): Rename this metric into a more fitting name: ex.
-                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`.
-                self.metrics.log_value(
-                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
-                    1,
-                    reduce="sum",
-                )
+                # Only request weights from 1st Learner - at most - once per
+                # `training_step` call.
+                return_state = False
 
                 num_learner_group_results_received += len(learner_results)
+                # Extract the last (most recent) weights matrix, if available.
                 for result_from_1_learner in learner_results:
                     rl_module_state = result_from_1_learner.pop(
                         "_rl_module_state_after_update", rl_module_state
@@ -755,6 +727,10 @@ class IMPALA(Algorithm):
                 key=(LEARNER_GROUP, MEAN_NUM_LEARNER_RESULTS_RECEIVED),
                 value=num_learner_group_results_received,
             )
+
+        self.metrics.log_value(
+            NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
+        )
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
@@ -775,20 +751,6 @@ class IMPALA(Algorithm):
                 )
 
     def _sample_and_get_connector_states(self):
-        def _remote_sample_get_state_and_metrics(_worker):
-            _episodes = _worker.sample()
-            # Get the EnvRunner's connector states.
-            _connector_states = _worker.get_state(
-                components=[
-                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
-                ]
-            )
-            _metrics = _worker.get_metrics()
-            # Return episode lists by reference so we don't have to send them to the
-            # main algo process, but to the Learner workers directly.
-            return ray.put(_episodes), _connector_states, _metrics
-
         env_runner_indices_to_update = set()
         episode_refs = []
         connector_states = []
@@ -804,7 +766,7 @@ class IMPALA(Algorithm):
                 return_obj_refs=False,
             )
             self.env_runner_group.foreach_env_runner_async(
-                _remote_sample_get_state_and_metrics
+                "sample_get_state_and_metrics"
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.
@@ -872,7 +834,7 @@ class IMPALA(Algorithm):
             learner_actor_id = self._aggregator_actor_to_learner[agg_actor_id]
             self._ma_batches_being_built[learner_actor_id].append(ma_batch_ref)
 
-        # Construct a n-group of batches (n=num_learners) as long as we still have
+        # Construct an n-group of batches (n=num_learners) as long as we still have
         # at least one batch per learner in our queue.
         batch_refs_for_learner_group: List[List[ObjectRef]] = []
         while all(
@@ -1072,61 +1034,6 @@ class IMPALA(Algorithm):
 
             self._batch_being_built.append(batch)
             aggregate_into_larger_batch()
-
-    @OldAPIStack
-    def _learn_on_processed_samples(self) -> ResultDict:
-        """Update the learner group with the latest batch of processed samples.
-
-        Returns:
-            Aggregated results from the learner group after an update is completed.
-
-        """
-        # Nothing on the queue -> Don't send requests to learner group
-        # or no results ready (from previous `self.learner_group.update()` calls) for
-        # reducing.
-        if not self.data_to_place_on_learner:
-            return {}
-
-        # There are batches on the queue -> Send them all to the learner group.
-        batches = self.data_to_place_on_learner[:]
-        self.data_to_place_on_learner.clear()
-
-        # If there are no learner workers and learning is directly on the driver
-        # Then we can't do async updates, so we need to block.
-        async_update = self.config.num_learners > 0
-        results = []
-        for batch in batches:
-            results = self.learner_group.update_from_batch(
-                batch=batch,
-                timesteps={
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
-                    ),
-                },
-                async_update=async_update,
-                num_epochs=self.config.num_epochs,
-                minibatch_size=self.config.minibatch_size,
-            )
-            if not async_update:
-                results = [results]
-
-            for r in results:
-                self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
-                    NUM_ENV_STEPS_TRAINED
-                )
-                self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
-                    NUM_MODULE_STEPS_TRAINED
-                )
-
-        self._counters.update(self.learner_group.get_stats())
-        # If there are results, reduce-mean over each individual value and return.
-        if results:
-            return tree.map_structure(lambda *x: np.mean(x), *results)
-
-        # Nothing on the queue -> Don't send requests to learner group
-        # or no results ready (from previous `self.learner_group.update_from_batch()`
-        # calls) for reducing.
-        return {}
 
     @OldAPIStack
     def _place_processed_samples_on_learner_thread_queue(self) -> None:

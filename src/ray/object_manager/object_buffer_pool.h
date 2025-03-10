@@ -19,6 +19,8 @@
 #include <boost/bind/bind.hpp>
 #include <list>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -27,7 +29,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/memory_object_reader.h"
-#include "ray/object_manager/plasma/client.h"
 
 namespace ray {
 
