@@ -4,16 +4,21 @@ import torch
 import ray
 from ray.air._internal.device_manager import (
     CUDATorchDeviceManager,
+    MLUTorchDeviceManager,
     NPUTorchDeviceManager,
     get_torch_device_manager_by_context,
 )
+from ray.air._internal.device_manager.mlu import MLU_TORCH_PACKAGE_AVAILABLE
 from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 from ray.cluster_utils import Cluster
 from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer
+from ray.train.torch import TorchConfig, TorchTrainer
 
 if NPU_TORCH_PACKAGE_AVAILABLE:
     import torch_npu  # noqa: F401
+
+if MLU_TORCH_PACKAGE_AVAILABLE:
+    import torch_mlu  # noqa: F401
 
 
 @pytest.fixture
@@ -21,6 +26,20 @@ def ray_2_node_2_npus():
     cluster = Cluster()
     for _ in range(2):
         cluster.add_node(num_cpus=4, resources={"NPU": 2})
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_2_mlus():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=4, resources={"MLU": 2})
 
     ray.init(address=cluster.address)
 
@@ -71,6 +90,26 @@ def test_npu_device_manager(ray_2_node_2_npus):
     else:
         # A RuntimeError will be triggered when NPU resources are declared
         # but the torch npu is actually not available
+        with pytest.raises(RuntimeError):
+            trainer.fit()
+
+
+def test_mlu_device_manager(ray_2_node_2_mlus):
+    def train_fn():
+        assert isinstance(get_torch_device_manager_by_context(), MLUTorchDeviceManager)
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=ScalingConfig(num_workers=1, resources_per_worker={"MLU": 1}),
+        torch_config=TorchConfig(backend="cncl"),
+    )
+
+    if MLU_TORCH_PACKAGE_AVAILABLE and torch.mlu.is_available():
+        # Except test run successfully when torch mlu is available.
+        trainer.fit()
+    else:
+        # A RuntimeError will be triggered when MLU resources are declared
+        # but the torch mlu is actually not available
         with pytest.raises(RuntimeError):
             trainer.fit()
 
