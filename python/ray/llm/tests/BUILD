@@ -10,7 +10,10 @@ py_library(
 
 # Batch test
 py_test_module_list(
-  files = glob(["batch/cpu/**/test_*.py"]),
+  files = glob([
+    "batch/cpu/**/test_*.py",
+    "batch/observability/usage_telemetry/test_*.py",
+  ]),
   size = "small",
   tags = ["exclusive", "cpu", "team:llm"],
   deps = ["//:ray_lib"],
