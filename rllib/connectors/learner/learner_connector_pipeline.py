@@ -4,6 +4,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    LEARNER_CONNECTOR,
     LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN,
     LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT,
 )
@@ -42,7 +43,10 @@ class LearnerConnectorPipeline(ConnectorPipelineV2):
             shared_data=shared_data if shared_data is not None else {},
             explore=explore,
             metrics=metrics,
-            metrics_prefix_key=(ALL_MODULES,),
+            metrics_prefix_key=(
+                ALL_MODULES,
+                LEARNER_CONNECTOR,
+            ),
             **kwargs,
         )
 

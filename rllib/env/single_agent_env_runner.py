@@ -32,7 +32,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
-    ENV_TO_MODULE_TIMER,
+    ENV_TO_MODULE_CONNECTOR,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
@@ -40,7 +40,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
-    MODULE_TO_ENV_TIMER,
+    MODULE_TO_ENV_CONNECTOR,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -305,15 +305,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         to_env = self.module.forward_inference(to_module)
 
                 # Module-to-env connector.
-                with self.metrics.log_time(MODULE_TO_ENV_TIMER):
-                    to_env = self._module_to_env(
-                        rl_module=self.module,
-                        batch=to_env,
-                        episodes=episodes,
-                        explore=explore,
-                        shared_data=shared_data,
-                        metrics=self.metrics,
-                    )
+                to_env = self._module_to_env(
+                    rl_module=self.module,
+                    batch=to_env,
+                    episodes=episodes,
+                    explore=explore,
+                    shared_data=shared_data,
+                    metrics=self.metrics,
+                    metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
+                )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
             # module/connector output. Note that these actions are fully ready (e.g.
@@ -367,14 +367,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # Env-to-module connector pass (cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration.
             if self.module is not None:
-                with self.metrics.log_time(ENV_TO_MODULE_TIMER):
-                    self._cached_to_module = self._env_to_module(
-                        episodes=episodes,
-                        explore=explore,
-                        rl_module=self.module,
-                        shared_data=shared_data,
-                        metrics=self.metrics,
-                    )
+                self._cached_to_module = self._env_to_module(
+                    episodes=episodes,
+                    explore=explore,
+                    rl_module=self.module,
+                    shared_data=shared_data,
+                    metrics=self.metrics,
+                    metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+                )
 
             for env_index in range(self.num_envs):
                 # Call `on_episode_start()` callback (always after reset).
@@ -736,14 +736,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
-            with self.metrics.log_time(ENV_TO_MODULE_TIMER):
-                self._cached_to_module = self._env_to_module(
-                    rl_module=self.module,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=shared_data,
-                    metrics=self.metrics,
-                )
+            self._cached_to_module = self._env_to_module(
+                rl_module=self.module,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+                metrics=self.metrics,
+                metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+            )
 
         # Call `on_episode_start()` callbacks (always after reset).
         for env_index in range(self.num_envs):
