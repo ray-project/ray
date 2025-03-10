@@ -10,7 +10,6 @@ import pytest
 
 import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
-from ray.air.util.node import _get_node_id_from_node_ip
 import ray._private.services
 from ray._private.services import get_node_ip_address
 from ray.dashboard.utils import ray_address_to_api_server_url
