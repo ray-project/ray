@@ -101,13 +101,13 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
-    def requires_nccl(self) -> bool:
-        # By default, channels do not require NCCL.
+    def requires_comm_backend(self) -> bool:
+        # By default, channels do not require communication backend.
         return False
 
     def get_custom_communicator(self) -> Optional[Communicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the custom communication backend group if one is specified.
         """
         return None
 
@@ -124,7 +124,7 @@ class ChannelContext:
     _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
-        # Used for the torch.Tensor NCCL transport.
+        # Used for the torch.Tensor communication backend transport.
         self.communicators: Dict[str, "Communicator"] = {}
 
     @staticmethod
@@ -335,7 +335,7 @@ class ReaderInterface:
         # If a read operation times out, a RayChannelTimeoutError exception will be
         # raised.
         #
-        # TODO(kevin85421): Currently, a DAG with NCCL channels and fast fail enabled
+        # TODO(kevin85421): Currently, a DAG with communication backend channels and fast fail enabled
         # may not be reusable. Revisit this in the future.
         for c in self._leftover_channels:
             start_time = time.monotonic()
