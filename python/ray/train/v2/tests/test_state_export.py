@@ -37,6 +37,7 @@ def _create_mock_train_run(status: RunStatus = RunStatus.RUNNING):
         status=status,
         status_detail=None,
         start_time_ns=time.time_ns(),
+        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
     )
 
 
@@ -55,6 +56,7 @@ def _create_mock_train_run_attempt(
         gpu_ids=[0],
         status=ActorStatus.ALIVE,
         resources=TrainResources(resources={"CPU": 1}),
+        log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-worker.log",
     )
 
     return TrainRunAttempt(

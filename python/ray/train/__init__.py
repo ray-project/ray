@@ -26,6 +26,7 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import get_context
 from ray.train.trainer import TrainingIterator
+
 from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
@@ -46,7 +47,6 @@ if is_v2_enabled():
 
 usage_lib.record_library_usage("train")
 
-Checkpoint.__module__ = "ray.train"
 
 __all__ = [
     "get_checkpoint",
@@ -80,7 +80,6 @@ RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainingIterator.__module__ = "ray.train"
-
 
 if is_v2_enabled():
     __all__.append("UserCallback")
