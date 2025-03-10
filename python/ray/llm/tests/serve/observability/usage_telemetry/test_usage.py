@@ -53,8 +53,7 @@ def test_push_telemetry_report_for_all_models():
         accelerator_type="A10G",
         deployment_config=dict(
             autoscaling_config=dict(
-                initial_replicas=2,
-                min_replicas=1,
+                min_replicas=2,
                 max_replicas=3,
             ),
         ),
@@ -102,7 +101,7 @@ def test_push_telemetry_report_for_all_models():
         TagKey.LLM_SERVE_LORA_BASE_MODELS: "llm_config_lora_model_id",
         TagKey.LLM_SERVE_INITIAL_NUM_LORA_ADAPTERS: "2",
         TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: "llm_config_autoscale_model_id",
-        TagKey.LLM_SERVE_AUTOSCALING_MIN_REPLICAS: "1",
+        TagKey.LLM_SERVE_AUTOSCALING_MIN_REPLICAS: "2",
         TagKey.LLM_SERVE_AUTOSCALING_MAX_REPLICAS: "3",
         TagKey.LLM_SERVE_TENSOR_PARALLEL_DEGREE: "1,1,1,1",
         TagKey.LLM_SERVE_NUM_REPLICAS: "1,2,1,1",

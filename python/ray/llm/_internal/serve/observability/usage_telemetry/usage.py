@@ -245,7 +245,9 @@ def push_telemetry_report_for_all_models(
             autoscaling_config = AutoscalingConfig(
                 **model.deployment_config["autoscaling_config"]
             )
-            num_replicas = autoscaling_config.initial_replicas
+            num_replicas = (
+                autoscaling_config.initial_replicas or autoscaling_config.min_replicas
+            )
             min_replicas = autoscaling_config.min_replicas
             max_replicas = autoscaling_config.max_replicas
 
