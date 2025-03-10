@@ -101,6 +101,15 @@ class TestModule(SubprocessModule):
         # To make sure Python treats this method as an async generator, we yield something.
         yield b"Hello, World"
 
+    @routes.get("/websocket_to_ten", resp_type="websocket")
+    async def websocket_to_ten(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
+        """
+        Streams the numbers 0 to 10.
+        """
+        for i in range(11):
+            await asyncio.sleep(0.001)
+            yield f"{i}\n".encode()
+
     @routes.post("/run_forever")
     async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         while True:
