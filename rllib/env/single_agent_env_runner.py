@@ -54,7 +54,6 @@ from ray.rllib.utils.metrics import (
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry

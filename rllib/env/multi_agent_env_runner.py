@@ -52,7 +52,6 @@ from ray.rllib.utils.metrics import (
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
