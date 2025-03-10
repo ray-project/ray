@@ -105,14 +105,16 @@ dag.teardown()
 # __cgraph_async_compile_start__
 import ray
 
+
 @ray.remote
 class EchoActor:
-  def echo(self, msg):
-    return msg
+    def echo(self, msg):
+        return msg
+
 
 actor = EchoActor.remote()
 with ray.dag.InputNode() as inp:
-  dag = actor.echo.bind(inp)
+    dag = actor.echo.bind(inp)
 
 cdag = dag.experimental_compile(enable_asyncio=True)
 # __cgraph_async_compile_end__
@@ -120,10 +122,12 @@ cdag = dag.experimental_compile(enable_asyncio=True)
 # __cgraph_async_execute_start__
 import asyncio
 
+
 async def async_method(i):
     fut = await cdag.execute_async(i)
     result = await fut
     assert result == i
+
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(async_method(42))
@@ -134,6 +138,7 @@ cdag.teardown()
 
 # __cgraph_actor_death_start__
 from ray.dag import InputNode, MultiOutputNode
+
 
 @ray.remote
 class EchoActor:
