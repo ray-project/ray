@@ -12,13 +12,13 @@ Compiled Graph is a new feature and has some limitations:
 
   - Only the process that compiles the Compiled Graph may call it.
 
-  - A Compiled Graph has a maximum number of in-flight executions. Normally when using classic Ray
-    Core, if there aren't enough resources at the time of ``dag.execute()``, Ray will queue the
-    tasks for later execution. Ray Compiled Graph currently does not support such queuing past their
+  - A Compiled Graph has a maximum number of in-flight executions. When using the DAG API, 
+     if there aren't enough resources at the time of ``dag.execute()``, Ray will queue the
+    tasks for later execution. Ray Compiled Graph currently doesn't support queuing past its
     maximum capacity. Therefore, you may need to consume some results using ``ray.get()``
     before submitting more executions. As a stopgap,
     ``dag.execute()`` throws a ``RayCgraphCapacityExceeded`` exception if the call takes too long.
-    In the future, we plan to introduce better error handling and queuing for Compiled Graph.
+    In the future, Compiled Graph may have better error handling and queuing.
 
 - Compiled Graph Execution
 
@@ -28,7 +28,7 @@ Compiled Graph is a new feature and has some limitations:
     synchronization with the Compiled Graph background thread.
 
   - For now, actors can only execute one Compiled Graph at a time. To execute a different Compiled Graph
-    on the same actor, the current Compiled Graph must be torn down.
+    on the same actor, you must teardown the current Compiled Graph.
     See :ref:`Return NumPy arrays <troubleshoot-numpy>` for more details.
 
 - Passing and getting Compiled Graph results (:class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>`)
@@ -39,20 +39,20 @@ Compiled Graph is a new feature and has some limitations:
 
   - ``ray.get()`` can be called at most once on a :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>`. An exception will be raised if
     it is called twice on the same :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>`. This is because the underlying memory for
-    the result may need to be reused for a future DAG execution; restricting ``ray.get()`` to once
+    the result may need to be reused for a future DAG execution. Restricting ``ray.get()`` to once
     per reference simplifies the tracking of the memory buffers.
 
   - If the value returned by ``ray.get()`` is zero-copy deserialized, then subsequent executions
     of the same DAG will block until the value goes out of scope in Python. Thus, if you hold onto
-    zero-copy deserialized values returned by ``ray.get()``, and you try to execute the DAG above
-    its max concurrency, you may deadlock. This case will be detected in the future, but for now
+    zero-copy deserialized values returned by ``ray.get()``, and you try to execute the Compiled Graph above
+    its max concurrency, it may deadlock. This case will be detected in the future, but for now
     you will receive a ``RayChannelTimeoutError``.
     See :ref:`Explicitly teardown before reusing the same actors <troubleshoot-teardown>`
     for more details.
 
 - Collective operations
 
-  - Compiled Graph supports all-reduce collective operation now, but not yet other collective operations.
+  - Compiled Graph only supports the all-reduce collective operation for now.
   
 Keep an eye out for additional features in future Ray releases:
 - Support better queuing of DAG inputs, to enable more concurrent executions of the same DAG.
