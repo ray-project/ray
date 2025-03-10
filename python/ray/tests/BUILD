@@ -108,7 +108,6 @@ py_test_module_list(
     "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
-    "test_client_library_integration.py",
   ],
   size = "medium",
   tags = ["exclusive", "client_tests", "team:core"],

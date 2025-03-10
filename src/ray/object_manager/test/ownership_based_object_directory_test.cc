@@ -14,6 +14,13 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
+#include <deque>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/pubsub/subscriber.h"

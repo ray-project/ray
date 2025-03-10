@@ -380,7 +380,7 @@ NodeManager::NodeManager(
       "NodeManager.CheckForUnexpectedWorkerDisconnects");
 
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
-  // Run the node manger rpc server.
+  // Run the node manager rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false);
   node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
@@ -1606,7 +1606,8 @@ void SendDisconnectClientReply(const WorkerID &worker_id,
       fbb.GetSize(),
       fbb.GetBufferPointer());
   if (!status.ok()) {
-    RAY_LOG(WARNING).WithField(worker_id) << "Failed to send disconnect reply to worker.";
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Failed to send disconnect reply to worker: " << status.ToString();
   }
 }
 
