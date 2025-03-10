@@ -185,14 +185,13 @@ to change the default timeout:
 CPU to GPU communication
 ------------------------
 
-With classic Ray Core, passing ``torch.Tensors`` between actors can easily become expensive, especially
+With classic Ray Core, passing ``torch.Tensors`` between actors can become expensive, especially
 when transferring between devices. This is because Ray Core doesn't know the final destination device.
 Therefore, you may see unnecessary copies across devices other than the source and destination devices.
 
 Ray Compiled Graph ships with native support for passing ``torch.Tensors`` between actors executing on different
 devices. Developers can now use type hint annotations in the Compiled Graph declaration to indicate the final
-destination device of a ``torch.Tensor``. For example, let’s say we have an actor running on a GPU, and we
-want to pass a ``torch.Tensor`` to it.
+destination device of a ``torch.Tensor``.
 
 .. literalinclude:: ../doc_code/cgraph_nccl.py
     :language: python
@@ -220,12 +219,13 @@ Under the hood, the Ray Compiled Graph backend copies the ``torch.Tensor`` to th
 
 Of course, you can also do this yourself, but there are advantages to using Compiled Graph instead:
 
-- Ray Compiled Graph minimizes the number of data copies made. For example, passing from one CPU to
+- Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to
   multiple GPUs requires one copy to a shared memory buffer, and then one host-to-device copy per
   destination GPU.
 
-- In the future, this can be further optimized through techniques such as memory pinning, using
-  zero-copy deserialization when the CPU is the destination, etc.
+- In the future, this can be further optimized through techniques such as
+  `memory pinning <https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html>`_,
+  using zero-copy deserialization when the CPU is the destination, etc.
 
 
 GPU to GPU communication
