@@ -1,17 +1,17 @@
-.. _train-api:
+:orphan:
+
+.. _train-deprecated-api:
 
 Ray Train API
 =============
 
 .. currentmodule:: ray
 
-
 .. important::
 
-    These API references are for the revamped Ray Train V2 implementation that is available starting from Ray 2.43
-    by enabling the environment variable ``RAY_TRAIN_V2_ENABLED=1``. These APIs assume that the environment variable has been enabled.
+    Ray Train V2 is an overhaul of Ray Train's implementation and select APIs, which can be enabled by setting the environment variable ``RAY_TRAIN_V2_ENABLED=1`` starting in Ray 2.43.
 
-    See :ref:`train-deprecated-api` for the old API references.
+    This page contains the deprecated API references. See :ref:`train-api` for the new API references.
 
 
 PyTorch Ecosystem
@@ -21,11 +21,9 @@ PyTorch Ecosystem
     :nosignatures:
     :toctree: doc/
 
-    ~train.torch.TorchTrainer
+    ~train.torch.torch_trainer.TorchTrainer
     ~train.torch.TorchConfig
     ~train.torch.xla.TorchXLAConfig
-
-.. _train-pytorch-integration:
 
 PyTorch
 ~~~~~~~
@@ -40,8 +38,6 @@ PyTorch
     ~train.torch.prepare_data_loader
     ~train.torch.enable_reproducibility
 
-.. _train-lightning-integration:
-
 PyTorch Lightning
 ~~~~~~~~~~~~~~~~~
 
@@ -55,8 +51,6 @@ PyTorch Lightning
     ~train.lightning.RayFSDPStrategy
     ~train.lightning.RayDeepSpeedStrategy
     ~train.lightning.RayTrainReportCallback
-
-.. _train-transformers-integration:
 
 Hugging Face Transformers
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -84,6 +78,16 @@ Tensorflow/Keras
     ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.keras.ReportCheckpointCallback
 
+Horovod
+~~~~~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.horovod.HorovodTrainer
+    ~train.horovod.HorovodConfig
+
 
 XGBoost
 ~~~~~~~
@@ -92,7 +96,7 @@ XGBoost
     :nosignatures:
     :toctree: doc/
 
-    ~train.xgboost.XGBoostTrainer
+    ~train.xgboost.xgboost_trainer.XGBoostTrainer
     ~train.xgboost.RayTrainReportCallback
 
 
@@ -103,11 +107,9 @@ LightGBM
     :nosignatures:
     :toctree: doc/
 
-    ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.lightgbm_trainer.LightGBMTrainer
     ~train.lightgbm.RayTrainReportCallback
 
-
-.. _ray-train-configs-api:
 
 Ray Train Configuration
 -----------------------
@@ -121,8 +123,7 @@ Ray Train Configuration
     ~train.FailureConfig
     ~train.RunConfig
     ~train.ScalingConfig
-
-.. _train-loop-api:
+    ~train.SyncConfig
 
 Ray Train Utilities
 -------------------
@@ -134,7 +135,7 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.v2.api.context.TrainContext
+    ~train.context.TrainContext
 
 **Functions**
 
@@ -143,9 +144,9 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.get_checkpoint
-    ~train.get_context
+    ~train.context.get_context
     ~train.get_dataset_shard
-    ~train.report
+    ~train._internal.session.report
 
 
 Ray Train Output
@@ -156,38 +157,36 @@ Ray Train Output
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.Result
+    ~air.result.Result
 
-.. Ray Train Errors
-.. ----------------
-
-Ray Tune Integration Utilities
-------------------------------
+Ray Train Errors
+----------------
 
 .. autosummary::
     :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    tune.integration.ray_train.TuneReportCallback
+    ~train.error.SessionMisuseError
+    ~train.base_trainer.TrainingFailedError
 
 
 Ray Train Developer APIs
 ------------------------
 
-Trainer Base Class
-~~~~~~~~~~~~~~~~~~
+Trainer Base Classes
+~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~train.v2.api.data_parallel_trainer.DataParallelTrainer
+    ~train.trainer.BaseTrainer
+    ~train.data_parallel_trainer.DataParallelTrainer
+
 
 Train Backend Base Classes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. _train-backend:
-.. _train-backend-config:
 
 .. autosummary::
     :nosignatures:
@@ -196,12 +195,3 @@ Train Backend Base Classes
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
-
-Trainer Callbacks
-~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~train.UserCallback
