@@ -55,7 +55,7 @@ def attempt_count_timesteps(tensor_dict: dict):
         and len(seq_lens) > 0
     ):
         if torch and torch.is_tensor(seq_lens):
-            return seq_lens.sum().item()
+            return int(seq_lens.sum().item())
         else:
             return int(sum(seq_lens))
 
