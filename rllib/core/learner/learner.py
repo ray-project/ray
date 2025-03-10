@@ -987,7 +987,7 @@ class Learner(Checkpointable):
         MultiRLModule.
 
         Args:
-            batch: A batch of training data to update from.
+            batch: n A batch of training data to update from.
             timesteps: Timesteps dict, which must have the key
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
@@ -1095,13 +1095,10 @@ class Learner(Checkpointable):
 
             batch = self._set_slicing_by_batch_id(batch, value=True)
 
-            self.metrics.log_dict(
-                {
-                    (mid, WEIGHTS_SEQ_NO): self._weights_seq_no
-                    for mid in batch.policy_batches.keys()
-                },
-                window=1,
-            )
+            # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
+            #  cover the minibatch/epoch logic.
+            # Log all timesteps (env, agent, modules) based on given episodes/batch.
+            self._log_steps_trained_metrics(batch)
 
             batch_iter = batch_iter(
                 batch,
@@ -1135,11 +1132,6 @@ class Learner(Checkpointable):
             self.metrics.tensors_to_numpy(tensor_metrics)
 
             self._set_slicing_by_batch_id(tensor_minibatch, value=False)
-
-        # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
-        #  cover the minibatch/epoch logic.
-        # Log all timesteps (env, agent, modules) based on given episodes/batch.
-        self._log_steps_trained_metrics(batch)
 
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -1588,6 +1580,12 @@ class Learner(Checkpointable):
         """Logs this iteration's steps trained, based on given `batch`."""
         for mid, module_batch in batch.policy_batches.items():
             module_batch_size = len(module_batch)
+            # Log weights seq no for this batch.
+            self.metrics.log_value(
+                (mid, WEIGHTS_SEQ_NO),
+                self._weights_seq_no,
+                window=1,
+            )
             # Log average batch size (for each module).
             self.metrics.log_value(
                 key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
