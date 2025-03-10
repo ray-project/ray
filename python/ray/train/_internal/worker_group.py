@@ -349,7 +349,7 @@ class WorkerGroup:
             }
             if (
                 isinstance(self._placement_group, PlacementGroup)
-                and self._placement_group.bundle_count > 1
+                and self._placement_group.bundle_count == num_workers
             ):
                 actor_options.update(
                     {
