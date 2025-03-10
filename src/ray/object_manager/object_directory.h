@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -30,7 +31,7 @@ namespace ray {
 
 /// Connection information for remote object managers.
 struct RemoteConnectionInfo {
-  RemoteConnectionInfo(const NodeID &id) : node_id(id) {}
+  explicit RemoteConnectionInfo(const NodeID &id) : node_id(id) {}
 
   // Returns whether there is enough information to connect to the remote
   // object manager.

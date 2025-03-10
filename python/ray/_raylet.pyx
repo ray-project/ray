@@ -72,6 +72,7 @@ from cython.operator import dereference, postincrement
 from cpython.pystate cimport (
     PyGILState_Ensure,
     PyGILState_Release,
+    PyGILState_STATE,
 )
 
 from ray.includes.common cimport (
@@ -2256,6 +2257,10 @@ cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
 
+cdef void pygilstate_release(PyGILState_STATE gstate) nogil:
+    with gil:
+        PyGILState_Release(gstate)
+
 cdef function[void()] initialize_pygilstate_for_thread() nogil:
     """
     This function initializes a C++ thread to make it be considered as a
@@ -2272,7 +2277,7 @@ cdef function[void()] initialize_pygilstate_for_thread() nogil:
     cdef function[void()] callback
     with gil:
         gstate = PyGILState_Ensure()
-        callback = bind(PyGILState_Release, ref(gstate))
+        callback = bind(pygilstate_release, ref(gstate))
     return callback
 
 cdef CRayStatus task_execution_handler(
