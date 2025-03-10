@@ -1,8 +1,9 @@
-import pathlib
 from collections import defaultdict
 import copy
 from functools import partial
 import itertools
+import logging
+import pathlib
 from typing import (
     Any,
     Callable,
@@ -57,7 +58,11 @@ from ray.train.constants import (
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
 from ray.util.annotations import PublicAPI
-from ray.util.placement_group import placement_group, get_current_placement_group
+from ray.util.placement_group import (
+    PlacementGroup,
+    placement_group,
+    get_current_placement_group,
+)
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -79,6 +84,9 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
         )
 
     return backend_config
+
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -155,64 +163,19 @@ class LearnerGroup(Checkpointable):
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
             }
-            # Check, if a placement group already exists, e.g. b/c the process runs
-            # in a Tune trial.
-            current_placement_group = get_current_placement_group()
-            worker = ray._private.worker.global_worker
-            should_capture_child_tasks_in_placement_group = (
-                worker.should_capture_child_tasks_in_placement_group
-            )
-            should_create_placement_group = (
-                current_placement_group is None
-                or not should_capture_child_tasks_in_placement_group
-            )
-            if should_create_placement_group:
-                use_spread = bool(env_integer(TRAIN_ENABLE_WORKER_SPREAD_ENV, 0))
-                strategy = "SPREAD" if use_spread else "PACK"
-                placement_group_for_learners = placement_group(
-                    [
-                        {
-                            "CPU": num_cpus_per_learner
-                            + (self.config.num_aggregator_actors_per_learner or 0),
-                            "GPU": num_gpus_per_learner,
-                        }
-                        for _ in range(self.config.num_learners)
-                    ],
-                    strategy=strategy,
-                )
-                # logger.debug("Waiting for placement group to start.")
-                timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
-                ready, _ = ray.wait(
-                    [placement_group_for_learners.ready()], timeout=timeout
-                )
-                if ready:
-                    # logger.debug
-                    print("Placement group has started.")
-                else:
-                    raise TimeoutError(
-                        "Placement group creation timed out. Make sure your "
-                        "cluster either has enough resources or use an "
-                        "autoscaling cluster. If you are running on a cluster, "
-                        "make sure you specify an address in `ray.init()`, for example, "
-                        '`ray.init("auto")`. You can also increase the timeout by setting '
-                        "the TRAIN_PLACEMENT_GROUP_TIMEOUT_S environment variable. "
-                        "Current resources available: {}, resources requested by the "
-                        "placement group: {}".format(
-                            ray.available_resources(),
-                            placement_group_for_learners.bundle_specs,
-                        )
-                    )
-            else:
-                placement_group_for_learners = None
 
-            self._placement_group = placement_group_for_learners
+            # Create a placement, if necessary.
+            self._placement_group = self._create_placement_group(
+                num_cpus_per_learner=num_cpus_per_learner,
+                num_gpus_per_learner=num_gpus_per_learner,
+            )
 
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
                 num_workers=self.config.num_learners,
                 resources_per_worker=resources_per_learner,
                 max_retries=0,
-                placement_group=placement_group_for_learners,
+                placement_group=self._placement_group,
             )
             backend_executor.start(
                 train_cls=learner_class,
@@ -247,6 +210,77 @@ class LearnerGroup(Checkpointable):
                 else self._worker_manager.num_outstanding_async_reqs()
             ),
         }
+
+    def _create_placement_group(
+        self, num_cpus_per_learner: int, num_gpus_per_learner: int
+    ) -> Optional[PlacementGroup]:
+        """Create a placement group for `Learners`.
+
+        The placement group includes bundles for each `Learner` actor
+        together with resources for the corresponding `AggregatorActor`s.
+
+        In case the `LearnerGroup` exists inside of a Ray Tune trial, and
+        the current placement group should capture child tasks in its
+        placement group no placement group is created.
+
+        Args:
+            num_cpus_per_learner: Number of CPUs to use per `Learner` worker.
+            num_gpus_per_learner: Number of GPUs to use per `Learner` worker.
+
+        Returns:
+            A placement group, if running without or `None`.
+        """
+        # Check, if a placement group already exists, e.g. b/c the process runs
+        # in a Tune trial.
+        current_placement_group = get_current_placement_group()
+        worker = ray._private.worker.global_worker
+        should_capture_child_tasks_in_placement_group = (
+            worker.should_capture_child_tasks_in_placement_group
+        )
+        should_create_placement_group = (
+            current_placement_group is None
+            or not should_capture_child_tasks_in_placement_group
+        )
+        if should_create_placement_group:
+            # Should a `"SPREAD"` scheduling be used for `Learner`s (i.e.
+            # multi-node training)?
+            use_spread = bool(env_integer(TRAIN_ENABLE_WORKER_SPREAD_ENV, 0))
+            strategy = "SPREAD" if use_spread else "PACK"
+            placement_group_for_learners = placement_group(
+                [
+                    {
+                        "CPU": num_cpus_per_learner
+                        + (self.config.num_aggregator_actors_per_learner or 0),
+                        "GPU": num_gpus_per_learner,
+                    }
+                    for _ in range(self.config.num_learners)
+                ],
+                strategy=strategy,
+            )
+            logger.debug("Waiting for placement group to start.")
+            # Ensure that we do not schedule infinitely.
+            timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
+            ready, _ = ray.wait([placement_group_for_learners.ready()], timeout=timeout)
+            if ready:
+                logger.debug("Placement group has started.")
+            else:
+                raise TimeoutError(
+                    "Placement group creation timed out. Make sure your "
+                    "cluster either has enough resources or use an "
+                    "autoscaling cluster. If you are running on a cluster, "
+                    "make sure you specify an address in `ray.init()`, for example, "
+                    '`ray.init("auto")`. You can also increase the timeout by setting '
+                    "the TRAIN_PLACEMENT_GROUP_TIMEOUT_S environment variable. "
+                    "Current resources available: {}, resources requested by the "
+                    "placement group: {}".format(
+                        ray.available_resources(),
+                        placement_group_for_learners.bundle_specs,
+                    )
+                )
+        else:
+            placement_group_for_learners = None
+
+        return placement_group_for_learners
 
     @property
     def is_remote(self) -> bool:

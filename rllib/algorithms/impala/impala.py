@@ -139,8 +139,7 @@ class IMPALAConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.num_learners = 1
-        self.num_aggregator_actors_per_learner = 0
-        self.num_pkgs_per_aggregation_cycle = 1
+        self.num_aggregator_actors_per_learner = 0        
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.num_env_runners = 2
@@ -186,7 +185,6 @@ class IMPALAConfig(AlgorithmConfig):
         replay_buffer_num_slots: Optional[int] = NotProvided,
         learner_queue_size: Optional[int] = NotProvided,
         learner_queue_timeout: Optional[float] = NotProvided,
-        num_pkgs_per_aggregation_cycle: Optional[int] = NotProvided,
         timeout_s_sampler_manager: Optional[float] = NotProvided,
         timeout_s_aggregator_manager: Optional[float] = NotProvided,
         broadcast_interval: Optional[int] = NotProvided,
@@ -319,8 +317,6 @@ class IMPALAConfig(AlgorithmConfig):
             self.learner_queue_size = learner_queue_size
         if learner_queue_timeout is not NotProvided:
             self.learner_queue_timeout = learner_queue_timeout
-        if num_pkgs_per_aggregation_cycle is not NotProvided:
-            self.num_pkgs_per_aggregation_cycle = num_pkgs_per_aggregation_cycle
         if broadcast_interval is not NotProvided:
             self.broadcast_interval = broadcast_interval
         if timeout_s_sampler_manager is not NotProvided:
@@ -626,42 +622,16 @@ class IMPALA(Algorithm):
                 len(ma_batches_refs),
             )
 
-            def distribute_without_cycle(lst, m, k):
-                groups = []  # will hold our sublists (each with at most k items)
-                remainder = []  # items that couldn't be placed in any group
-
-                for item in lst:
-                    placed = False
-                    # Try to add the item to an existing group that is not full
-                    for group in groups:
-                        if len(group) < k:
-                            group.append(item)
-                            placed = True
-                            break
-
-                    # If not placed, either start a new group or add to remainder
-                    if not placed:
-                        if len(groups) < m:
-                            groups.append([item])
-                        else:
-                            remainder.append(item)
-
-                return groups, remainder
-
-            data_packages_for_aggregators = tree.flatten(data_packages_for_aggregators)
+            # data_packages_for_aggregators = tree.flatten(data_packages_for_aggregators)
             while data_packages_for_aggregators:
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
-                packs, data_packages_for_aggregators = distribute_without_cycle(
-                    data_packages_for_aggregators,
-                    num_agg,
-                    self.config.num_pkgs_per_aggregation_cycle,
+
+                packs, data_packages_for_aggregators = (
+                    data_packages_for_aggregators[:num_agg],
+                    data_packages_for_aggregators[num_agg:],
                 )
-                # packs, data_packages_for_aggregators = (
-                #     data_packages_for_aggregators[:num_agg],
-                #     data_packages_for_aggregators[num_agg:],
-                # )
                 sent = self._aggregator_actor_manager.foreach_actor_async(
                     func="get_batch",
                     kwargs=[dict(episode_refs=p) for p in packs],

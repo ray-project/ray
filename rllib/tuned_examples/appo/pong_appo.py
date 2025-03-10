@@ -72,7 +72,6 @@ config = (
         # learner_queue_size=1,
         circular_buffer_num_batches=4,
         circular_buffer_iterations_per_batch=2,
-        num_pkgs_per_aggregation_cycle=2,
     )
     .rl_module(
         model_config=DefaultModelConfig(

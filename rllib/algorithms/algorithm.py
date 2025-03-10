@@ -179,12 +179,12 @@ from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
 from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 from ray.tune.resources import Resources
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
-from ray.tune.registry import get_trainable_cls
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
@@ -826,54 +826,35 @@ class Algorithm(Checkpointable, Trainable):
                 spaces=self.env_runner_group.get_spaces(),
                 inference_only=False,
             )
-            learner_pgs = list(
-                enumerate(
-                    self.learner_group.foreach_learner(
-                        func=lambda _learner: ray.util.get_current_placement_group(),
-                    )
-                )
-            )
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
+            pg = self.learner_group._placement_group
             agg_cls_list = []
             aggregator_index = 0
-            print(f"===> Learner PGS: {learner_pgs}")
             self._aggregator_actor_to_learner = {}
-            print(f"{learner_pgs[0][1].get()}")
-            pg = learner_pgs[0][1].get()
-            print(f"PG: {pg}")
-            print(f"BUNDLES: {pg.bundle_cache}")
             for i in range(self.config.num_aggregator_actors_per_learner):
                 for j in range(self.config.num_learners):
+                    scheduling_strategy = (
+                        PlacementGroupSchedulingStrategy(
+                            placement_group=pg,
+                            placement_group_bundle_index=j if pg.bundle_cache else -1,
+                        )
+                        if pg
+                        else None
+                    )
                     agg_cls_list.append(
                         ray.remote(
                             num_cpus=1,
-                            scheduling_strategy=PlacementGroupSchedulingStrategy(
-                                placement_group=pg,
-                                placement_group_bundle_index=j
-                                if pg.bundle_cache
-                                else -1,
-                            ),
+                            # Place each `AggregatorActor` into a `Learner` bundle.
+                            scheduling_strategy=scheduling_strategy,
                             max_restarts=-1,
                         )(AggregatorActor)
                     )
+                    # Assign each aggregator to a learner depending on the bundle.
                     self._aggregator_actor_to_learner[aggregator_index] = j
                     aggregator_index += 1
-            # agg_cls = ray.remote(
-            #     num_cpus=1,
-            #     # TODO (sven): Activate this when Ray has figured out GPU pre-loading.
-            #     # num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
-            #     max_restarts=-1,
-            # )(AggregatorActor)
-            print(f"Creating Aggregators")
+
+            # Manage all `AggregatorActor`s inside a `FaultTilerantActorManager`.
             self._aggregator_actor_manager = FaultTolerantActorManager(
-                # [
-                #     agg_cls.remote(self.config, rl_module_spec)
-                #     for _ in range(
-                #         (self.config.num_learners or 1)
-                #         * self.config.num_aggregator_actors_per_learner
-                #     ),
-                # ],
                 [
                     agg_cls.remote(self.config, rl_module_spec)
                     for agg_cls in agg_cls_list
@@ -882,43 +863,6 @@ class Algorithm(Checkpointable, Trainable):
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
-            print(f"AggregatorActors created")
-            # Get the devices of each learner.
-            learner_locations = list(
-                enumerate(
-                    self.learner_group.foreach_learner(
-                        func=lambda _learner: (_learner.node, _learner.device),
-                    )
-                )
-            )
-            # Get the devices of each AggregatorActor.
-            aggregator_locations = list(
-                enumerate(
-                    self._aggregator_actor_manager.foreach_actor(
-                        func=lambda actor: (actor._node, actor._device)
-                    )
-                )
-            )
-            # self._aggregator_actor_to_learner = {}
-            # for agg_idx, aggregator_location in aggregator_locations:
-            #     aggregator_location = aggregator_location.get()
-            #     for learner_idx, learner_location in learner_locations:
-            #         # TODO (sven): Activate full comparison (including device) when Ray
-            #         #  has figured out GPU pre-loading.
-            #         if learner_location.get()[0] == aggregator_location[0]:
-            #             # Round-robin, in case all Learners are on same device/node.
-            #             learner_locations = learner_locations[1:] + [
-            #                 learner_locations[0]
-            #             ]
-            #             self._aggregator_actor_to_learner[agg_idx] = learner_idx
-            #             break
-            #     if agg_idx not in self._aggregator_actor_to_learner:
-            #         raise RuntimeError(
-            #             "No Learner worker found that matches aggregation worker "
-            #             f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
-            #             f"({aggregator_location[1]})! The Learner workers' locations "
-            #             f"are {learner_locations}."
-            #         )
 
             # Make sure, each Learner index is mapped to from at least one
             # AggregatorActor.
