@@ -38,9 +38,7 @@ def _env_creator(cfg):
 
 register_env("env", _env_creator)
 
-import os
 
-os.environ["TRAIN_ENABLE_WORKER_SPREAD"] = "1"
 config = (
     APPOConfig()
     .environment(
@@ -83,8 +81,7 @@ config = (
     )
 )
 
-args.num_learners = 2
-args.num_env_runners = 4
+
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
