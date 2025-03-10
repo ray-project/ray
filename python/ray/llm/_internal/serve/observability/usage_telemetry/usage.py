@@ -191,9 +191,13 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
         )
     except ValueError:
         from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
         telemetry_agent = TelemetryAgent.options(
+            # Ensure the actor is created on the head node.
             resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+            # Ensure the actor is not scheduled with the existing placement group.
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
         ).remote()
 
     return telemetry_agent
