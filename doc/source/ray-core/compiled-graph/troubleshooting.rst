@@ -11,11 +11,11 @@ Compiled Graph is a new feature and has some limitations. Different from classic
 - Invoking Compiled Graph
   - Only the process that compiles the Compiled Graph may call it.
   - A Compiled Graph has a maximum number of in-flight executions. Normally when using classic Ray
-    Core, if there are not enough resources at the time of ``dag.execute()``, Ray will queue the
+    Core, if there aren't enough resources at the time of ``dag.execute()``, Ray will queue the
     tasks for later execution. Ray Compiled Graph currently does not support such queuing past their
     maximum capacity. Therefore, you may need to consume some results using ``ray.get()``
     before submitting more executions. As a stopgap,
-    ``dag.execute()`` will throw a ``RayCgraphCapacityExceeded`` exception if the call takes too long.
+    ``dag.execute()`` throws a ``RayCgraphCapacityExceeded`` exception if the call takes too long.
     In the future, we plan to introduce better error handling and queuing for Compiled Graph.
 
 - Compiled Graph Execution
@@ -28,7 +28,7 @@ Compiled Graph is a new feature and has some limitations. Different from classic
 
 
 - Passing and getting Compiled Graph results (``CompiledDAGRef``s)
-  - Compiled Graph results cannot be passed to another task or actor. This restriction may be loosened
+  - Compiled Graph results can't be passed to another task or actor. This restriction may be loosened
     in the future, but for now, it allows for better performance because the backend knows
     exactly where to push the results.
   - ``ray.get()`` can be called at most once on a ``CompiledDAGRef``. An exception will be raised if
@@ -50,8 +50,9 @@ Keep an eye out for additional features in future Ray releases:
 - Support for multiple DAGs executing on the same actor.
 - General performance improvements.
 
-If you run into additional issues, or have other feedback or questions, please file an issue on GitHub.
-For a full list of known issues, check the ``compiled-graph`` label on Ray GitHub.
+If you run into additional issues, or have other feedback or questions, file an issue
+on ``GitHub <https://github.com/ray-project/ray/issues>``_.
+For a full list of known issues, check the ``compiled-graphs`` label on Ray GitHub.
 
 .. _troubleshoot-numpy:
 Returning NumPy arrays

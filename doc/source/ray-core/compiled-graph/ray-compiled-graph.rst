@@ -6,7 +6,7 @@ Ray Compiled Graph (beta)
 .. warning::
 
     Ray Compiled Graph is currently in beta (since Ray 2.44). The APIs are subject to change and expected to evolve.
-    The API is available from Ray 2.32, but it is recommended to use a version after 2.44.
+    The API is available from Ray 2.32, but it's recommended to use a version after 2.44.
 
 As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential.
 :ref:`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
