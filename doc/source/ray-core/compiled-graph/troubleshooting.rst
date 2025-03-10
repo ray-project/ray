@@ -31,14 +31,14 @@ Compiled Graph is a new feature and has some limitations. Different from classic
     on the same actor, the current Compiled Graph must be torn down.
     See :ref:`Return NumPy arrays <troubleshoot-numpy>` for more details.
 
-- Passing and getting Compiled Graph results (``CompiledDAGRef``s)
+- Passing and getting Compiled Graph results (:class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>`)
   
   - Compiled Graph results can't be passed to another task or actor. This restriction may be loosened
     in the future, but for now, it allows for better performance because the backend knows
     exactly where to push the results.
 
-  - ``ray.get()`` can be called at most once on a ``CompiledDAGRef``. An exception will be raised if
-    it is called twice on the same ``CompiledDAGRef``. This is because the underlying memory for
+  - ``ray.get()`` can be called at most once on a :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>`. An exception will be raised if
+    it is called twice on the same :class:`CompiledDAGRef <ray.experimental.compiled_dag_ref.CompiledDAGRef>`. This is because the underlying memory for
     the result may need to be reused for a future DAG execution; restricting ``ray.get()`` to once
     per reference simplifies the tracking of the memory buffers.
 
