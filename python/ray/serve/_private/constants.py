@@ -392,7 +392,7 @@ RAY_SERVE_ENABLE_TASK_EVENTS = (
 
 # Use compact instead of spread scheduling strategy
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
-    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
+    os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "1") == "1"
 )
 
 # Feature flag to always override local_testing_mode to True in serve.run.
@@ -430,4 +430,9 @@ RAY_SERVE_PROXY_GC_THRESHOLD = int(
 # Set to `0` to disable caching entirely.
 RAY_SERVE_METRICS_EXPORT_INTERVAL_MS = int(
     os.environ.get("RAY_SERVE_METRICS_EXPORT_INTERVAL_MS", "100")
+)
+
+# How long to wait after deployments become stable before attempting node compaction
+RAY_SERVE_NODE_COMPACTION_DELAY_S = int(
+    os.environ.get("RAY_SERVE_NODE_COMPACTION_DELAY_S", "300")
 )

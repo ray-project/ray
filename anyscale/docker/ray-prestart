@@ -1,0 +1,69 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ "${ANYSCALE_DISABLE_OPTIMIZED_RAY:-}" == "true" || "${ANYSCALE_DISABLE_OPTIMIZED_RAY:-}" == "1" ]]; then
+    # User explicitly wants to disable optimized ray, then just exit there.
+    exit 0
+fi
+
+source /opt/anyscale/version-envs.sh
+
+if [[ "${ANYSCALE_RAY_SITE_PKG_DIR:-}" == "" ]]; then
+    echo "ANYSCALE_RAY_SITE_PKG_DIR is not set."
+    exit 1
+fi
+
+if [[ "${ANYSCALE_RAY_VERSION:-}" == "" ]]; then
+    echo "ANYSCALE_RAY_VERSION is not set."
+    exit 1
+fi
+
+if [[ "${ANYSCALE_RAY_COMMIT:-}" == "" ]]; then
+    echo "ANYSCALE_RAY_COMMIT is not set."
+    exit 1
+fi
+
+if [[ "${ANYSCALE_PY_VERSION_CODE:-}" == "" ]]; then
+    echo "ANYSCALE_PY_VERSION_CODE is not set."
+    exit 1
+fi
+
+readonly ANYSCALE_INLINED_RAY_OPT="/opt/anyscale/ray-opt.tgz"
+
+if [[ ! -f "${ANYSCALE_INLINED_RAY_OPT}" ]]; then
+    if [[ "${ANYSCALE_PRESTART_DATA_PATH:-}" == "" ]]; then
+        # If not explicitly set, auto forge a default one.
+        ANYSCALE_PRESTART_DATA_PATH_BASE="common/ray-opt/${ANYSCALE_RAY_VERSION}/${ANYSCALE_RAY_COMMIT}"
+        if [[ "${ANYSCALE_RAY_MINIMIZED:-}" == "1" ]]; then
+            ANYSCALE_PRESTART_DATA_PATH="${ANYSCALE_PRESTART_DATA_PATH_BASE}/ray-opt-${ANYSCALE_PY_VERSION_CODE}-min.tar.gz"
+        else
+            ANYSCALE_PRESTART_DATA_PATH="${ANYSCALE_PRESTART_DATA_PATH_BASE}/ray-opt-${ANYSCALE_PY_VERSION_CODE}.tar.gz"
+        fi
+    fi
+fi
+
+readonly SERVICE_SOCK=/tmp/anyscale/anyscaled/sockets/dataplane_service.sock
+
+if [[ ! -S "${SERVICE_SOCK}" ]]; then
+    echo "Dataplane service socket not found: ${SERVICE_SOCK}"
+    exit 1
+fi
+
+# Check if the site package directory owner is root
+if [[ $(stat -c '%U' "${ANYSCALE_RAY_SITE_PKG_DIR}") == "root" ]]; then
+    SUDO=("sudo")
+else
+    SUDO=()
+fi
+
+"${SUDO[@]}" rm -rf \
+    "${ANYSCALE_RAY_SITE_PKG_DIR}/ray" \
+    "${ANYSCALE_RAY_SITE_PKG_DIR}/ray-${ANYSCALE_RAY_VERSION}.dist-info"
+
+if [[ -f "${ANYSCALE_INLINED_RAY_OPT}" ]]; then
+    # This is for non-release builds only.
+    "${SUDO[@]}" tar -xzf /opt/anyscale/ray-opt.tgz -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
+else
+    /opt/anyscale/download_anyscale_data "${ANYSCALE_PRESTART_DATA_PATH}" | "${SUDO[@]}" tar -xzf - -C "${ANYSCALE_RAY_SITE_PKG_DIR}"
+fi

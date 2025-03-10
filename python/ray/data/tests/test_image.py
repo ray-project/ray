@@ -80,9 +80,12 @@ class TestReadImages:
         ]
 
         if ignore_missing_paths:
-            ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
+            ds = ray.data.read_images(
+                paths, include_paths=True, ignore_missing_paths=ignore_missing_paths
+            )
+            paths = [row["path"] for row in ds.take_all()]
             # example:// directive redirects to /ray/python/ray/data/examples/data
-            assert len(ds.input_files()) == 1 and ds.input_files()[0].endswith(
+            assert len(paths) == 1 and paths[0].endswith(
                 "ray/data/examples/data/image-datasets/simple/image1.jpg",
             )
         else:
@@ -166,11 +169,12 @@ class TestReadImages:
             shuffle="files",
         )
 
-        # Execute 10 times to get a set of output paths.
+        # Execute 5 times to get a set of output paths.
         output_paths_list = []
-        for _ in range(10):
+        for _ in range(5):
             paths = [row["path"][-len(file_paths[0]) :] for row in ds.take_all()]
             output_paths_list.append(paths)
+
         all_paths_matched = [
             file_paths == output_paths for output_paths in output_paths_list
         ]

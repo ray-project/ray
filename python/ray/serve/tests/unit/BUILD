@@ -39,7 +39,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "test_deployment_scheduler.py",
         "test_deployment_state.py",
