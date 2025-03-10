@@ -24,7 +24,7 @@ Compiled Graph is a new feature and has some limitations. Different from classic
     submitted to the actor can still execute on the main thread, but you are responsible for
     synchronization with the Compiled Graph background thread.
   - For now, actors can only execute one Compiled Graph at a time. To execute a different Compiled Graph
-    on the same actor, the current Compiled Graph must be torn down.
+    on the same actor, the current Compiled Graph must be torn down. See :ref:`troubleshoot-teardown` for more details.
 
 
 - Passing and getting Compiled Graph results (``CompiledDAGRef``s)
@@ -39,7 +39,7 @@ Compiled Graph is a new feature and has some limitations. Different from classic
     of the same DAG will block until the value goes out of scope in Python. Thus, if you hold onto
     zero-copy deserialized values returned by ``ray.get()``, and you try to execute the DAG above
     its max concurrency, you may deadlock. This case will be detected in the future, but for now
-    you will receive a ``RayChannelTimeoutError``.
+    you will receive a ``RayChannelTimeoutError``. See :ref:`troubleshoot-numpy` for more details.
 
 - Collective operations
   - Compiled Graph supports all-reduce collective operation now, but not yet other collective operations.
@@ -53,6 +53,7 @@ Keep an eye out for additional features in future Ray releases:
 If you run into additional issues, or have other feedback or questions, please file an issue on GitHub.
 For a full list of known issues, check the ``compiled-graph`` label on Ray GitHub.
 
+.. _troubleshoot-numpy:
 Returning NumPy arrays
 ----------------------
 Ray zero-copy deserializes NumPy arrays when possible. If you execute compiled graph with a NumPy array output multiple times, 
@@ -70,7 +71,7 @@ For example, the following code sample could result in a hang or RayChannelTimeo
 In the preceding code snippet, Python may not garbage collect the NumPy array in `result` on each iteration of the loop. 
 Therefore, you should explicitly delete the NumPy array before you try to get the result of subsequent Compiled Graph executions.
 
-
+.. _troubleshoot-teardown:
 Explicitly teardown before reusing the same actors
 --------------------------------------------------
 If you want to reuse the actors of a Compiled Graph, it's important to explicitly teardown the Compiled Graph before reusing the actors. 
