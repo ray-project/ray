@@ -444,6 +444,7 @@ Content-Type: application/json
    :toctree: doc/
 
    serve.llm.LLMServer
+   serve.llm.LLMRouter
 ```
 
 ### OpenAI API Models
