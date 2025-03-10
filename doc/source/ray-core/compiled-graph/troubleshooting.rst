@@ -6,7 +6,7 @@ This page contains common issues and solutions for Compiled Graph execution.
 Limitations
 -----------
 
-Compiled Graph is a new feature and has some limitations. Different from classic Ray Core:
+Compiled Graph is a new feature and has some limitations:
 
 - Invoking Compiled Graph
 
