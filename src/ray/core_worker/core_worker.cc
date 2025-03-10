@@ -1107,7 +1107,7 @@ void CoreWorker::Disconnect(
       if (status.ok()) {
         RAY_LOG(INFO) << "Disconnected from the local raylet.";
       } else {
-        RAY_LOG(WARNING) << "Failed to disconnect from the local raylet.";
+        RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: " << status.ToString();
       }
     }
   }
@@ -3429,7 +3429,7 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "Finished executing task, status=" << status;
+      << "Finished executing task, status=" << status.ToString();
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
@@ -3449,7 +3449,7 @@ Status CoreWorker::ExecuteTask(
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
-    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
+    RAY_LOG(FATAL) << "Unexpected task status type : " << status.ToString();
   }
   return status;
 }
@@ -3644,7 +3644,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
-              << status;
+              << status.ToString();
         }
         waiter->HandleObjectReported(num_objects_consumed);
       });

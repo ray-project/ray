@@ -1572,7 +1572,7 @@ void SendDisconnectClientReply(const WorkerID &worker_id,
       fbb.GetSize(),
       fbb.GetBufferPointer());
   if (!status.ok()) {
-    RAY_LOG(WARNING).WithField(worker_id) << "Failed to send disconnect reply to worker.";
+    RAY_LOG(WARNING).WithField(worker_id) << "Failed to send disconnect reply to worker: " << status.ToString();
   }
 }
 
