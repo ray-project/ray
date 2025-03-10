@@ -1,10 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 from ray.util.annotations import DeveloperAPI
 
-
-if TYPE_CHECKING:
-    import cupy as cp
 
 T = TypeVar("T")
 
@@ -65,22 +62,24 @@ class GPUFuture(DAGOperationFuture[Any]):
     The `wait()` does not block CPU.
     """
 
-    def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
+    def __init__(self, buf: Any, stream: Any = None):
         """
         Initialize a GPU future on the given stream.
 
         Args:
             buf: The buffer to return when the future is resolved.
-            stream: The CUDA stream to record the event on, this event is waited
+            stream: The torch stream to record the event on, this event is waited
                 on when the future is resolved. If None, the current stream is used.
         """
-        import cupy as cp
+        from ray.air._internal.device_manager import (
+            get_torch_device_manager_by_context,
+        )
 
         if stream is None:
-            stream = cp.cuda.get_current_stream()
+            stream = get_torch_device_manager_by_context().get_current_stream()
 
         self._buf = buf
-        self._event = cp.cuda.Event()
+        self._event = get_torch_device_manager_by_context().create_event()
         self._event.record(stream)
 
     def wait(self) -> Any:
@@ -88,8 +87,11 @@ class GPUFuture(DAGOperationFuture[Any]):
         Wait for the future on the current CUDA stream and return the result from
         the GPU operation. This operation does not block CPU.
         """
-        import cupy as cp
+        from ray.air._internal.device_manager import (
+            get_torch_device_manager_by_context,
+        )
 
-        current_stream = cp.cuda.get_current_stream()
-        current_stream.wait_event(self._event)
+        stream = get_torch_device_manager_by_context().get_current_stream()
+
+        stream.wait_event(self._event)
         return self._buf
