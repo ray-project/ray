@@ -1095,11 +1095,6 @@ class Learner(Checkpointable):
 
             batch = self._set_slicing_by_batch_id(batch, value=True)
 
-            # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
-            #  cover the minibatch/epoch logic.
-            # Log all timesteps (env, agent, modules) based on given episodes/batch.
-            self._log_steps_trained_metrics(batch)
-
             batch_iter = batch_iter(
                 batch,
                 num_epochs=num_epochs,
@@ -1130,6 +1125,11 @@ class Learner(Checkpointable):
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
             # to actual (numpy) values.
             self.metrics.tensors_to_numpy(tensor_metrics)
+
+            # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
+            #  cover the minibatch/epoch logic.
+            # Log all timesteps (env, agent, modules) based on given episodes/batch.
+            self._log_steps_trained_metrics(tensor_minibatch)
 
             self._set_slicing_by_batch_id(tensor_minibatch, value=False)
 
@@ -1579,13 +1579,14 @@ class Learner(Checkpointable):
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
         for mid, module_batch in batch.policy_batches.items():
-            module_batch_size = len(module_batch)
             # Log weights seq no for this batch.
             self.metrics.log_value(
                 (mid, WEIGHTS_SEQ_NO),
                 self._weights_seq_no,
                 window=1,
             )
+
+            module_batch_size = len(module_batch)
             # Log average batch size (for each module).
             self.metrics.log_value(
                 key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
