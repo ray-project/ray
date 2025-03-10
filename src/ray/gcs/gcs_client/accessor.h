@@ -366,16 +366,6 @@ class NodeInfoAccessor {
                                  int64_t timeout_ms,
                                  const MultiItemCallback<bool> &callback);
 
-  /// Drain (remove the information of the node from the cluster) the local node from GCS
-  /// asynchronously.
-  ///
-  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
-  ///
-  /// \param node_id The ID of node that to be unregistered.
-  /// \param callback Callback that will be called when unregistration is complete.
-  /// \return Status
-  virtual Status AsyncDrainNode(const NodeID &node_id, const StatusCallback &callback);
-
   /// Get information of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
