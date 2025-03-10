@@ -362,7 +362,7 @@ def address_tuple(address):
 
 
 def node_stats_to_dict(
-    message: GetNodeStatsReply,
+    message: "GetNodeStatsReply",
 ) -> Optional[Dict[str, List[Dict[str, Any]]]]:
     decode_keys = {
         "actorId",
@@ -376,16 +376,12 @@ def node_stats_to_dict(
         "placementGroupId",
     }
     core_workers_stats = message.core_workers_stats
-    message.ClearField("core_workers_stats")
-    try:
-        result = message_to_dict(message, decode_keys)
-        result["coreWorkersStats"] = [
-            message_to_dict(m, decode_keys, always_print_fields_with_no_presence=True)
-            for m in core_workers_stats
-        ]
-        return result
-    finally:
-        message.core_workers_stats.extend(core_workers_stats)
+    result = message_to_dict(message, decode_keys)
+    result["coreWorkersStats"] = [
+        message_to_dict(m, decode_keys, always_print_fields_with_no_presence=True)
+        for m in core_workers_stats
+    ]
+    return result
 
 
 class CustomEncoder(json.JSONEncoder):
