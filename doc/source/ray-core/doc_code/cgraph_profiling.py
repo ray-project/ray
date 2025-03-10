@@ -23,6 +23,7 @@ subprocess.check_call(
 import ray
 import torch
 from ray.dag import InputNode
+from ray.air._internal import torch_utils
 
 
 @ray.remote(num_gpus=1, runtime_env={"nsight": "default"})
