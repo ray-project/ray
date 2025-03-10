@@ -1,6 +1,7 @@
 import copy
 import logging
 import queue
+import tree
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
@@ -138,7 +139,7 @@ class IMPALAConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.num_learners = 1
-        self.num_aggregator_actors_per_learner = 0
+        self.num_aggregator_actors_per_learner = 0        
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.num_env_runners = 2
@@ -621,10 +622,12 @@ class IMPALA(Algorithm):
                 len(ma_batches_refs),
             )
 
+            # data_packages_for_aggregators = tree.flatten(data_packages_for_aggregators)
             while data_packages_for_aggregators:
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
+
                 packs, data_packages_for_aggregators = (
                     data_packages_for_aggregators[:num_agg],
                     data_packages_for_aggregators[num_agg:],
