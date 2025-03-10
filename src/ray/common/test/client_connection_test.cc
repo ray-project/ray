@@ -316,7 +316,7 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   ASSERT_EQ(server_num_messages, 0);
 }
 
-#if defined(_WIN32)
+#if !defined(_WIN32)
 TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
   auto [client0, server0] = CreateConnectionPair(std::nullopt, std::nullopt);
   auto [client1, server1] = CreateConnectionPair(std::nullopt, std::nullopt);
