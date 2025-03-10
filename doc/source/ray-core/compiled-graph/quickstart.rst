@@ -220,7 +220,7 @@ Under the hood, the Ray Compiled Graph backend copies the ``torch.Tensor`` to th
 
 Of course, you can also do this yourself, but there are advantages to using Compiled Graph instead:
 
-- Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to
+- Ray Compiled Graph minimizes the number of data copies made. For example, passing from one CPU to
   multiple GPUs requires one copy to a shared memory buffer, and then one host-to-device copy per
   destination GPU.
 
