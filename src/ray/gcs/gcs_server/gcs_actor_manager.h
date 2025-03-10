@@ -15,7 +15,11 @@
 #pragma once
 #include <gtest/gtest_prod.h>
 
+#include <list>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
@@ -131,7 +135,7 @@ class GcsActor {
           function_descriptor.python_function_descriptor().class_name());
       break;
     default:
-      // TODO (Alex): Handle the C++ case, which we currently don't have an
+      // TODO(Alex): Handle the C++ case, which we currently don't have an
       // easy equivalent to class_name for.
       break;
     }
@@ -517,7 +521,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
-    Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
+    explicit Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
         : client(std::move(client)) {}
     /// A client that can be used to contact the owner.
     std::shared_ptr<rpc::CoreWorkerClientInterface> client;
