@@ -32,6 +32,7 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
+    ENV_TO_MODULE_CONNECTOR,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
@@ -39,6 +40,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
+    MODULE_TO_ENV_CONNECTOR,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -47,11 +49,11 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    RLMODULE_INFERENCE_TIMER,
     SAMPLE_TIMER,
     TIME_BETWEEN_SAMPLING,
     WEIGHTS_SEQ_NO,
 )
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -79,9 +81,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.worker_index: int = kwargs.get("worker_index")
         self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
-
-        # Create a MetricsLogger object for logging custom stats.
-        self.metrics = MetricsLogger()
 
         # Create our callbacks object.
         self._callbacks: List[RLlibCallback] = [
@@ -296,11 +295,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                         + ts
                     ) * (self.config.num_env_runners or 1)
-                    to_env = self.module.forward_exploration(
-                        to_module, t=global_env_steps_lifetime
-                    )
+                    with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                        to_env = self.module.forward_exploration(
+                            to_module, t=global_env_steps_lifetime
+                        )
                 else:
-                    to_env = self.module.forward_inference(to_module)
+                    with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
+                        to_env = self.module.forward_inference(to_module)
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
@@ -310,6 +311,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     explore=explore,
                     shared_data=shared_data,
                     metrics=self.metrics,
+                    metrics_prefix_key=(MODULE_TO_ENV_CONNECTOR,),
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -370,6 +372,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     rl_module=self.module,
                     shared_data=shared_data,
                     metrics=self.metrics,
+                    metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
                 )
 
             for env_index in range(self.num_envs):
@@ -738,6 +741,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 explore=explore,
                 shared_data=shared_data,
                 metrics=self.metrics,
+                metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
             )
 
         # Call `on_episode_start()` callbacks (always after reset).

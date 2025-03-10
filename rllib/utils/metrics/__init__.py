@@ -160,14 +160,21 @@ SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"  # @OldAPIStack
 ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
+ENV_RESET_TIMER = "env_reset_timer"
+ENV_STEP_TIMER = "env_step_timer"
+ENV_TO_MODULE_CONNECTOR = "env_to_module_connector"
+RLMODULE_INFERENCE_TIMER = "rlmodule_inference_timer"
+MODULE_TO_ENV_CONNECTOR = "module_to_env_connector"
 OFFLINE_SAMPLING_TIMER = "offline_sampling_timer"
 REPLAY_BUFFER_ADD_DATA_TIMER = "replay_buffer_add_data_timer"
 REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
 REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
+LEARNER_CONNECTOR = "learner_connector"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
 LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
+CONNECTOR_PIPELINE_TIMER = "connector_pipeline_timer"
 CONNECTOR_TIMERS = "connectors"
 
 # Learner.
