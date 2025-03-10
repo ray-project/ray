@@ -7,6 +7,13 @@ Ray Train API
 
 .. currentmodule:: ray
 
+.. important::
+
+    Ray Train V2 is an overhaul of Ray Train's implementation and select APIs, which can be enabled by setting the environment variable ``RAY_TRAIN_V2_ENABLED=1`` starting in Ray 2.43.
+
+    This page contains the deprecated API references. See :ref:`train-api` for the new API references.
+
+
 PyTorch Ecosystem
 -----------------
 
@@ -137,9 +144,9 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.get_checkpoint
-    ~train.get_context
+    ~train.context.get_context
     ~train.get_dataset_shard
-    ~train.report
+    ~train._internal.session.report
 
 
 Ray Train Output
@@ -150,7 +157,7 @@ Ray Train Output
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.Result
+    ~air.result.Result
 
 Ray Train Errors
 ----------------
@@ -162,16 +169,6 @@ Ray Train Errors
 
     ~train.error.SessionMisuseError
     ~train.base_trainer.TrainingFailedError
-
-
-Ray Tune Integration
---------------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    tune.integration.ray_train.TuneReportCallback
 
 
 Ray Train Developer APIs
