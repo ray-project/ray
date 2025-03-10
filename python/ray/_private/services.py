@@ -2155,7 +2155,7 @@ def determine_plasma_store_config(
         )
 
     if fallback_directory is None:
-        fallback_directory = ray._private.utils.get_user_temp_dir()
+        fallback_directory = ray._private.utils.get_ray_temp_dir()
     else:
         fallback_directory = os.path.abspath(fallback_directory)
 
