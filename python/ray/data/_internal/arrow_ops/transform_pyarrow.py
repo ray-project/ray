@@ -40,7 +40,7 @@ MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
 # See https://github.com/ray-project/ray/issues/31108 for more details.
 # TODO(jjyao): remove this once https://github.com/apache/arrow/issues/35126 is resolved
 MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = env_integer(
-    'RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS', 10
+    "RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS", 10
 )
 
 logger = logging.getLogger(__name__)
