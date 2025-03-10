@@ -299,8 +299,10 @@ ray_cc_library(
     hdrs = ["stream_redirection_utils.h"],
     deps = [
         ":pipe_logger",
+        ":scoped_dup2_wrapper",
         ":stream_redirection_options",
         ":util",
+        "//src/ray/util/internal:stream_redirection_utils",
     ],
 )
 

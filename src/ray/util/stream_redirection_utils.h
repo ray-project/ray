@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "ray/util/internal/stream_redirection_utils.h"
 #include "ray/util/stream_redirection_options.h"
 
 namespace ray {
@@ -26,10 +27,8 @@ namespace ray {
 // 1. This function should be called **at most once** per process; redirected stream
 // will be flushed and synchronized at process termination to guarantee no data loss.
 // 2. This function is _NOT_ thread-safe.
-//
-// TODO(hjiang): Implement full-featured redirection for windows.
-void RedirectStdout(const StreamRedirectionOption &opt);
-void RedirectStderr(const StreamRedirectionOption &opt);
+void RedirectStdoutForOnce(const StreamRedirectionOption &opt);
+void RedirectStderrForOnce(const StreamRedirectionOption &opt);
 
 // Flush on redirected stream synchronously.
 //
