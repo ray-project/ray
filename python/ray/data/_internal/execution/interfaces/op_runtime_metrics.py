@@ -524,12 +524,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.bytes_outputs_of_finished_tasks / self.num_tasks_finished
 
     @metric_property(
-        description="Average maximum RSS usage of tasks.",
+        description="Average RSS usage of tasks.",
         metrics_group=MetricsGroup.TASKS,
         map_only=True,
     )
     def average_memory_usage_per_task(self) -> Optional[float]:
-        """Average maximum RSS usage of tasks."""
+        """Average RSS usage of tasks."""
         if self._cum_rss_bytes is None:
             return None
         else:
