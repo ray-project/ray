@@ -282,8 +282,21 @@ def test_empty_get_current_pod_name_returns_none():
 @pytest.mark.parametrize(
     "test_case",
     [
-        (4, "v4-16", 4),
+        # (number_chips_per_host, accl_type, expected_worker_count)
+        (4, "v2-4", 1),
+        (4, "v3-32", 4),
+        (4, "v4-8", 1),
+        (4, "v4-16", 2),
+        (8, "v5litepod-4", 1),
+        (8, "v5litepod-8", 1),
+        (8, "v5litepod-16", 2),
+        (8, "v5litepod-32", 4),
+        (4, "v5p-4", 1),
+        (4, "v5p-8", 1),
+        (4, "v5p-16", 2),
+        (8, "v6e-4", 1),
         (8, "v6e-8", 1),
+        (8, "v6e-16", 2),
     ],
 )
 @patch("glob.glob")
@@ -313,6 +326,16 @@ def test_num_tpu_chips(mock_glob):
     TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
     assert num_tpu_chips == 4
+
+
+def test_num_chips_vm():
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
+    print(f"{num_tpu_chips=}")
+    num_workers = TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
+    print(f"{num_workers=}")
+    assert num_tpu_chips == 4
+    assert num_workers == 1
 
 
 if __name__ == "__main__":
