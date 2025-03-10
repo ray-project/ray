@@ -123,6 +123,54 @@ async def test_streamed_error_before_yielding(aiohttp_client, default_module_con
     assert await response.text() == "401: Unauthorized although I am not a teapot"
 
 
+async def test_websocket_bytes_res(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    res = []
+    async with client.ws_connect("/websocket_one_to_five_bytes") as ws:
+        async for msg in ws:
+            assert msg.type == aiohttp.WSMsgType.BINARY
+            res.append(msg.data)
+    assert res == [b"1\n", b"2\n", b"3\n", b"4\n", b"5\n"]
+
+
+async def test_websocket_bytes_str(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    res = []
+    async with client.ws_connect("/websocket_one_to_five_strs") as ws:
+        async for msg in ws:
+            assert msg.type == aiohttp.WSMsgType.TEXT
+            res.append(msg.data)
+    assert res == ["1\n", "2\n", "3\n", "4\n", "5\n"]
+
+
+async def test_websocket_raise_error(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    res = []
+    async with client.ws_connect("/websocket_raise_error") as ws:
+        async for msg in ws:
+            assert msg.type == aiohttp.WSMsgType.TEXT
+            res.append(msg.data)
+    assert res == ["1\n", "2\n", "3\n", "4\n", "5\n", "This is an error"]
+
+
+async def test_websocket_error_before_yielding(aiohttp_client, default_module_config):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    res = []
+    async with client.ws_connect("/websocket_error_before_yield") as ws:
+        async for msg in ws:
+            assert msg.type == aiohttp.WSMsgType.TEXT
+            res.append(msg.data)
+    assert res == ["This is an error"]
+
+
 async def test_kill_self(aiohttp_client, default_module_config):
     """
     If a module died, all pending requests should be failed, and the module should be
