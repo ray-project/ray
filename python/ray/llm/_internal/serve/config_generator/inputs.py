@@ -139,7 +139,8 @@ def _get_default_tensor_parallelism(model_id: str, gpu_type: GPUType) -> int:
         deployment_configs = get_default_deployment_configs(
             model_id=model_id, gpu_type=gpu_type
         )
-        return deployment_configs.tensor_parallelism
+        deployment_configs.engine_kwargs.setdefault("tensor_parallel_size", 1)  
+        return deployment_configs.engine_kwargs["tensor_parallel_size"]
     else:
         return 1
 

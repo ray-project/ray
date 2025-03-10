@@ -1,10 +1,18 @@
 model_id_to_gpu_deployment_configs:
   meta-llama/Meta-Llama-3.1-8B-Instruct:
     A10G: &base_llama_31_8b_config
-      max_ongoing_requests: 64
-      max_num_batched_tokens: 2048
-      tensor_parallelism: 1
-      enable_chunked_prefill: true
+      model_loading_config:
+        model_id: meta-llama/Meta-Llama-3.1-8B-Instruct
+      deployment_config:
+        autoscaling_config:
+          target_ongoing_requests: 32
+        max_ongoing_requests: 64
+      engine_kwargs:
+        # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+        max_model_len: 8192
+        max_num_batched_tokens: 2048
+        tensor_parallel_size: 1
+        enable_chunked_prefill: true
     L4: *base_llama_31_8b_config
     L40S: *base_llama_31_8b_config
     A100-40G: *base_llama_31_8b_config
@@ -13,94 +21,77 @@ model_id_to_gpu_deployment_configs:
 
   meta-llama/Meta-Llama-3.1-70B-Instruct:
     A100-40G:
-      max_ongoing_requests: 128
-      max_num_batched_tokens: 2048
-      tensor_parallelism: 8
-      enable_chunked_prefill: true
+      model_loading_config: &meta_llama_31_70b_model_loading_config
+        model_id: meta-llama/Meta-Llama-3.1-70B-Instruct
+      deployment_config:
+        max_ongoing_requests: 128
+      engine_kwargs:
+        # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+        max_model_len: 8192
+        max_num_batched_tokens: 2048
+        tensor_parallel_size: 8
+        enable_chunked_prefill: true
     A100-80G:
-      max_ongoing_requests: 128
-      max_num_batched_tokens: 2048
-      tensor_parallelism: 4
-      enable_chunked_prefill: true
+      model_loading_config: *meta_llama_31_70b_model_loading_config
+      deployment_config:
+        max_ongoing_requests: 128
+      engine_kwargs:
+        # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+        max_model_len: 8192
+        max_num_batched_tokens: 2048
+        tensor_parallel_size: 4
+        enable_chunked_prefill: true
     H100:
-      max_ongoing_requests: 128
-      max_num_batched_tokens: 2048
-      tensor_parallelism: 4
-      enable_chunked_prefill: true
+      model_loading_config: *meta_llama_31_70b_model_loading_config
+      deployment_config:
+        max_ongoing_requests: 128
+      engine_kwargs:
+        # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+        max_model_len: 8192
+        max_num_batched_tokens: 2048
+        tensor_parallel_size: 4
+        enable_chunked_prefill: true
 
   meta-llama/Meta-Llama-3.1-405B-Instruct-FP8:
     H100:
-      max_ongoing_requests: 128
-      max_num_batched_tokens: 2048
-      tensor_parallelism: 8
-      enable_chunked_prefill: true
+      model_loading_config: &meta_llama_31_405b_model_loading_config
+        model_id: meta-llama/Meta-Llama-3.1-405B-Instruct-FP8
+      deployment_config:
+        max_ongoing_requests: 128
+      engine_kwargs:
+        # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
+        max_model_len: 8192
+        max_num_batched_tokens: 2048
+        tensor_parallel_size: 8
+        enable_chunked_prefill: true
 
-
-  mistralai/Mistral-7B-Instruct-v0.1:
-    A10G:
-      max_ongoing_requests: 64
-      max_num_batched_tokens: 8192
-      tensor_parallelism: 1
-    L4:
-      max_ongoing_requests: 32
-      max_num_batched_tokens: 12464
-      tensor_parallelism: 1
-    L40S:
-      max_ongoing_requests: 32
-      max_num_batched_tokens: 12464
-      tensor_parallelism: 1
-    A100-40G: &large_gpu_mistral_7b_config
-      max_ongoing_requests: 200
-      max_num_batched_tokens: 16384
-      tensor_parallelism: 1
-    A100-80G: *large_gpu_mistral_7b_config
-    H100: *large_gpu_mistral_7b_config
-
-  mistralai/Mixtral-8x7B-Instruct-v0.1:
-    A100-40G:
-      max_ongoing_requests: 192
-      max_num_batched_tokens: 32768
-      tensor_parallelism: 8
-    A100-80G:
-      max_ongoing_requests: 192
-      max_num_batched_tokens: 32768
-      tensor_parallelism: 4
-    H100:
-      max_ongoing_requests: 192
-      max_num_batched_tokens: 32768
-      tensor_parallelism: 4
-
-  mistralai/Mixtral-8x22B-Instruct-v0.1:
-    A100-80G:
-      max_ongoing_requests: 192
-      tensor_parallelism: 8
-    H100:
-      max_ongoing_requests: 192
-      tensor_parallelism: 8
 
 
   mistral-community/pixtral-12b:
     L40S: &pixtral_base_12b_config
-      max_ongoing_requests: 8
-      max_num_batched_tokens: 16384
-      tensor_parallelism: 1
+      model_loading_config: &pixtral_base_12b_model_loading_config
+        model_id: mistral-community/pixtral-12b
+      engine_kwargs:
+        tensor_parallel_size: 1
     A100-40G: *pixtral_base_12b_config
     A100-80G: *pixtral_base_12b_config
     H100: *pixtral_base_12b_config
 
   meta-llama/Llama-3.2-11B-Vision-Instruct:
     L40S: &llama_32_base_11b_config
-      max_ongoing_requests: 8
-      max_num_batched_tokens: 16384
-      tensor_parallelism: 1
+      model_loading_config: &llama_32_base_11b_model_loading_config
+        model_id: meta-llama/Llama-3.2-11B-Vision-Instruct
+      engine_kwargs:
+        tensor_parallel_size: 1
     A100-40G: *llama_32_base_11b_config
     A100-80G: *llama_32_base_11b_config
     H100: *llama_32_base_11b_config
 
   meta-llama/Llama-3.2-90B-Vision-Instruct:
     A100-40G: &llama_32_base_90b_config
-      max_ongoing_requests: 8
-      max_num_batched_tokens: 16384
-      tensor_parallelism: 1
+      model_loading_config: &llama_32_base_90b_model_loading_config
+        model_id: meta-llama/Llama-3.2-90B-Vision-Instruct
+      engine_kwargs:
+        tensor_parallel_size: 1
     A100-80G: *llama_32_base_90b_config
     H100: *llama_32_base_90b_config

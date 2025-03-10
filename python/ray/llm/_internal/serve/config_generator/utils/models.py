@@ -1,35 +1,59 @@
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, Any
 
 from pydantic import BaseModel, Field
 
 from ray.llm._internal.serve.config_generator.utils.gpu import (
     GPUType,
 )
-
-MODEL_ID_TO_DEFAULT_CONFIG_FILE: Dict[str, str] = {
-    "meta-llama/Meta-Llama-3.1-8B-Instruct": "meta-llama--Llama-3.1-8b-Instruct.yaml",
-    "meta-llama/Meta-Llama-3.1-70B-Instruct": "meta-llama--Llama-3.1-70b-Instruct.yaml",
-    "mistralai/Mistral-7B-Instruct-v0.1": "mistralai--Mistral-7B-Instruct-v0.1.yaml",
-    "mistralai/Mixtral-8x7B-Instruct-v0.1": "mistralai--Mixtral-8x7B-Instruct-v0.1.yaml",
-    "mistralai/Mixtral-8x22B-Instruct-v0.1": "mistralai--Mixtral-8x22B-Instruct-v0.1.yaml",
-    "mistral-community/pixtral-12b": "mistral-community--pixtral-12b.yaml",
-    "meta-llama/Llama-3.2-11B-Vision-Instruct": "meta-llama--Llama-3.2-11b-Vision-Instruct.yaml",
-    "meta-llama/Llama-3.2-90B-Vision-Instruct": "meta-llama--Llama-3.2-90b-Vision-Instruct.yaml",
-}
+import os
+import yaml
 
 
-class DeploymentConfig(BaseModel):
-    max_ongoing_requests: int
-    max_num_batched_tokens: Optional[int] = None
-    tensor_parallelism: int
-    enable_chunked_prefill: Optional[bool] = None
+from ray.llm._internal.serve.config_generator.utils.constants import (
+    DEFAULT_DEPLOYMENT_CONFIGS_FILE,
+    MODEL_CONFIGS_DIR,
+    REFERENCE_BASE_MODEL_ID,
+    TEMPLATE_DIR,
+)
 
-    @property
-    def target_ongoing_requests(self) -> int:
-        """
-        We currently apply this heuristic that target_ongoing_requests is 0.5 of max_ongoing_requests.
-        """
-        return int(self.max_ongoing_requests * 0.5)
+from ray.llm._internal.serve.configs.server_models import LLMConfig
+
+def read_model_id_to_gpu_mapping() -> Dict[str, str]:
+    file_path = os.path.join(TEMPLATE_DIR, DEFAULT_DEPLOYMENT_CONFIGS_FILE)
+    with open(file_path, "r") as stream:
+        configs = yaml.safe_load(stream)
+    model_id_configs = configs["model_id_to_gpu_deployment_configs"]
+    return {model_id: gpu_type for model_id, gpu_type in model_id_configs.items()}
+    
+    
+MODEL_ID_TO_DEFAULT_CONFIG_FILE: Dict[str, str] = read_model_id_to_gpu_mapping()
+# {
+#     "meta-llama/Meta-Llama-3.1-8B-Instruct": "meta-llama--Llama-3.1-8b-Instruct.yaml",
+#     "meta-llama/Meta-Llama-3.1-70B-Instruct": "meta-llama--Llama-3.1-70b-Instruct.yaml",
+#     "mistralai/Mistral-7B-Instruct-v0.1": "mistralai--Mistral-7B-Instruct-v0.1.yaml",
+#     "mistralai/Mixtral-8x7B-Instruct-v0.1": "mistralai--Mixtral-8x7B-Instruct-v0.1.yaml",
+#     "mistralai/Mixtral-8x22B-Instruct-v0.1": "mistralai--Mixtral-8x22B-Instruct-v0.1.yaml",
+#     "mistral-community/pixtral-12b": "mistral-community--pixtral-12b.yaml",
+#     "meta-llama/Llama-3.2-11B-Vision-Instruct": "meta-llama--Llama-3.2-11b-Vision-Instruct.yaml",
+#     "meta-llama/Llama-3.2-90B-Vision-Instruct": "meta-llama--Llama-3.2-90b-Vision-Instruct.yaml",
+# }
+
+
+class DeploymentConfig(LLMConfig):
+    pass
+    # class Config:
+    #     arbitrary_types_allowed=True
+    
+    # deployment_config: Dict[str, Any] = Field(
+    #     default_factory=dict,
+    #     description="Deployment config for the model.",
+    # )
+    # engine_kwargs: Dict[str, Any] = Field(
+    #     default_factory=dict,
+    #     description="Engine kwargs for the engine.",
+    # )
+    
+    
 
 
 TEXT_COMPLETION_MODEL_TYPE: Literal["TextCompletion"] = "TextCompletion"

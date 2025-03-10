@@ -63,9 +63,7 @@ def get_serve_config(
 
 
 def override_model_configs(base_model_config: Dict[str, Any]) -> Dict[str, Any]:
-    existing_autoscaling_config = base_model_config["deployment_config"][
-        "autoscaling_config"
-    ]
+    existing_autoscaling_config = base_model_config["deployment_config"].setdefault("autoscaling_config", {})
     # Getting the default target ongoing requests from the base model config.
     # If not present, default to 2 (same as Ray Serve's default).
     default_ongoing_requests = (
@@ -85,6 +83,12 @@ def override_model_configs(base_model_config: Dict[str, Any]) -> Dict[str, Any]:
     base_model_config["deployment_config"][
         "autoscaling_config"
     ] = final_autoscaling_config
+    
+    
+    # Make sure max_ongoing request is always double of target_ongoing_requests
+    base_model_config["deployment_config"]["max_ongoing_requests"] = 2 * final_autoscaling_config["target_ongoing_requests"]
+    
+    
     return base_model_config
 
 

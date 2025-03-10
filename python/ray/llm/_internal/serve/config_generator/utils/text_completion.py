@@ -19,14 +19,20 @@ from ray.llm._internal.serve.config_generator.utils.models import (
 
 
 def get_model_default_config(model_id: str) -> Dict[str, Any]:
-    if model_id not in MODEL_ID_TO_DEFAULT_CONFIG_FILE:
-        raise RuntimeError(f"Defaults for {model_id} are not provided.")
-    # Construct the full path to the YAML file
-    file_name = MODEL_ID_TO_DEFAULT_CONFIG_FILE[model_id]
-    file_path = os.path.join(MODEL_CONFIGS_DIR, file_name)
+    
+    return {
+        "model_loading_config": {
+            "model_id": model_id,
+        },
+    }
+    # if model_id not in MODEL_ID_TO_DEFAULT_CONFIG_FILE:
+    #     raise RuntimeError(f"Defaults for {model_id} are not provided.")
+    # # Construct the full path to the YAML file
+    # file_name = MODEL_ID_TO_DEFAULT_CONFIG_FILE[model_id]
+    # file_path = os.path.join(MODEL_CONFIGS_DIR, file_name)
 
-    with open(file_path, "r") as stream:
-        return yaml.safe_load(stream)
+    # with open(file_path, "r") as stream:
+    #     return yaml.safe_load(stream)
 
 
 @cache
@@ -75,8 +81,9 @@ def populate_text_completion_model_config(
 
     base_config["accelerator_type"] = input_model_config.gpu_type.value
 
+    # base_config.setdefault("deployment_config", {}).update(deployment_configs.deployment_config)
     base_config["deployment_config"] = _populate_deployment_configs(
-        base_config["deployment_config"],
+        base_config.setdefault("deployment_config", {}),
         deployment_configs,
     )
     base_config["model_loading_config"] = _populate_model_loading_config(
@@ -93,10 +100,12 @@ def _populate_deployment_configs(
     configs: Dict[str, Any],
     deployment_configs: DeploymentConfig,
 ) -> Dict[str, Any]:
-    configs.setdefault("autoscaling_config", {})[
-        "target_ongoing_requests"
-    ] = deployment_configs.target_ongoing_requests
-    configs["max_ongoing_requests"] = deployment_configs.max_ongoing_requests
+    
+    # configs.setdefault("autoscaling_config", {})[
+    #     "target_ongoing_requests"
+    # ] = deployment_configs.target_ongoing_requests
+    # configs["max_ongoing_requests"] = deployment_configs.max_ongoing_requests
+    configs.update(deployment_configs.deployment_config)
     return configs
 
 
@@ -117,38 +126,48 @@ def _populate_engine_kwargs(
     deployment_configs: DeploymentConfig,
     input_model_config: TextCompletionModelConfig,
 ) -> None:
-    lora_config = input_model_config.lora_config
+    
+    engine_kwargs = configs.setdefault("engine_kwargs", {})
+    engine_kwargs.update(deployment_configs.engine_kwargs)
+    engine_kwargs.update({
+        "tensor_parallel_size": input_model_config.tensor_parallelism,
+    })
+    
+    return engine_kwargs
+    
+    
+    # lora_config = input_model_config.lora_config
 
-    configs.setdefault("engine_kwargs", {})[
-        "max_num_seqs"
-    ] = deployment_configs.max_ongoing_requests
-    configs.setdefault("engine_kwargs", {})[
-        "max_num_batched_tokens"
-    ] = deployment_configs.max_num_batched_tokens
+    # configs.setdefault("engine_kwargs", {})[
+    #     "max_num_seqs"
+    # ] = deployment_configs.deployment_config.max_ongoing_requests
+    # configs.setdefault("engine_kwargs", {})[
+    #     "max_num_batched_tokens"
+    # ] = deployment_configs.max_num_batched_tokens
 
-    configs.setdefault("engine_kwargs", {})[
-        "tensor_parallel_size"
-    ] = input_model_config.tensor_parallelism
+    # configs.setdefault("engine_kwargs", {})[
+    #     "tensor_parallel_size"
+    # ] = input_model_config.tensor_parallelism
 
-    # Chunked prefill is not compatible with LoRA. We can only enable it
-    # if LoRA is disabled.
-    if lora_config is None and deployment_configs.enable_chunked_prefill is not None:
-        configs.setdefault("engine_kwargs", {})[
-            "enable_chunked_prefill"
-        ] = deployment_configs.enable_chunked_prefill
+    # # Chunked prefill is not compatible with LoRA. We can only enable it
+    # # if LoRA is disabled.
+    # if lora_config is None and deployment_configs.enable_chunked_prefill is not None:
+    #     configs.setdefault("engine_kwargs", {})[
+    #         "enable_chunked_prefill"
+    #     ] = deployment_configs.enable_chunked_prefill
 
-    # max_model_len should not be bigger than max_num_batched_tokens, unless
-    # chunked prefill is enabled.
-    existing_max_model_len = configs.get("engine_kwargs", {}).get("max_model_len", None)
-    chunked_prefill_enabled = configs.get("engine_kwargs", {}).get(
-        "enable_chunked_prefill", False
-    )
-    if (
-        existing_max_model_len is not None
-        and deployment_configs.max_num_batched_tokens
-        and existing_max_model_len > deployment_configs.max_num_batched_tokens
-        and not chunked_prefill_enabled
-    ):
-        configs.setdefault("engine_kwargs", {})[
-            "max_model_len"
-        ] = deployment_configs.max_num_batched_tokens
+    # # max_model_len should not be bigger than max_num_batched_tokens, unless
+    # # chunked prefill is enabled.
+    # existing_max_model_len = configs.get("engine_kwargs", {}).get("max_model_len", None)
+    # chunked_prefill_enabled = configs.get("engine_kwargs", {}).get(
+    #     "enable_chunked_prefill", False
+    # )
+    # if (
+    #     existing_max_model_len is not None
+    #     and deployment_configs.max_num_batched_tokens
+    #     and existing_max_model_len > deployment_configs.max_num_batched_tokens
+    #     and not chunked_prefill_enabled
+    # ):
+    #     configs.setdefault("engine_kwargs", {})[
+    #         "max_model_len"
+    #     ] = deployment_configs.max_num_batched_tokens
