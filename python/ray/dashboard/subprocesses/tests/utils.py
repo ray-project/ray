@@ -101,14 +101,38 @@ class TestModule(SubprocessModule):
         # To make sure Python treats this method as an async generator, we yield something.
         yield b"Hello, World"
 
-    @routes.get("/websocket_to_ten", resp_type="websocket")
-    async def websocket_to_ten(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
-        """
-        Streams the numbers 0 to 10.
-        """
-        for i in range(11):
+    @routes.get("/websocket_one_to_five_bytes", resp_type="websocket")
+    async def websocket_one_to_five_bytes(
+        self, req: aiohttp.web.Request
+    ) -> AsyncIterator[bytes]:
+        for i in range(1, 6):
             await asyncio.sleep(0.001)
             yield f"{i}\n".encode()
+
+    @routes.get("/websocket_one_to_five_strs", resp_type="websocket")
+    async def websocket_one_to_five_strs(
+        self, req: aiohttp.web.Request
+    ) -> AsyncIterator[str]:
+        for i in range(1, 6):
+            await asyncio.sleep(0.001)
+            yield f"{i}\n"
+
+    @routes.get("/websocket_raise_error", resp_type="websocket")
+    async def websocket_raise_error(
+        self, req: aiohttp.web.Request
+    ) -> AsyncIterator[str]:
+        for i in range(1, 6):
+            await asyncio.sleep(0.001)
+            yield f"{i}\n"
+        raise ValueError("This is an error")
+
+    @routes.get("/websocket_error_before_yield", resp_type="websocket")
+    async def websocket_error_before_yield(
+        self, req: aiohttp.web.Request
+    ) -> AsyncIterator[str]:
+        raise ValueError("This is an error")
+        # To make sure Python treats this method as an async generator, we yield something.
+        yield "Hello, World"
 
     @routes.post("/run_forever")
     async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:

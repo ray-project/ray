@@ -291,11 +291,9 @@ class SubprocessModuleHandle:
                         await ws_target.send_str(msg.data)
                     elif msg.type == aiohttp.WSMsgType.BINARY:
                         await ws_target.send_bytes(msg.data)
-                    elif msg.type == aiohttp.WSMsgType.CLOSE:
+                    else:
+                        logger.error(f"Unknown msg type: {msg.type}")
                         await ws_target.close()
-                    elif msg.type == aiohttp.WSMsgType.ERROR:
-                        await ws_target.close(message=msg.data)
-                        break
 
             # Set up two tasks to forward messages in both directions.
             task_client_to_backend = self.loop.create_task(
