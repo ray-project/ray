@@ -61,7 +61,7 @@ Keep an eye out for additional features in future Ray releases:
 - General performance improvements.
 
 If you run into additional issues, or have other feedback or questions, file an issue
-on ``GitHub <https://github.com/ray-project/ray/issues>``_.
+on `GitHub <https://github.com/ray-project/ray/issues>`_.
 For a full list of known issues, check the ``compiled-graphs`` label on Ray GitHub.
 
 .. _troubleshoot-numpy:
