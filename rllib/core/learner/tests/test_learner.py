@@ -39,7 +39,7 @@ class TestLearner(unittest.TestCase):
         for iter_i in range(1000):
             batch = reader.next().as_multi_agent()
             batch = learner._convert_batch_type(batch)
-            results = learner.update_from_batch(batch=batch)
+            results = learner.update(batch=batch)
 
         loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY].peek()
         min_loss = min(loss, min_loss)
