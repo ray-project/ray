@@ -203,12 +203,28 @@ enum TagKey {
   TRAIN_TRAINER = 521;
 
   // LLM
+  // Name of the config used to build processor.
+  // Example: "vLLMEngineProcessorConfig"
   LLM_BATCH_PROCESSOR_CONFIG_NAME = 600;
+  // Name of model source used to build vLLM engine processor.
+  // Example: "facebook/opt-350m"
   LLM_BATCH_MODEL_SOURCE = 601;
+  // The batch size of requests sent to processor.
+  // Example: "64"
   LLM_BATCH_SIZE = 602;
+  // The accelerator type used to build processor.
+  // Example: "A10G" "L40S"
   LLM_BATCH_ACCELERATOR_TYPE = 603;
+  // The number of workers for data parallelism.
+  // Example: "4"
   LLM_BATCH_CONCURRENCY = 604;
+  // The task type used to build vLLM engine processor.
+  // Example: "generate" "chat_complete"
   LLM_BATCH_TASK_TYPE = 605;
+  // The pipeline parallelism degree used to build vLLM engine processor.
+  // Example: "4"
   LLM_BATCH_PIPELINE_PARALLEL_SIZE = 606;
+  // The tensor parallelism degree used to build vLLM engine processor.
+  // Example: "4"
   LLM_BATCH_TENSOR_PARALLEL_SIZE = 607;
 }

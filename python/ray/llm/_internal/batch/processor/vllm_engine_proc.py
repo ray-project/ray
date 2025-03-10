@@ -193,22 +193,23 @@ def build_vllm_engine_processor(
             )
         )
 
-    telemetry_agent.push_telemetry_report(
-        {
-            BatchTelemetryTags.LLM_BATCH_MODEL_SOURCE: config.model_source,
-            BatchTelemetryTags.LLM_BATCH_SIZE: str(config.batch_size),
-            BatchTelemetryTags.LLM_BATCH_ACCELERATOR_TYPE: config.accelerator_type
-            or DEFAULT_GPU_TYPE,
-            BatchTelemetryTags.LLM_BATCH_CONCURRENCY: str(config.concurrency),
-            BatchTelemetryTags.LLM_BATCH_TASK_TYPE: vLLMTaskType(config.task_type),
-            BatchTelemetryTags.LLM_BATCH_PIPELINE_PARALLEL_SIZE: config.engine_kwargs.get(
-                "pipeline_parallel_size", 1
-            ),
-            BatchTelemetryTags.LLM_BATCH_TENSOR_PARALLEL_SIZE: config.engine_kwargs.get(
-                "tensor_parallel_size", 1
-            ),
-        }
-    )
+    if telemetry_agent:
+        telemetry_agent.push_telemetry_report(
+            {
+                BatchTelemetryTags.LLM_BATCH_MODEL_SOURCE: config.model_source,
+                BatchTelemetryTags.LLM_BATCH_SIZE: str(config.batch_size),
+                BatchTelemetryTags.LLM_BATCH_ACCELERATOR_TYPE: config.accelerator_type
+                or DEFAULT_GPU_TYPE,
+                BatchTelemetryTags.LLM_BATCH_CONCURRENCY: str(config.concurrency),
+                BatchTelemetryTags.LLM_BATCH_TASK_TYPE: vLLMTaskType(config.task_type),
+                BatchTelemetryTags.LLM_BATCH_PIPELINE_PARALLEL_SIZE: str(
+                    config.engine_kwargs.get("pipeline_parallel_size", 1)
+                ),
+                BatchTelemetryTags.LLM_BATCH_TENSOR_PARALLEL_SIZE: str(
+                    config.engine_kwargs.get("tensor_parallel_size", 1)
+                ),
+            }
+        )
 
     processor = Processor(
         config,
