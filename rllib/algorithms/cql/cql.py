@@ -319,10 +319,8 @@ class CQL(SAC):
 
         # Updating the policy.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            # TODO (simon, sven): Check, if we should execute directly s.th. like
-            #  `LearnerGroup.update_from_iterator()`.
-            learner_results = self.learner_group._update(
-                batch=batch_or_iterator,
+            learner_results = self.learner_group.update(
+                data_iterators=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
             )

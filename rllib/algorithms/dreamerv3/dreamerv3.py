@@ -594,7 +594,7 @@ class DreamerV3(Algorithm):
         )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
-        # and using these to update our models (`LearnerGroup.update_from_batch()`)
+        # and using these to update our models (`LearnerGroup.update()`)
         # until the computed `training_ratio` is larger than the configured one, meaning
         # we should go back and collect more samples again from the actual environment.
         # However, when calculating the `training_ratio` here, we use only the
@@ -628,7 +628,7 @@ class DreamerV3(Algorithm):
                     )
 
                 # Perform the actual update via our learner group.
-                learner_results = self.learner_group.update_from_batch(
+                learner_results = self.learner_group.update(
                     batch=SampleBatch(sample).as_multi_agent(),
                     # TODO(sven): Maybe we should do this broadcase of global timesteps
                     #  at the end, like for EnvRunner global env step counts. Maybe when

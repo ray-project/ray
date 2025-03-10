@@ -85,9 +85,7 @@ Performing updates
     :nosignatures:
     :toctree: doc/
 
-    Learner.update_from_batch
-    Learner.update_from_episodes
-    Learner.update_from_iterator
+    Learner.update
     Learner.before_gradient_based_update
     Learner.after_gradient_based_update
 
