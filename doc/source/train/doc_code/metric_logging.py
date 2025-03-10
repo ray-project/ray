@@ -111,7 +111,9 @@ import ray.train
 import ray.train.torch
 
 
-def train_fn_per_worker(config): ...
+def train_fn_per_worker(config):
+    # Free-floating metrics can be accessed from the callback below.
+    ray.train.report({"rank": ray.train.get_context().get_world_rank()})
 
 
 class CustomMetricsCallback(ray.train.UserCallback):
@@ -121,7 +123,8 @@ class CustomMetricsCallback(ray.train.UserCallback):
         metrics: List[Dict[str, Any]],
         checkpoint: Optional[ray.train.Checkpoint],
     ):
-        print(metrics)
+        rank_0_metrics = metrics[0]
+        print(rank_0_metrics)
         # Ex: Write metrics to a file...
 
 
@@ -130,5 +133,6 @@ trainer = ray.train.torch.TorchTrainer(
     scaling_config=ray.train.ScalingConfig(num_workers=2),
     run_config=ray.train.RunConfig(callbacks=[CustomMetricsCallback()]),
 )
+trainer.fit()
 
 # __report_callback_end__
