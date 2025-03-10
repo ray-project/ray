@@ -1745,7 +1745,7 @@ def test_schema_partial_execution(
     # Verify that ds.schema() executes only the first block, and not the
     # entire Dataset.
     assert not ds._plan.has_computed_output()
-    assert str(ds._plan._logical_plan.dag) == (
+    assert ds._plan._logical_plan.dag.dag_str == (
         "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )
 

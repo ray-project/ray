@@ -16,6 +16,7 @@
 
 #include <cctype>
 #include <csignal>
+#include <cstddef>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@
 #include <vector>
 
 #include "absl/functional/bind_front.h"
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -34,6 +36,7 @@
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -371,7 +374,7 @@ NodeManager::NodeManager(
       "NodeManager.ScheduleAndDispatchTasks");
 
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
-  // Run the node manger rpc server.
+  // Run the node manager rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false);
   node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
@@ -1180,9 +1183,20 @@ bool NodeManager::UpdateResourceUsage(
   return true;
 }
 
-void NodeManager::ProcessNewClient(ClientConnection &client) {
-  // The new client is a worker, so begin listening for messages.
-  client.ProcessMessages();
+void NodeManager::HandleClientConnectionError(std::shared_ptr<ClientConnection> client,
+                                              const boost::system::error_code &error) {
+  const std::string err_msg = absl::StrCat(
+      "Worker unexpectedly exits with a connection error code ",
+      error.value(),
+      ". ",
+      error.message(),
+      ". There are some potential root causes. (1) The process is killed by "
+      "SIGKILL by OOM killer due to high memory usage. (2) ray stop --force is "
+      "called. (3) The worker is crashed unexpectedly due to SIGSEGV or other "
+      "unexpected errors.");
+
+  // Disconnect the client and don't process more messages.
+  DisconnectClient(client, ray::rpc::WorkerExitType::SYSTEM_ERROR, err_msg);
 }
 
 void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &client,
@@ -1233,11 +1247,10 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
+    HandleDirectCallTaskBlocked(registered_worker);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
-    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskUnblocked(worker);
+    HandleDirectCallTaskUnblocked(registered_worker);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     // TODO(ekl) this is still used from core worker even in direct call mode to
@@ -1722,15 +1735,6 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   }
 }
 
-void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
-  RAY_CHECK(message->release_resources());
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker, true);
-}
-
 void NodeManager::ProcessWaitRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   // Read the data.
@@ -1758,7 +1762,7 @@ void NodeManager::ProcessWaitRequestMessage(
                         current_task_id,
                         /*ray_get=*/false);
   }
-  if (message->num_ready_objects() == 0) {
+  if (message->num_required_objects() == 0) {
     // If we don't need to wait for any, return immediately after making the pull
     // requests through AsyncResolveObjects above.
     flatbuffers::FlatBufferBuilder fbb;
@@ -1783,7 +1787,7 @@ void NodeManager::ProcessWaitRequestMessage(
     }
     return;
   }
-  uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+  uint64_t num_required_objects = static_cast<uint64_t>(message->num_required_objects());
   wait_manager_.Wait(
       object_ids,
       message->timeout(),
@@ -1869,6 +1873,21 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
   resources_data->set_node_id(self_node_id_.Binary());
   resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_task_manager_->FillResourceUsage(*resources_data);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleCancelTasksWithResourceShapes(
+    rpc::CancelTasksWithResourceShapesRequest request,
+    rpc::CancelTasksWithResourceShapesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &resource_shapes = request.resource_shapes();
+  std::vector<ResourceSet> target_resource_shapes;
+  for (const auto &resource_shape : resource_shapes) {
+    target_resource_shapes.emplace_back(
+        ResourceSet(MapFromProtobuf(resource_shape.resource_shape())));
+  }
+
+  cluster_task_manager_->CancelTasksWithResourceShapes(target_resource_shapes);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2283,9 +2302,8 @@ void NodeManager::MarkObjectsAsFailed(
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(
-    const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
-  if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil() ||
-      !release_resources) {
+    const std::shared_ptr<WorkerInterface> &worker) {
+  if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil()) {
     return;  // The worker may have died or is no longer processing the task.
   }
   local_task_manager_->ReleaseCpuResourcesFromBlockedWorker(worker);
@@ -3115,10 +3133,10 @@ const std::string NodeManager::CreateOomKillMessageDetails(
     float usage_threshold) const {
   float usage_fraction =
       static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
-  std::string used_bytes_gb =
-      FormatFloat(static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024, 2);
-  std::string total_bytes_gb =
-      FormatFloat(static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024, 2);
+  std::string used_bytes_gb = absl::StrFormat(
+      "%.2f", static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024);
+  std::string total_bytes_gb = absl::StrFormat(
+      "%.2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
   std::stringstream oom_kill_details_ss;
 
   auto pid = worker->GetProcess().GetId();
@@ -3132,7 +3150,7 @@ const std::string NodeManager::CreateOomKillMessageDetails(
         << "Can't find memory usage for PID, reporting zero. PID: " << pid;
   }
   std::string process_used_bytes_gb =
-      FormatFloat(static_cast<float>(used_bytes) / 1024 / 1024 / 1024, 2);
+      absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
   oom_kill_details_ss
       << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id

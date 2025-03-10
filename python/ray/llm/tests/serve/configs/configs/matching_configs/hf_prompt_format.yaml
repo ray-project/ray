@@ -6,7 +6,7 @@ model_loading_config:
   model_id: mistral-community/pixtral-12b
   model_source: "/home/ray/tests/rayllm/backend/server/configs/cached_model_processors/mistral-community--pixtral-12b"
 
-llm_engine: VLLMEngine
+llm_engine: vLLM
 
 engine_kwargs:
   enable_chunked_prefill: true
@@ -20,9 +20,6 @@ engine_kwargs:
   max_model_len: 131072
 
 accelerator_type: A10G
-
-tensor_parallelism:
-  degree: 1
 
 lora_config: null
 

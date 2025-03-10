@@ -19,7 +19,7 @@ set -euo pipefail
 set -x
 
 if [[ "${PYTHON-}" == "3.12" ]]; then
-  # hebo and doc test depdencies are not needed for 3.12 test jobs
+  # hebo and doc test dependencies are not needed for 3.12 test jobs
   TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
     INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
 else

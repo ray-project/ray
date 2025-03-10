@@ -3,6 +3,12 @@
 Distributed fine-tuning of Llama 3.1 8B on AWS Trainium with Ray and PyTorch Lightning
 ======================================================================================
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-aws-trainium-llama3" target="_blank" href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=aws-trainium-llama3">
+      <img src="../../../_static/img/run-on-anyscale.svg" alt="Run on Anyscale" />
+      <br/><br/>
+    </a>
 
 This example demonstrates how to fine-tune the `Llama 3.1 8B <https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/>`__ model on `AWS
 Trainium <https://aws.amazon.com/ai/machine-learning/trainium/>`__ instances using Ray Train, PyTorch Lightning, and AWS Neuron SDK.

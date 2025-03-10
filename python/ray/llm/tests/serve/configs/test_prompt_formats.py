@@ -1,19 +1,22 @@
 import pytest
+import sys
 
 from ray.llm._internal.serve.configs.prompt_formats import (
     HuggingFacePromptFormat,
-    ContentContent,
-    ImageContent,
-    TextContent,
+    Content,
+    Image,
+    Text,
     Message,
     Prompt,
 )
 
+from pydantic import ValidationError
+
 
 @pytest.fixture
-def hf_prompt_format(download_model_ckpt):
-    hf_prompt_format = HuggingFacePromptFormat(use_hugging_face_chat_template=True)
-    hf_prompt_format.set_processor(model_id_or_path=download_model_ckpt)
+def hf_prompt_format(model_pixtral_12b):
+    hf_prompt_format = HuggingFacePromptFormat()
+    hf_prompt_format.set_processor(model_id_or_path=model_pixtral_12b)
     return hf_prompt_format
 
 
@@ -24,19 +27,20 @@ def test_hf_prompt_format_on_string_message(hf_prompt_format):
 
 
 def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
+    # Test if generate_prompt() can handle messages structured as a Prompt object.
     messages = Prompt(
         prompt=[
             Message(role="system", content="You are a helpful assistant."),
             Message(
                 role="user",
                 content=[
-                    ContentContent(field="text", content="Can this animal"),
-                    ImageContent(
+                    Content(field="text", content="Can this animal"),
+                    Image(
                         field="image_url",
                         image_url={"url": "https://example.com/dog.jpg"},
                     ),
-                    ContentContent(field="text", content="live here?"),
-                    ImageContent(
+                    Content(field="text", content="live here?"),
+                    Image(
                         field="image_url",
                         image_url={"url": "https://example.com/mountain.jpg"},
                     ),
@@ -69,19 +73,69 @@ def test_hf_prompt_format_on_prompt_object(hf_prompt_format):
     assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
 
 
+def test_hf_prompt_format_on_prompt_dict(hf_prompt_format):
+    """Test if generate_prompt() can handle a Prompt object structured as a dictionary."""
+    messages = {
+        "prompt": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {
+                "role": "user",
+                "content": [
+                    {"field": "text", "content": "Can this animal"},
+                    {
+                        "field": "image_url",
+                        "image_url": {"url": "https://example.com/dog.jpg"},
+                    },
+                    {"field": "text", "content": "live here?"},
+                    {
+                        "field": "image_url",
+                        "image_url": {"url": "https://example.com/mountain.jpg"},
+                    },
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    "It looks like you've shared an image of a "
+                    "dog lying on a wooden floor, and another "
+                    "image depicting a serene landscape with a "
+                    "sunset over a snowy hill or mountain."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "So you are suggesting you can find a poppy living in the snowy mountain?",
+            },
+        ],
+    }
+    formated_prompt = hf_prompt_format.generate_prompt(messages=messages)
+
+    assert formated_prompt.text == (
+        "<s>[INST]Can this animal[IMG]live here?[IMG][/INST]It looks like you've "
+        "shared an image of a dog lying on a wooden floor, and another image "
+        "depicting a serene landscape with a sunset over a snowy hill or "
+        "mountain.</s>[INST]You are a helpful assistant.\n\nSo you are suggesting "
+        "you can find a poppy living in the snowy mountain?[/INST]"
+    )
+    assert len(formated_prompt.image) == 2
+    assert formated_prompt.image[0].image_url == "https://example.com/dog.jpg"
+    assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
+
+
 def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
+    """Test if generate_prompt() can handle a list of Message objects."""
     messages = [
         Message(role="system", content="You are a helpful assistant."),
         Message(
             role="user",
             content=[
-                ContentContent(field="text", content="Can this animal"),
-                ImageContent(
+                Content(field="text", content="Can this animal"),
+                Image(
                     field="image_url",
                     image_url={"url": "https://example.com/dog.jpg"},
                 ),
-                ContentContent(field="text", content="live here?"),
-                ImageContent(
+                Content(field="text", content="live here?"),
+                Image(
                     field="image_url",
                     image_url={"url": "https://example.com/mountain.jpg"},
                 ),
@@ -111,6 +165,96 @@ def test_hf_prompt_format_on_list_of_messages(hf_prompt_format):
     )
     assert formated_prompt.image[0].image_url == "https://example.com/dog.jpg"
     assert formated_prompt.image[1].image_url == "https://example.com/mountain.jpg"
+
+
+def test_hf_prompt_format_on_list_of_messages_dict(hf_prompt_format):
+    """Test if generate_prompt() can handle a list of Message objects structured as dictionaries."""
+
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {
+            "role": "user",
+            "content": [
+                {"field": "text", "content": "Can this animal"},
+                {
+                    "field": "image_url",
+                    "image_url": {"url": "https://example.com/dog.jpg"},
+                },
+                {"field": "text", "content": "live here?"},
+                {
+                    "field": "image_url",
+                    "image_url": {"url": "https://example.com/mountain.jpg"},
+                },
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": (
+                "It looks like you've shared an image of a "
+                "dog lying on a wooden floor, and another "
+                "image depicting a serene landscape with a "
+                "sunset over a snowy hill or mountain."
+            ),
+        },
+        {
+            "role": "user",
+            "content": "So you are suggesting you can find a poppy living in the snowy mountain?",
+        },
+    ]
+    formatted_prompt = hf_prompt_format.generate_prompt(messages=messages)
+
+    assert formatted_prompt.text == (
+        "<s>[INST]Can this animal[IMG]live here?[IMG][/INST]It looks like you've "
+        "shared an image of a dog lying on a wooden floor, and another image "
+        "depicting a serene landscape with a sunset over a snowy hill or "
+        "mountain.</s>[INST]You are a helpful assistant.\n\nSo you are suggesting "
+        "you can find a poppy living in the snowy mountain?[/INST]"
+    )
+    assert len(formatted_prompt.image) == 2
+    assert formatted_prompt.image[0].image_url == "https://example.com/dog.jpg"
+    assert formatted_prompt.image[1].image_url == "https://example.com/mountain.jpg"
+
+
+def test_invalid_hf_prompt_formats(hf_prompt_format):
+    """Test invalid formats for generate_prompt() to ensure validation errors are raised."""
+
+    # Invalid at initialization:
+    with pytest.raises(ValidationError):
+        # Prompt is not a list
+        Prompt(prompt=Message(role="system", content="You are a helpful assistant.")),
+
+    with pytest.raises(ValidationError):
+        # Content is None for a "user" role
+        Prompt(prompt=[Message(role="user", content=None)]),
+
+    with pytest.raises(ValidationError):
+        # Message with an invalid role
+        Prompt(prompt=[Message(role="invalid_role", content="Invalid role")]),
+
+    # Invalid at generate_prompt():
+    invalid_messages = [
+        # Empty list
+        [],
+        # List of Messages mixed with invalid strings
+        ["string_instead_of_message", Message(role="user", content="Valid message")],
+        # Prompt as a single dict instead of list of Message dicts
+        {"prompt": {"role": "system", "content": "You are a helpful assistant."}},
+        # Empty prompt list
+        {"prompt": []},
+        # Invalid role in the message
+        {"prompt": [{"role": "invalid_role", "content": "Invalid role"}]},
+        # Mixed list containing dicts and Message objects
+        [
+            {"role": "system", "content": "You are a helpful assistant."},
+            Message(role="user", content="Valid message"),
+        ],
+        # List of invalid message dict
+        [{"role": "system", "invalid_key": "Invalid structure"}],
+    ]
+    # Test all invalid cases
+    for invalid_message in invalid_messages:
+        with pytest.raises((ValidationError, ValueError)):
+            hf_prompt_format.generate_prompt(messages=invalid_message)
 
 
 def test_validation_message():
@@ -158,7 +302,11 @@ def test_validation_message():
     Message(
         role="user",
         content=[
-            TextContent(type="text", text="This is a test."),
-            ImageContent(type="image_url", image_url={"url": "foo"}),
+            Text(type="text", text="This is a test."),
+            Image(type="image_url", image_url={"url": "foo"}),
         ],
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
