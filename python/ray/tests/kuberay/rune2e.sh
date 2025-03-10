@@ -6,7 +6,7 @@ kind delete cluster
 docker image rm $RAY_IMAGE
 
 pushd ../../../..
-docker build --build-arg BUILD_DATE="$(date +%Y-%m-%d:%H:%M:%S)" -t $RAY_IMAGE -f ./python/ray/tests/kuberay/Dockerfile . || exit
+docker build --progress=plain --build-arg BUILD_DATE="$(date +%Y-%m-%d:%H:%M:%S)" -t $RAY_IMAGE -f ./python/ray/tests/kuberay/Dockerfile . || exit
 popd || exit
 
 kind create cluster || exit
