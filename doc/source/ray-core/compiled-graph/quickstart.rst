@@ -120,7 +120,7 @@ Be aware that:
 
 If your Compiled Graph driver is running in an ``asyncio`` event loop, use the ``async`` APIs to ensure that executing
 the Compiled Graph and getting the results doesn't block the event loop. This requires a few changes for now.
-First, pass ``enable_async=True` to the `dag.experimental_compile()`:
+First, pass ``enable_async=True`` to the ``dag.experimental_compile()``:
 
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
@@ -219,9 +219,11 @@ contained in the value:
 Under the hood, the Ray Compiled Graph backend copies the ``torch.Tensor`` to the GPU assigned to the ``GPUActor`` by Ray Core.
 
 Of course, you can also do this yourself, but there are advantages to using Compiled Graph instead:
+
 - Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to
   multiple GPUs requires one copy to a shared memory buffer, and then one host-to-device copy per
   destination GPU.
+
 - In the future, this can be further optimized through techniques such as memory pinning, using
   zero-copy deserialization when the CPU is the destination, etc.
 
