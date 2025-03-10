@@ -66,6 +66,7 @@ class FileShuffleConfig:
     This configuration object controls how files are shuffled while reading file-based
     datasets.
 
+
     .. note::
         Even if you provided a seed, you might still observe a non-deterministic row
         order. This is because tasks are executed in parallel and their completion
