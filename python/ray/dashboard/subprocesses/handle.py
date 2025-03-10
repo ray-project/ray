@@ -1,13 +1,13 @@
 import asyncio
-import concurrent.futures
 import logging
 import multiprocessing
+import os
 import threading
 from dataclasses import dataclass
-from typing import Awaitable, Optional
+from typing import Awaitable, Optional, Union
+from concurrent.futures import Future
 
 from ray.dashboard.optional_deps import aiohttp
-
 from ray.dashboard.subprocesses.message import (
     ChildBoundMessage,
     ErrorMessage,
@@ -66,12 +66,18 @@ class SubprocessModuleHandle:
     - "max number of restarts"? (Now: infinite)
     """
 
+    # Class variable. Force using spawn because Ray C bindings have static variables
+    # that need to be re-initialized for a new process.
+    mp_context = multiprocessing.get_context("spawn")
+
     @dataclass
     class ActiveRequest:
         request: aiohttp.web.Request
         # Future to a Response as the result of a aiohttp handler. It's can be a
         # Response for a unary request, or a StreamResponse for a streaming request.
-        response_fut: Awaitable[aiohttp.web.StreamResponse]
+        response_fut: Union[
+            Future[aiohttp.web.StreamResponse], Future[aiohttp.web.WebSocketResponse]
+        ]
         # Only exists when the module decides this is a streaming response.
         # To keep the data sent in order, we use future to synchronize. This assumes
         # the Messages received from the Queue are in order.
@@ -82,9 +88,12 @@ class SubprocessModuleHandle:
         # resolves the new future.
         # StreamResponseEndMessage expects a future. It resolves the future and sets
         # the stream_response to None.
-        stream_response: Optional[
-            concurrent.futures.Future[aiohttp.web.StreamResponse]
+        stream_response: Union[
+            Future[aiohttp.web.StreamResponse],
+            Future[aiohttp.web.WebSocketResponse],
+            None,
         ] = None
+        is_websocket: bool = False
 
     def __init__(
         self,
@@ -117,30 +126,41 @@ class SubprocessModuleHandle:
             self.incarnation, self.process.pid if self.process else None
         )
 
+    def __del__(self):
+        if self.loop.is_running():
+            self.loop.run_until_complete(
+                self.destroy_module(
+                    RuntimeError("SubprocessModuleHandle is being deleted")
+                )
+            )
+
     def start_module(self, start_dispatch_parent_bound_messages_thread: bool = True):
         """
         Params:
         - start_dispatch_parent_bound_messages_thread: used for testing.
         """
         self.next_request_id = 0
-        self.child_bound_queue = multiprocessing.Queue()
-        self.parent_bound_queue = multiprocessing.Queue()
+        self.child_bound_queue = self.mp_context.Queue()
+        self.parent_bound_queue = self.mp_context.Queue()
         self.active_requests.pop_all()
-        self.process = multiprocessing.Process(
+        self.process = self.mp_context.Process(
             target=run_module,
             args=(
                 self.child_bound_queue,
                 self.parent_bound_queue,
                 self.module_cls,
                 self.config,
+                self.incarnation,
+                os.getpid(),
             ),
             daemon=True,
+            name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
 
         if start_dispatch_parent_bound_messages_thread:
             self.dispatch_parent_bound_messages_thread = threading.Thread(
-                name=f"{self.module_cls.__name__}-dispatch_parent_bound_messages_thread",
+                name=f"{self.module_cls.__name__}-{self.incarnation}-dispatch_parent_bound_messages_thread",
                 target=self.dispatch_parent_bound_messages,
                 daemon=True,
             )
@@ -160,24 +180,31 @@ class SubprocessModuleHandle:
         """
         self.incarnation += 1
         self.next_request_id = 0
-        self.process.terminate()
-        self.process = None
+        if self.process:
+            self.process.kill()
+            self.process.join()
+            self.process = None
 
         for active_request in self.active_requests.pop_all().values():
             active_request.response_fut.set_exception(reason)
-        self.parent_bound_queue.close()
-        self.parent_bound_queue = None
 
-        self.child_bound_queue.close()
-        self.child_bound_queue = None
+        if self.parent_bound_queue:
+            self.parent_bound_queue.close()
+            self.parent_bound_queue = None
+
+        if self.child_bound_queue:
+            self.child_bound_queue.close()
+            self.child_bound_queue = None
 
         # dispatch_parent_bound_messages_thread is daemon so we don't need to join it.
-        self.dispatch_parent_bound_messages_thread = None
+        if self.dispatch_parent_bound_messages_thread:
+            self.dispatch_parent_bound_messages_thread = None
 
-        self.health_check_task.cancel()
-        self.health_check_task = None
+        if self.health_check_task:
+            self.health_check_task.cancel()
+            self.health_check_task = None
 
-    async def health_check(self) -> aiohttp.web.Response:
+    async def _health_check(self) -> aiohttp.web.Response:
         """
         Do internal health check. The module should respond immediately with a 200 OK.
         This can be used to measure module responsiveness in RTT, it also indicates
@@ -193,7 +220,7 @@ class SubprocessModuleHandle:
         Do a health check once. We check for:
         1. if the process exits, it's considered died.
 
-        # TODO(ryw): also do `await self.health_check()` and define a policy to
+        # TODO(ryw): also do `await self._health_check()` and define a policy to
         # determine if the process is dead.
         """
         if self.process.exitcode is not None:
@@ -207,17 +234,22 @@ class SubprocessModuleHandle:
         3. fail all active requests
         4. restart the module
         """
+        incarnation = self.incarnation
         while True:
             try:
                 await self._do_once_health_check()
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 filename = module_logging_filename(
-                    self.module_cls.__name__, self.config.logging_filename
+                    self.module_cls.__name__, incarnation, self.config.logging_filename
                 )
+                if filename is None:
+                    filename = "stderr"
                 logger.exception(
-                    f"Module {self.module_cls.__name__} is unhealthy. Please refer to"
-                    f"{self.config.log_dir}/{filename} "
-                    "for more details. Failing all active requests."
+                    f"Module {self.module_cls.__name__} is unhealthy. Please refer to "
+                    f"{self.config.log_dir}/{filename} for more details. Failing all "
+                    "active requests."
                 )
                 await self.destroy_module(e)
                 self.start_module()
@@ -239,12 +271,32 @@ class SubprocessModuleHandle:
             request=request, response_fut=self.loop.create_future()
         )
         self.active_requests.put_new(request_id, new_active_request)
-        if request is None:
-            body = b""
-        else:
+        body = b""
+        http_method = ""
+        path_qs = ""
+        query = {}
+        headers = {}
+        match_info = {}
+        if request is not None:
             body = await request.read()
+            # request.query can have type CIMultiDictProxy which is not serializable.
+            # Need a copy to be serializable.
+            query = request.query.copy()
+            headers = request.headers.copy()
+            http_method = request.method
+            path_qs = request.path_qs
+            match_info = request.match_info.copy()
         self._send_message(
-            RequestMessage(request_id=request_id, method_name=method_name, body=body)
+            RequestMessage(
+                request_id=request_id,
+                method_name=method_name,
+                http_method=http_method,
+                path_qs=path_qs,
+                query=query,
+                headers=headers,
+                body=body,
+                match_info=match_info,
+            )
         )
         return await new_active_request.response_fut
 
@@ -253,18 +305,17 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_stream_response_start(
-        request: aiohttp.web.Request, first_data: bytes
+        request: aiohttp.web.Request,
     ) -> aiohttp.web.StreamResponse:
         # TODO: error handling
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
         await response.prepare(request)
-        await response.write(first_data)
         return response
 
     @staticmethod
     async def handle_stream_response_data(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse], data: bytes
+        prev_fut: Future[aiohttp.web.StreamResponse], data: bytes
     ) -> aiohttp.web.StreamResponse:
         # TODO: error handling
         response = await asyncio.wrap_future(prev_fut)
@@ -273,8 +324,8 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_stream_response_end(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse],
-        response_fut: Awaitable[aiohttp.web.StreamResponse],
+        prev_fut: Future[aiohttp.web.StreamResponse],
+        response_fut: Future[aiohttp.web.StreamResponse],
     ) -> None:
         try:
             response = await asyncio.wrap_future(prev_fut)
@@ -285,9 +336,9 @@ class SubprocessModuleHandle:
 
     @staticmethod
     async def handle_stream_response_error(
-        prev_fut: Awaitable[aiohttp.web.StreamResponse],
+        prev_fut: Future[aiohttp.web.StreamResponse],
         exception: Exception,
-        response_fut: Awaitable[aiohttp.web.StreamResponse],
+        response_fut: Future[aiohttp.web.StreamResponse],
     ) -> None:
         """
         When the async iterator in the module raises an error, we need to propagate it
@@ -302,6 +353,59 @@ class SubprocessModuleHandle:
             response = await asyncio.wrap_future(prev_fut)
             await response.write(str(exception).encode())
             await response.write_eof()
+            response_fut.set_result(response)
+        except Exception as e:
+            response_fut.set_exception(e)
+
+    @staticmethod
+    async def handle_websocket_response_start(
+        request: aiohttp.web.Request,
+    ) -> aiohttp.web.WebSocketResponse:
+        # TODO: error handling
+        response = aiohttp.web.WebSocketResponse()
+        await response.prepare(request)
+        return response
+
+    @staticmethod
+    async def handle_websocket_response_data(
+        prev_fut: Future[aiohttp.web.WebSocketResponse], data: bytes
+    ) -> aiohttp.web.WebSocketResponse:
+        # TODO: error handling
+        response = await asyncio.wrap_future(prev_fut)
+        await response.send_str(data.decode())
+        return response
+
+    @staticmethod
+    async def handle_websocket_response_end(
+        prev_fut: Future[aiohttp.web.WebSocketResponse],
+        response_fut: Future[aiohttp.web.WebSocketResponse],
+    ) -> None:
+        try:
+            response = await asyncio.wrap_future(prev_fut)
+            await response.close()
+            response_fut.set_result(response)
+        except Exception as e:
+            response_fut.set_exception(e)
+
+    @staticmethod
+    async def handle_websocket_response_error(
+        prev_fut: Future[aiohttp.web.WebSocketResponse],
+        exception: Exception,
+        response_fut: Future[aiohttp.web.WebSocketResponse],
+    ) -> None:
+        """
+        When the async iterator in the module raises an error, we need to propagate it
+        to the client and close the stream. However, we already sent a 200 OK to the
+        client and can't change that to a 500. We can't just raise an exception here to
+        aiohttp because that causes it to abruptly close the connection and the client
+        will raise a ClientPayloadError(TransferEncodingError).
+
+        Instead, we write exception to the stream and close the stream.
+        """
+        try:
+            response = await asyncio.wrap_future(prev_fut)
+            await response.send_str(str(exception))
+            await response.close()
             response_fut.set_result(response)
         except Exception as e:
             response_fut.set_exception(e)
@@ -321,48 +425,89 @@ class SubprocessModuleHandle:
                 ),
             )
         elif isinstance(message, StreamResponseStartMessage):
+            logger.info("ABC: StreamResponseStartMessage")
             active_request = self.active_requests.get_or_raise(message.request_id)
             assert active_request.stream_response is None
             # This assignment is thread safe, because a next read will come from another
             # handle_parent_bound_message call for a Stream.*Message, which will run on
             # the same thread and hence will happen-after this assignment.
-            active_request.stream_response = asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_start(
-                    active_request.request, message.body
-                ),
-                loop,
-            )
+            if message.is_websocket:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_websocket_response_start(
+                        active_request.request
+                    ),
+                    loop,
+                )
+                active_request.is_websocket = True
+            else:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_stream_response_start(
+                        active_request.request
+                    ),
+                    loop,
+                )
+                active_request.is_websocket = False
         elif isinstance(message, StreamResponseDataMessage):
+            logger.info("ABC: StreamResponseDataMessage")
             active_request = self.active_requests.get_or_raise(message.request_id)
             assert active_request.stream_response is not None
-            active_request.stream_response = asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_data(
-                    active_request.stream_response, message.body
-                ),
-                loop,
-            )
+            if active_request.is_websocket:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_websocket_response_data(
+                        active_request.stream_response, message.body
+                    ),
+                    loop,
+                )
+            else:
+                active_request.stream_response = asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_stream_response_data(
+                        active_request.stream_response, message.body
+                    ),
+                    loop,
+                )
         elif isinstance(message, StreamResponseEndMessage):
+            logger.info("ABC: StreamResponseEndMessage")
             active_request = self.active_requests.pop_or_raise(message.request_id)
             assert active_request.stream_response is not None
-            asyncio.run_coroutine_threadsafe(
-                SubprocessModuleHandle.handle_stream_response_end(
-                    active_request.stream_response,
-                    active_request.response_fut,
-                ),
-                loop,
-            )
-        elif isinstance(message, ErrorMessage):
-            # Propagate the error to aiohttp.
-            active_request = self.active_requests.pop_or_raise(message.request_id)
-            if active_request.stream_response is not None:
+            if active_request.is_websocket:
                 asyncio.run_coroutine_threadsafe(
-                    SubprocessModuleHandle.handle_stream_response_error(
+                    SubprocessModuleHandle.handle_websocket_response_end(
                         active_request.stream_response,
-                        message.error,
                         active_request.response_fut,
                     ),
                     loop,
                 )
+            else:
+                asyncio.run_coroutine_threadsafe(
+                    SubprocessModuleHandle.handle_stream_response_end(
+                        active_request.stream_response,
+                        active_request.response_fut,
+                    ),
+                    loop,
+                )
+        elif isinstance(message, ErrorMessage):
+            logger.info("ABC: ErrorMessage")
+            # Propagate the error to aiohttp.
+            active_request = self.active_requests.pop_or_raise(message.request_id)
+            if active_request.stream_response is not None:
+                if active_request.is_websocket:
+                    asyncio.run_coroutine_threadsafe(
+                        SubprocessModuleHandle.handle_websocket_response_error(
+                            active_request.stream_response,
+                            message.error,
+                            active_request.response_fut,
+                        ),
+                        loop,
+                    )
+                else:
+                    asyncio.run_coroutine_threadsafe(
+                        SubprocessModuleHandle.handle_stream_response_error(
+                            active_request.stream_response,
+                            message.error,
+                            active_request.response_fut,
+                        ),
+                        loop,
+                    )
             else:
                 loop.call_soon_threadsafe(
                     active_request.response_fut.set_exception, message.error
