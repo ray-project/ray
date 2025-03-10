@@ -6,7 +6,10 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import get_cached_tokenizer
+from ray.llm._internal.batch.utils import (
+    get_cached_tokenizer,
+    maybe_pull_model_tokenizer_from_s3,
+)
 
 
 class TokenizeUDF(StatefulStageUDF):
@@ -25,6 +28,7 @@ class TokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
+        model = maybe_pull_model_tokenizer_from_s3(model)
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
                 model,
@@ -81,6 +85,7 @@ class DetokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
+        model = maybe_pull_model_tokenizer_from_s3(model)
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
                 model,
