@@ -9,6 +9,8 @@ import ray
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import ENV_RESET_TIMER, ENV_STEP_TIMER
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import StateDict, TensorType
 from ray.util.annotations import PublicAPI, DeveloperAPI
@@ -51,8 +53,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
-        self.config = config.copy(copy_frozen=False)
+        self.config: AlgorithmConfig = config.copy(copy_frozen=False)
         self.env = None
+        # Create a MetricsLogger object for logging custom stats.
+        self.metrics: MetricsLogger = MetricsLogger()
 
         super().__init__(**kwargs)
 
@@ -160,9 +164,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """Tries resetting the env and - if an error orrurs - handles it gracefully."""
         # Try to reset.
         try:
-            obs, infos = self.env.reset(
-                seed=self.config.seed and self.config.seed + (self.worker_index or 0),
-            )
+            with self.metrics.log_time(ENV_RESET_TIMER):
+                obs, infos = self.env.reset(
+                    seed=self.config.seed
+                    and self.config.seed + (self.worker_index or 0),
+                )
             # Everything ok -> return.
             return obs, infos
         # Error.
@@ -183,7 +189,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     def _try_env_step(self, actions):
         """Tries stepping the env and - if an error orrurs - handles it gracefully."""
         try:
-            results = self.env.step(actions)
+            with self.metrics.log_time(ENV_STEP_TIMER):
+                results = self.env.step(actions)
             return results
         except Exception as e:
             if self.config.restart_failed_sub_environments:

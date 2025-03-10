@@ -160,6 +160,7 @@ SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"  # @OldAPIStack
 ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
+ENV_RESET_TIMER = "env_reset_timer"
 ENV_STEP_TIMER = "env_step_timer"
 ENV_TO_MODULE_TIMER = "env_to_module_timer"
 RLMODULE_INFERENCE_TIMER = "rlmodule_inference_timer"
