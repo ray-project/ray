@@ -161,7 +161,8 @@ def decorate_websocket_handler(handler):
                     raise ValueError(f"Unknown chunk type: {type(chunk)}")
             await ws.close()
         except Exception as e:
-            await ws.close(message=str(e).encode())
+            await ws.send_str(str(e))
+            await ws.close()
         return ws
 
     return wrapper
