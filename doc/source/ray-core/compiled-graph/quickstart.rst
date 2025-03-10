@@ -216,7 +216,7 @@ contained in the value:
     :start-after: __cgraph_cpu_to_gpu_start__
     :end-before: __cgraph_cpu_to_gpu_end__
 
-Under the hood, the Ray Compiled Graph backend will copy the torch.Tensor to the GPU assigned to the GPUActor by Ray Core.
+Under the hood, the Ray Compiled Graph backend will copy the ``torch.Tensor`` to the GPU assigned to the ``GPUActor`` by Ray Core.
 
 Of course, you can also do this yourself, but there are advantages to using Compiled Graph instead:
 - Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to
