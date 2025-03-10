@@ -6,8 +6,22 @@ from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
 
-ROCR_VISIBLE_DEVICES_ENV_VAR = "ROCR_VISIBLE_DEVICES"
-NOSET_ROCR_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES"
+if "ROCR_VISIBLE_DEVICES" in os.environ:
+    raise RuntimeError("Please use HIP_VISIBLE_DEVICES instead of ROCR_VISIBLE_DEVICES")
+
+if "HIP_VISIBLE_DEVICES" in os.environ:
+    hip_val = os.environ["HIP_VISIBLE_DEVICES"]
+    if cuda_val := os.environ.get("CUDA_VISIBLE_DEVICES", None):
+        logger.warning(
+            "WARNING: CUDA_VISIBLE_DEVICES: {} and HIP_VISIBLE_DEVICES: {} must be equal.".format(
+                cuda_val, hip_val
+            )
+        )
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = hip_val
+
+HIP_VISIBLE_DEVICES_ENV_VAR = "HIP_VISIBLE_DEVICES"
+NOSET_HIP_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES"
 
 amd_product_dict = {
     "0x738c": "AMD-Instinct-MI100",
@@ -31,7 +45,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
-        return ROCR_VISIBLE_DEVICES_ENV_VAR
+        return HIP_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
@@ -99,7 +113,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_amd_devices: List[str],
     ) -> None:
-        if os.environ.get(NOSET_ROCR_VISIBLE_DEVICES_ENV_VAR):
+        if os.environ.get(NOSET_HIP_VISIBLE_DEVICES_ENV_VAR):
             return
 
         os.environ[
