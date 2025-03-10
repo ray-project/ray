@@ -67,7 +67,7 @@ def test_push_telemetry_report():
             TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1",
             TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1",
         }
-    except AttributeError as e:
+    except AttributeError:
         # If the key doesn't exist in the TagKey, no telemetry should be logged.
         assert telemetry == {}
 

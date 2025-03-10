@@ -1,11 +1,7 @@
 from enum import Enum
-from typing import Callable, Dict, Optional, TYPE_CHECKING
+from typing import Callable, Dict, Optional
 
 import ray
-
-# TODO (genesu): remove dependency on botocore
-from botocore.exceptions import ClientError
-from ray import serve
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
@@ -13,9 +9,6 @@ from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     RAYLLM_TELEMETRY_NAMESPACE,
 )
 from ray.llm._internal.batch.observability.logging import get_logger
-
-if TYPE_CHECKING:
-    from ray.llm._internal.serve.configs.server_models import LLMConfig
 
 RAYLLM_BATCH_TELEMETRY_ACTOR_NAME = "rayllm_batch_telemetry"
 
