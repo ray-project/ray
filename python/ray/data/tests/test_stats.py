@@ -1,17 +1,16 @@
-from dataclasses import fields
 import logging
 import re
 import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
+from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
@@ -20,6 +19,7 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
     BackpressurePolicy,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.stats import (
@@ -1097,9 +1097,9 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     )
     assert (
         "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
-            min(block_params["max_rss_bytes"]) / (1024 * 1024),
-            max(block_params["max_rss_bytes"]) / (1024 * 1024),
-            int(np.mean(block_params["max_rss_bytes"]) / (1024 * 1024)),
+            min(block_params["rss_bytes"]) / (1024 * 1024),
+            max(block_params["rss_bytes"]) / (1024 * 1024),
+            int(np.mean(block_params["rss_bytes"]) / (1024 * 1024)),
         )
         == summarized_lines[4]
     )

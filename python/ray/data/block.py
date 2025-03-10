@@ -2,7 +2,7 @@ import collections
 import logging
 import os
 import time
-from dataclasses import dataclass, asdict, fields
+from dataclasses import asdict, dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -30,11 +30,6 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 import psutil
-
-try:
-    import resource
-except ImportError:
-    resource = None
 
 if TYPE_CHECKING:
     import pandas
@@ -156,7 +151,7 @@ class BlockExecStats:
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
-        self.max_rss_bytes: int = 0
+        self.rss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -194,16 +189,9 @@ class _BlockExecStatsBuilder:
         stats.end_time_s = self.end_time
         stats.wall_time_s = self.end_time - self.start_time
         stats.cpu_time_s = self.end_cpu - self.start_cpu
-        if resource is None:
-            # NOTE(swang): resource package is not supported on Windows. This
-            # is only the memory usage at the end of the task, not the peak
-            # memory.
-            process = psutil.Process(os.getpid())
-            stats.max_rss_bytes = int(process.memory_info().rss)
-        else:
-            stats.max_rss_bytes = int(
-                resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
-            )
+        process = psutil.Process(os.getpid())
+        stats.rss_bytes = int(process.memory_info().rss)
+
         return stats
 
 
