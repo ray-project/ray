@@ -3,9 +3,6 @@
 Ray Train API
 =============
 
-.. _train-integration-api:
-.. _train-framework-specific-ckpts:
-
 .. currentmodule:: ray
 
 PyTorch Ecosystem
@@ -128,7 +125,7 @@ Ray Train Utilities
     :toctree: doc/
 
     ~train.Checkpoint
-    ~train.context.TrainContext
+    ~train.v2.api.context.TrainContext
 
 **Functions**
 
@@ -152,20 +149,11 @@ Ray Train Output
 
     ~train.Result
 
-Ray Train Errors
-----------------
+.. Ray Train Errors
+.. ----------------
 
-.. autosummary::
-    :nosignatures:
-    :template: autosummary/class_without_autosummary.rst
-    :toctree: doc/
-
-    ~train.error.SessionMisuseError
-    ~train.base_trainer.TrainingFailedError
-
-
-Ray Tune Integration
---------------------
+Ray Tune Integration Utilities
+------------------------------
 
 .. autosummary::
     :nosignatures:
@@ -177,18 +165,14 @@ Ray Tune Integration
 Ray Train Developer APIs
 ------------------------
 
-.. _train-base-trainer:
-
-Trainer Base Classes
-~~~~~~~~~~~~~~~~~~~~
+Trainer Base Class
+~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    ~train.trainer.BaseTrainer
-    ~train.data_parallel_trainer.DataParallelTrainer
-
+    ~train.v2.api.data_parallel_trainer.DataParallelTrainer
 
 Train Backend Base Classes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -203,3 +187,12 @@ Train Backend Base Classes
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
+
+Trainer Callbacks
+~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~train.UserCallback

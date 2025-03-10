@@ -104,8 +104,6 @@ LightGBM
     ~train.lightgbm.RayTrainReportCallback
 
 
-.. _ray-train-configs-api:
-
 Ray Train Configuration
 -----------------------
 
@@ -119,8 +117,6 @@ Ray Train Configuration
     ~train.RunConfig
     ~train.ScalingConfig
     ~train.SyncConfig
-
-.. _train-loop-api:
 
 Ray Train Utilities
 -------------------
@@ -181,8 +177,6 @@ Ray Tune Integration
 Ray Train Developer APIs
 ------------------------
 
-.. _train-base-trainer:
-
 Trainer Base Classes
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -196,9 +190,6 @@ Trainer Base Classes
 
 Train Backend Base Classes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. _train-backend:
-.. _train-backend-config:
 
 .. autosummary::
     :nosignatures:
