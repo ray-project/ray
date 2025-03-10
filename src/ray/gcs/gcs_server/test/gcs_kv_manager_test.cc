@@ -15,6 +15,10 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 
 #include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"

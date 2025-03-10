@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <utility>
 // clang-format off
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -27,9 +29,9 @@
 #include "ray/common/test_util.h"
 // clang-format on
 
-using namespace ::testing;
-using namespace ray;
-using namespace ray::gcs;
+using namespace ::testing;  // NOLINT
+using namespace ray;        // NOLINT
+using namespace ray::gcs;   // NOLINT
 namespace ray {
 namespace gcs {
 

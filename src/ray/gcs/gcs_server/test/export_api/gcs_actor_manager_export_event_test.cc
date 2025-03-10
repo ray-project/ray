@@ -13,8 +13,12 @@
 // limitations under the License.
 
 #include <chrono>
+#include <list>
 #include <memory>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -74,7 +78,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
+  explicit MockWorkerClient(instrumented_io_context &io_service)
+      : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
       const rpc::WaitForActorRefDeletedRequest &request,
@@ -302,7 +307,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
     Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
-    if ((int)vc.size() == num_export_events) {
+    if (static_cast<int>(vc.size()) == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
         json event_data = export_event_as_json["event_data"].get<json>();
@@ -327,8 +332,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   for (auto line : vc) {
     lines << line << "\n";
   }
-  ASSERT_TRUE(false) << "Export API wrote " << (int)vc.size() << " lines, but expecting "
-                     << num_export_events << ".\nLines:\n"
+  ASSERT_TRUE(false) << "Export API wrote " << Use static_cast<int>(vc.size())
+                     << " lines, but expecting " << num_export_events << ".\nLines:\n"
                      << lines.str();
 }
 
