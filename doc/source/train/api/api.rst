@@ -78,16 +78,6 @@ Tensorflow/Keras
     ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.keras.ReportCheckpointCallback
 
-Horovod
-~~~~~~~
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~train.horovod.HorovodTrainer
-    ~train.horovod.HorovodConfig
-
 
 XGBoost
 ~~~~~~~
@@ -125,7 +115,6 @@ Ray Train Configuration
     ~train.FailureConfig
     ~train.RunConfig
     ~train.ScalingConfig
-    ~train.SyncConfig
 
 .. _train-loop-api:
 
