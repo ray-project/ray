@@ -10,7 +10,6 @@ Compiled Graph is a new feature and has some limitations. Different from classic
 
 - Invoking Compiled Graph
   - Only the process that compiles the Compiled Graph may call it.
-  
   - A Compiled Graph has a maximum number of in-flight executions. Normally when using classic Ray
     Core, if there aren't enough resources at the time of ``dag.execute()``, Ray will queue the
     tasks for later execution. Ray Compiled Graph currently does not support such queuing past their
@@ -24,22 +23,18 @@ Compiled Graph is a new feature and has some limitations. Different from classic
     Compiled Graph tasks will be executed on a **background thread**. Any concurrent tasks
     submitted to the actor can still execute on the main thread, but you are responsible for
     synchronization with the Compiled Graph background thread.
-
   - For now, actors can only execute one Compiled Graph at a time. To execute a different Compiled Graph
     on the same actor, the current Compiled Graph must be torn down.
     See :ref:`Return NumPy arrays <troubleshoot-numpy>` for more details.
-
 
 - Passing and getting Compiled Graph results (``CompiledDAGRef``s)
   - Compiled Graph results can't be passed to another task or actor. This restriction may be loosened
     in the future, but for now, it allows for better performance because the backend knows
     exactly where to push the results.
-
   - ``ray.get()`` can be called at most once on a ``CompiledDAGRef``. An exception will be raised if
     it is called twice on the same ``CompiledDAGRef``. This is because the underlying memory for
     the result may need to be reused for a future DAG execution; restricting ``ray.get()`` to once
     per reference simplifies the tracking of the memory buffers.
-
   - If the value returned by ``ray.get()`` is zero-copy deserialized, then subsequent executions
     of the same DAG will block until the value goes out of scope in Python. Thus, if you hold onto
     zero-copy deserialized values returned by ``ray.get()``, and you try to execute the DAG above
@@ -62,6 +57,7 @@ on ``GitHub <https://github.com/ray-project/ray/issues>``_.
 For a full list of known issues, check the ``compiled-graphs`` label on Ray GitHub.
 
 .. _troubleshoot-numpy:
+
 Returning NumPy arrays
 ----------------------
 Ray zero-copy deserializes NumPy arrays when possible. If you execute compiled graph with a NumPy array output multiple times, 
@@ -80,6 +76,7 @@ In the preceding code snippet, Python may not garbage collect the NumPy array in
 Therefore, you should explicitly delete the NumPy array before you try to get the result of subsequent Compiled Graph executions.
 
 .. _troubleshoot-teardown:
+
 Explicitly teardown before reusing the same actors
 --------------------------------------------------
 If you want to reuse the actors of a Compiled Graph, it's important to explicitly teardown the Compiled Graph before reusing the actors. 

@@ -227,13 +227,6 @@ Of course, you can also do this yourself, but there are advantages to using Comp
 - In the future, this can be further optimized through techniques such as memory pinning, using
   zero-copy deserialization when the CPU is the destination, etc.
 
-You can also override the default device set by Ray Compiled Graph:
-
-.. literalinclude:: ../doc_code/cgraph_nccl.py
-    :language: python
-    :start-after: __cgraph_cpu_to_gpu_override__
-    :end-before: __cgraph_cpu_to_gpu_override_end__
-
 
 GPU to GPU communication
 ------------------------
