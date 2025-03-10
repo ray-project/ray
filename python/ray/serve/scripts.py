@@ -9,8 +9,6 @@ from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
-from ray.serve.context import _connect
-from ray.serve.exceptions import RayServeException
 import watchfiles
 import yaml
 
@@ -717,36 +715,50 @@ def status(address: str, name: Optional[str]):
 
 
 @cli.command(
-    help="Shuts down Serve on the cluster.",
+    help="Shuts down Serve on the cluster, deleting all applications.",
 )
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "auto"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help=RAY_INIT_ADDRESS_HELP_STR,
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
-    # ray.init will not start a new ray cluster as long as the address is
-    # equal to local. Hence this is a safe operation and will not affect
-    # overall state of the cluster.
-    ray.init(address=address, namespace=SERVE_NAMESPACE)
+    warn_if_agent_address_set()
+
+    # check if the address is a valid Ray address
     try:
-        client = _connect(raise_if_no_controller_running=True)
-        if not yes:
-            click.confirm(
-                "This will shut down Serve on the cluster at address "
-                f'"{address}" and delete all applications there. Do you '
-                "want to continue?",
-                abort=True,
+        # see what applications are deployed on the cluster
+        serve_details = ServeInstanceDetails(
+            **ServeSubmissionClient(address).get_serve_details()
+        )
+        if serve_details.controller_info.node_id is None:
+            cli_logger.warning(
+                f"No Serve instance found running on the cluster at {address}. No action needed."
             )
-        client.shutdown()
-        cli_logger.success("Serve shutdown successfully.")
-    except RayServeException as e:
-        cli_logger.error(f"Error shutting down Serve: {e}")
-        sys.exit(1)
+            return
+    except Exception as e:
+        cli_logger.error(
+            f"Unable to shutdown Serve on the cluster at address {address}: {e}"
+        )
+        return
+
+    if not yes:
+        click.confirm(
+            f"This will shut down Serve on the cluster at address "
+            f'"{address}" and delete all applications there. Do you '
+            "want to continue?",
+            abort=True,
+        )
+
+    ServeSubmissionClient(address).delete_applications()
+
+    cli_logger.success(
+        "Sent shutdown request; applications will be deleted asynchronously."
+    )
 
 
 @cli.command(
