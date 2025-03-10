@@ -161,7 +161,6 @@ def upload_py_modules_if_needed(
 
 
 class PyModulesPlugin(RuntimeEnvPlugin):
-
     name = "py_modules"
 
     def __init__(
@@ -199,9 +198,12 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-
         module_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri,
+            self._resources_dir,
+            self._gcs_aio_client,
+            runtime_env=runtime_env,
+            logger=logger,
         )
 
         if is_whl_uri(uri):
