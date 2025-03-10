@@ -98,9 +98,32 @@ dag = dag.experimental_compile()
 print(ray.get(dag.execute("hello")))
 # __cgraph_multi_output_end__
 
+# __cgraph_async_compile_start__
+import ray
+
+@ray.remote
+class EchoActor:
+  def echo(self, msg):
+    return msg
+
+actor = EchoActor.remote()
+with ray.dag.InputNode() as inp:
+  dag = actor.echo.bind(inp)
+
+cdag = dag.experimental_compile(enable_asyncio=True)
+# __cgraph_async_compile_end__
+
+# __cgraph_async_execute_start__
+fut = cdag.execute_async("hello")
+# __cgraph_async_execute_end__
+
+# __cgraph_async_await_start__
+print(await fut)
+# hello
+# __cgraph_async_await_end__
+
 # __cgraph_actor_death_start__
 from ray.dag import InputNode, MultiOutputNode
-
 
 @ray.remote
 class EchoActor:
