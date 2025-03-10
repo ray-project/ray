@@ -367,12 +367,13 @@ class ClusterStatusFormatter:
           Resource: CPU currently in use.
           Busy workers on node.
         """
-        node_id_to_usage = {}
-        node_id_to_type = {}
-        node_id_to_idle_time = {}
-        node_id_to_instance_id = {}
+        node_id_to_usage: Dict[str, Dict[str, Tuple[float, float]]] = {}
+        node_id_to_type: Dict[str, str] = {}
+        node_id_to_idle_time: Dict[str, int] = {}
+        node_id_to_instance_id: Dict[str, str] = {}
+        node_id_to_activities: Dict[str, List[str]] = {}
 
-        # Populate mappings for usage, node types, and idle times
+        # Populate mappings for node types, idle times, instance ids, and activities
         for node in chain(active_nodes, idle_nodes):
             node_id_to_usage[node.node_id] = {
                 u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
@@ -380,14 +381,12 @@ class ClusterStatusFormatter:
             node_id_to_type[node.node_id] = node.ray_node_type_name
             node_id_to_idle_time[node.node_id] = node.resource_usage.idle_time_ms
             node_id_to_instance_id[node.node_id] = node.instance_id
-        # Create a dictionary for node activities
-        node_activities = {node.node_id: node.node_activity for node in active_nodes}
+            node_id_to_activities[node.node_id] = node.node_activity
 
         node_usage_report_lines = []
         for node_id, usage in node_id_to_usage.items():
             node_usage_report_lines.append("")  # Add a blank line between nodes
 
-            # Node type line
             node_type_line = f"Node: {node_id_to_instance_id[node_id]}"
             if node_id in node_id_to_type:
                 node_type = node_id_to_type[node_id]
@@ -395,25 +394,22 @@ class ClusterStatusFormatter:
             node_usage_report_lines.append(node_type_line)
             node_usage_report_lines.append(f" Id: {node_id}")
 
-            # Idle time for the node
             if node_id_to_idle_time.get(node_id, 0) > 0:
                 node_usage_report_lines.append(
                     f" Idle: {node_id_to_idle_time[node_id]} ms"
                 )
 
-            # Add resource usage information
             node_usage_report_lines.append(" Usage:")
             for line in parse_usage(usage, verbose=True):
                 node_usage_report_lines.append(f"  {line}")
 
-            # Add node activity, if any
-            if node_activities:
-                node_usage_report_lines.append(" Activity:")
-                if node_id not in node_activities:
-                    node_usage_report_lines.append("  (no activity)")
-                else:
-                    for reason in node_activities[node_id]:
-                        node_usage_report_lines.append(f"  {reason}")
+            activities = node_id_to_activities.get(node_id, [])
+            node_usage_report_lines.append(" Activity:")
+            if activities is None or len(activities) == 0:
+                node_usage_report_lines.append("  (no activity)")
+            else:
+                for activity in activities:
+                    node_usage_report_lines.append(f"  {activity}")
 
         # Join the list into a single string with new lines
         return "\n".join(node_usage_report_lines)

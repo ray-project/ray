@@ -579,17 +579,23 @@ Node: instance1 (head_node)
   0.5/1.0 CPU
   0.0/2.0 GPU
   5.42KiB/10.04KiB object_store_memory
+ Activity:
+  (no activity)
 
 Node: instance2 (worker_node)
  Id: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
  Usage:
   0/1.0 CPU
   0/2.0 GPU
+ Activity:
+  (no activity)
 
 Node: instance3 (worker_node)
  Id: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
  Usage:
-  0.0/1.0 CPU"""
+  0.0/1.0 CPU
+ Activity:
+  (no activity)"""
     assert actual == expected
 
 
