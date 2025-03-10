@@ -95,7 +95,7 @@ if [[ "$platform" == "macosx" ]]; then
 
     # Install the dependencies to run the tests.
     # "$PIP_CMD" install -q aiohttp aiosignal numpy frozenlist 'pytest==7.0.1' requests proxy.py
-    "$PIP_CMD" install aiohttp aiosignal 'numpy==1.26.4' frozenlist 'pytest==7.0.1' requests proxy.py
+    "$PIP_CMD" install 'aiohappyeyeballs==2.4.8' aiohttp aiosignal 'numpy==1.26.4' frozenlist 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090
