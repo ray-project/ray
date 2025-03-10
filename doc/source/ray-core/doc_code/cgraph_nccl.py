@@ -3,19 +3,21 @@ import torch
 import ray
 import ray.dag
 
+
 @ray.remote(num_gpus=1)
 class GPUActor:
-  def process(self, tensor: torch.Tensor):
-    assert tensor.device.type == "cuda"
-    return tensor.shape
+    def process(self, tensor: torch.Tensor):
+        assert tensor.device.type == "cuda"
+        return tensor.shape
+
 
 actor = GPUActor.remote()
 # __cgraph_cpu_to_gpu_actor_end__
 
 # __cgraph_cpu_to_gpu_start__
 with ray.dag.InputNode() as inp:
-  inp = inp.with_tensor_transport(device="cuda")
-  dag = actor.process.bind(inp)
+    inp = inp.with_tensor_transport(device="cuda")
+    dag = actor.process.bind(inp)
 
 cdag = dag.experimental_compile()
 print(ray.get(cdag.execute(torch.zeros(10))))
@@ -24,16 +26,19 @@ print(ray.get(cdag.execute(torch.zeros(10))))
 # __cgraph_cpu_to_gpu_override_start__
 from ray.experimental.channel import ChannelContext
 
+
 @ray.remote(num_gpus=1)
 class GPUActor:
-  def __init__(self):
-    # Set the default device to CPU.
-    ctx = ChannelContext.get_current()
-    ctx.set_torch_device(torch.device("cpu"))
-  
-  def process(self, tensor: torch.Tensor):
-    assert tensor.device.type == "cpu"
-    return tensor.shape
+    def __init__(self):
+        # Set the default device to CPU.
+        ctx = ChannelContext.get_current()
+        ctx.set_torch_device(torch.device("cpu"))
+
+    def process(self, tensor: torch.Tensor):
+        assert tensor.device.type == "cpu"
+        return tensor.shape
+
+
 # __cgraph_cpu_to_gpu_override_end__
 
 # __cgraph_nccl_setup_start__
