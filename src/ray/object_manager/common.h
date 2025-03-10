@@ -21,6 +21,7 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <functional>
+#include <string>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
