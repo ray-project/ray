@@ -7,7 +7,6 @@ import sys
 from dataclasses import dataclass
 import os
 import setproctitle
-import pathlib
 import multiprocessing
 
 import ray
@@ -88,12 +87,6 @@ class SubprocessModule(abc.ABC):
         """
         pass
 
-    @property
-    def socket_path(self):
-        module_name = self.__class__.__name__
-        socket_path = pathlib.Path(self._config.socket_dir) / module_name
-        return socket_path
-
     async def start_server(self):
         """
         Start the aiohttp server.
@@ -122,10 +115,11 @@ class SubprocessModule(abc.ABC):
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
 
+        socket_path = os.path.join(self._config.socket_dir, self.__class__.__name__)
         if sys.platform == "win32":
-            site = aiohttp.web.NamedPipeSite(runner, str(self.socket_path))
+            site = aiohttp.web.NamedPipeSite(runner, socket_path)
         else:
-            site = aiohttp.web.UnixSite(runner, str(self.socket_path))
+            site = aiohttp.web.UnixSite(runner, socket_path)
         await site.start()
         logger.info("Started aiohttp server.")
 
