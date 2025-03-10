@@ -128,19 +128,13 @@ First, pass ``enable_async=True` to the `dag.experimental_compile()`:
     :end-before: __cgraph_async_compile_end__
 
 Next, use `execute_async` to invoke the Compiled Graph. Calling ``await`` on ``execute_async`` will return once
-the input has been submitted, and it returns a future that can be used to get the result.
+the input has been submitted, and it returns a future that can be used to get the result. Finally, 
+use `await` to get the result of the Compiled Graph.
 
 .. literalinclude:: ../doc_code/cgraph_quickstart.py
     :language: python
     :start-after: __cgraph_async_execute_start__
     :end-before: __cgraph_async_execute_end__
-
-Finally, use `await` to get the result of the Compiled Graph.
-
-.. literalinclude:: ../doc_code/cgraph_quickstart.py
-    :language: python
-    :start-after: __cgraph_async_await_start__
-    :end-before: __cgraph_async_await_end__
 
 
 Execution and failure semantics
@@ -198,13 +192,21 @@ Therefore, you may see unnecessary copies across devices other than the source a
 Ray Compiled Graph ships with native support for passing ``torch.Tensors`` between actors executing on different
 devices. Developers can now use type hint annotations in the Compiled Graph declaration to indicate the final
 destination device of a ``torch.Tensor``. For example, let’s say we have an actor running on a GPU, and we
-want to pass a ``torch.Tensor`` to it. In Ray Core, if we try to pass a CPU tensor from the driver,
-the GPU actor will also receive a CPU tensor:
+want to pass a ``torch.Tensor`` to it.
 
 .. literalinclude:: ../doc_code/cgraph_nccl.py
     :language: python
-    :start-after: __cgraph_cpu_to_gpu_start__
-    :end-before: __cgraph_cpu_to_gpu_end__
+    :start-after: __cgraph_cpu_to_gpu_actor_start__
+    :end-before: __cgraph_cpu_to_gpu_actor_end__
+
+In Ray Core, if we try to pass a CPU tensor from the driver,
+the GPU actor will also receive a CPU tensor:
+
+.. testcode::
+
+    # This will fail because we pass a CPU copy of the tensor, 
+    # and the GPU actor also receives a CPU copy.
+    ray.get(actor.process.remote(torch.zeros(10)))
 
 With Ray Compiled Graph, we can annotate DAG nodes with type hints to indicate that there may be a ``torch.Tensor``
 contained in the value:

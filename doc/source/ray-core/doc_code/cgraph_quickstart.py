@@ -83,6 +83,8 @@ dag = dag.experimental_compile()
 print(ray.get(dag.execute("hello")))
 # __cgraph_bind_end__
 
+dag.teardown()
+
 # __cgraph_multi_output_start__
 import ray.dag
 
@@ -97,6 +99,8 @@ with ray.dag.InputNode() as inp:
 dag = dag.experimental_compile()
 print(ray.get(dag.execute("hello")))
 # __cgraph_multi_output_end__
+
+dag.teardown()
 
 # __cgraph_async_compile_start__
 import ray
@@ -114,13 +118,19 @@ cdag = dag.experimental_compile(enable_asyncio=True)
 # __cgraph_async_compile_end__
 
 # __cgraph_async_execute_start__
-fut = cdag.execute_async("hello")
+import asyncio
+
+async def async_method(i):
+    fut = await cdag.execute_async(i)
+    result = await fut
+    assert result == i
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(async_method(42))
+
 # __cgraph_async_execute_end__
 
-# __cgraph_async_await_start__
-print(await fut)
-# hello
-# __cgraph_async_await_end__
+cdag.teardown()
 
 # __cgraph_actor_death_start__
 from ray.dag import InputNode, MultiOutputNode
