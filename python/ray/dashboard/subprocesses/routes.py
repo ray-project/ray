@@ -4,7 +4,7 @@ import collections
 import inspect
 import functools
 
-from ray.dashboard.optional_deps import aiohttp
+from ray.dashboard.optional_deps import aiohttp, hdrs
 
 from ray.dashboard.routes import BaseRouteTable
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
@@ -81,10 +81,11 @@ class SubprocessRouteTable(BaseRouteTable):
             cls._bind_map[method][path] = bind_info
 
             if resp_type == "http":
-                handler = handler
+                pass
             elif resp_type == "stream":
                 handler = decorate_stream_handler(handler)
             elif resp_type == "websocket":
+                assert method == hdrs.METH_GET, "Websocket only supports GET method"
                 handler = decorate_websocket_handler(handler)
             else:
                 raise ValueError(f"Unknown resp_type: {resp_type}")
@@ -138,4 +139,29 @@ def decorate_stream_handler(handler):
 
 
 def decorate_websocket_handler(handler):
-    pass
+    """
+    Currently websocket handler implementation does not support
+    client sending messages to server.
+    """
+    assert inspect.isasyncgenfunction(handler)
+
+    @functools.wraps(handler)
+    async def wrapper(
+        self: SubprocessModule, req: aiohttp.web.Request, *args, **kwargs
+    ):
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
+        try:
+            async for chunk in handler(self, req, *args, **kwargs):
+                if isinstance(chunk, bytes):
+                    await ws.send_bytes(chunk)
+                elif isinstance(chunk, str):
+                    await ws.send_str(chunk)
+                else:
+                    raise ValueError(f"Unknown chunk type: {type(chunk)}")
+            await ws.close()
+        except Exception as e:
+            await ws.close(message=str(e).encode())
+        return ws
+
+    return wrapper
