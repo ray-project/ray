@@ -878,8 +878,8 @@ class StandardAutoscaler:
         self, sorted_node_ids: List[NodeID]
     ) -> FrozenSet[NodeID]:
         # TODO(ameer): try merging this with resource_demand_scheduler
-        # code responsible for adding nodes for request_resources().
-        """Returns the nodes NOT allowed to terminate due to request_resources().
+        # code responsible for adding nodes for get_resource_requests() and get_pending_placement_groups().
+        """Returns the nodes NOT allowed to terminate due to get_resource_requests() and get_pending_placement_groups().
 
         Args:
             sorted_node_ids: the node ids sorted based on last used (LRU last).
@@ -920,7 +920,7 @@ class StandardAutoscaler:
             head_node_ip = self.provider.internal_ip(self.non_terminated_nodes.head_id)
             head_node_resources = static_node_resources.get(head_node_ip, {})
 
-        max_node_resources: List[ResourceDict] = [head_node_resources]
+        node_total_resources: List[ResourceDict] = [head_node_resources]
         resource_demand_vector_worker_node_ids = []
         # Get max resources on all the non terminated nodes.
         for node_id in sorted_node_ids:
@@ -934,35 +934,35 @@ class StandardAutoscaler:
                     # Legacy yaml might include {} in the resources field.
                     node_ip = self.provider.internal_ip(node_id)
                     node_resources = static_node_resources.get(node_ip, {})
-                max_node_resources.append(node_resources)
+                node_total_resources.append(node_resources)
                 resource_demand_vector_worker_node_ids.append(node_id)
         # Since it is sorted based on last used, we "keep" nodes that are
         # most recently used when we binpack. We assume get_bin_pack_residual
         # is following the given order here.
-        used_resource_requests: List[ResourceDict] = copy.deepcopy(max_node_resources)
+        node_remaining_resources = copy.deepcopy(node_total_resources)
 
         for bundles in strict_spreads:
             unfulfilled, updated_node_resources = get_bin_pack_residual(
-                used_resource_requests, bundles, strict_spread=True
+                node_remaining_resources, bundles, strict_spread=True
             )
             if unfulfilled:
                 continue
-            used_resource_requests = updated_node_resources
+            node_remaining_resources = updated_node_resources
 
-        _, used_resource_requests = get_bin_pack_residual(
-            used_resource_requests, resource_demands
+        _, node_remaining_resources = get_bin_pack_residual(
+            node_remaining_resources, resource_demands
         )
         # Remove the first entry (the head node).
-        max_node_resources.pop(0)
+        node_total_resources.pop(0)
         # Remove the first entry (the head node).
-        used_resource_requests.pop(0)
+        node_remaining_resources.pop(0)
         for i, node_id in enumerate(resource_demand_vector_worker_node_ids):
             if (
-                used_resource_requests[i] == max_node_resources[i]
-                and max_node_resources[i]
+                node_remaining_resources[i] == node_total_resources[i]
+                and node_total_resources[i]
             ):
                 # No resources of the node were needed for request_resources().
-                # max_node_resources[i] is an empty dict for legacy yamls
+                # node_total_resources[i] is an empty dict for legacy yamls
                 # before the node is connected.
                 pass
             else:
