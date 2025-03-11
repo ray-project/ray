@@ -6,7 +6,7 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import maybe_pull_model_tokenizer_from_s3
+from ray.llm._internal.batch.utils import download_hf_model
 
 
 class ChatTemplateUDF(StatefulStageUDF):
@@ -34,8 +34,10 @@ class ChatTemplateUDF(StatefulStageUDF):
         # because tokenizers of VLM models may not have chat template attribute.
         # However, this may not be a reliable solution, because processors and
         # tokenizers are not standardized across different models.
-        model = maybe_pull_model_tokenizer_from_s3(model)
-        self.processor = AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        model_path = download_hf_model(model, tokenizer_only=True)
+        self.processor = AutoProcessor.from_pretrained(
+            model_path, trust_remote_code=True
+        )
         self.chat_template = chat_template
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:

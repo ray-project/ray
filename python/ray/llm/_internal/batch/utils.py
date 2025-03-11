@@ -3,7 +3,8 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, Union
 
-from ray.llm._internal.batch.s3_utils import S3Model
+from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.common.utils.download_utils import CloudModelDownloader
 
 if TYPE_CHECKING:
     from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
@@ -65,51 +66,66 @@ def get_cached_tokenizer(tokenizer: AnyTokenizer) -> AnyTokenizer:
     return tokenizer
 
 
-def maybe_pull_model_tokenizer_from_s3(model_source: str) -> str:
-    """If the model source is a s3 path, pull the model to the local
-    directory and return the local path.
+def is_remote_path(path: str) -> bool:
+    """Check if the path is a remote path.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        True if the path is a remote path, False otherwise.
+    """
+    return path.startswith("s3://") or path.startswith("gs://")
+
+
+def download_hf_model(model_source: str, tokenizer_only: bool = True) -> str:
+    """Download the HF model from the model source.
 
     Args:
         model_source: The model source path.
+        tokenizer_only: Whether to download only the tokenizer.
 
     Returns:
-        The local path to the model if it is a s3 path, otherwise the model source path.
+        The local path to the downloaded model.
     """
-    if not model_source.startswith("s3://"):
-        return model_source
 
-    s3_tokenizer = S3Model()
-    s3_tokenizer.pull_files(
-        model_source, ignore_pattern=["*.pt", "*.safetensors", "*.bin"]
-    )
-    return s3_tokenizer.dir
+    bucket_uri = None
+    if is_remote_path(model_source):
+        bucket_uri = model_source
+
+    mirror_config = CloudMirrorConfig(bucket_uri=bucket_uri)
+    downloader = CloudModelDownloader(model_source, mirror_config)
+    return downloader.get_model(tokenizer_only=tokenizer_only)
 
 
-def maybe_pull_lora_adapter_from_s3(
+def download_lora_adapter(
     lora_name: str,
-    s3_path: Optional[str] = None,
+    remote_path: Optional[str] = None,
 ) -> str:
-    """If the lora name is a s3 path, pull the lora to the local
+    """If remote_path is specified, pull the lora to the local
     directory and return the local path.
 
     Args:
         lora_name: The lora name.
-        s3_path: The S3 path to the lora. If specified, the s3_path will be
+        remote_path: The remote path to the lora. If specified, the remote_path will be
             used as the base path to load the lora.
 
     Returns:
-        The local path to the lora if it is a s3 path, otherwise the lora name.
+        The local path to the lora if remote_path is specified, otherwise the lora name.
     """
-    assert not lora_name.startswith("s3://"), "lora_name cannot be a s3 path"
+    assert not is_remote_path(
+        lora_name
+    ), "lora_name cannot be a remote path (s3:// or gs://)"
 
-    if s3_path is None:
+    if remote_path is None:
         return lora_name
 
     # Note that we set remove_on_close to False to keep the LoRA adapter
     # in the local directory even after the S3Model object is deleted,
     # because the LoRA adapter will be loaded by vLLM when the request is
     # actually being processed.
-    lora_name = os.path.join(s3_path, lora_name)
-    s3_lora = S3Model(remove_on_close=False)
-    s3_lora.pull_files(lora_name)
-    return s3_lora.dir
+    lora_path = os.path.join(remote_path, lora_name)
+
+    mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
+    downloader = CloudModelDownloader(lora_name, mirror_config)
+    return downloader.get_model(tokenizer_only=False)

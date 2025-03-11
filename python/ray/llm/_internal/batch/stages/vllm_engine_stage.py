@@ -19,7 +19,11 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import maybe_pull_lora_adapter_from_s3
+from ray.llm._internal.batch.utils import (
+    download_lora_adapter,
+    is_remote_path,
+    download_hf_model,
+)
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -136,8 +140,13 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
-        self.model = kwargs.get("model", None)
-        assert self.model is not None
+
+        # Use model_source in kwargs["model"] because "model" is actually
+        # the model source in vLLM.
+        self.model = kwargs.pop("model", None)
+        self.model_source = kwargs.pop("model_source", None)
+        assert self.model is not None and self.model_source is not None
+        kwargs["model"] = self.model_source
 
         # LoRA related.
         self.dynamic_lora_loading_path = dynamic_lora_loading_path
@@ -225,18 +234,21 @@ class vLLMEngineWrapper:
 
             lora_name = row["model"]
             if lora_name not in self.lora_name_to_request:
-                if lora_name.startswith("s3://"):
+                if is_remote_path(lora_name):
                     raise ValueError(
-                        "LoRA name cannot be a s3 path. Please specify "
-                        "dynamic_lora_loading_path in the processor config."
+                        "LoRA name cannot be a remote path (s3:// or gs://). "
+                        "Please specify dynamic_lora_loading_path in the processor config."
                     )
 
                 async with self.lora_lock:
                     if lora_name not in self.lora_name_to_request:
                         # Load a new LoRA adapter if it is not loaded yet.
-                        lora_path = maybe_pull_lora_adapter_from_s3(
+                        lora_path = download_lora_adapter(
                             lora_name,
-                            s3_path=self.dynamic_lora_loading_path,
+                            remote_path=self.dynamic_lora_loading_path,
+                        )
+                        logger.info(
+                            "Downloaded LoRA adapter for %s to %s", lora_name, lora_path
                         )
                         lora_request = vllm.lora.request.LoRARequest(
                             lora_name=lora_name,
@@ -458,9 +470,13 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
+        # Download the model if needed.
+        model_source = download_hf_model(self.model, tokenizer_only=False)
+
         # Create an LLM engine.
         self.llm = vLLMEngineWrapper(
             model=self.model,
+            model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             disable_log_stats=False,
             max_pending_requests=self.max_pending_requests,
