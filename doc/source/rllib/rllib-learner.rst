@@ -119,7 +119,7 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 .. tab-set::
 
-    .. tab-item:: Contstructing a LearnerGroup
+    .. tab-item:: Constructing a LearnerGroup
 
 
         .. testcode::

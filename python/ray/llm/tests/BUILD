@@ -8,6 +8,14 @@ py_library(
   ],
 )
 
+# Common tests
+py_test_module_list(
+  files = glob(["common/**/test_cloud_utils.py"]),
+  size = "small",
+  tags = ["exclusive", "cpu", "team:llm"],
+  deps = ["//:ray_lib"],
+)
+
 # Batch test
 py_test_module_list(
   files = glob(["batch/cpu/**/test_*.py"]),
@@ -40,7 +48,6 @@ py_test_module_list(
     "serve/deployments/test_streaming_error_handler.py",
     "serve/observability/usage_telemetry/test_usage.py",
     "serve/deployments/llm/vllm/test_vllm_engine.py",
-    "serve/utils/test_cloud_utils.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "small",

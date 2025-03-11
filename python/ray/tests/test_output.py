@@ -741,44 +741,21 @@ ray.init()
 def test_output_on_driver_shutdown(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=16)
-    # many_ppo.py script.
     script = """
 import ray
-from ray.tune import run_experiments
-from ray.tune.utils.release_test_util import ProgressCallback
-
-object_store_memory = 10**9
-num_nodes = 3
-
-message = ("Make sure there is enough memory on this machine to run this "
-           "workload. We divide the system memory by 2 to provide a buffer.")
-assert (num_nodes * object_store_memory <
-        ray._private.utils.get_system_memory() / 2), message
-
-# Simulate a cluster on one machine.
-
 ray.init(address="auto")
 
-# Run the workload.
+@ray.remote
+def f(i: int):
+    return i
 
-run_experiments(
-    {
-        "PPO": {
-            "run": "PPO",
-            "env": "CartPole-v0",
-            "num_samples": 10,
-            "config": {
-                "framework": "torch",
-                "num_workers": 1,
-                "num_gpus": 0,
-                "num_sgd_iter": 1,
-            },
-            "stop": {
-                "timesteps_total": 1,
-            },
-        }
-    },
-    callbacks=[ProgressCallback()])
+obj_refs = [f.remote(i) for i in range(100)]
+
+while True:
+    assert len(obj_refs) == 100
+    ready, pending = ray.wait(obj_refs, num_returns=10)
+    for i in ray.get(ready):
+        obj_refs[i] = f.remote(i)
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -795,13 +772,14 @@ run_experiments(
         time.sleep(0.1)
         os.kill(proc.pid, signal.SIGINT)
     try:
-        proc.wait(timeout=10)
+        proc.wait(timeout=5)
     except subprocess.TimeoutExpired:
         print("Script wasn't terminated by SIGINT. Try SIGTERM.")
         os.kill(proc.pid, signal.SIGTERM)
-    print(proc.wait(timeout=10))
+    print(proc.wait(timeout=5))
     err_str = proc.stderr.read().decode("ascii")
     assert len(err_str) > 0
+    assert "KeyboardInterrupt" in err_str
     assert "StackTrace Information" not in err_str
     print(err_str)
 
