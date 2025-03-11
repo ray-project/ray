@@ -13,6 +13,7 @@ from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
 )
+from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -596,7 +597,7 @@ class IMPALA(Algorithm):
 
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
-        # `LearnerGroup.update_from_episodes()`.
+        # `LearnerGroup.update()`.
         if self.config.num_aggregator_actors_per_learner > 0:
             data_packages_for_aggregators = self._pre_queue_episode_refs(
                 episode_refs, package_size=self.config.train_batch_size_per_learner
@@ -660,7 +661,7 @@ class IMPALA(Algorithm):
                 episode_refs, package_size=self.config.total_train_batch_size
             )
 
-        # Call the LearnerGroup's `update_from_episodes` method.
+        # Call the LearnerGroup's `update()` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             self.metrics.log_value(
                 key=MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
@@ -687,29 +688,28 @@ class IMPALA(Algorithm):
                         default=0,
                     ),
                 }
+                # Update from batch refs coming from AggregatorActors.
                 if self.config.num_aggregator_actors_per_learner > 0:
                     assert len(batch_ref_or_episode_list_ref) == (
                         self.config.num_learners or 1
                     )
-                    learner_results = self.learner_group.update_from_batch(
-                        batch=batch_ref_or_episode_list_ref,
-                        async_update=do_async_updates,
-                        return_state=return_state,
-                        timesteps=timesteps,
-                        num_epochs=self.config.num_epochs,
-                        minibatch_size=self.config.minibatch_size,
-                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                    training_data = TrainingData(
+                        batch_refs=batch_ref_or_episode_list_ref
                     )
+                # Update from episodes refs coming from EnvRunner actors.
                 else:
-                    learner_results = self.learner_group.update_from_episodes(
-                        episodes=batch_ref_or_episode_list_ref,
-                        async_update=do_async_updates,
-                        return_state=return_state,
-                        timesteps=timesteps,
-                        num_epochs=self.config.num_epochs,
-                        minibatch_size=self.config.minibatch_size,
-                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                    training_data = TrainingData(
+                        episodes_refs=batch_ref_or_episode_list_ref
                     )
+                learner_results = self.learner_group.update(
+                    training_data=training_data,
+                    async_update=do_async_updates,
+                    return_state=return_state,
+                    timesteps=timesteps,
+                    num_epochs=self.config.num_epochs,
+                    minibatch_size=self.config.minibatch_size,
+                    shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                )
                 # Only request weights from 1st Learner - at most - once per
                 # `training_step` call.
                 return_state = False
