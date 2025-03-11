@@ -389,7 +389,7 @@ run a Ray Serve application with `uv run serve run app:main`.
 
 - Use `uv lock` to generate a lockfile and make sure all your dependencies are frozen, so things won't change in uncontrolled ways if a new version of a package gets released.
 
-- If you have a requirements.txt file, you can use `uv add -r requirement.txt` to add the dependencies to your `project.toml` and then use that with uv run.
+- If you have a requirements.txt file, you can use `uv add -r requirement.txt` to add the dependencies to your `pyproject.toml` and then use that with uv run.
 
 - If your `pyproject.toml` is in some subdirectory, you can use `uv run --project` to use it from there.
 
