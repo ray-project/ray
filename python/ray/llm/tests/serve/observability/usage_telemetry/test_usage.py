@@ -45,6 +45,7 @@ def test_push_telemetry_report_for_all_models():
         llm_engine=LLMEngine.vLLM,
         accelerator_type="L4",
     )
+    llm_config_model._set_model_architecture(model_architecture="llm_model_arch")
     llm_config_autoscale_model = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="llm_config_autoscale_model_id",
@@ -58,12 +59,18 @@ def test_push_telemetry_report_for_all_models():
             ),
         ),
     )
+    llm_config_autoscale_model._set_model_architecture(
+        model_architecture="llm_config_autoscale_model_arch"
+    )
     llm_config_json_mode_model = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="llm_config_json_model_id",
         ),
         llm_engine=LLMEngine.vLLM,
         accelerator_type="A10G",
+    )
+    llm_config_json_mode_model._set_model_architecture(
+        model_architecture="llm_config_json_model_arch"
     )
     llm_config_lora_model = LLMConfig(
         model_loading_config=ModelLoadingConfig(
@@ -72,6 +79,9 @@ def test_push_telemetry_report_for_all_models():
         llm_engine=LLMEngine.vLLM,
         accelerator_type="A10G",
         lora_config=LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path),
+    )
+    llm_config_lora_model._set_model_architecture(
+        model_architecture="llm_config_lora_model_arch"
     )
     all_models = [
         llm_config_model,
@@ -96,16 +106,16 @@ def test_push_telemetry_report_for_all_models():
     assert telemetry == {
         TagKey.LLM_SERVE_SERVE_MULTIPLE_MODELS: "1",
         TagKey.LLM_SERVE_SERVE_MULTIPLE_APPS: "0",
-        TagKey.LLM_SERVE_JSON_MODE_MODELS: "llm_model_id,llm_config_autoscale_model_id,llm_config_json_model_id,llm_config_lora_model_id",
+        TagKey.LLM_SERVE_JSON_MODE_MODELS: "llm_model_arch,llm_config_autoscale_model_arch,llm_config_json_model_arch,llm_config_lora_model_arch",
         TagKey.LLM_SERVE_JSON_MODE_NUM_REPLICAS: "1,2,1,1",
-        TagKey.LLM_SERVE_LORA_BASE_MODELS: "llm_config_lora_model_id",
+        TagKey.LLM_SERVE_LORA_BASE_MODELS: "llm_config_lora_model_arch",
         TagKey.LLM_SERVE_INITIAL_NUM_LORA_ADAPTERS: "2",
-        TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: "llm_config_autoscale_model_id",
+        TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: "llm_config_autoscale_model_arch",
         TagKey.LLM_SERVE_AUTOSCALING_MIN_REPLICAS: "2",
         TagKey.LLM_SERVE_AUTOSCALING_MAX_REPLICAS: "3",
         TagKey.LLM_SERVE_TENSOR_PARALLEL_DEGREE: "1,1,1,1",
         TagKey.LLM_SERVE_NUM_REPLICAS: "1,2,1,1",
-        TagKey.LLM_SERVE_MODELS: "llm_model_id,llm_config_autoscale_model_id,llm_config_json_model_id,llm_config_lora_model_id",
+        TagKey.LLM_SERVE_MODELS: "llm_model_arch,llm_config_autoscale_model_arch,llm_config_json_model_arch,llm_config_lora_model_arch",
         TagKey.LLM_SERVE_GPU_TYPE: "L4,A10G,A10G,A10G",
         TagKey.LLM_SERVE_NUM_GPUS: "1,1,1,1",
     }

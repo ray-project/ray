@@ -45,7 +45,7 @@ class TelemetryTags(str, Enum):
 class TelemetryModel(BaseModelExtended):
     """Telemetry model for LLM Serve."""
 
-    model_id: str
+    model_architecture: str
     num_replicas: int
     use_json_mode: bool
     use_lora: bool
@@ -81,7 +81,7 @@ class TelemetryAgent:
         self.models = []
 
     def _multiple_models(self) -> str:
-        unique_models = {model.model_id for model in self.models}
+        unique_models = {model.model_architecture for model in self.models}
         return "1" if len(unique_models) > 1 else "0"
 
     @staticmethod
@@ -100,7 +100,7 @@ class TelemetryAgent:
 
     def _json_mode_models(self) -> str:
         return ",".join(
-            [model.model_id for model in self.models if model.use_json_mode]
+            [model.model_architecture for model in self.models if model.use_json_mode]
         )
 
     def _json_mode_num_deployments(self) -> str:
@@ -109,7 +109,9 @@ class TelemetryAgent:
         )
 
     def _lora_base_nodes(self) -> str:
-        return ",".join([model.model_id for model in self.models if model.use_lora])
+        return ",".join(
+            [model.model_architecture for model in self.models if model.use_lora]
+        )
 
     def _lora_initial_num_adaptors(self) -> str:
         return ",".join(
@@ -122,7 +124,7 @@ class TelemetryAgent:
 
     def _autoscaling_enabled_models(self) -> str:
         return ",".join(
-            [model.model_id for model in self.models if model.use_autoscaling]
+            [model.model_architecture for model in self.models if model.use_autoscaling]
         )
 
     def _autoscaling_min_replicas(self) -> str:
@@ -135,8 +137,8 @@ class TelemetryAgent:
             [str(model.max_replicas) for model in self.models if model.use_autoscaling]
         )
 
-    def _model_ids(self) -> str:
-        return ",".join([model.model_id for model in self.models])
+    def _model_architectures(self) -> str:
+        return ",".join([model.model_architecture for model in self.models])
 
     def _tensor_parallel_degree(self) -> str:
         return ",".join([str(model.tensor_parallel_degree) for model in self.models])
@@ -161,7 +163,7 @@ class TelemetryAgent:
             TelemetryTags.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: self._autoscaling_enabled_models(),
             TelemetryTags.LLM_SERVE_AUTOSCALING_MIN_REPLICAS: self._autoscaling_min_replicas(),
             TelemetryTags.LLM_SERVE_AUTOSCALING_MAX_REPLICAS: self._autoscaling_max_replicas(),
-            TelemetryTags.LLM_SERVE_MODELS: self._model_ids(),
+            TelemetryTags.LLM_SERVE_MODELS: self._model_architectures(),
             TelemetryTags.LLM_SERVE_TENSOR_PARALLEL_DEGREE: self._tensor_parallel_degree(),
             TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._num_replicas(),
             TelemetryTags.LLM_SERVE_GPU_TYPE: self._gpu_type(),
@@ -254,7 +256,7 @@ def push_telemetry_report_for_all_models(
         engine_config = model.get_engine_config()
 
         telemetry_model = TelemetryModel(
-            model_id=model.model_id,
+            model_architecture=model.model_architecture,
             num_replicas=num_replicas,
             use_json_mode=True,
             use_lora=use_lora,
