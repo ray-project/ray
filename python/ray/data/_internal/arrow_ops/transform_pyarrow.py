@@ -59,7 +59,7 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
 
 def take_table(
     table: "pyarrow.Table",
-    indices: Union[List[int], "pyarrow.Array", "pyarrow.ChunkedArray"],
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
 ) -> "pyarrow.Table":
     """Select rows from the table.
 
@@ -431,7 +431,7 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
     # Shuffle indices
     np.random.RandomState(seed).shuffle(indices)
 
-    return block.take(indices)
+    return take_table(block, indices)
 
 
 def concat(
