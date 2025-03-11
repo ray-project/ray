@@ -52,7 +52,7 @@ Compiled Graph is a new feature and has some limitations:
 
 - Collective operations
 
-  - Compiled Graph only supports the all-reduce collective operation for now.
+  - For GPU to GPU communication, Compiled Graph only supports peer-to-peer transfers. Collective communication operations are coming soon.
   
 Keep an eye out for additional features in future Ray releases:
 - Support better queuing of DAG inputs, to enable more concurrent executions of the same DAG.
