@@ -144,7 +144,10 @@ class LoggingConfig(BaseModel):
     additional_log_standard_attrs: List[str] = Field(
         default_factory=list,
         description=(
-            "Additional attributes to be added to all log records as standard attributes."
+            "Default attributes from the Python standard logger that will be "
+            "added to all log records. "
+            "See https://docs.python.org/3/library/logging.html#logrecord-attributes "
+            "for a list of available attributes."
         ),
     )
 
