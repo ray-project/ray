@@ -587,10 +587,10 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
     reason="This test is only run on linux CI machines.",
 )
 @pytest.mark.parametrize("option", ["conda", "pip"])
-def test_conda_pip_extras_ray_serve(shutdown_only, option):
+def test_conda_pip_extras_ray_default(shutdown_only, option):
     """Tests that ray[extras] can be included as a conda/pip dependency."""
     ray.init()
-    pip = ["pip-install-test==0.5", "ray[serve]"]
+    pip = ["pip-install-test==0.5", "ray[default]"]
     if option == "conda":
         runtime_env = {"conda": {"dependencies": ["pip", {"pip": pip}]}}
     elif option == "pip":
@@ -969,7 +969,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
     requirement_path.write_text(
         "\n".join(
             [
-                "ray[serve, tune]",
                 "PyGithub",
                 "xgboost_ray",  # has Ray as a dependency
                 "pandas==1.5.3",
@@ -994,8 +993,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
         @ray.remote
         def test_import():
             import ray  # noqa
-            from ray import serve  # noqa
-            from ray import tune  # noqa
             import typer  # noqa
             import xgboost_ray  # noqa
 
@@ -1008,8 +1005,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
         class TestActor:
             def test(self):
                 import ray  # noqa
-                from ray import serve  # noqa
-                from ray import tune  # noqa
                 import typer  # noqa
                 import xgboost_ray  # noqa
 
