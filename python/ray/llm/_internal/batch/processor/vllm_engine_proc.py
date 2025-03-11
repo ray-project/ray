@@ -83,8 +83,9 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
     # LoRA configurations.
     dynamic_lora_loading_path: Optional[str] = Field(
         default=None,
-        description="The S3 path to the dynamic LoRA adapter. "
-        "If not specified and LoRA is enabled, then the 'model' in LoRA "
+        description="The path to the dynamic LoRA adapter. It is expected "
+        "to hold subfolders each for a different lora checkpoint. If not "
+        "specified and LoRA is enabled, then the 'model' in LoRA "
         "requests will be interpreted as model ID used by HF transformers.",
     )
 

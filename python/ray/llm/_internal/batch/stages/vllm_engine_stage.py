@@ -453,7 +453,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             max_pending_requests: The maximum number of pending requests. If None,
                 it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
-            dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
+            dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
+                to hold subfolders each for a different lora checkpoint.
         """
         super().__init__(data_column)
         self.model = model
