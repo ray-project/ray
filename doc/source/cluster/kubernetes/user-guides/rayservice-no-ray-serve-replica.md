@@ -30,14 +30,14 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 :::{tab-item} x86-64 (Intel/Linux)
 ```sh
-curl -O https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
+curl -O https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
 :::
 
 :::{tab-item} ARM64 (Apple silicon)
 ```sh
-curl -s https://raw.githubusercontent.com/ray-project/kuberay/v1.3.0/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml | sed 's/2.41.0/2.41.0-aarch64/g' > ray-service.no-ray-serve-replica.yaml
+curl -s https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml | sed 's/2.41.0/2.41.0-aarch64/g' > ray-service.no-ray-serve-replica.yaml
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
 :::
