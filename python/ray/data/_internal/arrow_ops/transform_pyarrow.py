@@ -424,6 +424,9 @@ def _align_struct_fields(
 def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Table":
     """Shuffles provided Arrow table"""
 
+    if len(block) == 0:
+        return block
+
     indices = np.arange(block.num_rows)
     # Shuffle indices
     np.random.RandomState(seed).shuffle(indices)
