@@ -420,7 +420,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
 
 
 **Tuned examples:**
-`12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
+`12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__
 
 
 

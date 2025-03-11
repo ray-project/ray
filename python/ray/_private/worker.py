@@ -1422,7 +1422,6 @@ def init(
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
-        _redis_max_memory: Redis max memory.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
@@ -1481,7 +1480,6 @@ def init(
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
-    _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
     _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
@@ -1726,7 +1724,6 @@ def init(
             dashboard_port=dashboard_port,
             memory=_memory,
             object_store_memory=object_store_memory,
-            redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
             storage=storage,

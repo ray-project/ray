@@ -17,6 +17,11 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/common.h"
@@ -88,7 +93,7 @@ class IObjectLifecycleManager {
   /// \return true if object exists, false otherise.
   virtual bool AddReference(const ObjectID &object_id) = 0;
 
-  /// Decrese the reference count of the object. When reference count
+  /// Decrease the reference count of the object. When reference count
   /// drop to zero the object becomes evictable.
   ///
   /// \return true if object exists and reference count is greater than 0, false otherise.

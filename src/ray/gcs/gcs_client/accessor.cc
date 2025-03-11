@@ -595,23 +595,6 @@ Status NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_
   return Status::OK();
 }
 
-Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
-                                        const StatusCallback &callback) {
-  RAY_LOG(DEBUG).WithField(node_id) << "Draining node";
-  rpc::DrainNodeRequest request;
-  auto draining_request = request.add_drain_node_data();
-  draining_request->set_node_id(node_id.Binary());
-  client_impl_->GetGcsRpcClient().DrainNode(
-      request, [node_id, callback](const Status &status, rpc::DrainNodeReply &&reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG).WithField(node_id)
-            << "Finished draining node, status = " << status;
-      });
-  return Status::OK();
-}
-
 Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
                                     int64_t timeout_ms,
                                     std::vector<std::string> &drained_node_ids) {
