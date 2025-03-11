@@ -411,7 +411,7 @@ your programs:
   `--project` parameter for each. Instead, you can also use a different `working_dir` for each environment.
 
 - *Customizing the command the worker runs in:* On the workers, you might want to customize uv with some special
-  arguments that are not used for the driver. Or, you might want to run processes using `poetry run`, a build system
+  arguments that aren't used for the driver. Or, you might want to run processes using `poetry run`, a build system
   like bazel, a profiler, or a debugger. In these cases, you can explicitly specify the executable the worker should
   run in via `py_executable`. It could even be a shell script that is stored in `working_dir` if you are trying to wrap
   multiple processes in more complex ways.
