@@ -78,7 +78,7 @@ def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     if generation == "v5lite_pod":
         generation = "v5litepod"
 
-    num_cores = tpu._get_tpu_cores_per_chip(generation) * num_chips
+    num_cores = tpu.get_tpu_cores_per_chip(generation) * num_chips
 
     return f"{generation}-{num_cores}"
 
@@ -135,7 +135,7 @@ def _get_num_tpu_chips(node: dict) -> int:
         accelerator_type = node["acceleratorType"]
         # `acceleratorType` is typically v{generation}-{cores}
         cores = int(accelerator_type.split("-")[1])
-        chips = cores / tpu._get_tpu_cores_per_chip(accelerator_type)
+        chips = cores / tpu.get_tpu_cores_per_chip(accelerator_type)
     if "acceleratorConfig" in node:
         topology = node["acceleratorConfig"]["topology"]
         # `topology` is typically {chips}x{chips}x{chips}
@@ -152,7 +152,7 @@ def _is_single_host_tpu(node: dict) -> bool:
         accelerator_type = node["acceleratorType"]
     else:
         accelerator_type = tpu_accelerator_config_to_type(node["acceleratorConfig"])
-    return _get_num_tpu_chips(node) <= tpu._get_num_tpu_visible_chips_per_host(
+    return _get_num_tpu_chips(node) <= tpu.get_num_tpu_visible_chips_per_host(
         accelerator_type
     )
 

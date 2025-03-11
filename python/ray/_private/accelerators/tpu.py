@@ -46,7 +46,18 @@ TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
-DEFAULT_TPU_CORES_PER_CHIP = 2
+DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
+
+# Accelerators that are 4 chips per host: v2, v3, v4, v5p
+# Accelerators that are 8 chips per host: v5e, v6e
+SINGLE_HOST_8_CHIPS_TPU_TYPES = ("v5litepod", "v6e")
+
+# Accelerators that are 2 cores per chip: v2, v3, v4, v5p
+# Accelerators that are 1 core per chip: v5e, v6e
+SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
+
+# The valid TPU types.
+VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e")
 
 
 def _get_tpu_metadata(key: str) -> Optional[str]:
@@ -73,33 +84,26 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
 
 
 def _accelerator_type_check(accelerator_type: str):
-    valid_prefixes = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e")
-    if not accelerator_type.startswith(valid_prefixes):
+    if not accelerator_type.startswith(VALID_TPU_TYPES):
         raise ValueError(
-            f"Invalid accelerator type: {accelerator_type}. Must start with one of: {valid_prefixes}"
+            f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
         )
 
 
-def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
+def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
-    # Accelerators that are 4 chips per host: v2, v3, v4, v5p
-    # 8 chips per host: v5e, v6e
-    single_host_8chips_accelerators = ("v5litepod", "v6e")
-    if accelerator_type.startswith(single_host_8chips_accelerators):
+    if accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPES):
         return 8
 
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
-def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
+def get_tpu_cores_per_chip(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
-    # Accelerators that are 2 cores per chip: v2, v3, v4, v5p
-    # Accelerators that are 1 core per chip: v5e, v6e
-    single_core_accelerator_types = ("v5litepod", "v6e")
-    if accelerator_type.startswith(single_core_accelerator_types):
+    if accelerator_type.startswith(SINGLE_CORE_TPU_TYPES):
         return 1
 
-    return DEFAULT_TPU_CORES_PER_CHIP
+    return DEFAULT_TPU_NUM_CORES_PER_CHIP
 
 
 class TPUAcceleratorManager(AcceleratorManager):
@@ -309,13 +313,13 @@ class TPUAcceleratorManager(AcceleratorManager):
         """Return the total number of workers in a TPU pod."""
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
         chips_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
-        cores_per_chip = _get_tpu_cores_per_chip(tpu_pod_type)  # Hard-coded map.
+        cores_per_chip = get_tpu_cores_per_chip(tpu_pod_type)  # Hard-coded map.
         cores_per_host = chips_per_host * cores_per_chip
         if tpu_pod_type and cores_per_host > 0:
-            num_chips_or_cores = int(tpu_pod_type.split("-")[1])
-            num_workers = num_chips_or_cores // cores_per_host
+            num_cores = int(tpu_pod_type.split("-")[1])
+            num_workers = num_cores // cores_per_host
             # If the chip count doesn't fill a full host, a sub-host is still treated as a host.
-            if num_chips_or_cores % cores_per_host != 0:
+            if num_cores % cores_per_host != 0:
                 num_workers += 1
             return num_workers
         else:
