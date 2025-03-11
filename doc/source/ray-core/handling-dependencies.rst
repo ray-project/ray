@@ -380,7 +380,7 @@ you can submit a Ray Job via
 
   ray job submit --working-dir . -- uv run test.py
 
-This will make sure both the driver and workers of the job run in the uv environment as specified by your `pyproject.toml`.
+This command makes sure both the driver and workers of the job run in the uv environment as specified by your `pyproject.toml`.
 
 **Using uv with Ray Serve:** With an appropriate `pyproject.toml` and `app.py` files, you can
 run a Ray Serve application with `uv run serve run app:main`.
