@@ -970,7 +970,7 @@ def _inplace_add(a: collections.defaultdict, b: Dict) -> None:
 
 def placement_groups_to_resource_demands(
     pending_placement_groups: List[PlacementGroupTableData],
-):
+) -> Tuple[List[ResourceDict], List[List[ResourceDict]]]:
     """Preprocess placement group requests into regular resource demand vectors
     when possible. The policy is:
         * STRICT_PACK - Convert to a single bundle.

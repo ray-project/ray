@@ -893,16 +893,10 @@ class StandardAutoscaler:
 
         nodes_not_allowed_to_terminate: Set[NodeID] = set()
 
-        (
-            placement_group_demand_vector,
-            strict_spreads,
-        ) = placement_groups_to_resource_demands(
+        resource_demands, strict_spreads = placement_groups_to_resource_demands(
             self.load_metrics.get_pending_placement_groups()
         )
-
-        resource_demands = (
-            placement_group_demand_vector + self.load_metrics.get_resource_requests()
-        )
+        resource_demands.extend(self.load_metrics.get_resource_requests())
         if not resource_demands and not strict_spreads:
             return frozenset(nodes_not_allowed_to_terminate)
 
@@ -941,9 +935,9 @@ class StandardAutoscaler:
         # is following the given order here.
         node_remaining_resources = copy.deepcopy(node_total_resources)
 
-        for bundles in strict_spreads:
+        for strict_spread in strict_spreads:
             unfulfilled, updated_node_resources = get_bin_pack_residual(
-                node_remaining_resources, bundles, strict_spread=True
+                node_remaining_resources, strict_spread, strict_spread=True
             )
             if unfulfilled:
                 continue
