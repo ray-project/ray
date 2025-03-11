@@ -4,10 +4,6 @@
 
 This guide explores a specific scenario in KubeRay with Ray where a Ray worker Pod remains in an unready state due to the lack of a Ray Serve replica.  
 
-## Prerequisites
-
-This guide mainly focuses on the behavior of KubeRay v1.3.0 and Ray 2.41.0.
-
 ## What's a Ray Serve Replica?
 
 A Ray Serve Replica is an instance of a deployment in Ray Serve that processes incoming requests. Each replica runs as a Ray actor and can handle HTTP or Python function calls. Users can scale the number of replicas based on workload requirements, distributing traffic across the available replicas for load balancing and high availability.  
