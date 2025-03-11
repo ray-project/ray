@@ -203,9 +203,9 @@ enum TagKey {
   TRAIN_TRAINER = 521;
 
   // LLM Serve
-  // Whether or not multiple models are getting deployed in the cluster.
+  // Whether or not multiple models are getting deployed in the cluster ("1" if used).
   LLM_SERVE_SERVE_MULTIPLE_MODELS = 600;
-  // Whether or not multiple application are getting deployed in the cluster.
+  // Whether or not multiple applications are getting deployed in the cluster ("1" if used).
   LLM_SERVE_SERVE_MULTIPLE_APPS = 601;
   // Comma separated list of models that supports json mode.
   LLM_SERVE_JSON_MODE_MODELS = 602;
