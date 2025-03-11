@@ -15,10 +15,10 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    NODE_UNKNOWN,
     MetricsGroup,
     NodeMetrics,
     OpRuntimeMetrics,
-    NODE_UNKNOWN,
 )
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata, BlockStats
@@ -1301,7 +1301,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round(e.rss_bytes / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),
