@@ -394,7 +394,7 @@ You can also use a :py:class:`~ray.rllib.core.learner.learner.Learner` standalon
 with a list of Episodes.
 
 Here is an example of creating a remote :py:class:`~ray.rllib.core.learner.learner.Learner`
-actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_from_episodes` method.
+actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update` method.
 
 .. testcode::
 
@@ -422,7 +422,7 @@ actor and calling its :py:meth:`~ray.rllib.core.learner.learner.Learner.update_f
     ray.get(learner_actor.build.remote())
 
     # Perform an update from the list of episodes we got from the `EnvRunners` above.
-    learner_results = ray.get(learner_actor.update_from_episodes.remote(
+    learner_results = ray.get(learner_actor.update.remote(
         episodes=tree.flatten(episodes)
     ))
     print(learner_results["default_policy"]["policy_loss"])
