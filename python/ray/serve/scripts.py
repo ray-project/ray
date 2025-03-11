@@ -737,7 +737,7 @@ def shutdown(address: str, yes: bool):
         )
         if serve_details.controller_info.node_id is None:
             cli_logger.warning(
-                f"No Serve instance found running on the cluster at {address}. No action needed."
+                f"No Serve instance found running on the cluster at {address}."
             )
             return
     except Exception as e:
