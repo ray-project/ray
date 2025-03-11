@@ -47,7 +47,10 @@ class TrainingData:
     def shard(self, num_shards: int, **kwargs):
         # Single batch -> Split into n smaller batches.
         if self.batch is not None:
-            return [(TrainingData(batch=b), {}) for b in ShardBatchIterator()]
+            return [
+                (TrainingData(batch=b), {})
+                for b in ShardBatchIterator(self.batch, num_shards=num_shards)
+            ]
 
         # TODO (sven): Do we need a more sohpisticated shard mechanism for this case?
         elif self.batches is not None:
@@ -58,7 +61,7 @@ class TrainingData:
         elif self.batch_refs is not None:
             return [
                 (TrainingData(batch_refs=b), {})
-                for b in ShardObjectRefIterator(self.batch_refs, num_shards)
+                for b in ShardObjectRefIterator(self.batch_refs, num_shards=num_shards)
             ]
 
         # List of episodes -> Split into n equally sized shards (based on the lengths
@@ -77,7 +80,7 @@ class TrainingData:
                     TrainingData(episodes=e),
                     {"num_total_minibatches": num_total_minibatches},
                 )
-                for e in ShardEpisodesIterator(self.episodes, num_shards)
+                for e in ShardEpisodesIterator(self.episodes, num_shards=num_shards)
             ]
         # List of episodes refs.
         elif self.episodes_refs is not None:
