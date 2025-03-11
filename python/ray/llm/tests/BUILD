@@ -44,6 +44,8 @@ py_test_module_list(
     "serve/deployments/llm/multiplex/test_lora_model_loader.py",
     "serve/deployments/llm/multiplex/test_multiplex_deployment.py",
     "serve/deployments/llm/multiplex/test_multiplex_utils.py",
+    "serve/config_generator/test_input_converter.py",
+    "serve/config_generator/test_text_completion.py",
     "serve/deployments/llm/test_image_retriever.py",
     "serve/deployments/test_streaming_error_handler.py",
     "serve/observability/usage_telemetry/test_usage.py",
