@@ -51,6 +51,7 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
+            "'average_memory_usage_per_task': N",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_task_inputs_processed': N",
@@ -545,6 +546,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
+        "      average_memory_usage_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -659,6 +661,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
+        "      average_memory_usage_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -728,6 +731,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_pending_task_inputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
+        "            average_memory_usage_per_task: N,\n"
         "            num_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
         "            num_task_inputs_processed: N,\n"
