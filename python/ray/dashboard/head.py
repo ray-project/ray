@@ -321,7 +321,8 @@ class DashboardHead:
         for cls in subprocess_cls_list:
             logger.info(f"Loading {SubprocessModule.__name__}: {cls}.")
             handle = SubprocessModuleHandle(loop, cls, config)
-            handle.start_module()
+            if not ray_constants.RAY_SKIP_INVOKE_SUBPROCESS_DASHBOARD_START_MODULE:
+                handle.start_module()
             handles.append(handle)
 
         logger.info(f"Loaded {len(handles)} subprocess modules: {handles}.")
