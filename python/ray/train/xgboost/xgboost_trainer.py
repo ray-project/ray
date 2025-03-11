@@ -231,15 +231,14 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 datasets=datasets,
             )
             train_loop_config = params or {}
-        elif train_kwargs:
-            # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
-            # _log_deprecation_warning(
-            #     "Passing `xgboost.train` kwargs to `XGBoostTrainer` is deprecated. "
-            #     "Please pass in a `train_loop_per_worker` function instead, "
-            #     "which has full flexibility on the call to `xgboost.train(**kwargs)`. "
-            #     f"{LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE}"
-            # )
-            pass
+        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
+        # elif train_kwargs or label_column or num_boost_round:
+        #     _log_deprecation_warning(
+        #         "Passing `xgboost.train` kwargs to `XGBoostTrainer` is deprecated. "
+        #         "Please pass in a `train_loop_per_worker` function instead, "
+        #         "which has full flexibility on the call to `xgboost.train(**kwargs)`. "
+        #         f"{LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE}"
+        #     )
 
         super(XGBoostTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
