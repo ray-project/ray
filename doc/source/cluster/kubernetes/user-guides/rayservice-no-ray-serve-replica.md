@@ -2,7 +2,7 @@
 
 # RayService Worker No Ray Serve Replica
 
-In this guide, we will explore a specific scenario in KubeRay v1.3.0 with Ray 2.41.0 where a Ray worker Pod remains in an unready state due to the lack of a Ray Serve replica.  
+In this guide, we will explore a specific scenario in KubeRay with Ray where a Ray worker Pod remains in an unready state due to the lack of a Ray Serve replica.  
 
 ## Prerequisites
 
