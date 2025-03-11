@@ -252,6 +252,7 @@ To support GPU-to-GPU communication with NCCL, wrap the DAG node that contains t
     :end-before: __cgraph_nccl_exec_end__
 
 Current limitations include:
+
 * ``torch.Tensor`` and NVIDIA NCCL only
 * Support for peer-to-peer transfers. Collective communication operations are coming soon.
 * Communication operations are currently done synchronously. :ref:`Overlapping compute and communication <compiled-graph-overlap>` is an experimental feature.
