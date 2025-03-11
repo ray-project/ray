@@ -6,11 +6,9 @@ import logging
 import sys
 from dataclasses import dataclass
 import os
-import setproctitle
 import multiprocessing
 
 import ray
-from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
 )
@@ -26,8 +24,6 @@ class SubprocessModuleConfig:
     Pickleable.
     """
 
-    cluster_id_hex: str
-    gcs_address: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -51,17 +47,12 @@ class SubprocessModule(abc.ABC):
     def __init__(
         self,
         config: SubprocessModuleConfig,
-        parent_process_pid: int,
     ):
         """
         Initialize current module when DashboardHead loading modules.
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
-        self._parent_process_pid = parent_process_pid
-        # Lazy init
-        self._gcs_aio_client = None
-        self._parent_process_death_detection_task = None
 
     @staticmethod
     def is_minimal_module():
@@ -123,16 +114,6 @@ class SubprocessModule(abc.ABC):
         await site.start()
         logger.info("Started aiohttp server.")
 
-    @property
-    def gcs_aio_client(self):
-        if self._gcs_aio_client is None:
-            self._gcs_aio_client = GcsAioClient(
-                address=self._config.gcs_address,
-                nums_reconnect_retry=0,
-                cluster_id=self._config.cluster_id_hex,
-            )
-        return self._gcs_aio_client
-
     @abc.abstractmethod
     async def is_healthy(self) -> bool:
         """
@@ -154,39 +135,19 @@ class SubprocessModule(abc.ABC):
             )
         return aiohttp.web.HTTPServiceUnavailable(reason="Internal health check failed")
 
-    async def _detect_parent_process_death(self):
-        """
-        Detect parent process death by checking if ppid is still the same.
-        """
-        while True:
-            ppid = os.getppid()
-            if ppid != self._parent_process_pid:
-                logger.warning(
-                    f"Parent process {self._parent_process_pid} died because ppid changed to {ppid}. Exiting..."
-                )
-                sys.exit()
-            await asyncio.sleep(1)
-
 
 async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
-    incarnation: int,
-    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
 
     module_name = cls.__name__
 
-    logger.info(
-        f"Starting module {module_name} with incarnation {incarnation} and config {config}"
-    )
+    logger.info(f"Starting module {module_name} with config {config}")
 
     try:
-        module = cls(config, parent_process_pid)
-        module._parent_process_death_detection_task = asyncio.create_task(
-            module._detect_parent_process_death()
-        )
+        module = cls(config)
         # First init the module, then start the aiohttp server.
         await module.init()
         await module.start_server()
@@ -202,24 +163,13 @@ async def run_module_inner(
 def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
-    incarnation: int,
-    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
     """
     Entrypoint for a subprocess module.
-
-    parent_process_pid: Used to detect if the parent process died every 1s. If it does,
-    the module will exit.
     """
     module_name = cls.__name__
-    current_proctitle = setproctitle.getproctitle()
-    setproctitle.setproctitle(
-        f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
-    )
-    logging_filename = module_logging_filename(
-        module_name, incarnation, config.logging_filename
-    )
+    logging_filename = module_logging_filename(module_name, config.logging_filename)
     setup_component_logger(
         logging_level=config.logging_level,
         logging_format=config.logging_format,
@@ -234,8 +184,6 @@ def run_module(
         run_module_inner(
             cls,
             config,
-            incarnation,
-            parent_process_pid,
             ready_event,
         )
     )

@@ -543,9 +543,3 @@ RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT"
 # The directory where the sockets for dashboard modules are stored.
 # It's a sub-folder under the /tmp/ray/session_latest/sockets/ folder.
 RAY_DASHBOARD_SOCKET_DIR = "dashboard"
-# Skip invoking `start_module()` for `SubprocessModuleHandle` in the dashboard.
-# Only used for testing because calling it with CliRunner in the test
-# environment will hang.
-RAY_SKIP_INVOKE_SUBPROCESS_DASHBOARD_START_MODULE = os.environ.get(
-    "RAY_SKIP_INVOKE_SUBPROCESS_DASHBOARD_START_MODULE", False
-)

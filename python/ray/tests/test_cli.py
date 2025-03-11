@@ -291,12 +291,7 @@ def test_disable_usage_stats(monkeypatch, tmp_path):
 @pytest.mark.skipif(sys.platform == "darwin", reason="Currently failing on OSX")
 def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
-    runner = CliRunner(
-        env={
-            "RAY_USAGE_STATS_PROMPT_ENABLED": "0",
-            "RAY_SKIP_INVOKE_SUBPROCESS_DASHBOARD_START_MODULE": "1",
-        }
-    )
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
     temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,

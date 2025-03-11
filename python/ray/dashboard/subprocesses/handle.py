@@ -119,12 +119,9 @@ class SubprocessModuleHandle:
             args=(
                 self.module_cls,
                 self.config,
-                self.incarnation,
-                os.getpid(),
                 ready_event,
             ),
             daemon=True,
-            name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
         ready_event.wait()
@@ -189,13 +186,12 @@ class SubprocessModuleHandle:
         2. log the last N lines of the log file
         3. restart the module
         """
-        incarnation = self.incarnation
         while True:
             try:
                 await self._do_once_health_check()
             except Exception:
                 filename = module_logging_filename(
-                    self.module_cls.__name__, incarnation, self.config.logging_filename
+                    self.module_cls.__name__, self.config.logging_filename
                 )
                 if filename is None:
                     filename = "stderr"

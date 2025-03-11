@@ -1,4 +1,3 @@
-from unittest import mock
 import asyncio
 import collections
 import copy
@@ -57,7 +56,6 @@ try:
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     head_routes = dashboard_optional_utils.DashboardHeadRouteTable
-    from ray.dashboard.subprocesses.module import SubprocessModule
 except Exception:
     pass
 
@@ -1153,7 +1151,6 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_regular):
     os.environ.get("RAY_DEFAULT") != "1",
     reason="This test only works for default installation.",
 )
-@mock.patch("ray.dashboard.subprocesses.handle.SubprocessModuleHandle.start_module")
 def test_dashboard_module_load(tmpdir):
     """Verify if the head module can load only selected modules."""
     head = DashboardHead(
@@ -1165,11 +1162,6 @@ def test_dashboard_module_load(tmpdir):
         cluster_id_hex=ray.ClusterID.from_random().hex(),
         grpc_port=0,
         log_dir=str(tmpdir),
-        logging_level=ray_constants.LOGGER_LEVEL,
-        logging_format=ray_constants.LOGGER_FORMAT,
-        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         temp_dir=str(tmpdir),
         session_dir=str(tmpdir),
         minimal=False,
@@ -1178,34 +1170,25 @@ def test_dashboard_module_load(tmpdir):
 
     # Test basic.
     loaded_modules_expected = {"UsageStatsHead", "JobHead"}
-    dashboard_head_modules, subprocess_module_handles = head._load_modules(
-        modules_to_load=loaded_modules_expected
-    )
-    assert {type(m).__name__ for m in dashboard_head_modules} == loaded_modules_expected
-    assert len(subprocess_module_handles) == 0
+    loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
+    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
+    assert loaded_modules_actual == loaded_modules_expected
 
     # Test modules that don't exist.
     loaded_modules_expected = {"StateHea"}
     with pytest.raises(AssertionError):
-        head._load_modules(modules_to_load=loaded_modules_expected)
+        loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
 
     # Test the base case.
     # It is needed to pass assertion check from one of modules.
     gcs_client = MagicMock()
     _initialize_internal_kv(gcs_client)
-    loaded_dashboard_head_modules_expected = {
+    loaded_modules_expected = {
         m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
     }
-    loaded_subprocess_module_handles_expected = {
-        m.__name__ for m in dashboard_utils.get_all_modules(SubprocessModule)
-    }
-    dashboard_head_modules, subprocess_module_handles = head._load_modules()
-    assert {
-        type(m).__name__ for m in dashboard_head_modules
-    } == loaded_dashboard_head_modules_expected
-    assert {
-        m.module_cls.__name__ for m in subprocess_module_handles
-    } == loaded_subprocess_module_handles_expected
+    loaded_modules = head._load_modules()
+    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
+    assert loaded_modules_actual == loaded_modules_expected
 
 
 @pytest.mark.skipif(
@@ -1225,11 +1208,6 @@ def test_extra_prom_headers_validation(tmpdir, monkeypatch):
         cluster_id_hex=ray.ClusterID.from_random().hex(),
         grpc_port=0,
         log_dir=str(tmpdir),
-        logging_level=ray_constants.LOGGER_LEVEL,
-        logging_format=ray_constants.LOGGER_FORMAT,
-        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         temp_dir=str(tmpdir),
         session_dir=str(tmpdir),
         minimal=False,

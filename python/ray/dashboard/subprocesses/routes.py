@@ -10,9 +10,6 @@ from ray.dashboard.routes import BaseRouteTable
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.utils import ResponseType
 from ray.dashboard.subprocesses.module import SubprocessModule
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 class SubprocessRouteTable(BaseRouteTable):
