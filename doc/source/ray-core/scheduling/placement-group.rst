@@ -585,14 +585,14 @@ child tasks and actors to the same placement group, specify ``PlacementGroupSche
 [Advanced] Named Placement Group
 --------------------------------
 
-You can give a unique name within a namespace to a placement group.
+You can give a unique name within a :ref:`namespace <namespaces-guide>` to a placement group.
 This allows you to retrieve the placement group from any job in the Ray cluster.
 This is useful if you can't directly pass the placement group handle to
 the actor or task that needs it, or if you are trying to
 access a placement group launched by another driver.
 Note that the placement group is still destroyed if its lifetime isn't `detached`. 
 Also, when creating or retrieving the named placement group, you need to specify the 
-namespace associated with it. Otherwise, Ray assigns a anonymous namespace which 
+:ref:`namespace <namespaces-guide>` associated with it. Otherwise, Ray assigns a anonymous :ref:`namespace <namespaces-guide>` which 
 makes it impossible to retrieve the placement group. 
 
 .. tab-set::
