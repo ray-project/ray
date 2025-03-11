@@ -11,7 +11,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Literal,
     Optional,
     Protocol,
     Tuple,
@@ -116,15 +115,6 @@ def _apply_batch_format(given_batch_format: Optional[str]) -> str:
             f" {VALID_BATCH_FORMATS})."
         )
     return given_batch_format
-
-
-def _apply_batch_size(
-    given_batch_size: Optional[Union[int, Literal["default"]]]
-) -> Optional[int]:
-    if given_batch_size == "default":
-        return ray.data.context.DEFAULT_BATCH_SIZE
-    else:
-        return given_batch_size
 
 
 @DeveloperAPI

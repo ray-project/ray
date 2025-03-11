@@ -151,6 +151,42 @@ py_test(
     ],
 )
 
+py_test(
+    name = "doc_code_cgraph_profiling",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_profiling.py"],
+    main = "source/ray-core/doc_code/cgraph_profiling.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_cgraph_nccl",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_nccl.py"],
+    main = "source/ray-core/doc_code/cgraph_nccl.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
+py_test(
+    name = "doc_code_cgraph_overlap",
+    size = "small",
+    srcs = ["source/ray-core/doc_code/cgraph_overlap.py"],
+    main = "source/ray-core/doc_code/cgraph_overlap.py",
+    tags = [
+        "exclusive",
+        "multi_gpu",
+        "team:core",
+    ],
+)
+
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
@@ -158,6 +194,9 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/runtime_env_example.py",
         "source/ray-core/doc_code/cross_language.py",
         "source/ray-core/doc_code/ray_oom_prevention.py",
+        "source/ray-core/doc_code/cgraph_profiling.py",
+        "source/ray-core/doc_code/cgraph_nccl.py",
+        "source/ray-core/doc_code/cgraph_overlap.py",
         # not testing this as it purposefully segfaults
         "source/ray-core/doc_code/cgraph_troubleshooting.py",
     ],
