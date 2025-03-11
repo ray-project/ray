@@ -17,13 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE = (
-    "The legacy XGBoostTrainer API is deprecated in favor of the new "
-    "XGBoostTrainer API which accepts a ``train_loop_per_worker`` argument, "
+    "Passing in `xgboost.train` kwargs such as `params`, `num_boost_round`, "
+    "`label_column`, etc. to `XGBoostTrainer` is deprecated "
+    "in favor of the new API which accepts a ``train_loop_per_worker`` argument, "
     "similar to the other DataParallelTrainer APIs (ex: TorchTrainer). "
-    "This gives more flexibility in how users want to train their XGBoost models, "
-    "compared to the legacy API which is a restrictive, opaque wrapper API "
-    "that only allows training models via the ``xgboost.train()`` function "
-    "and must be constantly updated to support new XGBoost features. "
     "See this issue for more context: "
     "https://github.com/ray-project/ray/issues/50042"
 )
