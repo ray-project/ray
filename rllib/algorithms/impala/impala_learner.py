@@ -4,8 +4,6 @@ import threading
 import time
 from typing import Any, Dict, Union
 
-import tree  # pip install dm_tree
-
 import ray
 from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
@@ -13,7 +11,6 @@ from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
