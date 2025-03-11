@@ -100,7 +100,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
             def train_fn_per_worker(config: dict):
                 # (Optional) Add logic to resume training state from a checkpoint.
                 # ray.train.get_checkpoint()
-                
+
                 # 1. Get the dataset shard for the worker and convert to a `lightgbm.Dataset`
                 train_ds_iter, eval_ds_iter = (
                     ray.train.get_dataset_shard("train"),
@@ -112,7 +112,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
                 dtrain = lightgbm.Dataset(train_X, label=train_y)
                 deval = lightgbm.Dataset(eval_X, label=eval_y)
-                
+
                 params = {
                     "tree_method": "approx",
                     "objective": "reg:squarederror",
@@ -120,7 +120,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                     "subsample": 0.5,
                     "max_depth": 2,
                 }
-                
+
                 # 2. Do distributed data-parallel training.
                 # Ray Train sets up the necessary coordinator processes and
                 # environment variables for your workers to communicate with each other.
@@ -132,7 +132,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                     num_boost_round=10,
                     callbacks=[RayTrainReportCallback()],
                 )
-                
+
             train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
             eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
             trainer = LightGBMTrainer(
@@ -197,7 +197,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         train_loop_per_worker: Optional[
             Union[Callable[[], None], Callable[[Dict], None]]
         ] = None,
-        *,        
+        *,
         train_loop_config: Optional[Dict] = None,
         lightgbm_config: Optional[LightGBMConfig] = None,
         scaling_config: Optional[ray.train.ScalingConfig] = None,
