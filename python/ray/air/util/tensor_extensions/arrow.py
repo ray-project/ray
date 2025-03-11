@@ -12,15 +12,14 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
+    _should_convert_to_tensor,
+    ArrayLike,
 )
 from ray.data._internal.numpy_support import (
     convert_to_numpy,
-    _is_tensor,
-    ArrayLike,
     _convert_datetime_to_np_datetime,
 )
 from ray.data._internal.util import GiB
@@ -122,14 +121,16 @@ def convert_to_pyarrow_array(
         # Since Arrow does NOT support tensors (aka multidimensional arrays) natively,
         # we have to make sure that we handle this case utilizing `ArrowTensorArray`
         # extension type
-        if _should_convert_to_tensor(column_values, column_name):
+        if len(column_values) > 0 and _should_convert_to_tensor(
+            column_values, column_name
+        ):
             from ray.data.extensions.tensor_extension import ArrowTensorArray
 
             # Convert to Numpy before creating instance of `ArrowTensorArray` to
             # align tensor shapes falling back to ragged ndarray only if necessary
-            np_column_values = convert_to_numpy(column_values)
-
-            return ArrowTensorArray.from_numpy(np_column_values, column_name)
+            return ArrowTensorArray.from_numpy(
+                convert_to_numpy(column_values), column_name
+            )
         else:
             return _convert_to_pyarrow_native_array(column_values, column_name)
 
@@ -191,27 +192,6 @@ def convert_to_pyarrow_array(
 
         # Otherwise, attempt to fall back to serialize as python objects
         return ArrowPythonObjectArray.from_objects(column_values)
-
-
-def _should_convert_to_tensor(
-    column_values: Union[List[Any], np.ndarray, ArrayLike], column_name: str
-) -> bool:
-    """We convert passed in column values into a tensor representation (involving
-    Arrow/Pandas extension types) in either of the following cases:
-
-      - Column name is `TENSOR_COLUMN_NAME` (for compatibility)
-      - Provided column values are already represented by a tensor (either
-        numpy, torch, etc)
-      - Provided column values is a list of ndarrays (we do this for compatibility
-        with previously existing behavior where all column values were blindly converted
-        to Numpy leading to list of ndarrays being converted a tensor)
-    """
-
-    return (
-        column_name == TENSOR_COLUMN_NAME
-        or _is_tensor(column_values)
-        or (len(column_values) > 0 and isinstance(column_values[0], np.ndarray))
-    )
 
 
 def _convert_to_pyarrow_native_array(
