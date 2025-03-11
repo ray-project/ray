@@ -45,10 +45,7 @@ TEAM_API_CONFIGS = {
     "train": {
         "head_modules": {"ray.train"},
         "head_doc_file": "doc/source/train/api/api.rst",
-        "white_list_apis": {
-            # TODO(justinvyu): Add this API ref in a follow-up.
-            "ray.train.v2.api.exceptions.TrainingFailedError",
-        },
+        "white_list_apis": {},
     },
     "tune": {
         "head_modules": {"ray.tune"},
