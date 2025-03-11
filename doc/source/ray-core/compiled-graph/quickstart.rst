@@ -232,7 +232,7 @@ GPU to GPU communication
 ------------------------
 Ray Compiled Graphs supports NCCL-based transfers of CUDA ``torch.Tensor`` objects, avoiding any copies through Ray's CPU-based shared-memory object store.
 With user-provided type hints, Ray prepares NCCL communicators and
-operation scheduling ahead of time, avoiding deadlock and `overlapping compute and communication <compiled-graph-overlap>`.
+operation scheduling ahead of time, avoiding deadlock and :ref:`overlapping compute and communication <compiled-graph-overlap>`.
 
 Ray Compiled Graph uses `cupy <https://cupy.dev/>`_ under the hood to support NCCL operations.
 The cupy version affects the NCCL version. The Ray team is also planning to support custom communicators in the future, for example to support collectives across CPUs or to reuse existing collective groups.
