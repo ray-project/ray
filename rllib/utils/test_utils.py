@@ -1277,6 +1277,7 @@ def run_rllib_example_script_experiment(
         param_space=config,
         run_config=tune.RunConfig(
             stop=stop,
+            name="test_appo",
             verbose=args.verbose,
             callbacks=tune_callbacks,
             checkpoint_config=tune.CheckpointConfig(

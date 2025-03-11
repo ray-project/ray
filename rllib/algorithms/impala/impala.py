@@ -621,7 +621,6 @@ class IMPALA(Algorithm):
                 len(ma_batches_refs),
             )
 
-            # data_packages_for_aggregators = tree.flatten(data_packages_for_aggregators)
             while data_packages_for_aggregators:
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
