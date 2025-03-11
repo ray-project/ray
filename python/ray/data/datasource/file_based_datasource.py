@@ -551,7 +551,9 @@ def _resolve_kwargs(
     return kwargs
 
 
-def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
+def _validate_shuffle_arg(
+    shuffle: Union[Literal["files"], FileShuffleConfig, None]
+) -> None:
     if not (
         shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
     ):
