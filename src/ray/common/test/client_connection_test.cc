@@ -50,7 +50,7 @@ class ClientConnectionTest : public ::testing::Test {
 #else
     local_stream_socket in(io_service_);
     local_stream_socket out(io_service_);
-    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
+    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
                                                                        endpoint);
     out.connect(endpoint);
@@ -328,7 +328,7 @@ class ServerConnectionTest : public ::testing::Test {
 #else
     local_stream_socket in(io_service_);
     local_stream_socket out(io_service_);
-    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
+    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
                                                                        endpoint);
     out.connect(endpoint);
