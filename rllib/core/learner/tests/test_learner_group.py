@@ -22,7 +22,7 @@ from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import ALL_MODULES, TIMERS
+from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_CONNECTOR
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
@@ -474,8 +474,8 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
                 results_2nd_update_with_break,
                 results_2nd_update_without_break,
             ):
-                r1[ALL_MODULES].pop(TIMERS)
-                r2[ALL_MODULES].pop(TIMERS)
+                r1[ALL_MODULES].pop(LEARNER_CONNECTOR)
+                r2[ALL_MODULES].pop(LEARNER_CONNECTOR)
             check(
                 MetricsLogger.peek_results(results_2nd_update_with_break),
                 MetricsLogger.peek_results(results_2nd_update_without_break),

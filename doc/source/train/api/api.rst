@@ -158,8 +158,15 @@ Ray Train Output
 
     ~train.Result
 
-.. Ray Train Errors
-.. ----------------
+Ray Train Errors
+----------------
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.TrainingFailedError
 
 Ray Tune Integration Utilities
 ------------------------------
