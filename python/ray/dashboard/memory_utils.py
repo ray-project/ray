@@ -7,6 +7,7 @@ from typing import List
 import ray
 from ray._private.internal_api import node_stats
 from ray._raylet import ActorID, JobID, TaskID
+from ray.dashboard.utils import node_stats_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -380,8 +381,6 @@ def memory_summary(
 ) -> str:
     # Get terminal size
     import shutil
-
-    from ray.dashboard.modules.node.node_head import node_stats_to_dict
 
     size = shutil.get_terminal_size((80, 20)).columns
     line_wrap_threshold = 137
