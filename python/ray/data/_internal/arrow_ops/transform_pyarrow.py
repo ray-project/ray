@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Union, Dict
+from typing import TYPE_CHECKING, List, Union, Dict, Optional
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -419,6 +419,16 @@ def _align_struct_fields(
 
     # Return the list of aligned blocks
     return aligned_blocks
+
+
+def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Table":
+    """Shuffles provided Arrow table"""
+
+    indices = np.arange(block.num_rows)
+    # Shuffle indices
+    np.random.RandomState(seed).shuffle(indices)
+
+    return block.take(indices)
 
 
 def concat(
