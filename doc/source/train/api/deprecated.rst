@@ -73,7 +73,7 @@ Tensorflow/Keras
     :nosignatures:
     :toctree: doc/
 
-    ~train.tensorflow.TensorflowTrainer
+    ~train.tensorflow.tensorflow_trainer.TensorflowTrainer
     ~train.tensorflow.TensorflowConfig
     ~train.tensorflow.prepare_dataset_shard
     ~train.tensorflow.keras.ReportCheckpointCallback
@@ -118,12 +118,13 @@ Ray Train Configuration
     :nosignatures:
     :toctree: doc/
 
+    ~air.config.ScalingConfig
+    ~air.config.RunConfig
+    ~air.config.FailureConfig
     ~train.CheckpointConfig
     ~train.DataConfig
-    ~train.FailureConfig
-    ~train.RunConfig
-    ~train.ScalingConfig
     ~train.SyncConfig
+
 
 Ray Train Utilities
 -------------------
@@ -143,9 +144,9 @@ Ray Train Utilities
     :nosignatures:
     :toctree: doc/
 
-    ~train.get_checkpoint
+    ~train._internal.session.get_checkpoint
     ~train.context.get_context
-    ~train.get_dataset_shard
+    ~train._internal.session.get_dataset_shard
     ~train._internal.session.report
 
 
