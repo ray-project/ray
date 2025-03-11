@@ -360,7 +360,7 @@ And then a `test.py` like the following:
 
 and run the driver script with `uv run test.py`. This runs 1000 copies of
 the `f` function across a number of Python worker processes in a Ray cluster.
-The `emoji` dependency, in addition to being available for the main script, will
+The `emoji` dependency, in addition to being available for the main script, is
 also be available for all worker processes. Also, the source code in the current
 working directory will be available to all the workers.
 
