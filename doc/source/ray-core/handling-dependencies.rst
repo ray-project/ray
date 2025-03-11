@@ -358,7 +358,7 @@ And then a `test.py` like the following:
   print(ray.get([f.remote() for _ in range(1000)]))
 
 
-and run the driver script with `uv run test.py`. This will run 1000 copies of
+and run the driver script with `uv run test.py`. This runs 1000 copies of
 the `f` function across a number of Python worker processes in a Ray cluster.
 The `emoji` dependency, in addition to being available for the main script, will
 also be available for all worker processes. Also, the source code in the current
