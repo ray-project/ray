@@ -829,14 +829,16 @@ class Algorithm(Checkpointable, Trainable):
 
             pg = self.learner_group._placement_group
             agg_cls_list = []
-            aggregator_index = 0
+            aggregator_idx = 0
             self._aggregator_actor_to_learner = {}
-            for i in range(self.config.num_aggregator_actors_per_learner):
-                for j in range(self.config.num_learners):
+            for _ in range(self.config.num_aggregator_actors_per_learner):
+                for learner_idx in range(self.config.num_learners):
                     scheduling_strategy = (
                         PlacementGroupSchedulingStrategy(
                             placement_group=pg,
-                            placement_group_bundle_index=j if pg.bundle_cache else -1,
+                            placement_group_bundle_index=learner_idx
+                            if pg.bundle_cache
+                            else -1,
                         )
                         if pg
                         else None
@@ -850,8 +852,8 @@ class Algorithm(Checkpointable, Trainable):
                         )(AggregatorActor)
                     )
                     # Assign each aggregator to a learner depending on the bundle.
-                    self._aggregator_actor_to_learner[aggregator_index] = j
-                    aggregator_index += 1
+                    self._aggregator_actor_to_learner[aggregator_idx] = learner_idx
+                    aggregator_idx += 1
 
             # Manage all `AggregatorActor`s inside a `FaultTilerantActorManager`.
             self._aggregator_actor_manager = FaultTolerantActorManager(

@@ -411,7 +411,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     # `on_episode_created` callback (before the `env.reset()` call).
                     self._new_episode(env_index, episodes)
 
-        print(f"====> TS: {ts}")
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.
