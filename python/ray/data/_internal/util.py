@@ -1204,10 +1204,6 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
 
-    # @property
-    # def data_context(self):
-    #     return self._data_context
-
     def _retry_operation(self, operation: Callable, description: str):
         """Execute an operation with retries."""
         return call_with_retry(
