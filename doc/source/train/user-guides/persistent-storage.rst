@@ -319,6 +319,12 @@ Advanced configuration
 Keep the original current working directory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Ray Train changes the current working directory of each worker to the same path.
+
+By default, this path is a sub-directory of the Ray session directory (e.g., ``/tmp/ray/session_latest``),
+which is also where other Ray logs and temporary files are dumped.
+The location of the Ray session directory :ref:`can be customized <temp-dir-log-files>`.
+
 To disable the default behavior of Ray Train changing the current working directory,
 set the ``RAY_CHDIR_TO_TRIAL_DIR=0`` environment variable.
 
