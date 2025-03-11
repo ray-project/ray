@@ -229,7 +229,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
             )
             train_loop_config = params or {}
         # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
-        # elif train_kwargs or label_column or num_boost_round:
+        # elif train_kwargs:
         #     _log_deprecation_warning(
         #         "Passing `xgboost.train` kwargs to `XGBoostTrainer` is deprecated. "
         #         "Please pass in a `train_loop_per_worker` function instead, "
@@ -261,13 +261,15 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
 
         if not datasets or not datasets.get(TRAIN_DATASET_KEY):
             raise ValueError(
-                "`datasets` must be provided for the legacy XGBoostTrainer API. "
+                "`datasets` must be provided for the XGBoostTrainer API "
+                "if `train_loop_per_worker` is not provided. "
                 "This dict must contain the training dataset under the "
                 f"key '{TRAIN_DATASET_KEY}'."
             )
         if not label_column:
             raise ValueError(
-                "`label_column` must be provided for the legacy XGBoostTrainer API. "
+                "`label_column` must be provided for the XGBoostTrainer API "
+                "if `train_loop_per_worker` is not provided. "
                 "This is the column name of the label in the dataset."
             )
 
