@@ -447,16 +447,6 @@ def debug(address: str, verbose: bool):
     "but can be set higher.",
 )
 @click.option(
-    "--redis-max-memory",
-    required=False,
-    hidden=True,
-    type=int,
-    help="The max amount of memory (in bytes) to allow redis to use. Once the "
-    "limit is exceeded, redis will start LRU eviction of entries. This only "
-    "applies to the sharded redis tables (task, object, and profile tables). "
-    "By default this is capped at 10GB but can be set higher.",
-)
-@click.option(
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
 )
 @click.option(
@@ -668,7 +658,6 @@ def start(
     ray_client_server_port,
     memory,
     object_store_memory,
-    redis_max_memory,
     num_cpus,
     num_gpus,
     resources,
@@ -867,7 +856,6 @@ def start(
         # Initialize Redis settings.
         ray_params.update_if_absent(
             redis_shard_ports=redis_shard_ports,
-            redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
         )

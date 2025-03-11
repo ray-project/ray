@@ -140,7 +140,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         # Sort train runs in reverse chronological order
         decorated_train_runs = sorted(
             decorated_train_runs,
-            key=lambda run: run.start_time_ms,
+            key=lambda run: run.start_time_ns,
             reverse=True,
         )
         return decorated_train_runs

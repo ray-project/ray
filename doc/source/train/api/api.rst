@@ -175,6 +175,16 @@ Ray Train Errors
     ~train.base_trainer.TrainingFailedError
 
 
+Ray Tune Integration
+--------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    tune.integration.ray_train.TuneReportCallback
+
+
 Ray Train Developer APIs
 ------------------------
 

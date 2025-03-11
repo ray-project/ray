@@ -359,14 +359,6 @@ py_test(
 )
 
 py_test(
-    name = "test_gpu_amp",
-    size = "large",
-    srcs = ["tests/test_gpu_amp.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
@@ -657,6 +649,14 @@ py_test(
         "new_storage",
     ],
     deps = [":train_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_telemetry",
+    size = "small",
+    srcs = ["tests/test_telemetry.py"],
+    tags = ["team:ml"],
+    deps = [":train_lib"],
 )
 
 ### E2E Data + Train
