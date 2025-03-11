@@ -118,9 +118,24 @@ Be aware that:
 ``asyncio`` support
 -------------------
 
-.. warning::
+If your Compiled Graph driver is running in an ``asyncio`` event loop, use the ``async`` APIs to ensure that executing
+the Compiled Graph and getting the results doesn't block the event loop.
+First, pass ``enable_async=True`` to the ``dag.experimental_compile()``:
 
-    Under construction.
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_async_compile_start__
+    :end-before: __cgraph_async_compile_end__
+
+Next, use `execute_async` to invoke the Compiled Graph. Calling ``await`` on ``execute_async`` will return once
+the input has been submitted, and it returns a future that can be used to get the result. Finally, 
+use `await` to get the result of the Compiled Graph.
+
+.. literalinclude:: ../doc_code/cgraph_quickstart.py
+    :language: python
+    :start-after: __cgraph_async_execute_start__
+    :end-before: __cgraph_async_execute_end__
+
 
 Execution and failure semantics
 -------------------------------
@@ -166,6 +181,52 @@ to change the default timeout:
 - ``RAY_CGRAPH_get_timeout``: Timeout for :func:`ray.get() <ray.get>`.
 
 :func:`ray.get() <ray.get>` also has a timeout parameter to set timeout on a per-call basis.
+
+CPU to GPU communication
+------------------------
+
+With classic Ray Core, passing ``torch.Tensors`` between actors can become expensive, especially
+when transferring between devices. This is because Ray Core doesn't know the final destination device.
+Therefore, you may see unnecessary copies across devices other than the source and destination devices.
+
+Ray Compiled Graph ships with native support for passing ``torch.Tensors`` between actors executing on different
+devices. Developers can now use type hint annotations in the Compiled Graph declaration to indicate the final
+destination device of a ``torch.Tensor``.
+
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_cpu_to_gpu_actor_start__
+    :end-before: __cgraph_cpu_to_gpu_actor_end__
+
+In Ray Core, if you try to pass a CPU tensor from the driver,
+the GPU actor receives a CPU tensor:
+
+.. testcode::
+
+    # This will fail because the driver passes a CPU copy of the tensor, 
+    # and the GPU actor also receives a CPU copy.
+    ray.get(actor.process.remote(torch.zeros(10)))
+
+With Ray Compiled Graph, you can annotate DAG nodes with type hints to indicate that there may be a ``torch.Tensor``
+contained in the value:
+
+.. literalinclude:: ../doc_code/cgraph_nccl.py
+    :language: python
+    :start-after: __cgraph_cpu_to_gpu_start__
+    :end-before: __cgraph_cpu_to_gpu_end__
+
+Under the hood, the Ray Compiled Graph backend copies the ``torch.Tensor`` to the GPU assigned to the ``GPUActor`` by Ray Core.
+
+Of course, you can also do this yourself, but there are advantages to using Compiled Graph instead:
+
+- Ray Compiled Graph can minimize the number of data copies made. For example, passing from one CPU to
+  multiple GPUs requires one copy to a shared memory buffer, and then one host-to-device copy per
+  destination GPU.
+
+- In the future, this can be further optimized through techniques such as
+  `memory pinning <https://pytorch.org/docs/stable/generated/torch.Tensor.pin_memory.html>`_,
+  using zero-copy deserialization when the CPU is the destination, etc.
+
 
 GPU to GPU communication
 ------------------------
