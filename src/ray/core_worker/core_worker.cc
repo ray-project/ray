@@ -1353,8 +1353,7 @@ void CoreWorker::InternalHeartbeat() {
     }
   }
 
-  RAY_LOG(INFO) << "[myan] Obtained a list of tasks to retry" << tasks_to_resubmit.size()
-                << ", task to retry: " << tasks_to_resubmit[0].task_spec.DebugString();
+  RAY_LOG(INFO) << "[myan] Obtained a list of tasks to retry" << tasks_to_resubmit.size();
 
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
