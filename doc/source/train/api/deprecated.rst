@@ -157,7 +157,7 @@ Ray Train Output
     :nosignatures:
     :toctree: doc/
 
-    ~tune.Result
+    ~train.Result
 
 Ray Train Errors
 ----------------

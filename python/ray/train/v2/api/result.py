@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-@PublicAPI(stability="stable")
 class Result(ResultV1):
     checkpoint: Optional["ray.train.Checkpoint"]
     error: Optional[TrainingFailedError]
