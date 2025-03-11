@@ -147,11 +147,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         """
         Destroy the CUDA event associated with this future.
         """
-        import cupy as cp
-
         if self._event is None:
             return
 
-        cp.cuda.runtime.eventDestroy(self._event.ptr)
-        self._event.ptr = 0
         self._event = None
