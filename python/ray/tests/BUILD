@@ -357,7 +357,7 @@ py_test_module_list(
     "test_autoscaler_e2e.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
   ],
-  size = "large",
+  size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )

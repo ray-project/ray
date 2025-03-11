@@ -117,12 +117,12 @@ def test_fake_autoscaler_placement_group_partial_idle(
                 "max_workers": 10,
             },
         },
-        idle_timeout_minutes=1,
+        idle_timeout_minutes=0.1,
         max_workers=10,
         autoscaler_v2=autoscaler_v2,
         provider={
             "type": "fake_multinode",
-            "start_node_delay_s": 60,  # https://github.com/ray-project/ray/pull/51122
+            "start_node_delay_s": 6,  # https://github.com/ray-project/ray/pull/51122
             "use_node_id_as_ip": True,
             "disable_node_updaters": True,
             "disable_launch_config_check": True,
