@@ -15,7 +15,8 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
     try_combine_chunked_columns,
     unify_schemas,
-    MIN_PYARROW_VERSION_TYPE_PROMOTION, shuffle,
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    shuffle,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
