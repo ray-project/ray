@@ -3,10 +3,6 @@ model_id_to_gpu_deployment_configs:
     A10G: &base_llama_31_8b_config
       model_loading_config:
         model_id: meta-llama/Meta-Llama-3.1-8B-Instruct
-      deployment_config:
-        autoscaling_config:
-          target_ongoing_requests: 32
-        max_ongoing_requests: 64
       engine_kwargs:
         # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
         max_model_len: 8192
@@ -23,8 +19,6 @@ model_id_to_gpu_deployment_configs:
     A100-40G:
       model_loading_config: &meta_llama_31_70b_model_loading_config
         model_id: meta-llama/Meta-Llama-3.1-70B-Instruct
-      deployment_config:
-        max_ongoing_requests: 128
       engine_kwargs:
         # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
         max_model_len: 8192
@@ -33,8 +27,6 @@ model_id_to_gpu_deployment_configs:
         enable_chunked_prefill: true
     A100-80G:
       model_loading_config: *meta_llama_31_70b_model_loading_config
-      deployment_config:
-        max_ongoing_requests: 128
       engine_kwargs:
         # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
         max_model_len: 8192
@@ -43,8 +35,6 @@ model_id_to_gpu_deployment_configs:
         enable_chunked_prefill: true
     H100:
       model_loading_config: *meta_llama_31_70b_model_loading_config
-      deployment_config:
-        max_ongoing_requests: 128
       engine_kwargs:
         # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
         max_model_len: 8192
@@ -56,8 +46,6 @@ model_id_to_gpu_deployment_configs:
     H100:
       model_loading_config: &meta_llama_31_405b_model_loading_config
         model_id: meta-llama/Meta-Llama-3.1-405B-Instruct-FP8
-      deployment_config:
-        max_ongoing_requests: 128
       engine_kwargs:
         # Llama 3.1's context length is 128k, but we set a lower one to avoid GPU OOM.
         max_model_len: 8192

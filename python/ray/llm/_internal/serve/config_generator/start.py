@@ -17,9 +17,11 @@ from ray.llm._internal.serve.config_generator.inputs import (
     get_input_model_via_args,
     get_input_model_via_interactive_inputs,
 )
-from ray.llm._internal.serve.config_generator.utils.gpu import GPUType
+from ray.llm._internal.serve.config_generator.utils.gpu import (
+    GPUType,
+    DEFAULT_MODEL_ID_TO_GPU,
+)
 from ray.llm._internal.serve.config_generator.utils.models import (
-    MODEL_ID_TO_DEFAULT_CONFIG_FILE,
     TEXT_COMPLETION_MODEL_TYPE,
 )
 
@@ -82,7 +84,7 @@ def _get_model_with_validation(
     enable_lora: Optional[bool],
     num_loras_per_replica: Optional[int],
 ):
-    if model_id and model_id not in MODEL_ID_TO_DEFAULT_CONFIG_FILE:
+    if model_id and model_id not in DEFAULT_MODEL_ID_TO_GPU:
         raise RuntimeError(
             "In non-interactive CLI mode, please only specify model ID whose configs are provided by default."
         )
@@ -121,10 +123,6 @@ def gen_config(
     ] = None,
     enable_lora: Annotated[
         Optional[bool], typer.Option(help="Whether to enable LoRA serving", hidden=True)
-    ] = False,
-    auth_token_enabled: Annotated[
-        Optional[bool],
-        typer.Option(help="Enables token authentication for the service.", hidden=True),
     ] = False,
     # TODO (shrekris): Expose these hidden options after the API stabilizes.
     external_model_id: Annotated[
@@ -212,14 +210,6 @@ def gen_config(
     )
     serve_config = get_serve_config(input_model_config, model_config_path)
 
-    if interactive_mode:
-        auth_token_enabled = Confirm.ask(
-            "[bold]Enable token authentication?\nNote: Auth-enabled services require manual addition to playground.",
-            default=False,
-        )
-
-    serve_config.update({"query_auth_token_enabled": auth_token_enabled})
-
     full_file_path = _write_config_to_disk(serve_config, timestamp)
 
     print(
@@ -228,12 +218,11 @@ def gen_config(
 
     if (
         input_model_config.type == TEXT_COMPLETION_MODEL_TYPE
-        and input_model_config.id not in MODEL_ID_TO_DEFAULT_CONFIG_FILE
+        and input_model_config.id not in DEFAULT_MODEL_ID_TO_GPU
     ):
         print(
             f"Note: we don't have serving defaults for {input_model_config.id} "
-            "and we generally recommend you going over the `context_length` and `prompt_format` in the yaml before serving. "
-            "You can refer to our docs on importing a custom model."
+            "and we generally recommend you going over engine_kwargs in the yaml before serving. "
         )
 
     # Define the serve run command

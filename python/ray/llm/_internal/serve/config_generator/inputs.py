@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import List, Optional
 
 from huggingface_hub import repo_info
@@ -14,6 +13,7 @@ from ray.llm._internal.serve.config_generator.utils.files import (
     get_hf_token,
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
+    DEFAULT_MODEL_ID_TO_GPU,
     GPUType,
     get_available_gpu_types,
 )
@@ -21,7 +21,6 @@ from ray.llm._internal.serve.config_generator.utils.input_converter import (
     convert_inputs_to_text_completion_model,
 )
 from ray.llm._internal.serve.config_generator.utils.models import (
-    MODEL_ID_TO_DEFAULT_CONFIG_FILE,
     TEXT_COMPLETION_MODEL_TYPE,
     ModelType,
     TextCompletionLoraModelConfig,
@@ -36,10 +35,11 @@ from ray.llm._internal.serve.config_generator.utils.text_completion import (
 )
 
 
-def _get_user_input_from_list(prompt: str, options: List[Enum]):
+def _get_user_input_from_list(prompt: str, options: List[GPUType]):
     while True:
         user_input = BoldPrompt.ask(
-            f"{prompt}", choices=[option.value for option in options]
+            f"{prompt}",
+            choices=[option.value for option in options],
         )
         for option in options:
             if user_input.lower() == option.value.lower():
@@ -67,7 +67,7 @@ def _get_user_input_from_lists(
 
 
 def _get_model_id():
-    model_list = list(MODEL_ID_TO_DEFAULT_CONFIG_FILE.keys())
+    model_list = list(DEFAULT_MODEL_ID_TO_GPU.keys())
     model_ids = "\n".join(model_list)
     prompt_message = f"""[bold]We have provided the defaults for the following models[not bold]:
 {model_ids}
@@ -89,7 +89,7 @@ def _get_validated_model_info():
 
         model_id = _get_model_id()
         model_type = TEXT_COMPLETION_MODEL_TYPE
-        if model_id not in MODEL_ID_TO_DEFAULT_CONFIG_FILE:
+        if model_id not in DEFAULT_MODEL_ID_TO_GPU:
             ref_model_id = "other"
             import_model = Confirm.ask(
                 "Do you have the model weights stored in your cloud buckets? "
@@ -135,11 +135,11 @@ def _get_validated_model_info():
 
 
 def _get_default_tensor_parallelism(model_id: str, gpu_type: GPUType) -> int:
-    if model_id in MODEL_ID_TO_DEFAULT_CONFIG_FILE:
+    if model_id in DEFAULT_MODEL_ID_TO_GPU:
         deployment_configs = get_default_deployment_configs(
             model_id=model_id, gpu_type=gpu_type
         )
-        deployment_configs.engine_kwargs.setdefault("tensor_parallel_size", 1)  
+        deployment_configs.engine_kwargs.setdefault("tensor_parallel_size", 1)
         return deployment_configs.engine_kwargs["tensor_parallel_size"]
     else:
         return 1
@@ -195,7 +195,7 @@ def get_input_model_via_interactive_inputs() -> TextCompletionModelConfig:
     tensor_parallelism = BoldIntPrompt.ask(
         "Tensor parallelism", default=default_tensor_parallelism
     )
-    
+
     is_lora_enabled = Confirm.ask("[bold]Enable LoRA serving", default=False)
 
     if is_lora_enabled:
@@ -204,9 +204,10 @@ def get_input_model_via_interactive_inputs() -> TextCompletionModelConfig:
             "Maximum number of LoRA models per replica",
             default=_DEFAULT_NUM_LORA_PER_REPLICA,
         )
+        lora_uri = BoldPrompt.ask("LoRA storage uri", default=default_lora_uri)
         lora_config = TextCompletionLoraModelConfig(
             max_num_lora_per_replica=max_num_lora_per_replica,
-            uri=default_lora_uri,
+            uri=lora_uri,
         )
     else:
         lora_config = None
