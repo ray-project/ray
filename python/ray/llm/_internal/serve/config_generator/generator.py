@@ -5,9 +5,9 @@ from typing import Any, Dict
 import yaml
 
 from ray.serve.config import AutoscalingConfig
+from ray.serve._private.constants import DEFAULT_TARGET_ONGOING_REQUESTS
 from ray.llm._internal.serve.config_generator.utils.constants import TEMPLATE_DIR
 from ray.llm._internal.serve.config_generator.utils.models import (
-    TEXT_COMPLETION_MODEL_TYPE,
     TextCompletionModelConfig,
 )
 from ray.llm._internal.serve.config_generator.utils.overrides import (
@@ -24,10 +24,7 @@ def get_model_base_config(
     """
     This method returns the base model config based on user inputs.
     """
-    if input_model_config.type == TEXT_COMPLETION_MODEL_TYPE:
-        return populate_text_completion_model_config(input_model_config)
-    else:
-        raise RuntimeError(f"Unexpected model type: {input_model_config.type}")
+    return populate_text_completion_model_config(input_model_config)
 
 
 def get_model_config(input_model_config: TextCompletionModelConfig) -> Dict[str, Any]:
@@ -46,7 +43,6 @@ def get_model_config(input_model_config: TextCompletionModelConfig) -> Dict[str,
 
 
 def get_serve_config(
-    input_model_config: TextCompletionModelConfig,
     model_config_path: str,
 ):
     """
@@ -55,10 +51,7 @@ def get_serve_config(
     It doesn't inline the model config and, instead, just puts the file path based on the type of models.
     """
     serve_config = get_serve_base_config()
-    if input_model_config.type == TEXT_COMPLETION_MODEL_TYPE:
-        serve_config["applications"][0]["args"]["llm_configs"] = [model_config_path]
-    else:
-        raise RuntimeError(f"Unexpected model type: {input_model_config.type}")
+    serve_config["applications"][0]["args"]["llm_configs"] = [model_config_path]
     return serve_config
 
 
@@ -71,7 +64,7 @@ def override_model_configs(base_model_config: Dict[str, Any]) -> Dict[str, Any]:
     default_ongoing_requests = (
         base_model_config.get("deployment_config", {})
         .get("autoscaling_config", {})
-        .get("target_ongoing_requests", 2)
+        .get("target_ongoing_requests", DEFAULT_TARGET_ONGOING_REQUESTS)
     )
     final_autoscaling_config = ask_and_merge_model_overrides(
         existing_configs=existing_autoscaling_config,
@@ -102,10 +95,7 @@ def maybe_get_lora_enabled_config(
     If the input model contains lora config, this method decorates the base
     config with lora-specific configurations.
     """
-    if (
-        input_model_config.type == TEXT_COMPLETION_MODEL_TYPE
-        and input_model_config.lora_config
-    ):
+    if input_model_config.lora_config:
         max_num_adapters_per_replica = (
             input_model_config.lora_config.max_num_lora_per_replica
         )

@@ -21,7 +21,7 @@ class TextCompletionLoraModelConfig(BaseModel):
     max_num_lora_per_replica: int
     uri: Optional[str] = Field(
         None,
-        description="If not provided, we default to `$ANYSCALE_ARTIFACT_STORAGE/lora_fine_tuning`",
+        description="If not provided, we default to `<RAYLLM_HOME_DIR>/lora_ckpts`",
     )
 
 

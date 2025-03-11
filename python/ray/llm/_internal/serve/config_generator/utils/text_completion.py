@@ -27,7 +27,7 @@ def get_model_default_config(model_id: str) -> Dict[str, Any]:
 
 
 @cache
-def get_default_deployment_configs(model_id: str, gpu_type: GPUType) -> LLMConfig:
+def get_default_llm_config(model_id: str, gpu_type: GPUType) -> LLMConfig:
     file_path = os.path.join(TEMPLATE_DIR, DEFAULT_DEPLOYMENT_CONFIGS_FILE)
     with open(file_path, "r") as stream:
         configs = yaml.safe_load(stream)
@@ -47,13 +47,13 @@ def populate_text_completion_model_config(
     """
     if input_model_config.id in DEFAULT_MODEL_ID_TO_GPU:
         base_config = get_model_default_config(input_model_config.id)
-        deployment_configs = get_default_deployment_configs(
+        llm_config = get_default_llm_config(
             model_id=input_model_config.id, gpu_type=input_model_config.gpu_type
         )
     else:
         assert input_model_config.reference_model_id
         base_config = get_model_default_config(input_model_config.id)
-        deployment_configs = LLMConfig.model_validate(base_config)
+        llm_config = LLMConfig.model_validate(base_config)
 
     if input_model_config.hf_token:
         base_config.setdefault("runtime_env", {}).setdefault("env_vars", {})[
@@ -62,26 +62,26 @@ def populate_text_completion_model_config(
 
     base_config["accelerator_type"] = input_model_config.gpu_type.value
 
-    base_config["deployment_config"] = _populate_deployment_configs(
+    base_config["deployment_config"] = _populate_llm_config(
         base_config.setdefault("deployment_config", {}),
-        deployment_configs,
+        llm_config,
     )
     base_config["model_loading_config"] = _populate_model_loading_config(
         model_id=input_model_config.id,
         remote_storage_uri=input_model_config.remote_storage_uri,
         tp_degree=input_model_config.tensor_parallelism,
     )
-    _populate_engine_kwargs(base_config, deployment_configs, input_model_config)
+    _populate_engine_kwargs(base_config, llm_config, input_model_config)
 
     return base_config
 
 
-def _populate_deployment_configs(
-    configs: Dict[str, Any],
+def _populate_llm_config(
+    base_config: Dict[str, Any],
     llm_config: LLMConfig,
 ) -> Dict[str, Any]:
-    configs.update(llm_config.deployment_config)
-    return configs
+    base_config.update(llm_config.deployment_config)
+    return base_config
 
 
 def _populate_model_loading_config(
@@ -98,12 +98,12 @@ def _populate_model_loading_config(
 
 def _populate_engine_kwargs(
     configs: Dict[str, Any],
-    deployment_configs: LLMConfig,
+    llm_config: LLMConfig,
     input_model_config: TextCompletionModelConfig,
 ) -> None:
 
     engine_kwargs = configs.setdefault("engine_kwargs", {})
-    engine_kwargs.update(deployment_configs.engine_kwargs)
+    engine_kwargs.update(llm_config.engine_kwargs)
     engine_kwargs.update(
         {
             "tensor_parallel_size": input_model_config.tensor_parallelism,

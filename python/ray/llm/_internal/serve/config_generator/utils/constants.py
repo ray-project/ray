@@ -13,5 +13,7 @@ DEFAULT_DEPLOYMENT_CONFIGS_FILE = "default_deployment_configs.yaml"
 
 
 def get_lora_storage_uri():
-    artifact_storage = os.environ.get("RAYLLM_LORA_STORAGE_URI", "s3://my-bucket")
-    return f"{artifact_storage}/lora_fine_tuning"
+    lora_path = os.environ.get(
+        "RAYLLM_LORA_STORAGE_URI", os.path.join(RAYLLM_HOME_DIR, "lora_ckpts")
+    )
+    return lora_path

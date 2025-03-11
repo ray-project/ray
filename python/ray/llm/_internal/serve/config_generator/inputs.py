@@ -44,7 +44,7 @@ def _get_user_input_from_list(prompt: str, options: List[GPUType]):
         for option in options:
             if user_input.lower() == option.value.lower():
                 return option
-        print(f"Please an option from {options}")
+        print(f"Please enter a valid option from {options}")
 
 
 class BaseModelInfo(BaseModel):
@@ -139,10 +139,9 @@ def _get_default_tensor_parallelism(model_id: str, gpu_type: GPUType) -> int:
         deployment_configs = get_default_deployment_configs(
             model_id=model_id, gpu_type=gpu_type
         )
-        deployment_configs.engine_kwargs.setdefault("tensor_parallel_size", 1)
-        return deployment_configs.engine_kwargs["tensor_parallel_size"]
-    else:
-        return 1
+        return deployment_configs.engine_kwargs.setdefault("tensor_parallel_size", 1)
+
+    return 1
 
 
 _DEFAULT_NUM_LORA_PER_REPLICA = 16

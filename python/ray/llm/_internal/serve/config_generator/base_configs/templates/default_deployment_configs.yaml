@@ -53,8 +53,6 @@ model_id_to_gpu_deployment_configs:
         tensor_parallel_size: 8
         enable_chunked_prefill: true
 
-
-
   mistral-community/pixtral-12b:
     L40S: &pixtral_base_12b_config
       model_loading_config: &pixtral_base_12b_model_loading_config

@@ -21,9 +21,6 @@ from ray.llm._internal.serve.config_generator.utils.gpu import (
     GPUType,
     DEFAULT_MODEL_ID_TO_GPU,
 )
-from ray.llm._internal.serve.config_generator.utils.models import (
-    TEXT_COMPLETION_MODEL_TYPE,
-)
 
 
 def _format_yaml_dumper():
@@ -179,12 +176,8 @@ def gen_config(
         input_model_config = get_input_model_via_interactive_inputs()
 
     model_config = get_model_config(input_model_config)
-    if (
-        interactive_mode
-        and input_model_config.type == TEXT_COMPLETION_MODEL_TYPE
-        and Confirm.ask(
-            "[bold]Further customize the auto-scaling config", default=False
-        )
+    if interactive_mode and Confirm.ask(
+        "[bold]Further customize the auto-scaling config", default=False
     ):
         model_config = override_model_configs(model_config)
 
@@ -208,7 +201,7 @@ def gen_config(
     model_config_path = _write_model_config_to_disk(
         model_config, input_model_config.id, timestamp
     )
-    serve_config = get_serve_config(input_model_config, model_config_path)
+    serve_config = get_serve_config(model_config_path)
 
     full_file_path = _write_config_to_disk(serve_config, timestamp)
 
@@ -216,10 +209,7 @@ def gen_config(
         f"\nYour serve configuration file is successfully written to {full_file_path}\n"
     )
 
-    if (
-        input_model_config.type == TEXT_COMPLETION_MODEL_TYPE
-        and input_model_config.id not in DEFAULT_MODEL_ID_TO_GPU
-    ):
+    if input_model_config.id not in DEFAULT_MODEL_ID_TO_GPU:
         print(
             f"Note: we don't have serving defaults for {input_model_config.id} "
             "and we generally recommend you going over engine_kwargs in the yaml before serving. "
