@@ -1,0 +1,146 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+// Metadata for a Ray Train run, including its details and status
+message ExportTrainRunEventData {
+  // Version of the message schema
+  uint32 schema_version = 1;
+
+  // Enumeration of the possible statuses for a Train run
+  enum RunStatus {
+    // Default value required by proto3
+    RUN_STATUS_UNSPECIFIED = 0;
+
+    // Active States
+    INITIALIZING = 1;
+    SCHEDULING = 2;
+    RUNNING = 3;
+    RESTARTING = 4;
+    RESIZING = 5;
+
+    // Terminal States
+    FINISHED = 6;
+    ERRORED = 7;
+    ABORTED = 8;
+  }
+
+  // Unique identifier for the Train run
+  string id = 2;
+  // Human-readable name assigned to the Train run
+  string name = 3;
+  // The Ray Job ID associated with this Train run
+  bytes job_id = 4;
+  // Unique ID of the actor managing the Train run
+  bytes controller_actor_id = 5;
+  // The current execution status of the Train run
+  RunStatus status = 6;
+  // Additional details about the current status, including error messages if applicable
+  optional string status_detail = 7;
+  // The timestamp when the Train run started in ns.
+  uint64 start_time_ns = 8;
+  // The timestamp when the Train run ended in ns. If not set, the run is still
+  // in progress
+  optional uint64 end_time_ns = 9;
+  // The path to the log file for the Train run controller.
+  string controller_log_file_path = 10;
+}
+
+// Metadata for an individual attempt to execute a Train run
+message ExportTrainRunAttemptEventData {
+  // Version of the message schema
+  uint32 schema_version = 1;
+
+  // Enumeration of the possible statuses for a Train run attempt
+  enum RunAttemptStatus {
+    // Default value required by proto3
+    RUN_ATTEMPT_STATUS_UNSPECIFIED = 0;
+
+    // Active States
+    PENDING = 1;
+    RUNNING = 2;
+
+    // Terminal States
+    FINISHED = 3;
+    ERRORED = 4;
+    ABORTED = 5;
+  }
+
+  // Enumeration of the statuses for a Train worker actor
+  enum ActorStatus {
+    // Default value required by proto3
+    ACTOR_STATUS_UNSPECIFIED = 0;
+
+    // The actor is currently active
+    ALIVE = 1;
+    // The actor is no longer active
+    DEAD = 2;
+  }
+
+  // Resources allocated for a Train worker or run
+  message TrainResources {
+    // A dictionary specifying the types and amounts of resources allocated
+    // (e.g., CPU, GPU)
+    map<string, double> resources = 1;
+  }
+
+  // Metadata about a Ray Train worker
+  message TrainWorker {
+    // The global rank of the worker in the training cluster
+    int32 world_rank = 1;
+    // The local rank of the worker on its node
+    int32 local_rank = 2;
+    // The rank of the worker's node in the cluster
+    int32 node_rank = 3;
+    // The unique ID of the worker's actor
+    bytes actor_id = 4;
+    // The unique ID of the node where the worker is running
+    bytes node_id = 5;
+    // The IP address of the node where the worker is running
+    string node_ip = 6;
+    // The process ID of the worker
+    int32 pid = 7;
+    // A list of GPU IDs allocated to the worker
+    repeated int32 gpu_ids = 8;
+    // The current status of the worker actor
+    optional ActorStatus status = 9;
+    // The resources allocated to this Train worker
+    TrainResources resources = 10;
+    // The path to the log file for the Train worker
+    string log_file_path = 11;
+  }
+
+  // Unique identifier for the parent Train run
+  string run_id = 2;
+  // Unique identifier for this specific Train run attempt
+  string attempt_id = 3;
+  // The current execution status of the Train run attempt
+  RunAttemptStatus status = 4;
+  // Additional details about the status, including error messages if applicable
+  optional string status_detail = 5;
+  // The timestamp when the Train run attempt started in ns.
+  uint64 start_time_ns = 6;
+  // The timestamp when the Train run attempt ended in ns. If null, the attempt
+  // is still ongoing
+  optional uint64 end_time_ns = 7;
+  // The resources (e.g., CPU, GPU) allocated to the Train run attempt
+  repeated TrainResources resources = 8;
+  // List of Train workers participating in this attempt, sorted by global ranks
+  repeated TrainWorker workers = 9;
+}

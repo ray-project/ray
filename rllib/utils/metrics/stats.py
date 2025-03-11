@@ -9,11 +9,13 @@ import numpy as np
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.util.annotations import DeveloperAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@DeveloperAPI
 class Stats:
     """A container class holding a number of values and executing reductions over them.
 
