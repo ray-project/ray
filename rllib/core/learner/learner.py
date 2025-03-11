@@ -978,6 +978,7 @@ class Learner(Checkpointable):
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
+        _no_metrics_reduce: bool = False,
         **kwargs,
     ) -> ResultDict:
         """Run `num_epochs` epochs over the given train batch.
@@ -1151,7 +1152,8 @@ class Learner(Checkpointable):
         self.after_gradient_based_update(timesteps=timesteps or {})
 
         # Reduce results across all minibatch update steps.
-        return self.metrics.reduce()
+        if not _no_metrics_reduce:
+            return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
