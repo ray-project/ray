@@ -5,4 +5,3 @@ jsonref>=1.1.0
 jsonschema
 # async-timeout is a backport of asyncio.timeout for python < 3.11
 async-timeout; python_version < '3.11'
-typer
