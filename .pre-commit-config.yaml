@@ -159,6 +159,7 @@ repos:
         entry: ci/lint/copyright-format.sh
         language: system
         args: ["-c"]
+        files: '^src/ray/'
         pass_filenames: false
 
   - repo: local
@@ -166,13 +167,6 @@ repos:
       - id: code_format_check
         name: Check for code format violations
         entry: ci/lint/format.sh
-        language: system
-
-  - repo: local
-    hooks:
-      - id: documentation_style_check
-        name: Check for documentation style violations
-        entry: ci/lint/check-documentation-style.sh
         language: system
 
   - repo: local
