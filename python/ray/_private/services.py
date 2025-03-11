@@ -2028,6 +2028,7 @@ def build_cpp_worker_command(
 
 def determine_plasma_store_config(
     object_store_memory: int,
+    temp_dir: str,
     plasma_directory: Optional[str] = None,
     fallback_directory: Optional[str] = None,
     huge_pages: bool = False,
@@ -2040,7 +2041,7 @@ def determine_plasma_store_config(
     small, in which case we will fall back to /tmp. If any of the object store
     memory or plasma directory parameters are specified by the user, then those
     values will be preserved.
-    2. which directory to use for the fallback files. It will default to /tmp if not specified.
+    2. which directory to use for the fallback files. It will default to the temp_dir if not specified.
 
     Args:
         object_store_memory: The object store memory to use.
@@ -2155,7 +2156,7 @@ def determine_plasma_store_config(
         )
 
     if fallback_directory is None:
-        fallback_directory = ray._private.utils.get_ray_temp_dir()
+        fallback_directory = temp_dir
     else:
         fallback_directory = os.path.abspath(fallback_directory)
 
