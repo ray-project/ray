@@ -213,7 +213,7 @@ std::shared_ptr<spdlog::logger> CreateLogger(
 }
 
 // Pipe streamer is only used in certain cases:
-// 1. Log roration is requested;
+// 1. Log rotation is requested;
 // 2. Multiple sinks are involved.
 bool ShouldUsePipeStream(const StreamRedirectionOption &stream_redirect_opt) {
   const bool need_rotation = stream_redirect_opt.rotation_max_size != 0;
