@@ -143,58 +143,58 @@ def build_openai_app(llm_serving_args: "LLMServingArgs") -> "Application":
         .. code-block:: python
             :caption: Example usage in code.
 
-                from ray import serve
-                from ray.serve.llm import LLMConfig, LLMServingArgs, build_openai_app
+            from ray import serve
+            from ray.serve.llm import LLMConfig, LLMServingArgs, build_openai_app
 
-                llm_config1 = LLMConfig(
-                    model_loading_config=dict(
-                        model_id="qwen-0.5b",
-                        model_source="Qwen/Qwen2.5-0.5B-Instruct",
-                    ),
-                    deployment_config=dict(
-                        autoscaling_config=dict(
-                            min_replicas=1, max_replicas=2,
-                        )
-                    ),
-                    accelerator_type="A10G",
-                )
-
-                llm_config2 = LLMConfig(
-                    model_loading_config=dict(
-                        model_id="qwen-1.5b",
-                        model_source="Qwen/Qwen2.5-1.5B-Instruct",
-                    ),
-                    deployment_config=dict(
-                        autoscaling_config=dict(
-                            min_replicas=1, max_replicas=2,
-                        )
-                    ),
-                    accelerator_type="A10G",
-                )
-
-                # Deploy the application
-                llm_app = build_openai_app(
-                    LLMServingArgs(
-                        llm_configs=[
-                            llm_config1,
-                            llm_config2,
-                        ]
+            llm_config1 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
                     )
+                ),
+                accelerator_type="A10G",
+            )
+
+            llm_config2 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-1.5b",
+                    model_source="Qwen/Qwen2.5-1.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
+
+            # Deploy the application
+            llm_app = build_openai_app(
+                LLMServingArgs(
+                    llm_configs=[
+                        llm_config1,
+                        llm_config2,
+                    ]
                 )
-                serve.run(llm_app)
+            )
+            serve.run(llm_app)
 
 
-                # Querying the model via openai client
-                from openai import OpenAI
+            # Querying the model via openai client
+            from openai import OpenAI
 
-                # Initialize client
-                client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+            # Initialize client
+            client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
-                # Basic completion
-                response = client.chat.completions.create(
-                    model="qwen-0.5b",
-                    messages=[{"role": "user", "content": "Hello!"}]
-                )
+            # Basic completion
+            response = client.chat.completions.create(
+                model="qwen-0.5b",
+                messages=[{"role": "user", "content": "Hello!"}]
+            )
 
         .. code-block:: yaml
             :caption: Example usage in YAML.
