@@ -24,6 +24,8 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     Creates a tmpdir to hold the logs.
     """
     yield SubprocessModuleConfig(
+        cluster_id_hex="test_cluster_id",
+        gcs_address="",
         logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=str(tmp_path),
@@ -208,7 +210,7 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
 
     # Assert the log file name and read the log file
     log_file_path = (
-        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.log"
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule_0.log"
     )
     with log_file_path.open("r") as f:
         log_file_content = f.read()
@@ -228,6 +230,51 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
     assert all(
         (file_name, content) in matches for (file_name, content) in expected_logs
     ), f"Expected to contain {expected_logs}, got {matches}"
+
+
+async def test_logging_in_module_with_multiple_incarnations(
+    aiohttp_client, default_module_config
+):
+    app = await start_http_server_app(default_module_config, [TestModule])
+    client = await aiohttp_client(app)
+
+    response = await client.post(
+        "/logging_in_module", data=b"this is from incarnation 0"
+    )
+    assert response.status == 200
+    assert await response.text() == "done!"
+
+    response = await client.post("/kill_self", data=b"")
+    assert response.status == 500
+    assert (
+        await response.text()
+        == "500 Internal Server Error\n\nServer got itself in trouble"
+    )
+
+    async def verify():
+        response = await client.post(
+            "/logging_in_module", data=b"and this is from incarnation 1"
+        )
+        assert response.status == 200
+        assert await response.text() == "done!"
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    # Expect logs from both incarnations.
+    log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule_0.log"
+    )
+    with log_file_path.open("r") as f:
+        log_file_content = f.read()
+    assert "In /logging_in_module, this is from incarnation 0." in log_file_content
+
+    log_file_path = (
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule_1.log"
+    )
+    with log_file_path.open("r") as f:
+        log_file_content = f.read()
+    assert "In /logging_in_module, and this is from incarnation 1." in log_file_content
 
 
 if __name__ == "__main__":
