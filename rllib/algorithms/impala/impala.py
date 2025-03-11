@@ -1,7 +1,6 @@
 import copy
 import logging
 import queue
-import tree
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
