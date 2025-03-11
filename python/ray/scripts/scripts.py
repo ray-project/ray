@@ -2345,6 +2345,8 @@ def drain_node(
 
     Manually drain a worker node.
     """
+    # This should be before get_runtime_context() so get_runtime_context()
+    # doesn't start a new worker here.
     address = services.canonicalize_bootstrap_address_or_die(address)
 
     if node_id is None:

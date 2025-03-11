@@ -1057,7 +1057,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
 
 def test_ray_drain_node(monkeypatch):
     monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
-    ray._raylet.Config.initialize("")
+    ray.init()
 
     runner = CliRunner()
     result = runner.invoke(
