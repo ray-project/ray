@@ -1258,7 +1258,10 @@ class EnvRunnerGroup:
         )
         return (
             ray.remote(**self._remote_args)(self.env_runner_cls)
-            .options(placement_group_bundle_index=pg_bundle_idx)
+            .options(
+                placement_group_bundle_index=pg_bundle_idx,
+                scheduling_strategy=ray.get(config).placement_strategy,
+            )
             .remote(**kwargs)
         )
 
