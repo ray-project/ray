@@ -18,7 +18,6 @@ examples/rayjob-kueue-gang-scheduling
 examples/distributed-checkpointing-with-gcsfuse
 examples/modin-example
 examples/vllm-rayservice
-examples/tpu-single-host-rayservice
 ```
 
 
@@ -37,4 +36,3 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-distributed-checkpointing-gcsefuse`
 - {ref}`kuberay-modin-example`
 - {ref}`kuberay-vllm-rayservice-example`
-- {ref}`kuberay-tpu-single-host-vllm`
