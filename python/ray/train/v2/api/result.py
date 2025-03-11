@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Union
 import pyarrow
 
 from ray.air.result import Result as ResultV1
-from ray.train.v2._internal.exceptions import TrainingFailedError
+from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.util.annotations import Deprecated
 
 
