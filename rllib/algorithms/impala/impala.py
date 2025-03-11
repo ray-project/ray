@@ -138,7 +138,7 @@ class IMPALAConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.num_learners = 1
-        self.num_aggregator_actors_per_learner = 0        
+        self.num_aggregator_actors_per_learner = 0
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.num_env_runners = 2
