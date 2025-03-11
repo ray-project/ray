@@ -22,6 +22,7 @@ from ray.air.util.tensor_extensions.arrow import (
     pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
+from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
@@ -218,14 +219,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
-        num_rows = self.num_rows()
-        if num_rows == 0:
-            return pyarrow.table([])
-        random = np.random.RandomState(random_seed)
-        shuffled_indices = np.arange(num_rows)
-        # Shuffle all rows in-place
-        random.shuffle(shuffled_indices)
-        return self.take(pyarrow.array(shuffled_indices))
+        return shuffle(self._table, random_seed)
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
