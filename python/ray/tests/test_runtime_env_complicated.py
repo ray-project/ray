@@ -923,9 +923,8 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
     1.  Run a Ray Client job with both working_dir and pip specified. Check the
         environment using imports and file reads in tasks and actors.
-    2.  On the same cluster, run a job as above but using the Ray Summit
-        2021 demo's pip requirements.txt.  Also, check that per-task and
-        per-actor pip requirements work, all using the job's working_dir.
+    2.  On the same cluster, run another job with a requirements.txt file and
+        overriding per-actor and per-task pip requirements.
     """
     # Create a file to use to test working_dir
     specific_path = tmp_path / "test"
@@ -963,8 +962,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
         a = TestActor.remote()
         assert ray.get(a.test.remote()) == "Hello"
 
-    # pip requirements file from Ray Summit 2021 demo; updated to be compatible with
-    # recent python versions
     requirement_path = tmp_path / "requirements.txt"
     requirement_path.write_text(
         "\n".join(
@@ -978,7 +975,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         )
     )
 
-    # Start a new job on the same cluster using the Summit 2021 requirements.
+    # Start a new job on the same cluster using the requirements file.
     with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env(
         {"working_dir": str(tmp_path), "pip": str(requirement_path)}
     ).connect():
