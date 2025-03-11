@@ -166,7 +166,7 @@ Ray Train Errors
     :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~train.TrainingFailedError
+    ~train.v2.api.exceptions.TrainingFailedError
 
 Ray Tune Integration Utilities
 ------------------------------

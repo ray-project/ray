@@ -98,9 +98,9 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures occur during training
-                and the number of retries configured in `FailureConfig`
-                is exhausted.
+            ray.train.v2.api.exceptions.TrainingFailedError: If any failures occur
+                during training and the number of retries configured in
+                `FailureConfig` is exhausted.
         """
         train_fn = construct_train_func(
             self.train_loop_per_worker,

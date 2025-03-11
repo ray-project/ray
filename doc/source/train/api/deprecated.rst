@@ -2,8 +2,8 @@
 
 .. _train-deprecated-api:
 
-Ray Train API
-=============
+Ray Train V1 API
+================
 
 .. currentmodule:: ray
 
@@ -11,7 +11,7 @@ Ray Train API
 
     Ray Train V2 is an overhaul of Ray Train's implementation and select APIs, which can be enabled by setting the environment variable ``RAY_TRAIN_V2_ENABLED=1`` starting in Ray 2.43.
 
-    This page contains the deprecated API references. See :ref:`train-api` for the new API references.
+    This page contains the deprecated V1 API references. See :ref:`train-api` for the new V2 API references.
 
 
 PyTorch Ecosystem

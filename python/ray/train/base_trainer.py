@@ -653,7 +653,7 @@ class BaseTrainer(abc.ABC):
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures during the execution
+            ray.train.base_trainer.TrainingFailedError: If any failures during the execution
                 of ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune import ResumeConfig, TuneError
@@ -838,10 +838,10 @@ class BaseTrainer(abc.ABC):
                 )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config[
-                    "scaling_config"
-                ] = self._reconcile_scaling_config_with_trial_resources(
-                    merged_scaling_config
+                self._merged_config["scaling_config"] = (
+                    self._reconcile_scaling_config_with_trial_resources(
+                        merged_scaling_config
+                    )
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext
