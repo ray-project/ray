@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 class Result(ResultV1):
     checkpoint: Optional["ray.train.Checkpoint"]
     error: Optional[TrainingFailedError]
-    best_checkpoints: Optional[List[Tuple["ray.train.Checkpoint", Dict[str, Any]]]] = (
-        None
-    )
+    best_checkpoints: Optional[
+        List[Tuple["ray.train.Checkpoint", Dict[str, Any]]]
+    ] = None
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(
