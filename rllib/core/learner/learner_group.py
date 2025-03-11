@@ -298,7 +298,11 @@ class LearnerGroup(Checkpointable):
                 **kwargs,
             )
             for i, (td_shard, kw) in enumerate(
-                training_data.shard(num_shards=len(self), **kwargs)
+                training_data.shard(
+                    num_shards=len(self),
+                    len_lookback_buffer=self.config.episode_lookback_horizon,
+                    **kwargs,
+                )
             )
         ]
 

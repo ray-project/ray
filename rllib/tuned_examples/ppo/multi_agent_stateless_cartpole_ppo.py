@@ -13,7 +13,7 @@ from ray.tune import register_env
 parser = add_rllib_example_script_args(default_timesteps=4000000)
 parser.set_defaults(
     enable_new_api_stack=True,
-    num_agents=1,#TODO 2
+    num_agents=2,
     num_env_runners=3,
 )
 # Use `parser` to add your own custom command line options to this script
@@ -33,9 +33,7 @@ config = (
     )
     .training(
         lr=0.0003 * ((args.num_learners or 1) ** 0.5),
-        num_epochs=1,#TODO 6
-        train_batch_size_per_learner=4000,
-        minibatch_size=4000,#TODO: remove line
+        num_epochs=6,
         vf_loss_coeff=0.05,
     )
     .rl_module(

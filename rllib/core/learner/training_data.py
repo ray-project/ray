@@ -44,7 +44,12 @@ class TrainingData:
         ):
             raise ValueError("Exactly one training data type must be provided!")
 
-    def shard(self, num_shards: int, **kwargs):
+    def shard(
+        self,
+        num_shards: int,
+        len_lookback_buffer: Optional[int] = None,
+        **kwargs,
+    ):
         # Single batch -> Split into n smaller batches.
         if self.batch is not None:
             return [
@@ -80,7 +85,11 @@ class TrainingData:
                     TrainingData(episodes=e),
                     {"num_total_minibatches": num_total_minibatches},
                 )
-                for e in ShardEpisodesIterator(self.episodes, num_shards=num_shards)
+                for e in ShardEpisodesIterator(
+                    self.episodes,
+                    num_shards=num_shards,
+                    len_lookback_buffer=len_lookback_buffer,
+                )
             ]
         # List of episodes refs.
         elif self.episodes_refs is not None:

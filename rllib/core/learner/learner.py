@@ -987,7 +987,7 @@ class Learner(Checkpointable):
         MultiRLModule.
 
         Args:
-            batch: n A batch of training data to update from.
+            batch: A batch of training data to update from.
             timesteps: Timesteps dict, which must have the key
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
@@ -1034,7 +1034,6 @@ class Learner(Checkpointable):
 
         # Data iterator provided.
         if training_data.data_iterators:
-            assert False
             num_iters = kwargs.pop("num_iters", None)
             if num_iters is None:
                 raise ValueError(
@@ -1069,12 +1068,7 @@ class Learner(Checkpointable):
                 reduce="sum",
             )
         else:
-            #if not hasattr(self, "_batch"):
             batch = self._make_batch_if_necessary(training_data=training_data)
-            #    self._batch = batch
-            #else:
-            #    batch = self._batch
-
             assert batch is not None
 
             # TODO: Move this into LearnerConnector pipeline?
@@ -1084,36 +1078,21 @@ class Learner(Checkpointable):
                 if not self.should_module_be_updated(module_id, batch):
                     del batch.policy_batches[module_id]
             if not batch.policy_batches:
-                raise NotImplementedError("OUCH!")#TODO remove
-                a = 1
                 return {}
 
             batch = self._set_slicing_by_batch_id(batch, value=True)
 
-            #if minibatch_size:
-            #    batch_iter_cls = MiniBatchCyclicIterator
-            #elif num_epochs > 1:
-            #    # `minibatch_size` was not set but `num_epochs` > 1.
-            #    minibatch_size = batch.count
-            #    # Note that there is no need to shuffle here, b/c we don't have
-            #    # minibatches.
-            #    batch_iter_cls = MiniBatchCyclicIterator
-            #else:
-            # `minibatch_size` and `num_epochs` are not set by the user.
-            batch_iter_cls = MiniBatchDummyIterator
-
-            batch_iter = batch_iter_cls(
-                batch,
-                num_epochs=num_epochs,
-                minibatch_size=minibatch_size,
-                shuffle_batch_per_epoch=shuffle_batch_per_epoch and (num_epochs > 1),
-                num_total_minibatches=num_total_minibatches,
-            )
-
-            if len(list(batch_iter)) != 1:
-                raise NotImplementedError("OUCH!2")
-
-            print(f"Will run through 1 iteration (num_epochs={num_epochs} mini={minibatch_size} num_total_minis={num_total_minibatches})")
+            if minibatch_size:
+                batch_iter_cls = MiniBatchCyclicIterator
+            elif num_epochs > 1:
+                # `minibatch_size` was not set but `num_epochs` > 1.
+                minibatch_size = batch.count
+                # Note that there is no need to shuffle here, b/c we don't have
+                # minibatches.
+                batch_iter_cls = MiniBatchCyclicIterator
+            else:
+                # `minibatch_size` and `num_epochs` are not set by the user.
+                batch_iter_cls = MiniBatchDummyIterator
 
             batch_iter = batch_iter_cls(
                 batch,
@@ -1124,7 +1103,6 @@ class Learner(Checkpointable):
             )
 
         # Perform the actual looping through the minibatches or the given data iterator.
-        i=0
         for tensor_minibatch in batch_iter:
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
@@ -1137,32 +1115,22 @@ class Learner(Checkpointable):
                     f"are not in this Learner!"
                 )
 
-            print(f"iter {i} ... pids={list(tensor_minibatch.policy_batches.keys())}")
-
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             fwd_out, loss_per_module, tensor_metrics = self._update(
                 tensor_minibatch.policy_batches
             )
 
-            print(f"after update of iter {i}")
-
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
             # to actual (numpy) values.
             self.metrics.tensors_to_numpy(tensor_metrics)
-
-            print(f"after tensors_to_numpy of iter {i}")
 
             # TODO (sven): Maybe move this into loop above to get metrics more accuratcely
             #  cover the minibatch/epoch logic.
             # Log all timesteps (env, agent, modules) based on given episodes/batch.
             self._log_steps_trained_metrics(tensor_minibatch)
 
-            print(f"after _log_steps_trained_metrics of iter {i}")
-
             self._set_slicing_by_batch_id(tensor_minibatch, value=False)
-
-            print(f"after _set_slicing_by_batch_id of iter {i}")
 
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
