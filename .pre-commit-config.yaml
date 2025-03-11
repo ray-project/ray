@@ -47,7 +47,7 @@ repos:
     hooks:
       - id: cpplint
         args: ["--filter=-whitespace/braces,-whitespace/line_length,-build/c++11,-build/c++14,-build/c++17,-readability/braces,-whitespace/indent_namespace,-runtime/int,-runtime/references,-build/include_order"]
-        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|object_manager/plasma|rpc(?:/.*)?)/.*\.(h|cc)$
+        files: ^src/ray/(util|raylet_client|internal|scheduling|pubsub|object_manager|rpc(?:/.*)?)/.*\.(h|cc)$
 
   - repo: https://github.com/keith/pre-commit-buildifier
     rev: 8.0.1
@@ -143,6 +143,37 @@ repos:
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
+
+  - repo: local
+    hooks:
+      - id: bazel_team_owner_check
+        name: Check for bazel team owner tagging violations
+        entry: python ci/lint/check_bazel_team_owner.py
+        language: python
+        types: [python]
+
+  - repo: local
+    hooks:
+      - id: copyright_format_check
+        name: Check for file copyright format violations
+        entry: ci/lint/copyright-format.sh
+        language: system
+        args: ["-c"]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: code_format_check
+        name: Check for code format violations
+        entry: ci/lint/format.sh
+        language: system
+
+  - repo: local
+    hooks:
+      - id: documentation_style_check
+        name: Check for documentation style violations
+        entry: ci/lint/check-documentation-style.sh
+        language: system
 
   - repo: local
     hooks:
