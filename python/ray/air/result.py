@@ -18,13 +18,13 @@ from ray.air.constants import (
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train import Checkpoint
+    from ray.tune.trainable.trainable_fn_utils import Checkpoint
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="stable")
 @dataclass
+@PublicAPI(stability="stable")
 class Result:
     """The final result of a ML training run or a Tune trial.
 

@@ -155,10 +155,9 @@ Ray Train Output
 
 .. autosummary::
     :nosignatures:
-    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
-    ~air.result.Result
+    ~tune.Result
 
 Ray Train Errors
 ----------------
