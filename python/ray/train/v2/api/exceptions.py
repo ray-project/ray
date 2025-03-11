@@ -1,10 +1,10 @@
 from typing import Dict
 
 from ray.train.v2._internal.exceptions import RayTrainError
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 class TrainingFailedError(RayTrainError):
     """Exception raised by `<Framework>Trainer.fit()` when training fails."""
 
