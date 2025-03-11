@@ -1,4 +1,3 @@
-from collections import defaultdict
 import copy
 from functools import partial
 import itertools
@@ -18,7 +17,6 @@ from typing import (
 )
 
 import ray
-from ray import ObjectRef
 from ray._private.ray_constants import env_integer
 from ray.rllib.core import (
     COMPONENT_LEARNER,
