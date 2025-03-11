@@ -105,8 +105,8 @@ Here are a few examples of saving checkpoints with different training frameworks
             :start-after: __lightning_save_example_start__
             :end-before: __lightning_save_example_end__
 
-        You can always get the saved checkpoint path from :attr:`result.checkpoint <ray.train.Result.checkpoint>` and
-        :attr:`result.best_checkpoints <ray.train.Result.best_checkpoints>`.
+        You can always get the saved checkpoint path from :attr:`result.checkpoint <ray.train.Result>` and
+        :attr:`result.best_checkpoints <ray.train.Result>`.
 
         For more advanced usage (e.g. reporting at different frequency, reporting
         customized checkpoint files), you can implement your own customized callback.
@@ -259,9 +259,9 @@ Lower-performing checkpoints are deleted to save storage space. By default, all 
 Using checkpoints after training
 --------------------------------
 
-The latest saved checkpoint can be accessed with :attr:`Result.checkpoint <ray.train.Result.checkpoint>`.
+The latest saved checkpoint can be accessed with :attr:`Result.checkpoint <ray.train.Result>`.
 
-The full list of persisted checkpoints can be accessed with :attr:`Result.best_checkpoints <ray.train.Result.best_checkpoints>`.
+The full list of persisted checkpoints can be accessed with :attr:`Result.best_checkpoints <ray.train.Result>`.
 If :class:`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>` is set, this list will contain the best ``num_to_keep`` checkpoints.
 
 See :ref:`train-inspect-results` for a full guide on inspecting training results.
