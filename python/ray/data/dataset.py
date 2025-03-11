@@ -101,7 +101,6 @@ from ray.data.block import (
     U,
     UserDefinedFunction,
     _apply_batch_format,
-    _apply_batch_size,
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider
@@ -410,7 +409,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"]] = "default",
+        batch_size: Union[int, None, Literal["default"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
@@ -541,7 +540,7 @@ class Dataset:
                 entire blocks as batches (blocks may contain different numbers of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Default batch_size is 1024 with "default".
+                to a given map task. Default ``batch_size`` is ``None``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
@@ -670,6 +669,14 @@ class Dataset:
         # to call `map_groups` with  GPUs, we need a separate method that doesn't
         # perform batch size validation.
 
+        if batch_size == "default":
+            warnings.warn(
+                "Passing 'default' to `map_batches` is deprecated and won't be "
+                "supported after September 2025. Use `batch_size=None` instead.",
+                DeprecationWarning,
+            )
+            batch_size = None
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -687,13 +694,6 @@ class Dataset:
             ray_remote_args["memory"] = memory
 
         batch_format = _apply_batch_format(batch_format)
-
-        min_rows_per_bundled_input = None
-        if batch_size is not None and batch_size != "default":
-            # Enable blocks bundling when batch_size is specified by caller.
-            min_rows_per_bundled_input = batch_size
-        batch_size = _apply_batch_size(batch_size)
-
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
                 f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
@@ -707,7 +707,7 @@ class Dataset:
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-            min_rows_per_bundled_input=min_rows_per_bundled_input,
+            min_rows_per_bundled_input=batch_size,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,

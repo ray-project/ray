@@ -597,6 +597,15 @@ def test_rename_columns(ray_start_regular_shared, names, expected_schema):
     assert sorted(renamed_schema_names) == sorted(expected_schema)
 
 
+def test_default_batch_size_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(
+        DeprecationWarning,
+        match="Passing 'default' to `map_batches` is deprecated and won't be "
+        "supported after September 2025. Use `batch_size=None` instead.",
+    ):
+        ray.data.range(1).map_batches(lambda x: x, batch_size="default")
+
+
 @pytest.mark.parametrize(
     "names, expected_exception, expected_message",
     [

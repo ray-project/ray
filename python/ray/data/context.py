@@ -170,8 +170,8 @@ WARN_PREFIX = "⚠️ "
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
 
-# Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 1024
+# The default batch size for batch transformations before it was changed to `None`.
+LEGACY_DEFAULT_BATCH_SIZE = 1024
 
 # Default value of the max number of blocks that can be buffered at the
 # streaming generator of each `DataOpTask`.
