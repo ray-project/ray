@@ -237,8 +237,7 @@ class BackendExecutor:
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
 
-        If a placement group is already detected (Tune or provided by the user)
-        this will be a no-op.
+        If a placement group is already detected (Tune) this will be a no-op.
 
         By default the placement group will be created with PACK strategy.
         This is optimized for colocating GPUs on a minimal number of nodes.
