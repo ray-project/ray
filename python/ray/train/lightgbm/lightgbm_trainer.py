@@ -7,7 +7,8 @@ import lightgbm
 import ray
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.lightgbm import RayTrainReportCallback, LightGBMConfig
+from ray.train.lightgbm._lightgbm_utils import RayTrainReportCallback
+from ray.train.lightgbm.config import LightGBMConfig
 from ray.train.lightgbm.v2 import LightGBMTrainer as SimpleLightGBMTrainer
 from ray.train.trainer import GenDataset
 from ray.util.annotations import PublicAPI
