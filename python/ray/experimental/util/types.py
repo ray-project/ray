@@ -25,6 +25,7 @@ class Device(Enum):
     CPU = "cpu"
     GPU = "gpu"
     CUDA = "cuda"
+    NPU = "npu"
 
     def __str__(self):
         return self.value
