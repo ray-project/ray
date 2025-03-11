@@ -139,8 +139,6 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        # Max memory usage. May be an overestimate since we do not
-        # differentiate from previous tasks on the same worker.
         self.rss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
