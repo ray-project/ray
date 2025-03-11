@@ -324,7 +324,7 @@ well as `our blog post <https://www.anyscale.com/blog/uv-ray-pain-free-python-de
 
     export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
 
-  We plan to make it default after collecting more feedback, and adapting the behavior if necessary.
+  We plan to make it the default after collecting more feedback, and adapting the behavior if necessary.
 
 Create a file `pyproject.toml` in your working directory like the following:
 
@@ -382,7 +382,7 @@ you can submit a Ray Job via
 
 This command makes sure both the driver and workers of the job run in the uv environment as specified by your `pyproject.toml`.
 
-**Using uv with Ray Serve:** With an appropriate `pyproject.toml` and `app.py` files, you can
+**Using uv with Ray Serve:** With appropriate `pyproject.toml` and `app.py` files, you can
 run a Ray Serve application with `uv run serve run app:main`.
 
 **Best Practices and Tips:**
