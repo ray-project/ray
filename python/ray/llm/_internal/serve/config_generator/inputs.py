@@ -31,7 +31,7 @@ from ray.llm._internal.serve.config_generator.utils.prompt import (
     BoldPrompt,
 )
 from ray.llm._internal.serve.config_generator.utils.text_completion import (
-    get_default_deployment_configs,
+    get_default_llm_config,
 )
 
 
@@ -136,10 +136,8 @@ def _get_validated_model_info():
 
 def _get_default_tensor_parallelism(model_id: str, gpu_type: GPUType) -> int:
     if model_id in DEFAULT_MODEL_ID_TO_GPU:
-        deployment_configs = get_default_deployment_configs(
-            model_id=model_id, gpu_type=gpu_type
-        )
-        return deployment_configs.engine_kwargs.setdefault("tensor_parallel_size", 1)
+        llm_config = get_default_llm_config(model_id=model_id, gpu_type=gpu_type)
+        return llm_config.engine_kwargs.setdefault("tensor_parallel_size", 1)
 
     return 1
 
