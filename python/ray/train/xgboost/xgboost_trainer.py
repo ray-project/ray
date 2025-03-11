@@ -259,12 +259,14 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
     ) -> Callable[[Dict], None]:
         """Get the training function for the legacy XGBoostTrainer API."""
 
-        if not datasets or not datasets.get(TRAIN_DATASET_KEY):
+        datasets = datasets or {}
+        if not datasets.get(TRAIN_DATASET_KEY):
             raise ValueError(
                 "`datasets` must be provided for the XGBoostTrainer API "
                 "if `train_loop_per_worker` is not provided. "
                 "This dict must contain the training dataset under the "
-                f"key '{TRAIN_DATASET_KEY}'."
+                f"key: '{TRAIN_DATASET_KEY}'. "
+                f"Got keys: {list(datasets.keys())}"
             )
         if not label_column:
             raise ValueError(
@@ -314,12 +316,3 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
     ) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""
         return RayTrainReportCallback.get_model(checkpoint)
-
-    def _validate_attributes(self):
-        super()._validate_attributes()
-
-        if TRAIN_DATASET_KEY not in self.datasets:
-            raise KeyError(
-                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
-            )
