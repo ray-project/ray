@@ -4133,8 +4133,8 @@
   run:
     timeout: 3600
     script: >
-      python run_llama.py \
-      --model-source s3://air-example-data/llama-3.2-216M-dummy/ \
-      --dynamic-lora-loading-path s3://air-example-data/ \
-      --lora-name llama-3.2-216M-lora-dummy \
+      python run_llama.py
+      --model-source s3://air-example-data/llama-3.2-216M-dummy/
+      --dynamic-lora-loading-path s3://air-example-data/
+      --lora-name llama-3.2-216M-lora-dummy
       --max-lora-rank 32
