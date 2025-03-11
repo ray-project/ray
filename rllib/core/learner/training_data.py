@@ -15,7 +15,7 @@ from ray.rllib.utils.minibatch_utils import (
 from ray.rllib.utils.typing import EpisodeType
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(slots=True)
 class TrainingData:
     batch: Optional[MultiAgentBatch] = None
     batches: Optional[List[MultiAgentBatch]] = None

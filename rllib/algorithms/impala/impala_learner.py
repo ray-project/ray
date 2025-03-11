@@ -181,53 +181,6 @@ class IMPALALearner(Learner):
 
         return result
 
-    @override(Learner)
-    def update_from_episodes(
-        self,
-        episodes: Any,
-        **kwargs,
-    ) -> ResultDict:
-        raise NotImplementedError
-        if isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef):
-            try:
-                episodes = tree.flatten(ray.get(episodes))
-            except ray.exceptions.OwnerDiedError:
-                episode_refs = episodes
-                episodes = []
-                for ref in episode_refs:
-                    try:
-                        episodes.extend(ray.get(ref))
-                    except ray.exceptions.OwnerDiedError:
-                        pass
-
-        # Call the learner connector pipeline.
-        shared_data = {}
-        batch = self._learner_connector(
-            rl_module=self.module,
-            batch={},
-            episodes=episodes,
-            shared_data=shared_data,
-            metrics=self.metrics,
-        )
-        # Convert to a batch.
-        # TODO (sven): Try to not require MultiAgentBatch anymore.
-        batch = MultiAgentBatch(
-            {
-                module_id: (
-                    SampleBatch(module_data, _zero_padded=True)
-                    if shared_data.get(f"_zero_padded_for_mid={module_id}")
-                    else SampleBatch(module_data)
-                )
-                for module_id, module_data in batch.items()
-            },
-            env_steps=sum(len(e) for e in episodes),
-        )
-
-        return self.update_from_batch(
-            batch=batch,
-            **kwargs,
-        )
-
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
         super().before_gradient_based_update(timesteps=timesteps)

@@ -469,7 +469,7 @@ class MARWIL(Algorithm):
                 else True
             )
             # Sampling from offline data.
-            sample = self.offline_data.sample(
+            batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 # Return an iterator, if a `Learner` should update
@@ -477,9 +477,9 @@ class MARWIL(Algorithm):
                 return_iterator=return_iterator,
             )
             if return_iterator:
-                training_data = TrainingData(data_iterators=sample)
+                training_data = TrainingData(data_iterators=batch_or_iterator)
             else:
-                training_data = TrainingData(batch=sample)
+                training_data = TrainingData(batch=batch_or_iterator)
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
