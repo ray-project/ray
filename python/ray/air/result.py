@@ -63,9 +63,9 @@ class Result:
     error: Optional[Exception]
     path: str
     metrics_dataframe: Optional["pd.DataFrame"] = None
-    best_checkpoints: Optional[List[Tuple["ray.tune.Checkpoint", Dict[str, Any]]]] = (
-        None
-    )
+    best_checkpoints: Optional[
+        List[Tuple["ray.tune.Checkpoint", Dict[str, Any]]]
+    ] = None
     _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
 
