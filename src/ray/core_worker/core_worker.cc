@@ -1353,6 +1353,9 @@ void CoreWorker::InternalHeartbeat() {
     }
   }
 
+  RAY_LOG(INFO) << "[myan] Obtained a list of tasks to retry" << tasks_to_resubmit.size()
+                << ", task to retry: " << tasks_to_resubmit[0].task_spec.DebugString();
+
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
@@ -1360,6 +1363,8 @@ void CoreWorker::InternalHeartbeat() {
         auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
         actor_handle->SetResubmittedActorTaskSpec(spec);
       }
+      RAY_LOG(INFO) << "[myan] Resubmitting task " << spec.TaskId() << " for actor "
+                    << spec.ActorId();
       RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
     } else if (spec.IsActorCreationTask()) {
       RAY_CHECK_OK(actor_task_submitter_->SubmitActorCreationTask(spec));
@@ -3821,7 +3826,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+  RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
