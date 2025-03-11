@@ -393,7 +393,7 @@ run a Ray Serve application with `uv run serve run app:main`.
 
 - If your `pyproject.toml` is in some subdirectory, you can use `uv run --project` to use it from there.
 
-- If you use uv run and want to reset the working directory to something that is not the current working directory, use the `--directory` flag. The Ray uv integration will make sure your `working_dir` will be set accordingly.
+- If you use uv run and want to reset the working directory to something that isn't the current working directory, use the `--directory` flag. The Ray uv integration makes sure your `working_dir` is set accordingly.
 
 **Advanced use cases:** Under the hood, the `uv run` support is implemented using a low level runtime environment
 plugin called `py_executable`. It allows you to specify the Python executable (including arguments) that Ray workers will
