@@ -138,16 +138,29 @@
     timeout: 3600
 
   variations:
-    - __suffix__: few_groups
+    - __suffix__: few_groups (sort_shuffle_pull_based)
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --aggregate
-          --group-by column08 column13 column14
-    - __suffix__: many_groups
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column08 column13 column14
+          --shuffle-strategy sort_shuffle_pull_based
+
+    - __suffix__: many_groups (sort_shuffle_pull_based)
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --aggregate
-          --group-by column02 column14
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column02 column14
+          --shuffle-strategy sort_shuffle_pull_based
+
+    - __suffix__: few_groups (hash_shuffle)
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column08 column13 column14
+          --shuffle-strategy hash_shuffle
+
+    - __suffix__: many_groups (hash_shuffle)
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column02 column14
+          --shuffle-strategy hash_shuffle
 
 - name: map_groups
 
@@ -158,16 +171,30 @@
     timeout: 3600
 
   variations:
-    - __suffix__: few_groups
+    - __suffix__: few_groups (sort_shuffle_pull_based)
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --map-groups
-          --group-by column08 column13 column14
-    - __suffix__: many_groups
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column08 column13 column14
+          --shuffle-strategy sort_shuffle_pull_based
+
+    - __suffix__: many_groups (sort_shuffle_pull_based)
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --map-groups
-          --group-by column02 column14
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
+          --shuffle-strategy sort_shuffle_pull_based
+
+    - __suffix__: few_groups (hash_shuffle)
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column08 column13 column14
+          --shuffle-strategy hash_shuffle
+
+    - __suffix__: many_groups (hash_shuffle)
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
+          --shuffle-strategy hash_shuffle
+
 
 #######################
 # Streaming split tests
