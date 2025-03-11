@@ -318,7 +318,7 @@ well as `our blog post <https://www.anyscale.com/blog/uv-ray-pain-free-python-de
 
 .. note::
 
-  Since this is a new feature, you currently need to set a feature flag:
+  Because this is a new feature, you currently need to set a feature flag:
 
   .. code-block:: shell
 
