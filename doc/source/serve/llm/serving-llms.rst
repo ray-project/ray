@@ -565,5 +565,5 @@ We collect data about the following features and attributes:
 - initial replicas count
 - GPU type used and number of GPUs used
 
-If you would like to opt-out from usage data collection, you can follow this doc to
-disable it :ref:`Ray usage stats <ref-usage-stats>`.
+If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
+to disable it .
