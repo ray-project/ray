@@ -22,7 +22,7 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.signature import extract_signature, get_signature
-from ray._private.utils import check_oversized_function
+from ray._private.utils import check_oversized_function, INT32_MAX
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 from ray.util.common import INT32_MAX
@@ -742,6 +742,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
     still be used to replace the one in cache.
     """
     diff = abs(id2 - id1)
+    # Int32 max is also the maximum number of simultaneous in-flight requests.
     if diff > (INT32_MAX // 2):
         # Rollover likely occurred. In this case the smaller ID is newer
         return id1 < id2
