@@ -123,10 +123,10 @@ class ServeFormatter(TextFormatter):
         self,
         component_name: str,
         component_id: str,
-        fmt=None,
-        datefmt=None,
-        style="%",
-        validate=True,
+        fmt: Optional[str] = None,
+        datefmt: Optional[str] = None,
+        style: str = "%",
+        validate: bool = True,
     ):
         super().__init__(fmt, datefmt, style, validate)
         self.component_log_fmt = self.COMPONENT_LOG_FMT.format(
