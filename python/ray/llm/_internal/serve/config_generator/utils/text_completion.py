@@ -62,7 +62,7 @@ def populate_text_completion_model_config(
 
     base_config["accelerator_type"] = input_model_config.gpu_type.value
 
-    base_config["deployment_config"] = _populate_llm_config(
+    base_config["deployment_config"] = _populate_deployment_config(
         base_config.setdefault("deployment_config", {}),
         llm_config,
     )
@@ -76,12 +76,12 @@ def populate_text_completion_model_config(
     return base_config
 
 
-def _populate_llm_config(
-    base_config: Dict[str, Any],
+def _populate_deployment_config(
+    deployment_config: Dict[str, Any],
     llm_config: LLMConfig,
 ) -> Dict[str, Any]:
-    base_config.update(llm_config.deployment_config)
-    return base_config
+    deployment_config.update(llm_config.deployment_config)
+    return deployment_config
 
 
 def _populate_model_loading_config(

@@ -370,6 +370,7 @@ if setup_spec.type == SetupType.RAY:
                 "jsonschema",
                 # async-timeout is a backport of asyncio.timeout for python < 3.11
                 "async-timeout; python_version < '3.11'",
+                "typer",
             ]
             + setup_spec.extras["data"]
             + setup_spec.extras["serve"]
