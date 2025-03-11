@@ -61,7 +61,7 @@ In Ray Train V2, reporting only metrics from all workers is a no-op. However, it
     :end-before: __report_callback_end__
 
 
-To use Ray Tune :class:`Callback <ray.tune.Callback>` that depend on free-floating metrics reported by workers, :ref:`run Ray Train as a single Ray Tune trial. <train-with-tune-callbacks>`
+To use Ray Tune :class:`Callbacks <ray.tune.Callback>` that depend on free-floating metrics reported by workers, :ref:`run Ray Train as a single Ray Tune trial. <train-with-tune-callbacks>`
 
 See the following resources for more information:
 
