@@ -50,7 +50,7 @@ class ClientConnectionTest : public ::testing::Test {
 #else
     local_stream_socket in(io_service_);
     local_stream_socket out(io_service_);
-    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
+    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
                                                                        endpoint);
     out.connect(endpoint);
@@ -316,6 +316,57 @@ TEST_F(ClientConnectionTest, ProcessBadMessage) {
   ASSERT_EQ(server_num_messages, 0);
 }
 
+#if !defined(_WIN32)
+TEST_F(ClientConnectionTest, CheckForClientDisconnects) {
+  auto [client0, server0] = CreateConnectionPair(std::nullopt, std::nullopt);
+  auto [client1, server1] = CreateConnectionPair(std::nullopt, std::nullopt);
+  auto [client2, server2] = CreateConnectionPair(std::nullopt, std::nullopt);
+
+  // No disconnects.
+  {
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
+    ASSERT_EQ(disconnects.size(), 3);
+    ASSERT_FALSE(disconnects[0]);
+    ASSERT_FALSE(disconnects[1]);
+    ASSERT_FALSE(disconnects[2]);
+  }
+
+  // Close one client connection, check it is marked disconnected but not others.
+  shutdown(client1->GetNativeHandle(), SHUT_RDWR);
+  {
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
+    ASSERT_EQ(disconnects.size(), 3);
+    ASSERT_FALSE(disconnects[0]);
+    ASSERT_TRUE(disconnects[1]);
+    ASSERT_FALSE(disconnects[2]);
+  }
+
+  // Check that multiple calls return the same output.
+  for (int i = 0; i < 10; i++) {
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
+    ASSERT_EQ(disconnects.size(), 3);
+    ASSERT_FALSE(disconnects[0]);
+    ASSERT_TRUE(disconnects[1]);
+    ASSERT_FALSE(disconnects[2]);
+  }
+
+  // Close the other client connections, check they are all marked disconnected.
+  shutdown(client0->GetNativeHandle(), SHUT_RDWR);
+  shutdown(client2->GetNativeHandle(), SHUT_RDWR);
+  {
+    std::vector<bool> disconnects =
+        CheckForClientDisconnects({server0, server1, server2});
+    ASSERT_EQ(disconnects.size(), 3);
+    ASSERT_TRUE(disconnects[0]);
+    ASSERT_TRUE(disconnects[1]);
+    ASSERT_TRUE(disconnects[2]);
+  }
+}
+#endif
+
 class ServerConnectionTest : public ::testing::Test {
  public:
   ServerConnectionTest() : io_service_() {}
@@ -328,7 +379,7 @@ class ServerConnectionTest : public ::testing::Test {
 #else
     local_stream_socket in(io_service_);
     local_stream_socket out(io_service_);
-    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1", /*default_port=*/0);
+    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
                                                                        endpoint);
     out.connect(endpoint);

@@ -31,8 +31,9 @@ def test_trainer_restore():
             pass
 
 
-def test_trainer_valid_configs(tmp_path):
-    with warnings.catch_warnings():
+def test_trainer_valid_configs(ray_start_4_cpus, tmp_path):
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
         DataParallelTrainer(
             lambda _: None,
             scaling_config=ray.train.ScalingConfig(num_workers=1),
@@ -40,6 +41,13 @@ def test_trainer_valid_configs(tmp_path):
                 storage_path=tmp_path,
                 failure_config=ray.train.FailureConfig(max_failures=1),
             ),
+        ).fit()
+
+    for warning in w:
+        assert not (
+            warning.category == RayDeprecationWarning
+            and "`RunConfig` class should be imported from `ray.tune`"
+            in str(warning.message)
         )
 
 
