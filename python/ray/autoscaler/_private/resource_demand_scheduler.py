@@ -902,7 +902,7 @@ def get_bin_pack_residual(
     # A most naive bin packing algorithm.
     nodes = copy.deepcopy(node_resources)
     # List of nodes that cannot be used again due to strict spread.
-    used = []
+    used = set()
     # We order the resource demands in the following way:
     # More complex demands first.
     # Break ties: heavier demands first.
@@ -919,20 +919,21 @@ def get_bin_pack_residual(
         found = False
         node = None
         for i in range(len(nodes)):
+            if i in used:
+                continue
             node = nodes[i]
             if _fits(node, demand):
                 found = True
                 # In the strict_spread case, we can't reuse nodes.
                 if strict_spread:
-                    used.append(node)
-                    del nodes[i]
+                    used.add(i)
                 break
         if found and node:
             _inplace_subtract(node, demand)
         else:
             unfulfilled.append(demand)
 
-    return unfulfilled, nodes + used
+    return unfulfilled, nodes
 
 
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
