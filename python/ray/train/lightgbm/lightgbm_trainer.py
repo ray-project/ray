@@ -6,7 +6,7 @@ import lightgbm
 
 import ray
 from ray.train import Checkpoint
-from ray.train.constants import _DEPRECATED_VALUE, TRAIN_DATASET_KEY
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.lightgbm import RayTrainReportCallback, LightGBMConfig
 from ray.train.lightgbm.v2 import LightGBMTrainer as SimpleLightGBMTrainer
 from ray.train.trainer import GenDataset
@@ -101,7 +101,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 # (Optional) Add logic to resume training state from a checkpoint.
                 # ray.train.get_checkpoint()
                 
-                # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
+                # 1. Get the dataset shard for the worker and convert to a `lightgbm.Dataset`
                 train_ds_iter, eval_ds_iter = (
                     ray.train.get_dataset_shard("train"),
                     ray.train.get_dataset_shard("validation"),
@@ -110,8 +110,9 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
                 train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
                 eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
-                dtrain = xgboost.DMatrix(train_X, label=train_y)
-                deval = xgboost.DMatrix(eval_X, label=eval_y)
+                dtrain = lightgbm.Dataset(train_X, label=train_y)
+                deval = lightgbm.Dataset(eval_X, label=eval_y)
+                
                 params = {
                     "tree_method": "approx",
                     "objective": "reg:squarederror",
@@ -119,13 +120,15 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                     "subsample": 0.5,
                     "max_depth": 2,
                 }
+                
                 # 2. Do distributed data-parallel training.
                 # Ray Train sets up the necessary coordinator processes and
                 # environment variables for your workers to communicate with each other.
-                bst = xgboost.train(
+                bst = lightgbm.train(
                     params,
-                    dtrain=dtrain,
-                    evals=[(deval, "validation")],
+                    train_set=dtrain,
+                    valid_sets=[deval],
+                    valid_names=["validation"],
                     num_boost_round=10,
                     callbacks=[RayTrainReportCallback()],
                 )
@@ -146,20 +149,44 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
             ...
 
     Args:
-        train_loop_per_worker: A function to execute on each worker for training.
-            If None, will use the legacy API parameters.
-        train_loop_config: Configuration to pass to train_loop_per_worker.
-        lightgbm_config: LightGBM-specific configuration.
-        scaling_config: Configuration for how to scale data parallel training.
-        run_config: Configuration for the execution of the training run.
+        train_loop_per_worker: The training function to execute on each worker.
+            This function can either take in zero arguments or a single ``Dict``
+            argument which is set by defining ``train_loop_config``.
+            Within this function you can use any of the
+            :ref:`Ray Train Loop utilities <train-loop-api>`.
+        train_loop_config: A configuration ``Dict`` to pass in as an argument to
+            ``train_loop_per_worker``.
+            This is typically used for specifying hyperparameters.
+        lightgbm_config: The configuration for setting up the distributed lightgbm
+            backend. Defaults to using the "rabit" backend.
+            See :class:`~ray.train.lightgbm.LightGBMConfig` for more info.
         datasets: The Ray Datasets to use for training and validation.
-        dataset_config: Configuration for dataset ingest.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
+        scaling_config: The configuration for how to scale data parallel training.
+            ``num_workers`` determines how many Python processes are used for training,
+            and ``use_gpu`` determines whether or not each process should use GPUs.
+            See :class:`~ray.train.ScalingConfig` for more info.
+        run_config: The configuration for the execution of the training run.
+            See :class:`~ray.train.RunConfig` for more info.
         resume_from_checkpoint: A checkpoint to resume training from.
-        metadata: Metadata to be saved in checkpoints.
-        label_column: (Legacy) Name of the label column.
-        params: (Legacy) LightGBM training parameters.
-        num_boost_round: (Legacy) Number of boosting rounds.
-        **train_kwargs: (Legacy) Additional kwargs passed to lightgbm.train().
+            This checkpoint can be accessed from within ``train_loop_per_worker``
+            by calling ``ray.train.get_checkpoint()``.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
+        label_column: [Deprecated] Name of the label column. A column with this name
+            must be present in the training dataset.
+        params: [Deprecated] LightGBM training parameters.
+            Refer to `LightGBM documentation <https://lightgbm.readthedocs.io/>`_
+            for a list of possible parameters.
+        num_boost_round: [Deprecated] Target number of boosting iterations (trees in the model).
+            Note that unlike in ``lightgbm.train``, this is the target number
+            of trees, meaning that if you set ``num_boost_round=10`` and pass a model
+            that has already been trained for 5 iterations, it will be trained for 5
+            iterations more, instead of 10 more.
+        **train_kwargs: [Deprecated] Additional kwargs passed to ``lightgbm.train()`` function.
     """
 
     _handles_checkpoint_freq = True
@@ -185,56 +212,22 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         num_boost_round: Optional[int] = None,
         **train_kwargs,
     ):
-        """Initialize a LightGBM trainer.
-        
-        This trainer supports both the legacy API and new v2 API:
-        """
-        if (train_loop_per_worker is not None or train_loop_config is not None) and (
-            label_column is not None or params is not None or num_boost_round is not None
-        ):
-            raise ValueError(
-                "Cannot mix v2 API parameters (train_loop_per_worker, train_loop_config) "
-                "with legacy API parameters (label_column, params, num_boost_round)"
-            )
-
-        if label_column is not None or params is not None or num_boost_round is not None:
-            import warnings
-            warnings.warn(
-                LEGACY_LightGBM_TRAINER_DEPRECATION_MESSAGE,
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
-            # Initialize legacy callback handling
-            callbacks = train_kwargs.get("callbacks", [])
-            user_supplied_callback = any(
-                isinstance(callback, RayTrainReportCallback) for callback in callbacks
-            )
-            callback_kwargs = {}
-            if run_config:
-                checkpoint_frequency = run_config.checkpoint_config.checkpoint_frequency
-                checkpoint_at_end = run_config.checkpoint_config.checkpoint_at_end
-                callback_kwargs["frequency"] = checkpoint_frequency
-                callback_kwargs["checkpoint_at_end"] = (
-                    checkpoint_at_end if checkpoint_at_end is not None else True
-                )
-
-            if not user_supplied_callback:
-                callbacks.append(RayTrainReportCallback(**callback_kwargs))
-            train_kwargs["callbacks"] = callbacks
-
-            train_loop_per_worker = partial(
-                _lightgbm_train_fn_per_worker,
-                label_column=label_column,
-                num_boost_round=num_boost_round or 10,
-                dataset_keys=set(datasets or {}),
+        # TODO: [Deprecated] Legacy LightGBMTrainer API
+        legacy_api = train_loop_per_worker is None
+        if legacy_api:
+            train_loop_per_worker = self._get_legacy_train_fn_per_worker(
                 lightgbm_train_kwargs=train_kwargs,
+                run_config=run_config,
+                label_column=label_column,
+                num_boost_round=num_boost_round,
+                datasets=datasets,
             )
-            train_loop_config = params
+            train_loop_config = params or {}
 
-        super().__init__(
+        super(LightGBMTrainer, self).__init__(
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
+            lightgbm_config=lightgbm_config,
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
@@ -243,6 +236,66 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
             metadata=metadata,
         )
 
+    def _get_legacy_train_fn_per_worker(
+        self,
+        lightgbm_train_kwargs: Dict,
+        run_config: Optional[ray.train.RunConfig],
+        datasets: Optional[Dict[str, GenDataset]],
+        label_column: Optional[str],
+        num_boost_round: Optional[int],
+    ) -> Callable[[Dict], None]:
+        """Get the training function for the legacy LightGBMTrainer API."""
+
+        datasets = datasets or {}
+        if not datasets.get(TRAIN_DATASET_KEY):
+            raise ValueError(
+                "`datasets` must be provided for the LightGBMTrainer API "
+                "if `train_loop_per_worker` is not provided. "
+                "This dict must contain the training dataset under the "
+                f"key: '{TRAIN_DATASET_KEY}'. "
+                f"Got keys: {list(datasets.keys())}"
+            )
+        if not label_column:
+            raise ValueError(
+                "`label_column` must be provided for the LightGBMTrainer API "
+                "if `train_loop_per_worker` is not provided. "
+                "This is the column name of the label in the dataset."
+            )
+
+        num_boost_round = num_boost_round or 10
+
+        # TODO: [Deprecated] Legacy LightGBMTrainer API
+        # _log_deprecation_warning(LEGACY_LightGBM_TRAINER_DEPRECATION_MESSAGE)
+
+        # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
+        callbacks = lightgbm_train_kwargs.get("callbacks", [])
+        user_supplied_callback = any(
+            isinstance(callback, RayTrainReportCallback) for callback in callbacks
+        )
+        callback_kwargs = {}
+        if run_config:
+            checkpoint_frequency = run_config.checkpoint_config.checkpoint_frequency
+            checkpoint_at_end = run_config.checkpoint_config.checkpoint_at_end
+
+            callback_kwargs["frequency"] = checkpoint_frequency
+            # Default `checkpoint_at_end=True` unless the user explicitly sets it.
+            callback_kwargs["checkpoint_at_end"] = (
+                checkpoint_at_end if checkpoint_at_end is not None else True
+            )
+
+        if not user_supplied_callback:
+            callbacks.append(RayTrainReportCallback(**callback_kwargs))
+        lightgbm_train_kwargs["callbacks"] = callbacks
+
+        train_fn_per_worker = partial(
+            _lightgbm_train_fn_per_worker,
+            label_column=label_column,
+            num_boost_round=num_boost_round,
+            dataset_keys=set(datasets),
+            lightgbm_train_kwargs=lightgbm_train_kwargs,
+        )
+        return train_fn_per_worker
+
     @classmethod
     def get_model(
         cls,
@@ -250,12 +303,3 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
     ) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
         return RayTrainReportCallback.get_model(checkpoint)
-
-    def _validate_attributes(self):
-        super()._validate_attributes()
-
-        if TRAIN_DATASET_KEY not in self.datasets:
-            raise KeyError(
-                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
-            )
