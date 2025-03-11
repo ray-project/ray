@@ -120,12 +120,7 @@ def download_lora_adapter(
     if remote_path is None:
         return lora_name
 
-    # Note that we set remove_on_close to False to keep the LoRA adapter
-    # in the local directory even after the S3Model object is deleted,
-    # because the LoRA adapter will be loaded by vLLM when the request is
-    # actually being processed.
     lora_path = os.path.join(remote_path, lora_name)
-
     mirror_config = CloudMirrorConfig(bucket_uri=lora_path)
     downloader = CloudModelDownloader(lora_name, mirror_config)
     return downloader.get_model(tokenizer_only=False)

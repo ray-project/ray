@@ -3,8 +3,6 @@ import asyncio
 import dataclasses
 import logging
 import math
-import os
-import shutil
 import time
 import uuid
 from enum import Enum
@@ -573,11 +571,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if hasattr(self, "llm"):
             # Kill the engine processes.
             self.llm.shutdown()
-
-            # Remove the LoRA adapters from the local directory.
-            for lora_request in self.llm.lora_name_to_request.values():
-                if os.path.exists(lora_request.lora_path):
-                    shutil.rmtree(lora_request.lora_path)
 
 
 def _ray_scheduling_strategy_fn(num_gpus_per_instance: int, accelerator_type: str):
