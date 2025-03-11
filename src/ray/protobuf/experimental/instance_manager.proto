@@ -203,7 +203,7 @@ message TerminationRequest {
   // Details of the termination.
   string details = 9;
   // The last instance status of the instance that's terminated.
-  optional string instance_status = 10;
+  optional Instance.InstanceStatus instance_status = 10;
 }
 
 message UpdateInstanceManagerStateRequest {
