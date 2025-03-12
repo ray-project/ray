@@ -14,6 +14,10 @@
 
 #include <boost/endian/conversion.hpp>
 #include <fstream>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
@@ -120,9 +124,9 @@ std::string ContructObjectString(uint64_t object_offset,
   uint64_t data_size = boost::endian::native_to_little(data.size());
   uint64_t metadata_size = boost::endian::native_to_little(metadata.size());
 
-  result.append((char *)(&address_size), 8);
-  result.append((char *)(&metadata_size), 8);
-  result.append((char *)(&data_size), 8);
+  result.append(reinterpret_cast<char *>(&address_size), 8);
+  result.append(reinterpret_cast<char *>(&metadata_size), 8);
+  result.append(reinterpret_cast<char *>(&data_size), 8);
   result.append(address_str);
   result.append(metadata);
   result.append(data);
@@ -232,10 +236,10 @@ MemoryObjectReader CreateMemoryObjectReader(std::string &data,
                                             std::string &metadata,
                                             rpc::Address owner_address) {
   plasma::ObjectBuffer object_buffer;
-  object_buffer.data =
-      std::make_shared<SharedMemoryBuffer>((uint8_t *)data.c_str(), data.size());
-  object_buffer.metadata =
-      std::make_shared<SharedMemoryBuffer>((uint8_t *)metadata.c_str(), metadata.size());
+  object_buffer.data = std::make_shared<SharedMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(const_cast<char *>(data.c_str())), data.size());
+  object_buffer.metadata = std::make_shared<SharedMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(const_cast<char *>(metadata.c_str())), metadata.size());
   object_buffer.device_num = 0;
   return MemoryObjectReader(std::move(object_buffer), owner_address);
 }

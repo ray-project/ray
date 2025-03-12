@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Mapping, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.air.config import FailureConfig as FailureConfigV1
 from ray.air.config import RunConfig as RunConfigV1
@@ -12,11 +12,7 @@ from ray.train.v2._internal.migration_utils import (
 from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
-    from ray.train import SyncConfig, UserCallback
-    from ray.tune.experimental.output import AirVerbosity
-    from ray.tune.progress_reporter import ProgressReporter
-    from ray.tune.stopper import Stopper
-    from ray.tune.utils.log import Verbosity
+    from ray.train import UserCallback
 
 
 @dataclass
@@ -119,13 +115,11 @@ class RunConfig(RunConfigV1):
     """
 
     callbacks: Optional[List["UserCallback"]] = None
-    sync_config: Union[Optional["SyncConfig"], str] = _DEPRECATED
-    verbose: Union[Optional[Union[int, "AirVerbosity", "Verbosity"]], str] = _DEPRECATED
-    stop: Union[
-        Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]], str
-    ] = _DEPRECATED
-    progress_reporter: Union[Optional["ProgressReporter"], str] = _DEPRECATED
-    log_to_file: Union[bool, str, Tuple[str, str]] = _DEPRECATED
+    sync_config: str = _DEPRECATED
+    verbose: str = _DEPRECATED
+    stop: str = _DEPRECATED
+    progress_reporter: str = _DEPRECATED
+    log_to_file: str = _DEPRECATED
 
     def __post_init__(self):
         super().__post_init__()

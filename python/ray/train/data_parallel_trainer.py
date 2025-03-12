@@ -277,14 +277,14 @@ class DataParallelTrainer(BaseTrainer):
     @classmethod
     @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING)
     def restore(
-        cls: Type["DataParallelTrainer"],
+        cls,
         path: str,
         train_loop_per_worker: Optional[
             Union[Callable[[], None], Callable[[Dict], None]]
         ] = None,
         train_loop_config: Optional[Dict] = None,
         **kwargs,
-    ) -> "DataParallelTrainer":
+    ):
         """Restores a DataParallelTrainer from a previously interrupted/failed run.
 
         Args:
@@ -301,9 +301,7 @@ class DataParallelTrainer(BaseTrainer):
         See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
         for descriptions of the other arguments.
 
-        Returns:
-            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
-            subclass that is calling this method.
+        Returns a restored instance of the `DataParallelTrainer`.
         """
         return super(DataParallelTrainer, cls).restore(
             path=path,

@@ -11,8 +11,8 @@ from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.constants import is_v2_enabled
-from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.result import Result
 
 assert is_v2_enabled()
@@ -65,10 +65,9 @@ def test_result_output(tmp_path):
     assert isinstance(result.filesystem, pyarrow.fs.FileSystem)
 
 
-def test_no_report():
-    trainer = DataParallelTrainer(
-        lambda: "not used", scaling_config=ScalingConfig(num_workers=2)
-    )
+def test_no_optional_arguments():
+    """Check that the DataParallelTrainer can be instantiated without optional arguments."""
+    trainer = DataParallelTrainer(lambda: "not used")
     trainer.fit()
 
 
@@ -152,7 +151,6 @@ def test_error(tmp_path):
     )
     with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
-
         assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 

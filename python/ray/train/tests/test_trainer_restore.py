@@ -1,4 +1,3 @@
-import warnings
 from functools import partial
 from pathlib import Path
 from typing import Dict, List
@@ -14,7 +13,6 @@ from ray.train.base_trainer import BaseTrainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-from ray.train.torch import TorchTrainer
 from ray.train.trainer import TrainingFailedError
 from ray.train.xgboost import XGBoostTrainer
 from ray.tune import Callback
@@ -235,43 +233,6 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
         )
 
     trainer = DataParallelTrainer.restore(str(tmpdir), datasets=datasets)
-
-
-def test_restore_with_different_trainer(tmpdir):
-    """Tests that an error is raised if trying to restore a XTrainer with
-    `YTrainer.restore`"""
-    trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: train.report({"score": 1}),
-        scaling_config=ScalingConfig(num_workers=1),
-        run_config=RunConfig(name="restore_with_diff_trainer"),
-    )
-    trainer._save(pyarrow.fs.LocalFileSystem(), str(tmpdir))
-
-    def attempt_restore(trainer_cls, should_warn: bool, should_raise: bool):
-        def check_for_raise():
-            if should_raise:
-                with pytest.raises(ValueError):
-                    trainer_cls.restore(str(tmpdir))
-            else:
-                trainer_cls.restore(str(tmpdir))
-
-        if should_warn:
-            with pytest.warns(Warning) as warn_record:
-                check_for_raise()
-                assert any(
-                    "Invalid trainer type" in str(record.message)
-                    for record in warn_record
-                )
-        else:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error")
-                check_for_raise()
-
-    attempt_restore(BaseTrainer, should_warn=True, should_raise=True)
-    attempt_restore(XGBoostTrainer, should_warn=True, should_raise=True)
-    # This won't raise because the DataParallelTrainer args can technically
-    # be fed into a TorchTrainer.
-    attempt_restore(TorchTrainer, should_warn=True, should_raise=False)
 
 
 def test_restore_from_invalid_dir(tmpdir):

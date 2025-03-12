@@ -1046,6 +1046,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
     )
 
 
+@pytest.mark.parametrize("enable_concurrency_group", [True, False])
 @pytest.mark.parametrize(
     "exit_condition",
     [
@@ -1055,13 +1056,17 @@ def test_actor_creation_latency(ray_start_regular_shared):
         "ray.kill",
     ],
 )
-def test_atexit_handler(ray_start_regular_shared, exit_condition):
-    @ray.remote
+def test_atexit_handler(
+    ray_start_regular_shared, exit_condition, enable_concurrency_group
+):
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
     class A:
         def __init__(self, tmpfile, data):
             import atexit
 
-            def f(*args, **kwargs):
+            def f():
                 with open(tmpfile, "w") as f:
                     f.write(data)
                     f.flush()

@@ -10,6 +10,7 @@ from typing import (
     TypeVar,
     NamedTuple,
 )
+from pydantic import Field, field_validator
 import os
 import time
 import inspect
@@ -19,11 +20,88 @@ import asyncio
 import pyarrow.fs as pa_fs
 
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 
 T = TypeVar("T")
 
 logger = get_logger(__name__)
+
+
+class ExtraFiles(BaseModelExtended):
+    bucket_uri: str
+    destination_path: str
+
+
+class CloudMirrorConfig(BaseModelExtended):
+    """Unified mirror config for cloud storage (S3 or GCS).
+
+    Args:
+        bucket_uri: URI of the bucket (s3:// or gs://)
+        extra_files: Additional files to download
+    """
+
+    bucket_uri: Optional[str] = None
+    extra_files: List[ExtraFiles] = Field(default_factory=list)
+
+    @field_validator("bucket_uri")
+    @classmethod
+    def check_uri_format(cls, value):
+        if value is None:
+            return value
+
+        if not value.startswith("s3://") and not value.startswith("gs://"):
+            raise ValueError(
+                f'Got invalid value "{value}" for bucket_uri. '
+                'Expected a URI that starts with "s3://" or "gs://".'
+            )
+        return value
+
+    @property
+    def storage_type(self) -> str:
+        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
+        if self.bucket_uri is None:
+            return None
+        elif self.bucket_uri.startswith("s3://"):
+            return "s3"
+        elif self.bucket_uri.startswith("gs://"):
+            return "gcs"
+        return None
+
+
+class LoraMirrorConfig(BaseModelExtended):
+    lora_model_id: str
+    bucket_uri: str
+    max_total_tokens: Optional[int]
+    sync_args: Optional[List[str]] = None
+
+    @field_validator("bucket_uri")
+    @classmethod
+    def check_uri_format(cls, value):
+        if value is None:
+            return value
+
+        if not value.startswith("s3://") and not value.startswith("gs://"):
+            raise ValueError(
+                f'Got invalid value "{value}" for bucket_uri. '
+                'Expected a URI that starts with "s3://" or "gs://".'
+            )
+        return value
+
+    @property
+    def _bucket_name_and_path(self) -> str:
+        for prefix in ["s3://", "gs://"]:
+            if self.bucket_uri.startswith(prefix):
+                return self.bucket_uri[len(prefix) :]
+        return self.bucket_uri
+
+    @property
+    def bucket_name(self) -> str:
+        return self._bucket_name_and_path.split("/")[0]
+
+    @property
+    def bucket_path(self) -> str:
+        return "/".join(self._bucket_name_and_path.split("/")[1:])
 
 
 class CloudFileSystem:

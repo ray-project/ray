@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 import ray
-import ray._private.ray_constants as ray_constants
+from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray import train
 from ray.air._internal.util import StartTraceback
 
@@ -493,7 +493,7 @@ def test_neuron_core_accelerator_ids(ray_2_node_2_neuron_cores, worker_results):
     config = TestConfig()
 
     def get_resources():
-        neuron_resource_ids = os.environ[ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR]
+        neuron_resource_ids = os.environ[NEURON_RT_VISIBLE_CORES_ENV_VAR]
         # Sort the runtime ids to have exact match with expected result.
         sorted_devices = [
             int(device) for device in sorted(neuron_resource_ids.split(","))
@@ -530,7 +530,7 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
     config = TestConfig()
 
     def get_resources():
-        neuron_resource_ids = os.environ[ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR]
+        neuron_resource_ids = os.environ[NEURON_RT_VISIBLE_CORES_ENV_VAR]
         # Sort the runtime ids to have exact match with expected result.
         sorted_devices = [
             int(device) for device in sorted(neuron_resource_ids.split(","))

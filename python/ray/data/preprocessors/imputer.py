@@ -2,6 +2,7 @@ from collections import Counter
 from numbers import Number
 from typing import Dict, List, Optional, Union
 
+import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
@@ -153,8 +154,18 @@ class SimpleImputer(Preprocessor):
             else:
                 if is_categorical_dtype(df.dtypes[column]):
                     df[output_column] = df[column].cat.add_categories([value])
-                if output_column != column:
+
+                if (
+                    output_column != column
+                    # If the backing array is memory-mapped from shared memory, then the
+                    # array won't be writeable.
+                    or (
+                        isinstance(df[output_column].values, np.ndarray)
+                        and not df[output_column].values.flags.writeable
+                    )
+                ):
                     df[output_column] = df[column].copy(deep=True)
+
                 df[output_column].fillna(value, inplace=True)
 
         return df

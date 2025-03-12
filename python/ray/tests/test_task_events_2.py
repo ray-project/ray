@@ -1113,6 +1113,10 @@ def test_task_events_gc_default_policy(shutdown_only):
     wait_for_condition(verify_tasks, expected_tasks_cnt={"error_task": 5})
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="setproctitle has different definitions of `title` on different OSes",
+)
 class TestIsActorTaskRunning:
     def test_main_thread_short_comm(self, ray_start_regular):
         """

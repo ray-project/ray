@@ -1575,7 +1575,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":pull_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1588,7 +1588,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":object_buffer_pool",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1601,7 +1601,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":ownership_based_object_directory",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],

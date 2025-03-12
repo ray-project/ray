@@ -5,6 +5,7 @@ import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.util.types import Device
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -22,6 +23,7 @@ class TorchTensorType(ChannelOutputType):
     def __init__(
         self,
         transport: Optional[Union[str, Communicator]] = AUTO,
+        device: Device = Device.DEFAULT,
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
@@ -40,6 +42,10 @@ class TorchTensorType(ChannelOutputType):
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
+            device: Target device for tensor transport. Options:
+                - "default": Retains the same device type as the sender.
+                - "cpu": Moves tensor to CPU on the receiver. Not compatible with NCCL transport.
+                - "gpu" or "cuda": Moves tensor to GPU on the receiver.
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
@@ -62,6 +68,7 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
+        self._device = device
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
@@ -75,6 +82,8 @@ class TorchTensorType(ChannelOutputType):
                 "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, "
                 "or TorchTensorType.CPU"
             )
+        if device == Device.CPU and transport == self.NCCL:
+            raise ValueError("NCCL transport is not supported with CPU target device.")
         self.transport = transport
 
         self._communicator_id: Optional[str] = None
@@ -89,6 +98,10 @@ class TorchTensorType(ChannelOutputType):
                 "TorchTensorType(_direct_return=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
+
+    @property
+    def device(self) -> Device:
+        return self._device
 
     @property
     def static_shape(self):
@@ -109,7 +122,7 @@ class TorchTensorType(ChannelOutputType):
 
         def deserialize(b):
             ctx = ChannelContext.get_current()
-            return ctx.serialization_context.deserialize_tensor(b)
+            return ctx.serialization_context.deserialize_tensor(b, self.device)
 
         ray.util.serialization.register_serializer(
             torch.Tensor,

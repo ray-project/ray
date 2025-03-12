@@ -1,9 +1,9 @@
+import math
 import time
 from collections import defaultdict
 from dataclasses import Field, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-import math
 
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -374,6 +374,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
+        self._cum_rss_bytes: Optional[int] = None
+
     @property
     def extra_metrics(self) -> Dict[str, Any]:
         """Return a dict of extra metrics."""
@@ -521,6 +523,19 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         else:
             return self.bytes_outputs_of_finished_tasks / self.num_tasks_finished
 
+    @metric_property(
+        description="Average RSS usage of tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        map_only=True,
+    )
+    def average_memory_usage_per_task(self) -> Optional[float]:
+        """Average RSS usage of tasks."""
+        if self._cum_rss_bytes is None:
+            return None
+        else:
+            assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
+            return self._cum_rss_bytes / self.num_task_outputs_generated
+
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
@@ -599,11 +614,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.bytes_outputs += output_bytes
 
         for block_ref, meta in output.blocks:
-            assert meta.exec_stats and meta.exec_stats.wall_time_s
+            assert (
+                meta.exec_stats is not None and meta.exec_stats.wall_time_s is not None
+            )
             self.block_generation_time += meta.exec_stats.wall_time_s
             assert meta.num_rows is not None
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
+            if meta.exec_stats.rss_bytes is not None:
+                if self._cum_rss_bytes is None:
+                    self._cum_rss_bytes = meta.exec_stats.rss_bytes
+                else:
+                    self._cum_rss_bytes += meta.exec_stats.rss_bytes
+            else:
+                assert not self._is_map, "Map operators should collect RSS metrics"
 
         # Update per node metrics
         if self._per_node_metrics_enabled:

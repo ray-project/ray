@@ -18,6 +18,12 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind/bind.hpp>
 #include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -180,7 +186,7 @@ class PullManager {
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
-    ObjectPullRequest(double first_retry_time)
+    explicit ObjectPullRequest(double first_retry_time)
         : client_locations(),
           spilled_url(),
           next_pull_time(first_retry_time),

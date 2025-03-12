@@ -84,3 +84,7 @@ RAYLLM_ROUTER_TARGET_ONGOING_REQUESTS = int(
         DEFAULT_TARGET_ONGOING_REQUESTS,  # 16
     )
 )
+
+
+# HOME DIR
+RAYLLM_HOME_DIR = os.environ.get("RAYLLM_HOME_DIR", os.path.expanduser("~/.ray/llm"))

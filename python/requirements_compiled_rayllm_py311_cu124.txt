@@ -2908,6 +2908,7 @@ typer==0.12.3 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu124.txt
     #   -r python/requirements.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 typing-extensions==4.12.2 \
     --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d \
     --hash=sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8

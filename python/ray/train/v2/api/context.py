@@ -9,14 +9,14 @@ from typing import Any, Dict
 class TrainContext:
     @Deprecated
     def get_metadata(self) -> Dict[str, Any]:
-        """User metadata dict passed to the Trainer constructor."""
+        """[Deprecated] User metadata dict passed to the Trainer constructor."""
         from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 
         raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
     @Deprecated
     def get_trial_name(self) -> str:
-        """Trial name for the corresponding trial."""
+        """[Deprecated] Trial name for the corresponding trial."""
         from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
 
         raise DeprecationWarning(
@@ -25,7 +25,7 @@ class TrainContext:
 
     @Deprecated
     def get_trial_id(self) -> str:
-        """Trial id for the corresponding trial."""
+        """[Deprecated] Trial id for the corresponding trial."""
         from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
 
         raise DeprecationWarning(
@@ -34,7 +34,7 @@ class TrainContext:
 
     @Deprecated
     def get_trial_resources(self):
-        """Trial resources for the corresponding trial."""
+        """[Deprecated] Trial resources for the corresponding trial."""
         from ray.train.context import _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE
 
         raise DeprecationWarning(
@@ -43,7 +43,7 @@ class TrainContext:
 
     @Deprecated
     def get_trial_dir(self) -> str:
-        """Log directory corresponding to the trial directory for a Tune session.
+        """[Deprecated] Log directory corresponding to the trial directory for a Tune session.
         This is deprecated for Ray Train and should no longer be called in Ray Train workers.
 
         If this directory is needed, please pass it into the `train_loop_config` directly.

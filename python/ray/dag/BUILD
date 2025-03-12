@@ -149,3 +149,21 @@ py_test(
     ],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_torch_tensor_transport_gpu",
+    size = "enormous",
+    srcs = [
+        "tests/experimental/test_torch_tensor_transport.py",
+    ],
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "tests/experimental/test_torch_tensor_transport.py",
+    tags = [
+        "accelerated_dag",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "team:core",
+    ],
+    deps = ["//:ray_lib"],
+)

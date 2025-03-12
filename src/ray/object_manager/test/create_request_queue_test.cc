@@ -14,6 +14,9 @@
 
 #include "ray/object_manager/plasma/create_request_queue.h"
 
+#include <memory>
+#include <unordered_set>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/status.h"

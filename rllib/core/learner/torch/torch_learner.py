@@ -148,7 +148,7 @@ class TorchLearner(Learner):
         #  Diagnosis thus far:
         #  - All peek values during metrics.reduce are non-tensors.
         #  - However, in impala.py::training_step(), a tensor does arrive after learner
-        #    group.update_from_episodes(), so somehow, there is still a race condition
+        #    group.update(), so somehow, there is still a race condition
         #    possible (learner, which performs the reduce() and learner thread, which
         #    performs the logging of tensors into metrics logger).
         self._compute_off_policyness(batch)

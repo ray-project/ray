@@ -12,9 +12,9 @@ from ray.llm._internal.serve.configs.server_models import (
     LLMConfig,
     LLMEngine,
     LoraConfig,
-    LoraMirrorConfig,
     ModelLoadingConfig,
 )
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 
 
 class TestLoRAModelLoader:

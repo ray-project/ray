@@ -4,18 +4,38 @@ import pytest
 
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
+from ray._private.test_utils import check_library_usage_telemetry, TelemetryCallsite
+
+from ray import data
 
 
-def _is_data_used() -> bool:
-    return "dataset" in ray_usage_lib.get_library_usages_to_report(
-        ray.experimental.internal_kv.internal_kv_get_gcs_client()
+@pytest.fixture
+def reset_usage_lib():
+    yield
+    ray.shutdown()
+    ray_usage_lib.reset_global_state()
+
+
+@pytest.mark.parametrize("callsite", list(TelemetryCallsite))
+def test_not_used_on_import(reset_usage_lib, callsite: TelemetryCallsite):
+    def _import_ray_data():
+        from ray import data  # noqa: F401
+
+    check_library_usage_telemetry(
+        _import_ray_data, callsite=callsite, expected_library_usages=[set(), {"core"}]
     )
 
 
-def test_data_range():
-    assert not _is_data_used()
-    ray.data.range(10)
-    assert _is_data_used()
+@pytest.mark.parametrize("callsite", list(TelemetryCallsite))
+def test_used_on_data_range(reset_usage_lib, callsite: TelemetryCallsite):
+    def _call_data_range():
+        data.range(10)
+
+    check_library_usage_telemetry(
+        _call_data_range,
+        callsite=callsite,
+        expected_library_usages=[{"core", "dataset"}],
+    )
 
 
 if __name__ == "__main__":

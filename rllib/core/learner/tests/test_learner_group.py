@@ -22,7 +22,7 @@ from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import ALL_MODULES, TIMERS
+from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_CONNECTOR
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
@@ -171,7 +171,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
             min_loss = float("inf")
             for iter_i in range(1000):
-                results = learner_group.update_from_episodes(FAKE_EPISODES)
+                results = learner_group.update(episodes=FAKE_EPISODES)
 
                 loss = np.mean(
                     [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
@@ -221,7 +221,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             learner_group = config.build_learner_group(env=ma_env)
 
             # Update once with the default policy.
-            learner_group.update_from_episodes(FAKE_MA_EPISODES_WO_P1)
+            learner_group.update(episodes=FAKE_MA_EPISODES_WO_P1)
 
             # Add a test_module.
             learner_group.add_module(
@@ -231,7 +231,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
                 ],
             )
             # Do training that includes the test_module.
-            results = learner_group.update_from_episodes(episodes=FAKE_MA_EPISODES)
+            results = learner_group.update(episodes=FAKE_MA_EPISODES)
 
             # check that module ids are updated to include the new module
             module_ids_after_add = {"p0", "p1"}
@@ -244,7 +244,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             learner_group.remove_module(module_id="p1")
 
             # Run training without the test_module.
-            results = learner_group.update_from_episodes(FAKE_MA_EPISODES_WO_P1)
+            results = learner_group.update(episodes=FAKE_MA_EPISODES_WO_P1)
 
             # check that module ids are updated after remove operation to not
             # include the new module
@@ -426,7 +426,7 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
             initial_weights = learner_group.get_weights()
 
             # Do a single update.
-            learner_group.update_from_episodes(FAKE_EPISODES)
+            learner_group.update(episodes=FAKE_EPISODES)
             weights_after_update = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
@@ -446,9 +446,7 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
             learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
 
             # Do another update.
-            results_2nd_update_with_break = learner_group.update_from_episodes(
-                FAKE_EPISODES
-            )
+            results_2nd_update_with_break = learner_group.update(episodes=FAKE_EPISODES)
             weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
@@ -463,9 +461,9 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
             check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
-            learner_group.update_from_episodes(FAKE_EPISODES)
-            results_2nd_update_without_break = learner_group.update_from_episodes(
-                FAKE_EPISODES
+            learner_group.update(episodes=FAKE_EPISODES)
+            results_2nd_update_without_break = learner_group.update(
+                episodes=FAKE_EPISODES
             )
             weights_after_2_updates_without_break = learner_group.get_weights()
             learner_group.shutdown()
@@ -476,8 +474,8 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
                 results_2nd_update_with_break,
                 results_2nd_update_without_break,
             ):
-                r1[ALL_MODULES].pop(TIMERS)
-                r2[ALL_MODULES].pop(TIMERS)
+                r1[ALL_MODULES].pop(LEARNER_CONNECTOR)
+                r2[ALL_MODULES].pop(LEARNER_CONNECTOR)
             check(
                 MetricsLogger.peek_results(results_2nd_update_with_break),
                 MetricsLogger.peek_results(results_2nd_update_without_break),
@@ -512,11 +510,9 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
             timer_sync = _Timer()
             timer_async = _Timer()
             with timer_sync:
-                learner_group.update_from_episodes(
-                    episodes=FAKE_EPISODES, async_update=False
-                )
+                learner_group.update(episodes=FAKE_EPISODES, async_update=False)
             with timer_async:
-                result_async = learner_group.update_from_episodes(
+                result_async = learner_group.update(
                     episodes=FAKE_EPISODES, async_update=True
                 )
             # Ideally the first async update will return nothing, and an easy
@@ -527,8 +523,8 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
             loss = float("inf")
             iter_i = 0
             while True:
-                result_async = learner_group.update_from_episodes(
-                    FAKE_EPISODES, async_update=True
+                result_async = learner_group.update(
+                    episodes=FAKE_EPISODES, async_update=True
                 )
                 if not result_async:
                     continue

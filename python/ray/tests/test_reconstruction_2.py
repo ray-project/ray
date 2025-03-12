@@ -559,7 +559,9 @@ def test_object_reconstruction_dead_actor(config, ray_start_cluster):
 def test_object_reconstruction_pending_creation(config, ray_start_cluster):
     # Test to make sure that an object being reconstructured
     # has pending_creation set to true.
-    config["fetch_fail_timeout_milliseconds"] = 5000
+    config["fetch_fail_timeout_milliseconds"] = (
+        5000 if sys.platform == "linux" else 9000
+    )
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0, resources={"head": 1}, _system_config=config)
     ray.init(address=cluster.address)

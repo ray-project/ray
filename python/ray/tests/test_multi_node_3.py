@@ -267,168 +267,56 @@ print("success")
     assert "success" in out
 
 
-def test_run_driver_twice(ray_start_regular):
-    # We used to have issue 2165 and 2288:
-    # https://github.com/ray-project/ray/issues/2165
-    # https://github.com/ray-project/ray/issues/2288
-    # both complain that driver will hang when run for the second time.
-    # This test is used to verify the fix for above issue, it will run the
-    # same driver for twice and verify whether both of them succeed.
+def test_custom_serde_cleared_across_drivers(ray_start_regular):
+    """Verify that custom serializers are cleared across driver runs.
+
+    This is a regression test for:
+    - https://github.com/ray-project/ray/issues/2165
+    - https://github.com/ray-project/ray/issues/2288
+    """
+
     address_info = ray_start_regular
     driver_script = """
+from typing import Optional
+
 import ray
-import ray.train
-import ray.tune as tune
-import os
-import time
 
-def train_func(config):
-    for i in range(2):
-        time.sleep(0.1)
-        ray.train.report(dict(timesteps_total=i, mean_accuracy=i+97))  # report metrics
+ray.init(address="{address}", namespace="default_test_namespace")
 
-os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
-ray.init(address="{}", namespace="default_test_namespace")
-ray.tune.register_trainable("train_func", train_func)
+multiplier: int = int("{multiplier}")
 
-tune.run_experiments({{
-    "my_experiment": {{
-        "run": "train_func",
-        "stop": {{"mean_accuracy": 99}},
-        "config": {{
-            "layer1": {{
-                "class_name": tune.grid_search(["a"]),
-                "config": {{"lr": tune.grid_search([1, 2])}}
-            }},
-        }},
-        "local_dir": os.path.expanduser("~/tmp")
-    }}
-}})
-print("success")
-""".format(
-        address_info["address"]
-    )
+class CustomObject:
+    def __init__(self, val: Optional[int]):
+        self.val: Optional[int] = val
 
-    for i in range(2):
-        out = run_string_as_driver(driver_script)
-        assert "success" in out
+def custom_serializer(o: CustomObject) -> int:
+    return o.val * multiplier
 
+def custom_deserializer(val: int) -> CustomObject:
+    return CustomObject(val)
 
-@pytest.mark.skip(reason="fate sharing not implemented yet")
-def test_driver_exiting_when_worker_blocked(call_ray_start):
-    # This test will create some drivers that submit some tasks and then
-    # exit without waiting for the tasks to complete.
-    address = call_ray_start
+ray.util.register_serializer(
+    CustomObject,
+    serializer=custom_serializer,
+    deserializer=custom_deserializer,
+)
 
-    ray.init(address=address)
-
-    # Define a driver that creates two tasks, one that runs forever and the
-    # other blocked on the first in a `ray.get`.
-    driver_script = """
-import time
-import ray
-ray.init(address="{}")
 @ray.remote
-def f():
-    time.sleep(10**6)
-@ray.remote
-def g():
-    ray.get(f.remote())
-g.remote()
-time.sleep(1)
-print("success")
-""".format(
-        address
-    )
+def f(o: CustomObject) -> int:
+    return o.val
 
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        out = run_string_as_driver(driver_script)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    # Define a driver that creates two tasks, one that runs forever and the
-    # other blocked on the first in a `ray.wait`.
-    driver_script = """
-import time
-import ray
-ray.init(address="{}")
-@ray.remote
-def f():
-    time.sleep(10**6)
-@ray.remote
-def g():
-    ray.wait([f.remote()])
-g.remote()
-time.sleep(1)
-print("success")
-""".format(
-        address
-    )
-
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        out = run_string_as_driver(driver_script)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    # Define a driver that creates one task that depends on a nonexistent
-    # object. This task will be queued as waiting to execute.
-    driver_script_template = """
-import time
-import ray
-ray.init(address="{}")
-@ray.remote
-def g(x):
-    return
-g.remote(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
-time.sleep(1)
-print("success")
+print("Value is:", ray.get(f.remote(CustomObject(1))))
 """
 
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        nonexistent_id = ray.ObjectRef.from_random()
-        driver_script = driver_script_template.format(address, nonexistent_id.hex())
-        out = run_string_as_driver(driver_script)
-        # Simulate the nonexistent dependency becoming available.
-        ray._private.worker.global_worker.put_object(None, nonexistent_id)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    # Define a driver that calls `ray.wait` on a nonexistent object.
-    driver_script_template = """
-import time
-import ray
-ray.init(address="{}")
-@ray.remote
-def g():
-    ray.wait(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
-g.remote()
-time.sleep(1)
-print("success")
-"""
-
-    # Create some drivers and let them exit and make sure everything is
-    # still alive.
-    for _ in range(3):
-        nonexistent_id = ray.ObjectRef.from_random()
-        driver_script = driver_script_template.format(address, nonexistent_id.hex())
-        out = run_string_as_driver(driver_script)
-        # Simulate the nonexistent dependency becoming available.
-        ray._private.worker.global_worker.put_object(None, nonexistent_id)
-        # Make sure the first driver ran to completion.
-        assert "success" in out
-
-    @ray.remote
-    def f():
-        return 1
-
-    # Make sure we can still talk with the raylet.
-    ray.get(f.remote())
+    assert "Value is: 2" in run_string_as_driver(
+        driver_script.format(address=address_info["address"], multiplier="2")
+    )
+    assert "Value is: 4" in run_string_as_driver(
+        driver_script.format(address=address_info["address"], multiplier="4")
+    )
+    assert "Value is: 8" in run_string_as_driver(
+        driver_script.format(address=address_info["address"], multiplier="8")
+    )
 
 
 def test_multi_driver_logging(ray_start_regular):

@@ -1,7 +1,7 @@
 import sys
 import pytest
 import asyncio
-from ray.llm._internal.serve.deployments.utils.cloud_utils import (
+from ray.llm._internal.common.utils.cloud_utils import (
     CloudFileSystem,
     CloudObjectCache,
     remote_object_cache,

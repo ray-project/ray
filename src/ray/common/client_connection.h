@@ -300,4 +300,9 @@ class ClientConnection : public ServerConnection {
   std::vector<uint8_t> read_message_;
 };
 
+// Returns `true` for any connections that have disconnected unexpectedly.
+// This functionality is not supported on Windows, so will always return all `false`.
+std::vector<bool> CheckForClientDisconnects(
+    const std::vector<std::shared_ptr<ClientConnection>> &connections);
+
 }  // namespace ray

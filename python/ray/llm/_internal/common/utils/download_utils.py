@@ -5,8 +5,10 @@ from typing import List
 from filelock import FileLock
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.utils.cloud_utils import CloudFileSystem
-from ray.llm._internal.serve.configs.server_models import CloudMirrorConfig
+from ray.llm._internal.common.utils.cloud_utils import (
+    CloudFileSystem,
+    CloudMirrorConfig,
+)
 
 logger = get_logger(__name__)
 
