@@ -272,7 +272,11 @@ class SubprocessModuleHandle:
         """
         Proxy handler for WebSocket API
         It establishes a WebSocket connection with the client and simultaneously connects
-        to the backend server's WebSocket endpoint. Messages are forwarded in both directions.
+        to the backend server's WebSocket endpoint. Messages are forwarded in single
+        direction from the backend to the client.
+
+        TODO: Support bidirectional communication if needed. We only support one direction
+              because it's sufficient for the current use case.
         """
         ws_from_client = aiohttp.web.WebSocketResponse()
         await ws_from_client.prepare(request)
@@ -282,32 +286,14 @@ class SubprocessModuleHandle:
         async with self.http_client_session.ws_connect(
             url, headers=filter_hop_by_hop_headers(request.headers)
         ) as ws_to_backend:
-
-            async def forward(ws_source, ws_target):
-                async for msg in ws_source:
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        await ws_target.send_str(msg.data)
-                    elif msg.type == aiohttp.WSMsgType.BINARY:
-                        await ws_target.send_bytes(msg.data)
-                    else:
-                        logger.error(f"Unknown msg type: {msg.type}")
-                        await ws_target.close()
-
-            # Set up two tasks to forward messages in both directions.
-            task_client_to_backend = self.loop.create_task(
-                forward(ws_from_client, ws_to_backend)
-            )
-            task_backend_to_client = self.loop.create_task(
-                forward(ws_to_backend, ws_from_client)
-            )
-
-            # Wait until one direction is done, then cancel the other.
-            done, pending = await asyncio.wait(
-                [task_client_to_backend, task_backend_to_client],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for task in pending:
-                task.cancel()
+            async for msg in ws_to_backend:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    await ws_from_client.send_str(msg.data)
+                elif msg.type == aiohttp.WSMsgType.BINARY:
+                    await ws_from_client.send_bytes(msg.data)
+                else:
+                    logger.error(f"Unknown msg type: {msg.type}")
+                    await ws_from_client.close()
 
         await ws_from_client.close()
         return ws_from_client
