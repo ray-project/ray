@@ -165,8 +165,8 @@ WARN_PREFIX = "⚠️ "
 # Use this to prefix important success messages for the user.
 OK_PREFIX = "✔️ "
 
-# Default batch size for batch transformations.
-DEFAULT_BATCH_SIZE = 1024
+# The default batch size for batch transformations before it was changed to `None`.
+LEGACY_DEFAULT_BATCH_SIZE = 1024
 
 # Default value of the max number of blocks that can be buffered at the
 # streaming generator of each `DataOpTask`.
@@ -183,6 +183,11 @@ DEFAULT_S3_TRY_CREATE_DIR = False
 
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
+)
+
+# Enable per node metrics reporting for Ray Data, disabled by default.
+DEFAULT_ENABLE_PER_NODE_METRICS = bool(
+    int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
 
@@ -316,6 +321,8 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
+            disabled by default.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -386,7 +393,7 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
-
+    enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
 
     def __post_init__(self):

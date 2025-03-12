@@ -4,8 +4,14 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import ray
 from ray._private.ray_constants import env_bool
 from ray.air._internal.usage import tag_train_v2_trainer
-from ray.train import BackendConfig, Checkpoint
-from ray.train._internal.data_config import DataConfig
+from ray.train import (
+    BackendConfig,
+    Checkpoint,
+    DataConfig,
+    ScalingConfig,
+    RunConfig,
+    Result,
+)
 from ray.train.base_trainer import (
     _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING,
     _TRAINER_RESTORE_DEPRECATION_WARNING,
@@ -34,12 +40,10 @@ from ray.train.v2._internal.constants import (
 from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
-from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
+from ray.train.v2._internal.execution.failure_handling import create_failure_policy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.callback import UserCallback
-from ray.train.v2.api.config import RunConfig, ScalingConfig
-from ray.train.v2.api.result import Result
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -70,13 +74,14 @@ class DataParallelTrainer:
         metadata: Optional[Dict[str, Any]] = None,
     ):
         self.run_config = run_config or RunConfig()
-        self.train_run_context = TrainRunContext(self.run_config)
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
-        self.scaling_config = scaling_config
+        self.scaling_config = scaling_config or ScalingConfig()
         self.backend_config = backend_config or BackendConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
+
+        self.train_run_context = TrainRunContext(self.run_config)
 
         if resume_from_checkpoint is not None:
             raise DeprecationWarning(_RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
@@ -93,9 +98,9 @@ class DataParallelTrainer:
             A Result object containing the training result.
 
         Raises:
-            TrainingFailedError: If any failures occur during training
-                and the number of retries configured in `FailureConfig`
-                is exhausted.
+            ray.train.v2.api.exceptions.TrainingFailedError: If any failures occur
+                during training and the number of retries configured in
+                `FailureConfig` is exhausted.
         """
         train_fn = construct_train_func(
             self.train_loop_per_worker,
@@ -107,7 +112,7 @@ class DataParallelTrainer:
         result = self._initialize_and_run_controller(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
-            failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
+            failure_policy=create_failure_policy(self.run_config.failure_config),
             train_run_context=self.train_run_context,
             callbacks=self._create_default_callbacks(),
         )
@@ -190,7 +195,8 @@ class DataParallelTrainer:
     @classmethod
     @Deprecated
     def restore(cls, *args, **kwargs):
-        """Restores a Train experiment from a previously interrupted/failed run.
+        """[Deprecated] Restores a Train experiment from a previously
+        interrupted/failed run.
 
         This method is deprecated and will be removed in a future release.
         """
@@ -199,8 +205,8 @@ class DataParallelTrainer:
     @classmethod
     @Deprecated
     def can_restore(cls, *args, **kwargs):
-        """Checks if a Train experiment can be restored from a previously
-        interrupted/failed run.
+        """[Deprecated] Checks if a Train experiment can be restored from
+        a previously interrupted/failed run.
 
         This method is deprecated and will be removed in a future release.
         """

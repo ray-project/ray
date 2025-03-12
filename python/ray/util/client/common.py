@@ -25,12 +25,9 @@ from ray._private.signature import extract_signature, get_signature
 from ray._private.utils import check_oversized_function
 from ray.util.client import ray
 from ray.util.client.options import validate_options
+from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
-
-# The maximum field value for int32 id's -- which is also the maximum
-# number of simultaneous in-flight requests.
-INT32_MAX = (2**31) - 1
 
 # gRPC status codes that the client shouldn't attempt to recover from
 # Resource exhausted: Server is low on resources, or has hit the max number

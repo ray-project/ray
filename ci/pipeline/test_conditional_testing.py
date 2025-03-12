@@ -16,21 +16,21 @@ _runfiles = runfiles.Create()
 
 _TESTS_YAML = """
 ci/pipeline/test_conditional_testing.py: lint tools
-python/ray/data/__init__.py: lint data linux_wheels macos_wheels ml train
+python/ray/data/__init__.py: lint data linux_wheels ml train
 doc/index.md: lint
 
-python/ray/air/__init__.py: lint ml train tune data linux_wheels macos_wheels
+python/ray/air/__init__.py: lint ml train tune data linux_wheels
 python/ray/llm/llm.py: lint llm
-python/ray/workflow/workflow.py: lint workflow linux_wheels macos_wheels
-python/ray/tune/tune.py: lint ml train tune linux_wheels macos_wheels
-python/ray/train/train.py: lint ml train linux_wheels macos_wheels
+python/ray/workflow/workflow.py: lint workflow
+python/ray/tune/tune.py: lint ml train tune linux_wheels
+python/ray/train/train.py: lint ml train linux_wheels
 .buildkite/ml.rayci.yml: lint ml train tune
-rllib/rllib.py: lint rllib rllib_gpu rllib_directly linux_wheels macos_wheels
+rllib/rllib.py: lint rllib rllib_gpu rllib_directly
 
-python/ray/serve/serve.py: lint serve linux_wheels macos_wheels java
-python/ray/dashboard/dashboard.py: lint dashboard linux_wheels macos_wheels
+python/ray/serve/serve.py: lint serve linux_wheels java
+python/ray/dashboard/dashboard.py: lint dashboard linux_wheels
 python/core.py:
-    - lint ml tune train serve workflow data
+    - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/setup.py:
     - lint ml tune train serve workflow data
@@ -39,11 +39,10 @@ python/requirements/test-requirements.txt:
     - lint ml tune train serve workflow data
     - python dashboard linux_wheels macos_wheels java python_dependencies
 python/_raylet.pyx:
-    - lint ml tune train serve workflow data
+    - lint ml tune train data
     - python dashboard linux_wheels macos_wheels java
 python/ray/dag/dag.py:
-    - lint ml tune train serve workflow data
-    - python dashboard linux_wheels macos_wheels java accelerated_dag
+    - lint python accelerated_dag
 
 .buildkite/core.rayci.yml: lint python core_cpp
 .buildkite/serverless.rayci.yml: lint python
@@ -66,7 +65,7 @@ ci/ray_ci/tester.py: lint tools
 ci/ci.sh: lint tools
 
 src/ray.cpp:
-    - lint ml tune train serve core_cpp cpp java python
+    - lint ml tune train core_cpp cpp java python
     - linux_wheels macos_wheels dashboard release_tests accelerated_dag
 
 .github/CODEOWNERS: lint
@@ -79,6 +78,7 @@ BUILD.bazel:
 
 def test_conditional_testing_pull_request():
     script = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/determine_tests_to_run.py")
+    config_file = _runfiles.Rlocation(_REPO_NAME + "/ci/pipeline/test_rules.txt")
 
     class FileToTags:
         file: str
@@ -147,10 +147,9 @@ def test_conditional_testing_pull_request():
             envs["BUILDKITE_PULL_REQUEST"] = "true"
             envs["BUILDKITE_COMMIT"] = commit
 
+            args = [sys.executable, script, config_file]
             output = (
-                subprocess.check_output([sys.executable, script], env=envs, cwd=workdir)
-                .decode()
-                .strip()
+                subprocess.check_output(args, env=envs, cwd=workdir).decode().strip()
             )
             tags = output.split()
 

@@ -19,7 +19,6 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
-from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import (
@@ -28,7 +27,7 @@ from ray.dashboard.state_api_utils import (
     handle_summary_api,
     options_from_req,
 )
-from ray.dashboard.utils import Change, RateLimitedModule
+from ray.dashboard.utils import RateLimitedModule
 from ray.util.state.common import DEFAULT_LOG_LIMIT, DEFAULT_RPC_TIMEOUT, GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient
@@ -74,8 +73,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             thread_name_prefix="state_head_executor",
         )
 
-        DataSource.nodes.signal.append(self._update_raylet_stubs)
-
     async def limit_handler_(self):
         return do_reply(
             success=False,
@@ -88,35 +85,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             ),
             result=None,
         )
-
-    async def _update_raylet_stubs(self, change: Change):
-        """Callback that's called when a new raylet is added to Datasource.
-
-        Datasource is a api-server-specific module that's updated whenever
-        api server adds/removes a new node.
-
-        Args:
-            change: The change object. Whenever a new node is added
-                or removed, this callback is invoked.
-                When new node is added: information is in `change.new`.
-                When a node is removed: information is in `change.old`.
-                When a node id is overwritten by a new node with the same node id:
-                    `change.old` contains the old node info, and
-                    `change.new` contains the new node info.
-        """
-        if change.old:
-            # When a node is deleted from the DataSource or it is overwritten.
-            node_id, node_info = change.old
-            self._state_api_data_source_client.unregister_raylet_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, node_info = change.new
-            self._state_api_data_source_client.register_raylet_client(
-                node_id,
-                node_info["nodeManagerAddress"],
-                int(node_info["nodeManagerPort"]),
-                int(node_info["runtimeEnvAgentPort"]),
-            )
 
     @routes.get("/api/v0/actors")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -199,8 +167,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 ),
                 result=None,
             )
-
-        node_id = node_id or self._log_api.ip_to_node_id(node_ip)
+        if not node_id:
+            node_id = await self._log_api.ip_to_node_id(node_ip)
         if not node_id:
             return do_reply(
                 success=False,

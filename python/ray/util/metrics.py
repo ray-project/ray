@@ -1,4 +1,6 @@
 import logging
+import re
+import warnings
 
 from typing import Dict, Any, List, Optional, Tuple, Union
 
@@ -13,6 +15,26 @@ from ray._raylet import (
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+# Copied from Prometheus Python Client. While the regex is not part of the public API
+# for Prometheus, it's not expected to change.
+# https://github.com/prometheus/client_python/blob/46eae7bae88f76951f7246d9f359f2dd5eeff110/prometheus_client/validation.py#L4
+_VALID_METRIC_NAME_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+
+
+def _is_invalid_metric_name(name: str) -> bool:
+    if len(name) == 0:
+        raise ValueError("Empty name is not allowed. Please provide a metric name.")
+    if not _VALID_METRIC_NAME_RE.match(name):
+        warnings.warn(
+            f"Invalid metric name: {name}. Metric will be discarded "
+            "and data will not be collected or published. "
+            "Metric names can only contain letters, numbers, _, and :. "
+            "Metric names cannot start with numbers.",
+            UserWarning,
+        )
+        return True
+    return False
 
 
 @DeveloperAPI
@@ -29,8 +51,9 @@ class Metric:
         description: str = "",
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
-        if len(name) == 0:
-            raise ValueError("Empty name is not allowed. Please provide a metric name.")
+        # Metrics with invalid names will be discarded and will not be collected
+        # by Prometheus.
+        self._discard_metric = _is_invalid_metric_name(name)
         self._name = name
         self._description = description
         # The default tags key-value pair.
@@ -89,6 +112,9 @@ class Metric:
         Args:
             value: The value to be recorded as a metric point.
         """
+        if self._discard_metric:
+            return
+
         assert self._metric is not None
 
         final_tags = self._get_final_tags(tags)
@@ -159,7 +185,10 @@ class Counter(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonCount(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonCount(self._name, self._description, self._tag_keys)
 
     def __reduce__(self):
         deserializer = self.__class__
@@ -222,9 +251,12 @@ class Histogram(Metric):
                 )
 
         self.boundaries = boundaries
-        self._metric = CythonHistogram(
-            self._name, self._description, self.boundaries, self._tag_keys
-        )
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonHistogram(
+                self._name, self._description, self.boundaries, self._tag_keys
+            )
 
     def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
         """Observe a given `value` and add it to the appropriate bucket.
@@ -280,7 +312,10 @@ class Gauge(Metric):
         tag_keys: Optional[Tuple[str, ...]] = None,
     ):
         super().__init__(name, description, tag_keys)
-        self._metric = CythonGauge(self._name, self._description, self._tag_keys)
+        if self._discard_metric:
+            self._metric = None
+        else:
+            self._metric = CythonGauge(self._name, self._description, self._tag_keys)
 
     def set(self, value: Optional[Union[int, float]], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.

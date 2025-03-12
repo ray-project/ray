@@ -12,14 +12,13 @@ from ray.util.placement_group import (
 from ray.llm._internal.utils import try_import
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.configs.base import BaseModelExtended
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
-    GCSMirrorConfig,
     GenerationRequest,
     GPUType,
     LLMConfig,
-    S3MirrorConfig,
     SamplingParams,
 )
 from ray.llm._internal.serve.configs.constants import (
@@ -48,15 +47,11 @@ class VLLMEngineConfig(BaseModelExtended):
     hf_model_id: Optional[str] = Field(
         None, description="The Hugging Face model identifier."
     )
-    s3_mirror_config: Optional[S3MirrorConfig] = Field(
+    mirror_config: Optional[CloudMirrorConfig] = Field(
         None,
-        description="Configuration for S3 mirror. This is for where the weights are downloaded from.",
+        description="Configuration for cloud storage mirror. This is for where the weights are downloaded from.",
     )
-    gcs_mirror_config: Optional[GCSMirrorConfig] = Field(
-        None,
-        description="Configuration for GCS mirror. This is for where the weights are downloaded from.",
-    )
-    accelerator_type: GPUType = Field(
+    accelerator_type: Optional[GPUType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
@@ -96,24 +91,19 @@ class VLLMEngineConfig(BaseModelExtended):
     def from_llm_config(cls, llm_config: LLMConfig) -> "VLLMEngineConfig":
         """Converts the LLMConfig to a VLLMEngineConfig."""
         # Set up the model downloading configuration.
-        hf_model_id, s3_mirror_config, gcs_mirror_config = None, None, None
+        hf_model_id, mirror_config = None, None
         if llm_config.model_loading_config.model_source is None:
             hf_model_id = llm_config.model_id
         elif isinstance(llm_config.model_loading_config.model_source, str):
             hf_model_id = llm_config.model_loading_config.model_source
-        elif isinstance(llm_config.model_loading_config.model_source, S3MirrorConfig):
-            s3_mirror_config = llm_config.model_loading_config.model_source
         else:
-            assert isinstance(
-                llm_config.model_loading_config.model_source, GCSMirrorConfig
-            )
-            gcs_mirror_config = llm_config.model_loading_config.model_source
+            # If it's a CloudMirrorConfig (or subtype)
+            mirror_config = llm_config.model_loading_config.model_source
 
         return VLLMEngineConfig(
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
-            s3_mirror_config=s3_mirror_config,
-            gcs_mirror_config=gcs_mirror_config,
+            mirror_config=mirror_config,
             accelerator_type=llm_config.accelerator_type,
             engine_kwargs=llm_config.engine_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -121,10 +111,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
-
-        # Ray uses a hyphen instead of an underscore for
-        # accelerator_type.
-        return f"accelerator_type:{self.accelerator_type.replace('_', '-')}"
+        return f"accelerator_type:{self.accelerator_type}"
 
     @property
     def tensor_parallel_degree(self) -> int:
@@ -147,10 +134,10 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        bundles = [
-            {"GPU": 1, self.ray_accelerator_type(): 0.001}
-            for _ in range(self.num_gpu_workers)
-        ]
+        bundle = {"GPU": 1}
+        if self.accelerator_type:
+            bundle[self.ray_accelerator_type()] = 0.001
+        bundles = [bundle for _ in range(self.num_gpu_workers)]
 
         return bundles
 

@@ -116,22 +116,25 @@ def test_processor_with_stages(has_extra: bool):
     for stage_name, stage in zip(stage_names, stages):
         assert processor.get_stage_by_name(stage_name) == stage
 
-    ds = ray.data.range(5)
-    ds = ds.map(
-        lambda row: {
-            "id": row["id"],
-            **({"extra": 1} if has_extra else {}),
-        }
-    )
+    # Run the processor twice with different datasets to test
+    # whether the processor is reusable.
+    for _ in range(2):
+        ds = ray.data.range(5)
+        ds = ds.map(
+            lambda row: {
+                "id": row["id"],
+                **({"extra": 1} if has_extra else {}),
+            }
+        )
 
-    ds = processor(ds).take_all()
-    extra = 1 if has_extra else 0
-    for row in ds:
-        assert "id" in row
-        assert "result" in row
+        ds = processor(ds).take_all()
+        extra = 1 if has_extra else 0
+        for row in ds:
+            assert "id" in row
+            assert "result" in row
 
-        # The final output should be the result of the last stage.
-        assert row["result"] == (row["id"] * 2 + extra) * 3 + extra
+            # The final output should be the result of the last stage.
+            assert row["result"] == (row["id"] * 2 + extra) * 3 + extra
 
 
 def test_builder():

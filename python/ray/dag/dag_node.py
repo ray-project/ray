@@ -17,6 +17,7 @@ from typing import (
     Any,
     TypeVar,
     Callable,
+    Literal,
 )
 import uuid
 import asyncio
@@ -24,6 +25,7 @@ import asyncio
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.util.types import Device
 
 T = TypeVar("T")
 
@@ -141,17 +143,48 @@ class DAGNode(DAGNodeBase):
     def with_tensor_transport(
         self,
         transport: Optional[Union[str, Communicator]] = "auto",
+        device: Literal["default", "cpu", "gpu", "cuda"] = "default",
         _static_shape: bool = False,
         _direct_return: bool = False,
     ):
+        """
+        Configure the torch tensor transport for this node.
+
+        Args:
+            transport: "nccl" means that tensors will be passed via NCCL.
+                "auto" (default) means that tensor transport will be
+                automatically determined based on the sender and receiver,
+                either through NCCL or host memory.
+            device: The target device to use for the tensor transport.
+                "default": The tensor will maintain its original device placement from the sender
+                "cpu": The tensor will be explicitly moved to CPU device in the receiver
+                "gpu" or "cuda": The tensor will be explicitly moved to GPU device in the receiver
+            _static_shape: A hint indicating whether the shape(s) and dtype(s)
+                of tensor(s) contained in this value always remain the same
+                across different executions of the DAG. If this is True, the
+                transport will be more efficient.
+            _direct_return: Whether the tensor is sent directly or inside of
+                other data. If a "nccl" transport is used, this allows the
+                sender and receiver to eliminate performance overhead from
+                an additional data transfer.
+        """
+        try:
+            device = Device(device)
+        except ValueError:
+            raise ValueError(
+                f"Invalid device '{device}'. "
+                "Valid options are: 'default', 'cpu', 'gpu', 'cuda'."
+            )
         if transport == "auto":
             self._type_hint = AutoTransportType(
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
         elif transport == "nccl":
             self._type_hint = TorchTensorType(
                 transport=transport,
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
@@ -162,6 +195,7 @@ class DAGNode(DAGNodeBase):
                 )
             self._type_hint = TorchTensorType(
                 transport=transport,
+                device=device,
                 _static_shape=_static_shape,
                 _direct_return=_direct_return,
             )
@@ -252,7 +286,7 @@ class DAGNode(DAGNodeBase):
                 are buffered, `RayCgraphCapacityExceeded` is raised. Note that
                 when result corresponding to an execution is retrieved
                 (by calling `ray.get()` on a `CompiledDAGRef` or
-                `CompiledDAGRef` or await on a `CompiledDAGFuture), results
+                `CompiledDAGRef` or await on a `CompiledDAGFuture`), results
                 corresponding to earlier executions that have not been retrieved
                 yet are buffered.
             _overlap_gpu_communication: (experimental) Whether to overlap GPU
@@ -564,7 +598,7 @@ class DAGNode(DAGNodeBase):
     def apply_functional(
         self,
         source_input_list: Any,
-        predictate_fn: Callable,
+        predicate_fn: Callable,
         apply_fn: Callable,
     ):
         """
@@ -574,22 +608,23 @@ class DAGNode(DAGNodeBase):
         Args:
             source_input_list: Source inputs to extract and apply function on
                 all children DAGNode instances.
-            predictate_fn: Applied on each DAGNode instance found and determine
+            predicate_fn: Applied on each DAGNode instance found and determine
                 if we should apply function to it. Can be used to filter node
                 types.
-            apply_fn: Function to appy on the node on bound attributes. Example:
+            apply_fn: Function to apply on the node on bound attributes. Example::
+
                 apply_fn = lambda node: node._get_serve_deployment_handle(
                     node._deployment, node._bound_other_args_to_resolve
                 )
 
         Returns:
             replaced_inputs: Outputs of apply_fn on DAGNodes in
-                source_input_list that passes predictate_fn.
+                source_input_list that passes predicate_fn.
         """
         replace_table = {}
         scanner = _PyObjScanner()
         for node in scanner.find_nodes(source_input_list):
-            if predictate_fn(node) and node not in replace_table:
+            if predicate_fn(node) and node not in replace_table:
                 replace_table[node] = apply_fn(node)
 
         replaced_inputs = scanner.replace_nodes(replace_table)
