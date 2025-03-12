@@ -109,22 +109,22 @@ class _CollectiveOperation:
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
 
-        if isinstance(send_buf, torch.Tensor):
+        if isinstance(send_buf, torch.Tensor) or len(send_buf) == 1:
+            if isinstance(send_buf, tuple):
+                send_buf = send_buf[0]
             recv_buf = torch.empty_like(send_buf)
+
             communicator.allreduce(send_buf, recv_buf, self._op)
+
+            if isinstance(send_buf, tuple):
+                recv_buf = (recv_buf,)
         else:
-            # (TODO): braodcast tuple information
-            
-            # check device of tensors
             if len(set(t.device for t in send_buf)) != 1:
                 raise ValueError(f"Expected tensors on same device")
 
-            # check dtype of tensors
-            # (TODO): support splitting input tensors into different buckets by their dtype
             if len(set((t.dtype, t.device) for t in send_buf)) != 1:
                 raise ValueError("Expected tensors to have same dtype")
 
-            # pre-allocating buffers to avoid temporary buffers
             total_size = sum(g.numel() for g in send_buf)
             flat_send_buf = torch.empty(total_size, dtype=send_buf[0].dtype, device=send_buf[0].device)
             recv_buf = tuple(torch.empty_like(t) for t in send_buf)
