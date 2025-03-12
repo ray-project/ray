@@ -25,6 +25,20 @@ steps:
           - cu12.3.2-cudnn9
           - cpu
 
+  - label: ":tapioca: build: anyscale-llm py{{matrix}} docker"
+    tags: skip-on-premerge
+    key: anyscalellmbuild
+    instance_type: release-medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
+        --platform cu12.4.1-cudnn --image-type ray-llm --upload
+    depends_on:
+      - manylinux
+      - forge
+      - ray-llmbase
+    matrix:
+      - "3.11"
+
   - label: ":tapioca: build: anyscale-ml py{{matrix}} docker"
     tags: skip-on-premerge
     key: anyscalemlbuild

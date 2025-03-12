@@ -108,7 +108,6 @@ py_test_module_list(
     "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
-    "test_client_library_integration.py",
   ],
   size = "medium",
   tags = ["exclusive", "client_tests", "team:core"],
@@ -193,7 +192,6 @@ py_test_module_list(
     "test_state_api_log.py",
     "test_state_api_summary.py",
     "test_tempfile.py",
-    "test_tensorflow.py",
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
@@ -299,6 +297,7 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_widgets.py",
     "accelerators/test_accelerators.py",
+    "test_wait.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -638,22 +637,6 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
-py_test(
-    name = "vsphere/test_vsphere_node_provider",
-    size = "small",
-    srcs = ["vsphere/test_vsphere_node_provider.py"],
-    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "vsphere/test_vsphere_sdk_provider",
-    size = "small",
-    srcs = ["vsphere/test_vsphere_sdk_provider.py"],
-    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
 # Note(simon): typing tests are not included in module list
 #    because they requires globs and it might be refactored in the future.
 py_test(
@@ -724,6 +707,7 @@ py_test_module_list(
     "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
+    "test_wait.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",

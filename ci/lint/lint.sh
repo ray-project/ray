@@ -16,6 +16,7 @@ pre_commit() {
   pip install -c python/requirements_compiled.txt pre-commit clang-format
 
   HOOKS=(
+    python-no-log-warn
     ruff
     check-added-large-files
     check-ast
@@ -32,7 +33,11 @@ pre_commit() {
     check-import-order
     check-cpp-files-inclusion
     end-of-file-fixer
+    check-json
     trailing-whitespace
+    cpplint
+    buildifier
+    buildifier-lint
   )
 
   for HOOK in "${HOOKS[@]}"; do

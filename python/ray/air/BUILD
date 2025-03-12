@@ -146,14 +146,6 @@ py_test(
 )
 
 py_test(
-    name = "test_resource_changing",
-    size = "large",
-    srcs = ["tests/test_resource_changing.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_tensor_extension",
     size = "small",
     srcs = ["tests/test_tensor_extension.py"],

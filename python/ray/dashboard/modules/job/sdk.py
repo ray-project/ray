@@ -352,7 +352,13 @@ class JobSubmissionClient(SubmissionClient):
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobDetails(**r.json())
+            if JobDetails is None:
+                raise RuntimeError(
+                    "The Ray jobs CLI & SDK require the ray[default] "
+                    "installation: `pip install 'ray[default]'`"
+                )
+            else:
+                return JobDetails(**r.json())
         else:
             self._raise_error(r)
 

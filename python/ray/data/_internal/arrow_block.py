@@ -214,16 +214,18 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            view = transform_pyarrow.combine_chunks(view)
+            view = transform_pyarrow.combine_chunks(view, copy)
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
-        # TODO(swang): Creating this np.array index can add a lot of memory
-        # pressure when there are a large number of small rows. Investigate
-        # random shuffling in place to reduce memory pressure.
-        # See https://github.com/ray-project/ray/issues/42146.
+        num_rows = self.num_rows()
+        if num_rows == 0:
+            return pyarrow.table([])
         random = np.random.RandomState(random_seed)
-        return self.take(random.permutation(self.num_rows()))
+        shuffled_indices = np.arange(num_rows)
+        # Shuffle all rows in-place
+        random.shuffle(shuffled_indices)
+        return self.take(pyarrow.array(shuffled_indices))
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
@@ -338,7 +340,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         table = self._table.select(sort_key.get_columns())
         return transform_pyarrow.take_table(table, indices)
 
-    def count(self, on: str) -> Optional[U]:
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
         """Count the number of non-null values in the provided column."""
         import pyarrow.compute as pac
 
@@ -351,8 +353,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if self.num_rows() == 0:
             return None
 
+        mode = "only_valid" if ignore_nulls else "all"
+
         col = self._table[on]
-        return pac.count(col).as_py()
+        return pac.count(col, mode=mode).as_py()
 
     def _apply_arrow_compute(
         self, compute_fn: Callable, on: str, ignore_nulls: bool

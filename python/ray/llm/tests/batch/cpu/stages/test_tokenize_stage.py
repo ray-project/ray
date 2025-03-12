@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from unittest.mock import patch, MagicMock
 from ray.llm._internal.batch.stages.tokenize_stage import TokenizeUDF, DetokenizeUDF
@@ -73,3 +75,7 @@ def test_tokenize_udf_expected_keys(mock_tokenizer_setup):
 def test_detokenize_udf_expected_keys(mock_tokenizer_setup):
     udf = DetokenizeUDF(data_column="__data", model="test-model")
     assert udf.expected_input_keys == ["generated_tokens"]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

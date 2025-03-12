@@ -1,6 +1,6 @@
 """The base class for all stages."""
 import logging
-from typing import Any, Dict, AsyncIterator, List, Callable
+from typing import Any, Dict, AsyncIterator, List, Callable, Type
 
 import pyarrow
 from pydantic import BaseModel, Field
@@ -235,14 +235,16 @@ class StatefulStage(BaseModel):
     A basic building block to compose a Processor.
     """
 
-    fn: StatefulStageUDF = Field(
+    fn: Type[StatefulStageUDF] = Field(
         description="The well-optimized stateful UDF for this stage."
     )
     fn_constructor_kwargs: Dict[str, Any] = Field(
-        description="The keyword arguments of the UDF constructor."
+        default_factory=dict,
+        description="The keyword arguments of the UDF constructor.",
     )
     map_batches_kwargs: Dict[str, Any] = Field(
-        description="The arguments of .map_batches()."
+        default_factory=lambda: {"concurrency": 1},
+        description="The arguments of .map_batches(). Default {'concurrency': 1}.",
     )
 
     def get_dataset_map_batches_kwargs(
@@ -271,7 +273,7 @@ class StatefulStage(BaseModel):
             )
         kwargs["batch_size"] = batch_size
 
-        kwargs.update({"fn_constructor_kwargs": self.fn_constructor_kwargs})
+        kwargs.update({"fn_constructor_kwargs": self.fn_constructor_kwargs.copy()})
         if "data_column" in kwargs["fn_constructor_kwargs"]:
             raise ValueError(
                 "'data_column' cannot be used as in fn_constructor_kwargs."

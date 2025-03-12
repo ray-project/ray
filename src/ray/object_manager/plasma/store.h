@@ -206,9 +206,24 @@ class PlasmaStore {
   void DisconnectClient(const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status ProcessMessage(const std::shared_ptr<Client> &client,
-                        plasma::flatbuf::MessageType type,
-                        const std::vector<uint8_t> &message) ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Handle an unexpected connection error from the client.
+  /// The client will be disconnected and no more messages will be processed.
+  ///
+  /// \param client The client whose connection the error occurred on.
+  /// \param error The error details.
+  void HandleClientConnectionError(std::shared_ptr<Client> client,
+                                   const boost::system::error_code &error)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Process a message from the client.
+  ///
+  /// \param client The client that the message is from.
+  /// \param type The message type.
+  /// \param message The message data.
+  Status ProcessClientMessage(std::shared_ptr<Client> client,
+                              plasma::flatbuf::MessageType type,
+                              const std::vector<uint8_t> &message)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,

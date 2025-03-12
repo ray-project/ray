@@ -154,6 +154,14 @@ py_test(
 )
 
 py_test(
+    name = "test_aggregate",
+    size = "small",
+    srcs = ["tests/test_aggregate.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
@@ -438,6 +446,14 @@ py_test(
     name = "test_operators",
     size = "medium",
     srcs = ["tests/test_operators.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_op_runtime_metrics",
+    size = "medium",
+    srcs = ["tests/test_op_runtime_metrics.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

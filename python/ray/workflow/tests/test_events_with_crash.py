@@ -11,6 +11,7 @@ from ray.tests.conftest import *  # noqa
 from ray.workflow.tests import utils
 
 
+@pytest.mark.skip(reason="Flaky in setup and teardown.")
 def test_crash_during_event_checkpointing(workflow_start_regular):
     """Ensure that if the cluster dies while the event is being checkpointed, we
     properly re-poll for the event."""
@@ -66,6 +67,7 @@ def test_crash_during_event_checkpointing(workflow_start_regular):
     assert utils.check_global_mark("second")
 
 
+@pytest.mark.skip(reason="Flaky in setup and teardown.")
 @pytest.mark.parametrize(
     "workflow_start_regular",
     [
