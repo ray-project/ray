@@ -500,7 +500,7 @@ class Stats:
             # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
             # reverse: [1, 4, 2, 5, 0, 6, 3]
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [1, 4, 2, 5, 0, 6, 3])
+            check(stats.values, [15, 6])  # 6 from `stats1` and 15 from `stats2`
             check(stats.peek(), 21)
 
             # Parallel-merge two "concat" (reduce=None) stats with no window.
