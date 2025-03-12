@@ -894,7 +894,7 @@ def get_bin_pack_residual(
 
     Returns:
         List[ResourceDict]: the residual list resources that do not fit.
-        List[ResourceDict]: The updated node_resources after the method.
+        List[ResourceDict]: The updated node_resources after the method. The order of the list elements is not changed.
     """
 
     unfulfilled = []

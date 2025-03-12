@@ -105,7 +105,9 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
 @pytest.mark.parametrize("placement_strategy", ["SPREAD", "STRICT_SPREAD"])
 def test_fake_autoscaler_placement_group_partial_idle(
     autoscaler_v2, placement_strategy
-):
+):  # Test the cases of start_node_delay_s >= idle_timeout_minutes.
+    # See https://github.com/ray-project/ray/pull/51122 for more details.
+    # TODO: (rueian) enable this test for autoscaler_v2.
 
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
@@ -122,7 +124,7 @@ def test_fake_autoscaler_placement_group_partial_idle(
         autoscaler_v2=autoscaler_v2,
         provider={
             "type": "fake_multinode",
-            "start_node_delay_s": 6,  # https://github.com/ray-project/ray/pull/51122
+            "start_node_delay_s": 8,
             "use_node_id_as_ip": True,
             "disable_node_updaters": True,
             "disable_launch_config_check": True,

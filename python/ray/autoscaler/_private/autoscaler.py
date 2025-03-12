@@ -936,12 +936,12 @@ class StandardAutoscaler:
         node_remaining_resources = copy.deepcopy(node_total_resources)
 
         for strict_spread in strict_spreads:
-            unfulfilled, updated_node_resources = get_bin_pack_residual(
+            unfulfilled, updated_node_remaining_resources = get_bin_pack_residual(
                 node_remaining_resources, strict_spread, strict_spread=True
             )
             if unfulfilled:
                 continue
-            node_remaining_resources = updated_node_resources
+            node_remaining_resources = updated_node_remaining_resources
 
         _, node_remaining_resources = get_bin_pack_residual(
             node_remaining_resources, resource_demands
