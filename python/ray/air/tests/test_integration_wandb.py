@@ -105,9 +105,11 @@ def fake_wandb_populate_run_location_hook():
     os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
     os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
 
+
 FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK = (
     "ray.air.tests.test_integration_wandb.fake_wandb_populate_run_location_hook"
 )
+
 
 class TestWandbLogger:
     def test_wandb_logger_project_group(self, monkeypatch):
