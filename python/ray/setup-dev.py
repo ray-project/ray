@@ -122,7 +122,9 @@ if __name__ == "__main__":
     if not args.yes:
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
+    # For LLMs
     do_link("llm", force=args.yes, skip_list=args.skip)
+    do_link("serve/llm", force=args.yes, skip_list=args.skip)
     do_link("rllib", force=args.yes, skip_list=args.skip, local_path="../../../rllib")
     do_link("air", force=args.yes, skip_list=args.skip)
     do_link("tune", force=args.yes, skip_list=args.skip)
