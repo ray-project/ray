@@ -77,10 +77,10 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
-from ray import _version  # noqa: E402
+from ray._private import version  # noqa: E402
 
 __commit__ = _version.commit
-__version__ = _version.version
+__version__ = version.version
 
 import ray._raylet  # noqa: E402
 

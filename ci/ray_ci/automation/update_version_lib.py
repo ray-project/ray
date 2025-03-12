@@ -28,7 +28,7 @@ def get_current_version(root_dir: str):
     """
     Scan for current Ray version and return the current versions.
     """
-    version_file_path = os.path.join(root_dir, "python/ray/_version.py")
+    version_file_path = os.path.join(root_dir, "python/ray/_private/version.py")
     ray_version_output = get_check_output(version_file_path).split()
     if len(ray_version_output) != 2:
         raise ValueError(
@@ -67,7 +67,7 @@ def update_file_version(
 
     non_java_files = [
         "ci/ray_ci/utils.py",
-        "python/ray/_version.py",
+        "python/ray/_private/version.py",
         "src/ray/common/constants.h",
     ]
     non_java_files.sort()

@@ -32,6 +32,7 @@ SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12), (3, 13)]
 # in WORKSPACE file as well.
 
 ROOT_DIR = os.path.dirname(__file__)
+VERSION_FILE_PATH = os.path.join(ROOT_DIR, "ray", "_private", "version.py")
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 BUILD_CPP = os.getenv("RAY_INSTALL_CPP") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
@@ -61,10 +62,9 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 
-def find_version(*filepath):
-    # Extract version information from filepath
-    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(r"^version = ['\"]([^'\"]*)['\"]", fp.read(), re.M)
+def extract_version_from_file(path: str):
+    with open(path) as f:
+        version_match = re.search(r"^version = ['\"]([^'\"]*)['\"]", f.read(), re.M)
         if version_match:
             return version_match.group(1)
         raise RuntimeError("Unable to find version string.")
@@ -88,7 +88,7 @@ class SetupSpec:
     ):
         self.type: SetupType = type
         self.name: str = name
-        version = find_version("ray", "_version.py")
+        version = extract_version_from_file(VERSION_FILE_PATH)
         # add .dbg suffix if debug mode is on.
         if build_type == BuildType.DEBUG:
             self.version: str = f"{version}+dbg"

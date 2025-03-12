@@ -287,7 +287,7 @@ validate_wheels_commit_str() {
       continue
     fi
 
-    WHL_COMMIT=$(unzip -p "$whl" "*ray/_version.py" | grep "^commit" | awk -F'"' '{print $2}')
+    WHL_COMMIT=$(unzip -p "$whl" "*ray/_private/version.py" | grep "^commit" | awk -F'"' '{print $2}')
 
     if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
       echo "Wheel ${basename} has incorrect commit: (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
