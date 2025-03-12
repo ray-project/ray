@@ -148,7 +148,7 @@ def state_source_client(gcs_address):
     gcs_channel = ray._private.utils.init_grpc_channel(
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_aio_client = GcsAioClient(address=gcs_address)
     client = StateDataSourceClient(
         gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
     )
