@@ -57,5 +57,6 @@ __all__ = [
 ]
 
 warnings.warn(
-    "The experimental Ray Workflows library is deprecated and no longer maintained.",
+    "The experimental Ray Workflows library is deprecated and will be removed "
+    "in a future version of Ray."
 )
