@@ -195,8 +195,6 @@ class SubprocessModuleHandle:
                 filename = module_logging_filename(
                     self.module_cls.__name__, self.config.logging_filename
                 )
-                if filename is None:
-                    filename = "stderr"
                 logger.exception(
                     f"Module {self.module_cls.__name__} is unhealthy. Please refer to "
                     f"{self.config.log_dir}/{filename} for more details. Failing all "
