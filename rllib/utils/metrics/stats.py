@@ -68,7 +68,21 @@ class Stats:
         # c'tor options reduce!=mean and infinite window.
         check(stats.values, [6])
 
-        # "min" and "max" work analogous to "sum". But let's try with a `window` now:
+        # "min" or "max" work analogous to "sum".
+        stats = Stats(reduce="min")
+        stats.push(10)
+        check(stats.peek(), 10)
+        stats.push(20)
+        check(stats.peek(), 10)
+        stats.push(5)
+        check(stats.peek(), 5)
+        stats.push(100)
+        check(stats.peek(), 5)
+        # For efficiency, we keep the internal values in a reduced state for all Stats with
+        # c'tor options reduce!=mean and infinite window.
+        check(stats.values, [5])
+
+        # Let's try min/max/sum with a `window` now:
         stats = Stats(reduce="max", window=2)
         stats.push(2)
         check(stats.peek(), 2)
