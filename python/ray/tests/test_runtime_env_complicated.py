@@ -965,7 +965,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
         "\n".join(
             [
                 "PyGithub",
-                "xgboost_ray",  # has Ray as a dependency
                 f"pandas=={pandas_version}",
                 "typer",
                 "aiofiles",
@@ -989,7 +988,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
         def test_import():
             import ray  # noqa
             import typer  # noqa
-            import xgboost_ray  # noqa
 
             return Path("./test").read_text()
 
@@ -1001,7 +999,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
             def test(self):
                 import ray  # noqa
                 import typer  # noqa
-                import xgboost_ray  # noqa
 
                 return Path("./test").read_text()
 
