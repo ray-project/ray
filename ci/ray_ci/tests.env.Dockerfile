@@ -50,6 +50,9 @@ if [[ "$RAY_INSTALL_MASK" != "" ]]; then
   if [[ "$RAY_INSTALL_MASK" =~ tune ]]; then
     rm -rf python/ray/tune
   fi
+  if [[ "$RAY_INSTALL_MASK" =~ workflow ]]; then
+    rm -rf python/ray/workflow
+  fi
 fi
 
 echo "--- Build dashboard"
