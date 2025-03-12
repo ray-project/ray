@@ -257,7 +257,7 @@ class SubprocessModuleHandle:
             client_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
             await client_resp.prepare(request)
 
-            async for chunk in backend_resp.content.iter_chunks():
+            async for chunk, _ in backend_resp.content.iter_chunks():
                 await client_resp.write(chunk)
             await client_resp.write_eof()
             return client_resp
