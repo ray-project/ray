@@ -1,10 +1,9 @@
-from __future__ import annotations
 import sys
 import asyncio
 import logging
 import multiprocessing
 import os
-from typing import Optional
+from typing import Optional, Union
 import multidict
 
 from ray.dashboard.optional_deps import aiohttp
@@ -27,8 +26,8 @@ messages to it. Requires non-minimal Ray.
 logger = logging.getLogger(__name__)
 
 
-def filter_headers(
-    headers: dict[str, str] | multidict.CIMultiDictProxy[str]
+def filter_hop_by_hop_headers(
+    headers: Union[dict[str, str], multidict.CIMultiDictProxy[str]]
 ) -> dict[str, str]:
     """
     Filter out hop-by-hop headers from the headers dict.
@@ -101,7 +100,7 @@ class SubprocessModuleHandle:
         self.incarnation = 0
         # Runtime states, set by start_module(), reset by destroy_module().
         self.process = None
-        self.http_client_session: aiohttp.ClientSession | None = None
+        self.http_client_session: Optional[aiohttp.ClientSession] = None
         self.health_check_task = None
 
     def str_for_state(self, incarnation: int, pid: Optional[int]):
@@ -168,7 +167,7 @@ class SubprocessModuleHandle:
         resp = await self.http_client_session.get("http://localhost/api/healthz")
         return aiohttp.web.Response(
             status=resp.status,
-            headers=filter_headers(resp.headers),
+            headers=filter_hop_by_hop_headers(resp.headers),
             body=await resp.read(),
         )
 
@@ -232,11 +231,16 @@ class SubprocessModuleHandle:
         body = await request.read()
 
         async with self.http_client_session.request(
-            request.method, url, data=body, headers=filter_headers(request.headers)
-        ) as resp:
-            resp_body = await resp.read()
+            request.method,
+            url,
+            data=body,
+            headers=filter_hop_by_hop_headers(request.headers),
+        ) as backend_resp:
+            resp_body = await backend_resp.read()
             return aiohttp.web.Response(
-                status=resp.status, headers=filter_headers(resp.headers), body=resp_body
+                status=backend_resp.status,
+                headers=filter_hop_by_hop_headers(backend_resp.headers),
+                body=resp_body,
             )
 
     async def proxy_stream(
@@ -249,15 +253,18 @@ class SubprocessModuleHandle:
         url = f"http://localhost{request.path_qs}"
         body = await request.read()
         async with self.http_client_session.request(
-            request.method, url, data=body, headers=filter_headers(request.headers)
+            request.method,
+            url,
+            data=body,
+            headers=filter_hop_by_hop_headers(request.headers),
         ) as backend_resp:
-            client_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
-            await client_resp.prepare(request)
+            proxy_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
+            await proxy_resp.prepare(request)
 
             async for chunk, _ in backend_resp.content.iter_chunks():
-                await client_resp.write(chunk)
-            await client_resp.write_eof()
-            return client_resp
+                await proxy_resp.write(chunk)
+            await proxy_resp.write_eof()
+            return proxy_resp
 
     async def proxy_websocket(
         self, request: aiohttp.web.Request
@@ -273,7 +280,7 @@ class SubprocessModuleHandle:
         url = f"http://localhost{request.path_qs}"
 
         async with self.http_client_session.ws_connect(
-            url, headers=filter_headers(request.headers)
+            url, headers=filter_hop_by_hop_headers(request.headers)
         ) as ws_to_backend:
 
             async def forward(ws_source, ws_target):

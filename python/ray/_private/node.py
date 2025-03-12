@@ -5,7 +5,6 @@ import errno
 import json
 import logging
 import os
-import pathlib
 import random
 import signal
 import socket
@@ -989,17 +988,6 @@ class Node:
         Args:
             socket_path: the socket file to prepare.
         """
-        if socket_path is not None:
-            if pathlib.PurePath(socket_path).name.startswith("dashboard"):
-                raise ValueError(
-                    f"Invalid socket path {socket_path}. Socket file name cannot start with 'dashboard'."
-                )
-        else:
-            if default_prefix.startswith("dashboard"):
-                raise ValueError(
-                    f"Invalid default prefix {default_prefix}. Socket file name cannot start with 'dashboard'."
-                )
-
         result = socket_path
         is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
