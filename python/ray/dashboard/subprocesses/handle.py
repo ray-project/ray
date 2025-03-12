@@ -127,7 +127,9 @@ class SubprocessModuleHandle:
         self.process.start()
         ready_event.wait()
 
-        socket_path = os.path.join(self.config.socket_dir, self.module_cls.__name__)
+        socket_path = os.path.join(
+            self.config.socket_dir, "dashboard_" + self.module_cls.__name__
+        )
         if sys.platform == "win32":
             connector = aiohttp.NamedPipeConnector(socket_path)
         else:

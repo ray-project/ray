@@ -106,7 +106,9 @@ class SubprocessModule(abc.ABC):
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
 
-        socket_path = os.path.join(self._config.socket_dir, self.__class__.__name__)
+        socket_path = os.path.join(
+            self._config.socket_dir, "dashboard_" + self.__class__.__name__
+        )
         if sys.platform == "win32":
             site = aiohttp.web.NamedPipeSite(runner, socket_path)
         else:
