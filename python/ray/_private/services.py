@@ -340,11 +340,9 @@ def _find_address_from_flag(flag: str):
 
     # The --redis-address here is what is now called the --address, but it
     # appears in the default_worker.py and agent.py calls as --redis-address.
-    pids = psutil.pids()
     addresses = set()
-    for pid in pids:
+    for proc in psutil.process_iter(["cmdline"]):
         try:
-            proc = psutil.Process(pid)
             # HACK: Workaround for UNIX idiosyncrasy
             # Normally, cmdline() is supposed to return the argument list.
             # But it in some cases (such as when setproctitle is called),
@@ -352,11 +350,11 @@ def _find_address_from_flag(flag: str):
             # the first argument.
             # Explanation: https://unix.stackexchange.com/a/432681
             # More info: https://github.com/giampaolo/psutil/issues/1179
-            cmdline = proc.cmdline()
+            cmdline = proc.info["cmdline"]
             # NOTE(kfstorm): To support Windows, we can't use
             # `os.path.basename(cmdline[0]) == "raylet"` here.
 
-            if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
+            if _is_raylet_process(cmdline):
                 for arglist in cmdline:
                     # Given we're merely seeking --redis-address, we just split
                     # every argument on spaces for now.
@@ -2289,3 +2287,19 @@ def start_ray_client_server(
         fate_share=fate_share,
     )
     return process_info
+
+
+def _is_raylet_process(cmdline: Optional[List[str]]) -> bool:
+    """Check if the command line belongs to a raylet process.
+
+    Args:
+        cmdline: List of command line arguments or None
+
+    Returns:
+        bool: True if this is a raylet process, False otherwise
+    """
+    if cmdline is None or len(cmdline) == 0:
+        return False
+
+    executable = os.path.basename(cmdline[0])
+    return "raylet" in executable

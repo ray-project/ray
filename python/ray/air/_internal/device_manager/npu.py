@@ -7,6 +7,7 @@ import torch
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
+from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 
 
 def is_package_present(package_name: str) -> bool:
@@ -54,9 +55,7 @@ class NPUTorchDeviceManager(TorchDeviceManager):
             device_ids = []
 
             if len(npu_ids) > 0:
-                npu_visible_str = os.environ.get(
-                    ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR, ""
-                )
+                npu_visible_str = os.environ.get(ASCEND_RT_VISIBLE_DEVICES_ENV_VAR, "")
                 if npu_visible_str and npu_visible_str != "NoDevFiles":
                     npu_visible_list = npu_visible_str.split(",")
                 else:

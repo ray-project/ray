@@ -451,6 +451,20 @@ def test_worker_group_callback():
     assert hooks.shutdown_hook_called
 
 
+def test_worker_log_file_paths():
+    """Test that log file paths are correctly assigned to workers."""
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # Check that all workers have log file paths assigned
+    workers = wg.get_workers()
+    for worker in workers:
+        assert worker.log_file_path is not None
+        assert "ray-train-app-worker" in worker.log_file_path
+
+    wg.shutdown()
+
+
 def test_shutdown_hook_with_dead_actors():
     """Check that the shutdown hook raises correctly if run
     on a mix of alive and dead actors."""

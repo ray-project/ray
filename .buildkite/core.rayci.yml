@@ -53,10 +53,10 @@ steps:
     parallelism: 4
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags use_all_core --skip-ray-installation
@@ -69,12 +69,12 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --only-tags use_all_core --skip-ray-installation
@@ -93,7 +93,7 @@ steps:
     parallelism: 4
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
@@ -140,6 +140,7 @@ steps:
       - python
       - workflow
       - oss
+      - skip-on-premerge
     instance_type: medium
     parallelism: 2
     commands:
@@ -164,7 +165,7 @@ steps:
         --parallelism-per-worker 3
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --except-tags gpu,post_wheel_build,mem_pressure,doctest,multi_gpu
         --parallelism-per-worker 3
         --skip-ray-installation
@@ -175,7 +176,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --build-name datalbuild
         --parallelism-per-worker 2
     depends_on:
@@ -200,7 +201,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --build-type debug
         --parallelism-per-worker 3
         --only-tags debug_tests
@@ -211,7 +212,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --build-type asan
         --parallelism-per-worker 2
         --only-tags asan_tests
@@ -222,7 +223,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --build-type wheel
         --parallelism-per-worker 3
         --only-tags post_wheel_build
@@ -333,7 +334,7 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --run-flaky-tests
         --except-tags multi_gpu
 
@@ -347,7 +348,7 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
-        --install-mask serve
+        --install-mask rllib,serve,train,tune
         --run-flaky-tests
         --gpus 4
         --build-name coregpubuild
@@ -391,14 +392,21 @@ steps:
         --canonical-tag test_container
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container --install-mask serve
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container --install-mask rllib,serve,train,tune
     depends_on:
       - manylinux
       - forge
       - raycpubase
       - corebuild
 
+  # block on premerge and microcheck
+  - block: "run multi gpu tests"
+    if: build.env("BUILDKITE_PIPELINE_ID") == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("BUILDKITE_PIPELINE_ID") == "018f4f1e-1b73-4906-9802-92422e3badaa"
+    key: block-core-gpu-tests
+    depends_on: []
+
   - label: ":ray: core: multi gpu tests"
+    key: core-multi-gpu-tests
     tags:
       - accelerated_dag
       - gpu
@@ -409,5 +417,7 @@ steps:
         --gpus 4
         --build-name coregpubuild
         --only-tags multi_gpu
-        --install-mask serve
-    depends_on: coregpubuild
+        --install-mask rllib,serve,train,tune
+    depends_on:
+      - block-core-gpu-tests
+      - coregpubuild
