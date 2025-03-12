@@ -194,7 +194,7 @@ class GroupedData:
 
         .. seealso::
 
-            :meth:`Dataset.aggregate`
+            :meth:`GroupedData.aggregate`
                 Use this method for common aggregation use cases.
         """
         # Globally sort records by key.
