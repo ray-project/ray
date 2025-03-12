@@ -182,26 +182,25 @@ class _BlockExecStatsBuilder:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._stop_rss_poll_thread()
 
-    def __call__(self) -> "BlockExecStats":
+    def build(self) -> "BlockExecStats":
         end_time = time.perf_counter()
         end_cpu = time.process_time()
 
         self._max_rss = max(self._max_rss, int(self._process.memory_info().rss))
 
-        # Build stats
         stats = BlockExecStats()
         stats.start_time_s = self._start_time
         stats.end_time_s = end_time
         stats.wall_time_s = end_time - self._start_time
         stats.cpu_time_s = end_cpu - self._start_cpu
         stats.rss_bytes = self._max_rss
+        print(self._max_rss)
+        return stats
 
-        # Reset for next block
+    def reset(self):
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
         self._max_rss = int(self._process.memory_info().rss)
-
-        return stats
 
     def _start_rss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         stop_event = threading.Event()
