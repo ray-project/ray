@@ -97,9 +97,7 @@ class GPUFuture(DAGOperationFuture[Any]):
         if fut_id in GPUFuture.gpu_futures:
             GPUFuture.gpu_futures.pop(fut_id).destroy_event()
 
-    def __init__(
-        self, buf: Any, fut_id: int, stream: Any = None
-    ):
+    def __init__(self, buf: Any, fut_id: int, stream: Any = None):
         """
         Initialize a GPU future on the given stream.
 
