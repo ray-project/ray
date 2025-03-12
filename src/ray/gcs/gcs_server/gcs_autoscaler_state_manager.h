@@ -217,7 +217,10 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
-  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestGetPerNodeInfeasibleResourceRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests);
 };
 
 }  // namespace gcs

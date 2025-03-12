@@ -108,7 +108,6 @@ py_test_module_list(
     "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
-    "test_client_library_integration.py",
   ],
   size = "medium",
   tags = ["exclusive", "client_tests", "team:core"],
@@ -193,7 +192,6 @@ py_test_module_list(
     "test_state_api_log.py",
     "test_state_api_summary.py",
     "test_tempfile.py",
-    "test_tensorflow.py",
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
@@ -635,22 +633,6 @@ py_test(
     name = "test_gcp_tpu_command_runner",
     size = "small",
     srcs = ["gcp/test_gcp_tpu_command_runner.py"],
-    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "vsphere/test_vsphere_node_provider",
-    size = "small",
-    srcs = ["vsphere/test_vsphere_node_provider.py"],
-    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
-    name = "vsphere/test_vsphere_sdk_provider",
-    size = "small",
-    srcs = ["vsphere/test_vsphere_sdk_provider.py"],
     tags = ["exclusive", "small_size_python_tests", "no_windows", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )

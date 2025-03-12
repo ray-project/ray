@@ -240,7 +240,10 @@ def test_p2p_direct_return(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _direct_return=True,
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -282,7 +285,10 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_tensor_transport(transport="nccl", _direct_return=True)
+        dag = dag.with_tensor_transport(
+            transport="nccl",
+            _direct_return=True,
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -349,7 +355,9 @@ def test_p2p_static_shape_and_direct_return(
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_tensor_transport(
-            transport="nccl", _static_shape=True, _direct_return=True
+            transport="nccl",
+            _static_shape=True,
+            _direct_return=True,
         )
         dag = receiver.recv.bind(dag)
 

@@ -481,7 +481,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   }
   if (execute_out_of_order) {
-    // After restart the tasks are executed in submittion order.
+    // After restart the tasks are executed in submission order.
     ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2, 3, 1, 2));
   } else {
     // Actor counter restarts at 0 after the actor is restarted. New task cannot
@@ -813,11 +813,13 @@ class MockTaskReceiver : public TaskReceiver {
                    instrumented_io_context &main_io_service,
                    worker::TaskEventBuffer &task_event_buffer,
                    const TaskHandler &task_handler,
+                   std::function<std::function<void()>()> initialize_thread_callback,
                    const OnActorCreationTaskDone &actor_creation_task_done_)
       : TaskReceiver(worker_context,
                      main_io_service,
                      task_event_buffer,
                      task_handler,
+                     initialize_thread_callback,
                      actor_creation_task_done_) {}
 
   void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
@@ -841,9 +843,12 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_5,
                                   std::placeholders::_6);
     receiver_ = std::make_unique<MockTaskReceiver>(
-        worker_context_, main_io_service_, task_event_buffer_, execute_task, [] {
-          return Status::OK();
-        });
+        worker_context_,
+        main_io_service_,
+        task_event_buffer_,
+        execute_task,
+        /* intiialize_thread_callback= */ []() { return []() { return; }; },
+        /* actor_creation_task_done= */ []() { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_,
@@ -945,7 +950,7 @@ TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   }
 
   // Push a task request with actor counter 1, but with a different worker id,
-  // and a older timstamp. In this case the request should fail.
+  // and a older timestamp. In this case the request should fail.
   {
     auto worker_id = WorkerID::FromRandom();
     auto request =

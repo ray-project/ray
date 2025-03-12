@@ -52,19 +52,18 @@ class CircularBuffer:
                 self._indices.add(self._offset)
                 self._indices.discard(self._offset - self._NxK)
                 self._offset += 1
+            self._num_added += 1
 
         # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
         dropped_ts = 0
         if dropped_entry is not None:
             dropped_ts = dropped_entry.env_steps()
 
-        self._num_added += 1
-
         return dropped_ts
 
     def sample(self):
         # Only initially, the buffer may be empty -> Just wait for some time.
-        while not self._indices:
+        while len(self) == 0:
             time.sleep(0.0001)
 
         # Sample a random buffer index.
@@ -72,6 +71,13 @@ class CircularBuffer:
             idx = self._rng.choice(list(self._indices))
             actual_buffer_idx = idx - self._offset + self._NxK
             batch = self._buffer[actual_buffer_idx]
+            assert batch is not None, (
+                idx,
+                actual_buffer_idx,
+                self._offset,
+                self._indices,
+                [b is None for b in self._buffer],
+            )
             self._buffer[actual_buffer_idx] = None
             self._indices.discard(idx)
 
@@ -81,11 +87,13 @@ class CircularBuffer:
     @property
     def filled(self):
         """Whether the buffer has been filled once with at least `self.num_batches`."""
-        return self._num_added >= self.num_batches
+        with self._lock:
+            return self._num_added >= self.num_batches
 
     def __len__(self) -> int:
         """Returns the number of actually valid (non-expired) batches in the buffer."""
-        return len(self._indices)
+        with self._lock:
+            return len(self._indices)
 
 
 @OldAPIStack

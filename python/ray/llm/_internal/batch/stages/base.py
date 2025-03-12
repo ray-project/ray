@@ -273,7 +273,7 @@ class StatefulStage(BaseModel):
             )
         kwargs["batch_size"] = batch_size
 
-        kwargs.update({"fn_constructor_kwargs": self.fn_constructor_kwargs})
+        kwargs.update({"fn_constructor_kwargs": self.fn_constructor_kwargs.copy()})
         if "data_column" in kwargs["fn_constructor_kwargs"]:
             raise ValueError(
                 "'data_column' cannot be used as in fn_constructor_kwargs."

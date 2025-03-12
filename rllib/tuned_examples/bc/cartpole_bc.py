@@ -15,6 +15,7 @@ from ray.rllib.utils.test_utils import (
 )
 
 parser = add_rllib_example_script_args()
+parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -76,7 +77,7 @@ config = (
 if not args.no_tune:
     warnings.warn(
         "You are running the example with Ray Tune. Offline RL uses "
-        "Ray Data, which doesn't does not interact seamlessly with Ray Tune. "
+        "Ray Data, which doesn't doesn't interact seamlessly with Ray Tune. "
         "If you encounter difficulties try to run the example without "
         "Ray Tune using `--no-tune`."
     )

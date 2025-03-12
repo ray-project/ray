@@ -304,6 +304,7 @@ ray_cc_test(
     srcs = ["spdlog_fd_sink_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/util:compat",
         "//src/ray/util:spdlog_fd_sink",
         "@com_google_googletest//:gtest_main",
     ],
@@ -343,6 +344,46 @@ ray_cc_test(
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:filesystem",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "process_cleanup_test",
+    srcs = ["process_cleanup_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:process_cleaner",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "scoped_dup2_wrapper_test",
+    size = "small",
+    srcs = ["scoped_dup2_wrapper_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util:compat",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:scoped_dup2_wrapper",
+        "//src/ray/util:temporary_directory",
+        "@boost//:iostreams",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "invoke_once_token_test",
+    size = "small",
+    srcs = ["invoke_once_token_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:invoke_once_token",
         "@com_google_googletest//:gtest_main",
     ],
 )

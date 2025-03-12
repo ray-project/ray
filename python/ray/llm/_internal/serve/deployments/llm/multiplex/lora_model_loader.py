@@ -1,6 +1,5 @@
 import asyncio
 import os
-import subprocess
 from typing import Dict, Optional
 
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -16,8 +15,8 @@ from ray.llm._internal.serve.deployments.llm.multiplex.utils import (
 from ray.llm._internal.serve.configs.server_models import (
     DiskMultiplexConfig,
     LLMConfig,
-    LoraMirrorConfig,
 )
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 
 logger = get_logger(__name__)
 
@@ -158,7 +157,7 @@ class LoraModelLoader:
         # Apply retry decorator to _download_lora at runtime with instance parameters
         download_with_retries = retry_with_exponential_backoff(
             max_tries=self.max_tries,
-            exception_to_check=subprocess.SubprocessError,
+            exception_to_check=Exception,  # Catch any exception from CloudFileSystem
         )(lambda config: self._download_lora(config))
 
         local_path = download_with_retries(lora_mirror_config)

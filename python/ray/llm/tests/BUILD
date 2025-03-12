@@ -8,6 +8,14 @@ py_library(
   ],
 )
 
+# Common tests
+py_test_module_list(
+  files = glob(["common/**/test_cloud_utils.py"]),
+  size = "small",
+  tags = ["exclusive", "cpu", "team:llm"],
+  deps = ["//:ray_lib"],
+)
+
 # Batch test
 py_test_module_list(
   files = glob(["batch/cpu/**/test_*.py"]),
@@ -36,11 +44,12 @@ py_test_module_list(
     "serve/deployments/llm/multiplex/test_lora_model_loader.py",
     "serve/deployments/llm/multiplex/test_multiplex_deployment.py",
     "serve/deployments/llm/multiplex/test_multiplex_utils.py",
+    "serve/config_generator/test_input_converter.py",
+    "serve/config_generator/test_text_completion.py",
     "serve/deployments/llm/test_image_retriever.py",
     "serve/deployments/test_streaming_error_handler.py",
     "serve/observability/usage_telemetry/test_usage.py",
     "serve/deployments/llm/vllm/test_vllm_engine.py",
-    "serve/utils/test_cloud_utils.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "small",
@@ -64,6 +73,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "serve/integration/test_openai_compatibility.py",
+    "serve/integration/test_openai_compatibility_no_accelerator_type.py",
   ],
   data = glob(["serve/**/*.yaml"]),
   size = "large",
