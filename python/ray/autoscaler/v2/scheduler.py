@@ -171,7 +171,7 @@ class SchedulingNode:
     im_instance_id: Optional[str] = None
     # The instance status of the IM(Instance Manager) instance. None if the node
     # is not yet in IM.
-    im_instance_status: Optional[Instance.InstanceStatus] = None
+    im_instance_status: Optional[Instance.InstanceStatus.ValueType] = None
     # The ray node id of the ray node. None if the node is not included in
     # ray cluster's GCS report yet (not running ray yet).
     ray_node_id: Optional[str] = None
@@ -190,7 +190,7 @@ class SchedulingNode:
         labels: Dict[str, str],
         status: SchedulingNodeStatus,
         im_instance_id: str = "",
-        im_instance_status: Optional[Instance.InstanceStatus] = None,
+        im_instance_status: Optional[Instance.InstanceStatus.ValueType] = None,
         ray_node_id: str = "",
         idle_duration_ms: int = 0,
         launch_config_hash: str = "",
