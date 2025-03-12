@@ -3,7 +3,10 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, Union
 
-from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.common.utils.cloud_utils import (
+    CloudMirrorConfig,
+    is_remote_path,
+)
 from ray.llm._internal.common.utils.download_utils import CloudModelDownloader
 
 if TYPE_CHECKING:
@@ -64,18 +67,6 @@ def get_cached_tokenizer(tokenizer: AnyTokenizer) -> AnyTokenizer:
 
     tokenizer.__class__ = CachedTokenizer
     return tokenizer
-
-
-def is_remote_path(path: str) -> bool:
-    """Check if the path is a remote path.
-
-    Args:
-        path: The path to check.
-
-    Returns:
-        True if the path is a remote path, False otherwise.
-    """
-    return path.startswith("s3://") or path.startswith("gs://")
 
 
 def download_hf_model(model_source: str, tokenizer_only: bool = True) -> str:

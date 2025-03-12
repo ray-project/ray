@@ -19,9 +19,9 @@ from ray.llm._internal.batch.stages.base import (
 )
 from ray.llm._internal.batch.utils import (
     download_lora_adapter,
-    is_remote_path,
     download_hf_model,
 )
+from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
