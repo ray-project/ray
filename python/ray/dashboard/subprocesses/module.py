@@ -153,8 +153,6 @@ async def run_module_inner(
         await module.start_server()
         ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
-        while True:
-            await asyncio.sleep(3600)  # sleep forever
     except Exception as e:
         logger.exception(f"Error creating module {module_name}")
         raise e
