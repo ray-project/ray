@@ -246,8 +246,7 @@ class Stats:
         # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
         # cheap and avoids long lists, which would be expensive to reduce.
         if self._inf_window and (
-            self._ema_coeff is not None
-            or self._reduce_method != "mean"
+            self._ema_coeff is not None or self._reduce_method != "mean"
         ):
             self._set_values(self._reduced_values()[1])
 
