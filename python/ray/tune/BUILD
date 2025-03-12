@@ -1132,6 +1132,14 @@ py_test(
 )
 
 py_test(
+    name = "test_telemetry",
+    size = "small",
+    srcs = ["tests/test_telemetry.py"],
+    tags = ["team:ml"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "tune_mnist_keras",
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],

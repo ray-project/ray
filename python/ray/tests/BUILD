@@ -150,7 +150,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
-        "test_client_library_integration.py",
         "test_client_multi.py",
         "test_client_proxy.py",
         "test_client_references.py",
@@ -274,7 +273,6 @@ py_test_module_list(
         "test_task_metrics.py",
         "test_task_metrics_reconstruction.py",
         "test_tempfile.py",
-        "test_tensorflow.py",
         "test_tls_auth.py",
         "test_traceback.py",
         "test_worker_capping.py",
