@@ -3,6 +3,11 @@
 set -euo pipefail
 
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
+if [ "${PYTHON_CODE}" != "py311" ]; then
+	echo "--- Python version is not 3.11"
+	echo "--- Current Python version: ${PYTHON_CODE}"
+	exit 1
+fi
 
 for CUDA_CODE in cpu cu121 cu124 ; do
 	PYTHON_CUDA_CODE="${PYTHON_CODE}_${CUDA_CODE}"
@@ -18,8 +23,11 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 		--unsafe-package setuptools
 		--index-url "https://pypi.org/simple"
 		--extra-index-url "https://download.pytorch.org/whl/${CUDA_CODE}"
-		--find-links "https://data.pyg.org/whl/torch-2.3.0+${CUDA_CODE}.html"
+		--find-links "https://data.pyg.org/whl/torch-2.5.1+${CUDA_CODE}.html"
 		--index-strategy unsafe-best-match
+		--no-strip-markers
+		--emit-index-url
+		--emit-find-links
 	)
 
 	mkdir -p /tmp/ray-deps
@@ -69,5 +77,4 @@ for CUDA_CODE in cpu cu121 cu124 ; do
 		"python/requirements.txt" \
 		"python/requirements/llm/llm-requirements.txt" \
 		-o "python/requirements_compiled_rayllm_${PYTHON_CUDA_CODE}.txt"
-
 done
