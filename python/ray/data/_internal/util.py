@@ -8,6 +8,7 @@ import threading
 import time
 import urllib.parse
 from queue import Empty, Full, Queue
+from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
