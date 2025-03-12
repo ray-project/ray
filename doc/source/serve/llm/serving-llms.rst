@@ -555,8 +555,9 @@ If you are using huggingface models, you can enable fast download by setting `HF
 
 Usage Data Collection
 --------------------------
-We collect usage data to improve the product for llm serving.
+We collect usage data to improve Ray Serve LLM.
 We collect data about the following features and attributes:
+
 - model architecture used for serving
 - whether JSON mode is used
 - whether LoRA is used and how many LoRA weights are loaded initially at deployment time
