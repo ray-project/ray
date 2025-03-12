@@ -70,6 +70,32 @@ def model_llava_354m():
 
 
 @pytest.fixture(scope="session")
+def model_llama_3_2_216M():
+    """The llama 3.2 216M model for testing."""
+    REMOTE_URL = f"{S3_ARTIFACT_URL}llama-3.2-216M-dummy/"
+    FILE_LIST = [
+        "config.json",
+        "generation_config.json",
+        "special_tokens_map.json",
+        "tokenizer_config.json",
+        "tokenizer.json",
+        "model.safetensors",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
+
+
+@pytest.fixture(scope="session")
+def model_llama_3_2_216M_lora():
+    """The LoRA model for testing."""
+    REMOTE_URL = f"{S3_ARTIFACT_URL}llama-3.2-216M-lora-dummy/"
+    FILE_LIST = [
+        "adapter_config.json",
+        "adapter_model.safetensors",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
+
+
+@pytest.fixture(scope="session")
 def model_pixtral_12b():
     """The Pixtral 12B model for testing."""
     REMOTE_URL = f"{S3_ARTIFACT_URL}mistral-community-pixtral-12b/"
@@ -78,6 +104,21 @@ def model_pixtral_12b():
         "chat_template.json",
         "preprocessor_config.json",
         "processor_config.json",
+        "special_tokens_map.json",
+        "tokenizer_config.json",
+        "tokenizer.json",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)
+
+
+@pytest.fixture(scope="session")
+def model_llama_3_2_1B_instruct():
+    """The llama 3.2 1B Instruct model for testing."""
+    REMOTE_URL = f"{S3_ARTIFACT_URL}unsloth-Llama-3.2-1B-Instruct/"
+    FILE_LIST = [
+        "config.json",
+        "generation_config.json",
+        "model.safetensors",
         "special_tokens_map.json",
         "tokenizer_config.json",
         "tokenizer.json",

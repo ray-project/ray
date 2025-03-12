@@ -24,7 +24,7 @@ if the Cluster was started previously.
 
 **Expected behavior**: Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all Workers. It won’t be.
 
-**Fix**: Use Runtime Environments to pass environment variables explicity.
+**Fix**: Use Runtime Environments to pass environment variables explicitly.
 If you call ``ray.init(runtime_env=...)``,
 then the Workers will have the environment variable set.
 

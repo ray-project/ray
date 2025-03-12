@@ -1,23 +1,26 @@
 .. _ray-compiled-graph:
 
-Ray Compiled Graph
-==================
+Ray Compiled Graph (beta)
+=========================
 
 .. warning::
 
-    Ray Compiled Graph is currently at a developer preview stage. The APIs are subject to change and expected to evolve.
-    The API is available from Ray 2.32.
+    Ray Compiled Graph is currently in beta (since Ray 2.44). The APIs are subject to change and expected to evolve.
+    The API is available from Ray 2.32, but it's recommended to use a version after 2.44.
 
-As large language models (LLM) become common, programming distributed systems with multiple GPUs is essential.
-Ray APIs facilitate using multiple GPUs but have limitations such as:
+As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential.
+:ref:`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
 
-* having a high system overhead of over 1ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
-* lack direct GPU-to-GPU RDMA communication, requiring external tools like NCCL.
+* System overhead of ~1 ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
+* Lack support for direct GPU-to-GPU communication, requiring manual development with external libraries like NVIDIA Collective Communications Library (`NCCL <https://developer.nvidia.com/nccl>`_).
 
-Ray Compiled Graph gives you a classic Ray Core-like API but with:
+Ray Compiled Graph gives you a Ray Core-like API but with:
 
-- **Less than 50us system overhead** for workloads that repeatedly execute the same task DAG.
-- **Native support for GPU-GPU communication**, with NCCL with various optimizations such as overlapping compute and communication.
+- **Less than 50us system overhead** for workloads that repeatedly execute the same task graph.
+- **Native support for GPU-GPU communication** with NCCL.
+
+For example, consider the following Ray Core code, which sends data to an actor
+and gets the result:
 
 .. testcode::
 
@@ -26,30 +29,35 @@ Ray Compiled Graph gives you a classic Ray Core-like API but with:
     ref = receiver.recv.remote(data)
     ray.get(ref)
 
-    # Compiled Graph for remote execution.
-    # less than 50us overhead to invoke `recv` (during `dag.execute(data)`).
-    with InputNode() as inp:
-        dag = receiver.recv.bind(inp)
 
-    dag = dag.experimental_compile()
-    ref = dag.execute(data)
+This code shows how to compile and execute the same example as a Compiled Graph.
+
+.. testcode::
+
+    # Compiled Graph for remote execution.
+    # less than 50us overhead to invoke `recv` (during `graph.execute(data)`).
+    with InputNode() as inp:
+        graph = receiver.recv.bind(inp)
+
+    graph = graph.experimental_compile()
+    ref = graph.execute(data)
     ray.get(ref)
 
-Ray Compiled Graph has a static execution model. It is different from classic Ray APIs, which are eager. Because
+Ray Compiled Graph has a static execution model. It's different from classic Ray APIs, which are eager. Because
 of the static nature, Ray Compiled Graph can perform various optimizations such as:
 
 - Pre-allocate resources so that it can reduce system overhead.
-- Prepare NCCL communicators and schedule it in a way that avoids deadlock.
-- Automatically overlap GPU compute and communication.
+- Prepare NCCL communicators and apply deadlock-free scheduling.
+- (experimental) Automatically overlap GPU compute and communication.
 - Improve multi-node performance.
 
 Use Cases
 ---------
-Ray Compiled Graph APIs simplify high-performance multi-GPU workloads such as:
+Ray Compiled Graph APIs simplify development of high-performance multi-GPU workloads such as LLM inference or distributed training that require:
 
-- Applications with sub-millisecond level runtime requirements (which is highly affected by 1ms+ system overhead). For example, LLM inference.
-- Multi GPU applications such as LLM inference or training.
-- Multi GPU applications with heterogenous compute patterns. See `Heterogenous training with Ray Compiled Graph <https://www.youtube.com/watch?v=Mg08QTBILWU>`_ for more details.
+- Sub-millisecond level task orchestration.
+- Direct GPU-GPU peer-to-peer or collective communication.
+- `Heterogeneous <https://www.youtube.com/watch?v=Mg08QTBILWU>`_ or MPMD (Multiple Program Multiple Data) execution.
 
 More Resources
 --------------
@@ -68,7 +76,7 @@ Learn more details about Ray Compiled Graph from the following links.
     :maxdepth: 1
 
     quickstart
-    execution
-    visualization
     profiling
     overlap
+    troubleshooting
+    compiled-graph-api

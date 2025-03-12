@@ -39,7 +39,10 @@ enum MessageType:int {
   AnnounceWorkerPortReply,
   // Notify the raylet that this client is disconnecting.
   // This is sent from a worker to a raylet.
-  DisconnectClient,
+  DisconnectClientRequest,
+  // Notify the client that the raylet has deregistered this client.
+  // The client should block until it receives this message before closing the socket.
+  DisconnectClientReply,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -101,13 +104,16 @@ table ResourceIdSetInfo {
 }
 
 // This message is sent from a worker to the node manager.
-table DisconnectClient {
+table DisconnectClientRequest {
+  // Populated with a WorkerExitType enum.
   disconnect_type: int;
   disconnect_detail: string;
   // Creation task exception serialized by protobuf.
   // Contains a RayException defined in common.pb
   creation_task_exception_pb: [ubyte];
 }
+
+table DisconnectClientReply {}
 
 table ResourceIdSetInfos {
   resource_infos: [ResourceIdSetInfo];
@@ -211,7 +217,6 @@ table NotifyUnblocked {
 }
 
 table NotifyDirectCallTaskBlocked {
-  release_resources: bool;
 }
 
 table NotifyDirectCallTaskUnblocked {
@@ -287,12 +292,4 @@ table SubscribePlasmaReady {
   object_id: string;
   // The owner address for the ObjectID
   owner_address: Address;
-}
-
-table ForceSpillObjectsRequest {
-  // List of object IDs to be spilled to external storage.
-  object_ids: [string];
-}
-
-table ForceSpillObjectsReply {
 }

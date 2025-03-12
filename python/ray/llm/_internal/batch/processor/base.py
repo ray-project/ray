@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from typing import Optional, List, Type, Callable, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ray.data.block import UserDefinedFunction
 from ray.data import Dataset
@@ -12,17 +12,19 @@ from ray.llm._internal.batch.stages import (
     wrap_preprocess,
     wrap_postprocess,
 )
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 
 
-class ProcessorConfig(BaseModel):
+class ProcessorConfig(BaseModelExtended):
     """The processor configuration."""
 
     batch_size: int = Field(
+        default=64,
         description="Large batch sizes are likely to saturate the compute resources "
         "and could achieve higher throughput. On the other hand, small batch sizes "
         "are more fault-tolerant and could reduce bubbles in the data pipeline. "
         "You can tune the batch size to balance the throughput and fault-tolerance "
-        "based on your use case.",
+        "based on your use case. Defaults to 64.",
     )
     accelerator_type: Optional[str] = Field(
         default=None,

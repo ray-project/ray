@@ -15,6 +15,10 @@ class ExecutionCallback:
         """Called before the Dataset execution starts."""
         ...
 
+    def on_execution_step(self, executor: "StreamingExecutor"):
+        """Called at each step of the Dataset execution loop."""
+        ...
+
     def after_execution_succeeds(self, executor: "StreamingExecutor"):
         """Called after the Dataset execution succeeds."""
         ...

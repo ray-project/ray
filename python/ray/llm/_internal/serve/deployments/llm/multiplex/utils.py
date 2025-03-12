@@ -1,27 +1,19 @@
 import json
 import subprocess
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TypeVar, Callable
+from functools import wraps
 
-# TODO (genesu): remove dependency on asyncache.
-from asyncache import cached
-from cachetools import TLRUCache
 from fastapi import HTTPException
 from filelock import FileLock
 
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.deployments.utils.cloud_utils import (
-    GCP_EXECUTABLE,
-    AWS_EXECUTABLE,
-    get_file_from_gcs,
-    get_file_from_s3,
-    list_subfolders_gcs,
-    list_subfolders_s3,
-)
-from ray.llm._internal.serve.configs.server_models import (
-    LLMConfig,
+from ray.llm._internal.common.utils.cloud_utils import (
+    CloudFileSystem,
     LoraMirrorConfig,
+    remote_object_cache,
 )
+from ray.llm._internal.serve.configs.server_models import LLMConfig
 from ray.llm._internal.serve.configs.constants import (
     CLOUD_OBJECT_MISSING_EXPIRE_S,
     CLOUD_OBJECT_EXISTS_EXPIRE_S,
@@ -30,6 +22,9 @@ from ray.llm._internal.serve.configs.constants import (
 from ray.llm._internal.serve.deployments.utils.server_utils import make_async
 
 CLOUD_OBJECT_MISSING = object()
+
+# Type variable for the retry decorator
+T = TypeVar("T")
 
 logger = get_logger(__name__)
 
@@ -77,26 +72,6 @@ def clear_directory(dir: str):
         pass
 
 
-def _get_aws_sync_command(
-    bucket_uri: str,
-    local_path: str,
-    sync_args: Optional[List[str]] = None,
-    executable: str = AWS_EXECUTABLE,
-) -> List[str]:
-    sync_args = sync_args or []
-    return [executable, "s3", "sync"] + sync_args + [bucket_uri, local_path]
-
-
-def _get_gcp_sync_command(
-    bucket_uri: str,
-    local_path: str,
-    sync_args: Optional[List[str]] = None,
-    executable: str = GCP_EXECUTABLE,
-) -> List[str]:
-    sync_args = sync_args or []
-    return [executable, "storage", "rsync"] + sync_args + [bucket_uri, local_path]
-
-
 def sync_model(
     bucket_uri: str,
     local_path: str,
@@ -108,60 +83,74 @@ def sync_model(
     This method isn't re-entrant and will block (up to timeout) if already syncing
     at a given path.
     """
-    if bucket_uri.startswith("s3://"):
-        command = _get_aws_sync_command(bucket_uri, local_path, sync_args=sync_args)
-    elif bucket_uri.startswith("gs://"):
-        command = _get_gcp_sync_command(bucket_uri, local_path, sync_args=sync_args)
-    else:
-        raise ValueError(
-            'bucket_uri must start with "s3://" or "gs://". '
-            f'Got "{bucket_uri}" instead.'
-        )
-    logger.info(
-        "Downloading %s to %s using %s, timeout=%ss",
-        bucket_uri,
-        local_path,
-        command,
-        timeout,
-    )
+
+    logger.info("Downloading %s to %s", bucket_uri, local_path)
+
     with FileLock(local_path + ".lock", timeout=timeout or -1):
         try:
-            subprocess.run(command, check=True, capture_output=True, timeout=timeout)
+            # Use CloudFileSystem.download_files for the sync operation
+            CloudFileSystem.download_files(
+                path=local_path,
+                bucket_uri=bucket_uri,
+            )
         except Exception as e:
-            # Not using logger.exception since we raise anyway.
-            if isinstance(
-                e, (subprocess.TimeoutExpired, subprocess.CalledProcessError)
-            ):
-                stdout_txt = f"\nSTDOUT: {e.stdout.decode()}" if e.stdout else ""
-                stderr_txt = f"\nSTDERR: {e.stderr.decode()}" if e.stderr else ""
-            else:
-                stdout_txt = ""
-                stderr_txt = ""
             logger.error(
-                "Failed to sync model (%s) from %s to %s using %s.%s%s",
+                "Failed to sync model (%s) from %s to %s",
                 str(e),
                 bucket_uri,
                 local_path,
-                command,
-                stdout_txt,
-                stderr_txt,
             )
             raise
 
 
-def _validate_model_ttu(key, value, now):
-    # Return the expiration time depending on value
-    # (now + some offset)
-    # For get_lora_finetuned_context_length, we want to periodically re-check if
-    # the files are available if they weren't before (because they
-    # might have been uploaded in the meantime).
-    # If they were uploaded and we cached the sequence length response,
-    # then we just need to guard against users deleting the files
-    # from the bucket, which shouldn't happen often.
-    if value is CLOUD_OBJECT_MISSING:
-        return now + CLOUD_OBJECT_MISSING_EXPIRE_S
-    else:
-        return now + CLOUD_OBJECT_EXISTS_EXPIRE_S
+def retry_with_exponential_backoff(
+    max_tries: int,
+    exception_to_check: type[Exception],
+    base_delay: float = 1,
+    max_delay: float = 32,
+    exponential_base: float = 2,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Retry decorator with exponential backoff.
+
+    Args:
+        max_tries: Maximum number of retry attempts
+        exception_to_check: Exception type to catch and retry on
+        base_delay: Initial delay between retries in seconds
+        max_delay: Maximum delay between retries in seconds
+        exponential_base: Base for exponential calculation
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            delay = base_delay
+            last_exception = None
+
+            for attempt in range(max_tries):
+                try:
+                    return func(*args, **kwargs)
+                except exception_to_check as e:
+                    last_exception = e
+                    if attempt == max_tries - 1:  # Last attempt
+                        raise last_exception
+
+                    # Log the failure and retry
+                    logger.warning(
+                        f"Attempt {attempt + 1}/{max_tries} failed: {str(e)}. "
+                        f"Retrying in {delay} seconds..."
+                    )
+                    time.sleep(delay)
+                    # Calculate next delay with exponential backoff
+                    delay = min(delay * exponential_base, max_delay)
+
+            # This should never be reached due to the raise in the loop
+            raise last_exception if last_exception else RuntimeError(
+                "Unexpected error in retry logic"
+            )
+
+        return wrapper
+
+    return decorator
 
 
 @make_async
@@ -177,14 +166,7 @@ def _get_object_from_cloud(object_uri: str) -> Union[str, object]:
     if object_uri.endswith("/"):
         raise ValueError(f'object_uri {object_uri} must not end with a "/".')
 
-    if object_uri.startswith("s3://"):
-        body_str = get_file_from_s3(object_uri=object_uri)
-    elif object_uri.startswith("gs://"):
-        body_str = get_file_from_gcs(object_uri=object_uri)
-    else:
-        raise ValueError(
-            f'object_uri "{object_uri}" must start with "s3://" or "gs://".'
-        )
+    body_str = CloudFileSystem.get_file(object_uri)
 
     if body_str is None:
         logger.info(f"{object_uri} does not exist.")
@@ -193,21 +175,22 @@ def _get_object_from_cloud(object_uri: str) -> Union[str, object]:
         return body_str
 
 
-@cached(
-    cache=TLRUCache(
-        maxsize=4096,
-        getsizeof=lambda x: 1,
-        ttu=_validate_model_ttu,
-        timer=time.monotonic,
-    )
+@remote_object_cache(
+    max_size=4096,
+    missing_expire_seconds=CLOUD_OBJECT_MISSING_EXPIRE_S,
+    exists_expire_seconds=CLOUD_OBJECT_EXISTS_EXPIRE_S,
+    missing_object_value=CLOUD_OBJECT_MISSING,
 )
 async def get_object_from_cloud(object_uri: str) -> Union[str, object]:
-    """Calls _get_object_from_cloud with caching.
+    """Gets an object from the cloud with caching.
 
-    We separate the caching logic from the implementation, so the
-    implementation can be faked while testing the caching logic in unit tests.
+    The cache will store missing objects for a short time and existing objects for
+    a longer time. This prevents unnecessary cloud API calls when objects don't exist
+    while ensuring we don't cache missing objects for too long in case they get created.
+
+    Returns:
+        The body of the object if it exists, or CLOUD_OBJECT_MISSING if it doesn't.
     """
-
     return await _get_object_from_cloud(object_uri)
 
 
@@ -245,6 +228,12 @@ def get_lora_model_ids(
 ) -> List[str]:
     """Get the model IDs of all the LoRA models.
 
+    The dynamic_lora_loading_path is expected to hold subfolders each for
+    a different lora checkpoint. Each subfolder name will correspond to
+    the unique identifier for the lora checkpoint. The lora model is
+    accessible via <base_model_id>:<lora_id>. Therefore, we prepend
+    the base_model_id to each subfolder name.
+
     Args:
         dynamic_lora_loading_path: the cloud folder that contains all the LoRA
             weights.
@@ -255,36 +244,11 @@ def get_lora_model_ids(
         itself.
     """
 
-    # The organization hosting the model. E.g. this would be "google" for the
-    # model "google/gemma-2-9b-it".
-    model_provider_organization = base_model_id.split("/")[0]
-
-    # Ensure that the dynamic_lora_loading_path has no trailing slash.
-    dynamic_lora_loading_path = dynamic_lora_loading_path.rstrip("/")
-
-    # This folder contains all the LoRA subfolders.
-    lora_folder = f"{dynamic_lora_loading_path}/{model_provider_organization}/"
-
-    if "s3://" in dynamic_lora_loading_path:
-        lora_subfolders = list_subfolders_s3(lora_folder)
-    elif "gs://" in dynamic_lora_loading_path:
-        lora_subfolders = list_subfolders_gcs(lora_folder)
-    else:
-        logger.warning(
-            'Expected a path that starts with "s3://" or "gs://" for '
-            "dynamic_lora_loading_path when getting LoRA model IDs. "
-            f'Got "{lora_folder}" instead.'
-        )
-        return []
+    lora_subfolders = CloudFileSystem.list_subfolders(dynamic_lora_loading_path)
 
     lora_model_ids = []
     for subfolder in lora_subfolders:
-        # There may be multiple models from the same provider. All their LoRAs
-        # will be in these lora_subfolders. We must select only the LoRA
-        # adapters for the passed-in base_model_id.
-        model = base_model_id.split("/")[1]
-        if subfolder.startswith(model):
-            lora_model_ids.append(f"{model_provider_organization}/{subfolder}")
+        lora_model_ids.append(f"{base_model_id}:{subfolder}")
 
     return lora_model_ids
 

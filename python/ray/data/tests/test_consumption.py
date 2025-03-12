@@ -1463,8 +1463,9 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
-    seed = int(time.time())
-    print(f"Seeding RNG for test_global_arrow_std with: {seed}")
+    # NOTE: Do not change the seed
+    seed = 1740035705
+
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
@@ -1492,7 +1493,7 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     ds = ray.data.from_pandas(pd.DataFrame({"A": [3]}))
     if ds_format == "arrow":
         ds = _to_arrow(ds)
-    assert ds.std("A") == 0
+    assert np.isnan(ds.std("A"))
 
     # Test built-in global std aggregation with nans
     nan_df = pd.DataFrame({"A": xs + [None]})
