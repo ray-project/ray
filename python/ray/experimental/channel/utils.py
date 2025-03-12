@@ -98,8 +98,11 @@ def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
 def get_default_torch_device(*, allow_cpu: bool) -> "torch.device":
     """Get the default torch device inside this actor or driver.
 
-    If any GPUs are available, the default device will be cuda:0.
-    Else it will be "cpu" if allow_cpu is True.
+    If any GPUs are available, the default device will be cuda:0 and we will rely on
+    torch to handle mapping CUDA_VISIBLE_DEVICES to a physical device.
+
+    If no GPUs are available, a CPU device will be returned if allow_cpu is true, else
+    the function will raise a RuntimeError.
     """
     accelerator_ids = ray.get_runtime_context().get_accelerator_ids()
     if not accelerator_ids.get("GPU", []):
