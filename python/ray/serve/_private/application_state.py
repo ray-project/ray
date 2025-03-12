@@ -1117,7 +1117,7 @@ class ApplicationStateManager:
         )
 
 
-@ray.remote(num_cpus=0, max_calls=1)
+@ray.remote(num_cpus=0)
 def build_serve_application(
     import_path: str,
     code_version: str,
