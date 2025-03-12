@@ -100,19 +100,7 @@ async def test_streamed_iota(aiohttp_client, default_module_config):
     assert await response.text() == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
 
 
-async def test_streamed_iota_with_503(aiohttp_client, default_module_config):
-    app = await start_http_server_app(default_module_config, [TestModule])
-    client = await aiohttp_client(app)
-
-    # Server behavior: sends 200 OK with 0-9, then an error message.
-    response = await client.post("/streamed_iota_with_503", data=b"10")
-    assert response.headers["Transfer-Encoding"] == "chunked"
-    assert response.status == 200
-    txt = await response.text()
-    assert txt == "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\nService Unavailable after 10 numbers"
-
-
-async def test_streamed_error_before_yielding(aiohttp_client, default_module_config):
+async def test_streamed_error(aiohttp_client, default_module_config):
     app = await start_http_server_app(default_module_config, [TestModule])
     client = await aiohttp_client(app)
 
@@ -143,30 +131,6 @@ async def test_websocket_bytes_str(aiohttp_client, default_module_config):
             assert msg.type == aiohttp.WSMsgType.TEXT
             res.append(msg.data)
     assert res == ["1\n", "2\n", "3\n", "4\n", "5\n"]
-
-
-async def test_websocket_raise_error(aiohttp_client, default_module_config):
-    app = await start_http_server_app(default_module_config, [TestModule])
-    client = await aiohttp_client(app)
-
-    res = []
-    async with client.ws_connect("/websocket_raise_error") as ws:
-        async for msg in ws:
-            assert msg.type == aiohttp.WSMsgType.TEXT
-            res.append(msg.data)
-    assert res == ["1\n", "2\n", "3\n", "4\n", "5\n", "This is an error"]
-
-
-async def test_websocket_error_before_yielding(aiohttp_client, default_module_config):
-    app = await start_http_server_app(default_module_config, [TestModule])
-    client = await aiohttp_client(app)
-
-    res = []
-    async with client.ws_connect("/websocket_error_before_yield") as ws:
-        async for msg in ws:
-            assert msg.type == aiohttp.WSMsgType.TEXT
-            res.append(msg.data)
-    assert res == ["This is an error"]
 
 
 async def test_kill_self(aiohttp_client, default_module_config):

@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import collections
 import inspect
-import functools
 
-from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.routes import BaseRouteTable
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.utils import ResponseType
-from ray.dashboard.subprocesses.module import SubprocessModule
 
 
 class SubprocessRouteTable(BaseRouteTable):
@@ -79,16 +77,6 @@ class SubprocessRouteTable(BaseRouteTable):
 
             cls._bind_map[method][path] = bind_info
 
-            if resp_type == ResponseType.HTTP:
-                pass
-            elif resp_type == ResponseType.STREAM:
-                handler = decorate_stream_handler(handler)
-            elif resp_type == ResponseType.WEBSOCKET:
-                assert method == hdrs.METH_GET, "Websocket only supports GET method"
-                handler = decorate_websocket_handler(handler)
-            else:
-                raise ValueError(f"Unknown resp_type: {resp_type}")
-
             async def parent_side_handler(
                 request: aiohttp.web.Request,
             ) -> aiohttp.web.Response:
@@ -108,60 +96,3 @@ class SubprocessRouteTable(BaseRouteTable):
             return handler
 
         return _wrapper
-
-
-def decorate_stream_handler(handler):
-    assert inspect.isasyncgenfunction(handler)
-
-    @functools.wraps(handler)
-    async def wrapper(
-        self: SubprocessModule, req: aiohttp.web.Request, *args, **kwargs
-    ):
-        resp = aiohttp.web.StreamResponse()
-        iter = handler(self, req, *args, **kwargs)
-        try:
-            chunk = await iter.__anext__()
-            await resp.prepare(req)
-            await resp.write(chunk)
-        except StopAsyncIteration:
-            pass
-        try:
-            async for chunk in iter:
-                await resp.write(chunk)
-        except aiohttp.web.HTTPException as e:
-            await resp.write(e.reason.encode())
-        finally:
-            await resp.write_eof()
-        return resp
-
-    return wrapper
-
-
-def decorate_websocket_handler(handler):
-    """
-    Currently websocket handler implementation does not support
-    client sending messages to server.
-    """
-    assert inspect.isasyncgenfunction(handler)
-
-    @functools.wraps(handler)
-    async def wrapper(
-        self: SubprocessModule, req: aiohttp.web.Request, *args, **kwargs
-    ):
-        ws = aiohttp.web.WebSocketResponse()
-        await ws.prepare(req)
-        try:
-            async for chunk in handler(self, req, *args, **kwargs):
-                if isinstance(chunk, bytes):
-                    await ws.send_bytes(chunk)
-                elif isinstance(chunk, str):
-                    await ws.send_str(chunk)
-                else:
-                    raise ValueError(f"Unknown chunk type: {type(chunk)}")
-            await ws.close()
-        except Exception as e:
-            await ws.send_str(str(e))
-            await ws.close()
-        return ws
-
-    return wrapper

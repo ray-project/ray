@@ -59,81 +59,54 @@ class TestModule(SubprocessModule):
         raise aiohttp.web.HTTPForbidden(reason="you shall not pass")
 
     @routes.post("/streamed_iota", resp_type=ResponseType.STREAM)
-    async def streamed_iota(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
+    async def streamed_iota(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.StreamResponse:
         """
         Streams the numbers 0 to N.
         """
         request_body = await req.text()
-        try:
-            n = int(request_body)
-        except ValueError:
-            raise aiohttp.web.HTTPBadRequest(reason="Request body must be an integer")
+        n = int(request_body)
+        resp = aiohttp.web.StreamResponse()
+        await resp.prepare(req)
         for i in range(n):
             await asyncio.sleep(0.001)
-            yield f"{i}\n".encode()
-
-    @routes.post("/streamed_iota_with_503", resp_type=ResponseType.STREAM)
-    async def streamed_iota_with_503(
-        self, req: aiohttp.web.Request
-    ) -> AsyncIterator[bytes]:
-        """
-        Streams the numbers 0 to N, then raises an error.
-        """
-        request_body = await req.text()
-        try:
-            n = int(request_body)
-        except ValueError:
-            raise aiohttp.web.HTTPBadRequest(reason="Request body must be an integer")
-        for i in range(n):
-            await asyncio.sleep(0.001)
-            yield f"{i}\n".encode()
-        raise aiohttp.web.HTTPServiceUnavailable(
-            reason=f"Service Unavailable after {n} numbers"
-        )
+            await resp.write(f"{i}\n".encode())
+        await resp.write_eof()
+        return resp
 
     @routes.post("/streamed_401", resp_type=ResponseType.STREAM)
     async def streamed_401(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
         """
-        Raises an error directly in a streamed handler before yielding any data.
+        Raise a 401 error instead of streaming.
         """
         raise aiohttp.web.HTTPUnauthorized(
             reason="Unauthorized although I am not a teapot"
         )
-        # To make sure Python treats this method as an async generator, we yield something.
-        yield b"Hello, World"
 
     @routes.get("/websocket_one_to_five_bytes", resp_type=ResponseType.WEBSOCKET)
     async def websocket_one_to_five_bytes(
         self, req: aiohttp.web.Request
-    ) -> AsyncIterator[bytes]:
+    ) -> aiohttp.web.WebSocketResponse:
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
         for i in range(1, 6):
             await asyncio.sleep(0.001)
-            yield f"{i}\n".encode()
+            await ws.send_bytes(f"{i}\n".encode())
+        await ws.close()
+        return ws
 
     @routes.get("/websocket_one_to_five_strs", resp_type=ResponseType.WEBSOCKET)
     async def websocket_one_to_five_strs(
         self, req: aiohttp.web.Request
-    ) -> AsyncIterator[str]:
+    ) -> aiohttp.web.WebSocketResponse:
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
         for i in range(1, 6):
             await asyncio.sleep(0.001)
-            yield f"{i}\n"
-
-    @routes.get("/websocket_raise_error", resp_type=ResponseType.WEBSOCKET)
-    async def websocket_raise_error(
-        self, req: aiohttp.web.Request
-    ) -> AsyncIterator[str]:
-        for i in range(1, 6):
-            await asyncio.sleep(0.001)
-            yield f"{i}\n"
-        raise ValueError("This is an error")
-
-    @routes.get("/websocket_error_before_yield", resp_type=ResponseType.WEBSOCKET)
-    async def websocket_error_before_yield(
-        self, req: aiohttp.web.Request
-    ) -> AsyncIterator[str]:
-        raise ValueError("This is an error")
-        # To make sure Python treats this method as an async generator, we yield something.
-        yield "Hello, World"
+            await ws.send_str(f"{i}\n")
+        await ws.close()
+        return ws
 
     @routes.post("/run_forever")
     async def run_forever(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
