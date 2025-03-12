@@ -1,6 +1,7 @@
 import collections
 import logging
 import os
+import threading
 import time
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
@@ -164,23 +165,61 @@ class _BlockExecStatsBuilder:
     called, the time delta is saved as part of the stats.
     """
 
+    _POLL_INTERVAL_S = 1
+
     def __init__(self):
-        self.start_time = time.perf_counter()
-        self.start_cpu = time.process_time()
+        self._process = psutil.Process(os.getpid())
 
-    def build(self) -> "BlockExecStats":
-        self.end_time = time.perf_counter()
-        self.end_cpu = time.process_time()
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
+        self._max_rss = int(self._process.memory_info().rss)
 
+        self._rss_poll_thread, self._stop_rss_poll_event = self._start_rss_poll_thread()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._stop_rss_poll_thread()
+
+    def __call__(self) -> "BlockExecStats":
+        end_time = time.perf_counter()
+        end_cpu = time.process_time()
+
+        self._max_rss = max(self._max_rss, int(self._process.memory_info().rss))
+
+        # Build stats
         stats = BlockExecStats()
-        stats.start_time_s = self.start_time
-        stats.end_time_s = self.end_time
-        stats.wall_time_s = self.end_time - self.start_time
-        stats.cpu_time_s = self.end_cpu - self.start_cpu
-        process = psutil.Process(os.getpid())
-        stats.rss_bytes = int(process.memory_info().rss)
+        stats.start_time_s = self._start_time
+        stats.end_time_s = end_time
+        stats.wall_time_s = end_time - self._start_time
+        stats.cpu_time_s = end_cpu - self._start_cpu
+        stats.rss_bytes = self._max_rss
+
+        # Reset for next block
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
+        self._max_rss = int(self._process.memory_info().rss)
 
         return stats
+
+    def _start_rss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
+        stop_event = threading.Event()
+
+        def poll_rss():
+            while not stop_event.is_set():
+                rss_bytes = int(self._process.memory_info().rss)
+                self._max_rss = max(self._max_rss, rss_bytes)
+                time.sleep(self._POLL_INTERVAL_S)
+
+        thread = threading.Thread(target=poll_rss)
+        thread.start()
+
+        return thread, stop_event
+
+    def _stop_rss_poll_thread(self):
+        self._stop_rss_poll_event.set()
+        self._rss_poll_thread.join()
 
 
 @DeveloperAPI
