@@ -592,7 +592,7 @@ the actor or task that needs it, or if you are trying to
 access a placement group launched by another driver.
 Note that the placement group is still destroyed if its lifetime isn't `detached`. 
 Also, when creating or retrieving the named placement group, you need to specify the 
-:ref:`namespace <namespaces-guide>` associated with it. Otherwise, Ray assigns a anonymous :ref:`namespace <namespaces-guide>` which 
+:ref:`namespace <namespaces-guide>` associated with it. Otherwise, Ray assigns an anonymous :ref:`namespace <namespaces-guide>` which 
 makes it impossible to retrieve the placement group. 
 
 .. tab-set::
