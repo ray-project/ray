@@ -352,8 +352,10 @@ workerGroupSpecs:
       - name: ray-worker
         resources:
           limits:
-            # The Ray Autoscaler will fail to start if the CPU resource limit for the worker
+            # The Ray Autoscaler before 2.41.0 will fail to start if the CPU resource limit for the worker
             # container is commented out because `rayStartParams` is empty.
+            # The Ray Autoscaler string from 2.41.0 will not fail but use the resource requests if the resource
+            # limits are commented out and `rayStartParams` is empty.
             cpu: "1"
             memory: "1G"
           requests:
