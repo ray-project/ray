@@ -22,7 +22,7 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.signature import extract_signature, get_signature
-from ray._private.utils import check_oversized_function, INT32_MAX
+from ray._private.utils import check_oversized_function
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 from ray.util.common import INT32_MAX
