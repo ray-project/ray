@@ -105,9 +105,9 @@ class TestMultiCallback(unittest.TestCase):
             self.assertIn("callback_1", results["env_runners"])
             self.assertIn("callback_2", results["env_runners"])
             self.assertIn("custom_callback", results["env_runners"])
-            self.assertAlmostEquals(results["env_runners"]["callback_1"], 1)
-            self.assertAlmostEquals(results["env_runners"]["callback_2"], 2)
-            self.assertAlmostEquals(results["env_runners"]["custom_callback"], 3)
+            self.assertAlmostEqual(results["env_runners"]["callback_1"], 1)
+            self.assertAlmostEqual(results["env_runners"]["callback_2"], 2)
+            self.assertAlmostEqual(results["env_runners"]["custom_callback"], 3)
 
         algo.stop()
 
