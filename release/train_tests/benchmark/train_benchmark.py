@@ -353,7 +353,7 @@ def main():
                 max_failures=benchmark_config.max_failures
             ),
         ),
-        datasets=factory.get_ray_datasets(),
+        datasets=factory.get_ray_datasets(benchmark_config.limit_num_rows),
     )
     trainer.fit()
 

@@ -44,7 +44,7 @@ class ImageClassificationMockDataLoaderFactory(BaseDataLoaderFactory):
 
 
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
-    def get_ray_datasets(self) -> Dict[str, ray.data.Dataset]:
+    def get_ray_datasets(self, limit_row_count) -> Dict[str, ray.data.Dataset]:
         train_ds = ray.data.read_parquet(
             IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
         ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
@@ -53,7 +53,7 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
             ray.data.read_parquet(
                 IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
             )
-            .limit(50000)
+            .limit(limit_row_count)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
         )
 

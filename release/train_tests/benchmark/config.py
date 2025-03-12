@@ -35,6 +35,7 @@ class BenchmarkConfig(BaseModel):
     dataloader_config: DataLoaderConfig = Field(
         default_factory=lambda: DataLoaderConfig(),
     )
+    limit_num_rows: int = 200000
 
     # Training
     num_epochs: int = 1

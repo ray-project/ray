@@ -31,7 +31,7 @@ class BaseDataLoaderFactory(ABC):
         """Return metrics about dataloader performance."""
         return {}
 
-    def get_ray_datasets(self) -> Dict[str, Dataset]:
+    def get_ray_datasets(self, limit_row_count) -> Dict[str, Dataset]:
         """Get Ray datasets if this loader type uses Ray Data."""
         return {}
 
@@ -50,7 +50,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.enable_operator_progress_bars = False
 
     @abstractmethod
-    def get_ray_datasets(self) -> Dict[str, Dataset]:
+    def get_ray_datasets(self, limit_row_count) -> Dict[str, Dataset]:
         """Get the Ray datasets for training and validation.
 
         Returns:

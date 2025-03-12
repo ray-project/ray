@@ -34,5 +34,5 @@ class BenchmarkFactory(ABC):
     def get_dataloader_metrics(self):
         return self.dataloader_factory.get_metrics()
 
-    def get_ray_datasets(self):
-        return self.dataloader_factory.get_ray_datasets()
+    def get_ray_datasets(self, limit_row_count):
+        return self.dataloader_factory.get_ray_datasets(limit_row_count)
