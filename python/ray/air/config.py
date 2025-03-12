@@ -21,11 +21,11 @@ import pyarrow.fs
 import ray
 from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
     from ray.tune.callback import Callback
     from ray.tune.execution.placement_groups import PlacementGroupFactory
     from ray.tune.experimental.output import AirVerbosity
@@ -384,7 +384,7 @@ class DatasetConfig:
     max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
-    per_epoch_preprocessor: Optional["Preprocessor"] = None
+    per_epoch_preprocessor: Optional[Preprocessor] = None
     # Deprecated.
     use_stream_api: Optional[int] = None
     stream_window_size: Optional[int] = None
