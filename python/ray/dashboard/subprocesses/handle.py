@@ -112,11 +112,6 @@ class SubprocessModuleHandle:
             self.incarnation, self.process.pid if self.process else None
         )
 
-    def __del__(self):
-        logger.info("SubprocessModuleHandle is being deleted")
-        if self.loop.is_running():
-            self.loop.run_until_complete(self.destroy_module())
-
     def start_module(self):
         ready_event = self.mp_context.Event()
 
