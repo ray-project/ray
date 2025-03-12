@@ -169,7 +169,6 @@ class DashboardHeadModule(abc.ABC):
         if self._gcs_client is None:
             self._gcs_client = GcsClient(
                 address=self._config.gcs_address,
-                nums_reconnect_retry=0,
                 cluster_id=self._config.cluster_id_hex,
             )
         return self._gcs_client
@@ -179,7 +178,6 @@ class DashboardHeadModule(abc.ABC):
         if self._gcs_aio_client is None:
             self._gcs_aio_client = GcsAioClient(
                 address=self._config.gcs_address,
-                nums_reconnect_retry=0,
                 cluster_id=self._config.cluster_id_hex,
             )
             if not internal_kv._internal_kv_initialized():
@@ -835,7 +833,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     """
 
     address = services.canonicalize_bootstrap_address_or_die(address)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    gcs_client = GcsClient(address=address)
 
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(

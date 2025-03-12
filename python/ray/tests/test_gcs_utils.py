@@ -36,7 +36,7 @@ def stop_gcs_server():
 def test_kv_basic(ray_start_regular, monkeypatch):
     monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address)
     # Wait until all other calls finished
     time.sleep(2)
     # reset the counter
@@ -82,7 +82,7 @@ def test_kv_basic(ray_start_regular, monkeypatch):
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 def test_kv_timeout(ray_start_regular):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address)
 
     assert gcs_client.internal_kv_put(b"A", b"", False, b"") == 1
 
@@ -108,7 +108,7 @@ def test_kv_transient_network_error(shutdown_only, monkeypatch):
     )
     ray.init()
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address)
 
     gcs_client.internal_kv_put(b"A", b"Hello", True, b"")
     assert gcs_client.internal_kv_get(b"A", b"") == b"Hello"
@@ -161,7 +161,7 @@ async def test_kv_basic_aio(ray_start_regular):
 @pytest.mark.asyncio
 async def test_kv_timeout_aio(ray_start_regular):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = gcs_utils.GcsAioClient(address=gcs_address)
 
     with stop_gcs_server():
         with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
@@ -264,7 +264,7 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
 @pytest.mark.asyncio
 async def test_gcs_aio_client_is_async(ray_start_regular):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = gcs_utils.GcsAioClient(address=gcs_address)
 
     await gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
     async with async_timeout.timeout(3):
