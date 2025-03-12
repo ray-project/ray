@@ -170,7 +170,6 @@ class ChannelContext:
                 # by Ray. We instead want the default to be CPU.
                 self._torch_device = torch.device("cpu")
 
-            # XXX! Fix this.
             from ray.air._internal import torch_utils
 
             self._torch_device = torch_utils.get_devices()[0]
