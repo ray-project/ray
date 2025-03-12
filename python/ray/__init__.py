@@ -79,7 +79,7 @@ del _configure_system
 
 from ray._private import version  # noqa: E402
 
-__commit__ = _version.commit
+__commit__ = version.commit
 __version__ = version.version
 
 import ray._raylet  # noqa: E402
