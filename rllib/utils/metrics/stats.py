@@ -64,12 +64,8 @@ class Stats:
         check(stats.peek(), 3)
         stats.push(3)
         check(stats.peek(), 6)
-        # So far, we have stored all values (1, 2, and 3).
-        check(stats.values, [1, 2, 3])
-        # Let's call the `reduce()` method to actually reduce these values
-        # to a single item of value=6:
-        stats = stats.reduce()
-        check(stats.peek(), 6)
+        # For efficiency, we keep the internal values in a reduced state for all Stats with
+        # c'tor options reduce!=mean and infinite window.
         check(stats.values, [6])
 
         # "min" and "max" work analogous to "sum". But let's try with a `window` now:
@@ -124,9 +120,9 @@ class Stats:
             time.sleep(1.0)
         assert 2.2 > stats.peek() > 1.8
         # When calling `reduce()`, the internal values list gets cleaned up.
-        check(len(stats.values), 2)  # still both deltas in the values list
+        check(len(stats.values), 1)  # holds the sum of both deltas in the values list
         stats = stats.reduce()
-        check(len(stats.values), 1)  # got reduced to one value (the sum)
+        check(len(stats.values), 1)  # nothing changed (still one sum value)
         assert 2.2 > stats.values[0] > 1.8
     """
 
@@ -247,9 +243,12 @@ class Stats:
                 (`self.values`).
         """
         self.values.append(value)
-        # For inf-windows EMA, always reduce right away, b/c it's cheap and avoids
-        # long lists, which would be expensive to reduce.
-        if self._ema_coeff is not None and self._inf_window:
+        # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
+        # cheap and avoids long lists, which would be expensive to reduce.
+        if self._inf_window and (
+            self._ema_coeff is not None
+            or self._reduce_method != "mean"
+        ):
             self._set_values(self._reduced_values()[1])
 
     def __enter__(self) -> "Stats":
