@@ -426,6 +426,8 @@ class FakeMultiNodeProvider(NodeProvider):
             self._terminate_node(node)
 
     def _terminate_node(self, node):
+        # kill_all_processes only if the node is a worker node ("node" in node).
+        # kill_all_processes only if the node is ready (node["node"] is not None).
         if "node" in node and node["node"] is not None:
             node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
 

@@ -105,8 +105,11 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
 @pytest.mark.parametrize("placement_strategy", ["SPREAD", "STRICT_SPREAD"])
 def test_fake_autoscaler_placement_group_partial_idle(
     autoscaler_v2, placement_strategy
-):  # Test the cases of start_node_delay_s >= idle_timeout_minutes.
-    # See https://github.com/ray-project/ray/pull/51122 for more details.
+):  # This test make sure a placement group can be scheduled
+    # even if the time for setting up required new nodes (start_node_delay_s) exceed
+    # the idle_timeout_minutes config. Previously, when new nodes
+    # are ready after the idle_timeout_minutes, autoscaler will kill
+    # other old idle nodes and cause the placement group never be scheduled.
     # TODO: (rueian) enable this test for autoscaler_v2.
 
     cluster = AutoscalingCluster(
@@ -125,6 +128,8 @@ def test_fake_autoscaler_placement_group_partial_idle(
         provider={
             "type": "fake_multinode",
             "start_node_delay_s": 8,
+            # the following are the default values for the fake_multinode provider
+            # taken from ./python/ray/autoscaler/_private/fake_multi_node/example.yaml
             "use_node_id_as_ip": True,
             "disable_node_updaters": True,
             "disable_launch_config_check": True,
@@ -132,7 +137,7 @@ def test_fake_autoscaler_placement_group_partial_idle(
     )
     try:
         cluster.start()
-        ray.init("auto")
+        ray.init()
 
         pg1 = placement_group([{"CPU": 1}] * 4, strategy=placement_strategy)
         ray.get(pg1.ready())
