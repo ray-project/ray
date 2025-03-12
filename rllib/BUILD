@@ -1079,7 +1079,7 @@ py_test(
 py_test(
     name = "test_multicallback",
     tags = ["team:rllib", "callbacks_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["callbacks/tests/test_multicallback.py"]
 )
 
