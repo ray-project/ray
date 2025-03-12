@@ -23,7 +23,7 @@ import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray._private.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.exceptions import RayTaskError
 

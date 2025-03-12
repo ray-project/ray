@@ -4,7 +4,7 @@ from types import FunctionType
 from typing import Any, Dict, Union
 
 import ray
-from ray._private.pydantic_compat import is_subclass_of_base_model
+from ray._common.pydantic_compat import is_subclass_of_base_model
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.usage import usage_lib
 from ray.actor import ActorHandle

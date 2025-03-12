@@ -26,7 +26,7 @@ def register_starlette_serializer(serialization_context):
 
 @DeveloperAPI
 def apply(serialization_context):
-    from ray._private.pydantic_compat import register_pydantic_serializers
+    from ray._common.pydantic_compat import register_pydantic_serializers
 
     register_pydantic_serializers(serialization_context)
     register_starlette_serializer(serialization_context)

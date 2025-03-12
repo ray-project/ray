@@ -9,7 +9,7 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS
 from ray.serve._private.utils import get_random_string
