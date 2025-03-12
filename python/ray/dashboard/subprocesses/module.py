@@ -112,7 +112,7 @@ class SubprocessModule(abc.ABC):
         else:
             site = aiohttp.web.UnixSite(runner, socket_path)
         await site.start()
-        logger.info("Started aiohttp server.")
+        logger.info(f"Started aiohttp server over {socket_path}.")
 
     @abc.abstractmethod
     async def is_healthy(self) -> bool:

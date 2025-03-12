@@ -226,11 +226,9 @@ class SubprocessModuleHandle:
             return await self.proxy_websocket(request)
         raise ValueError(f"Unknown response type: {resp_type}")
 
-    async def proxy_http(
-        self, request: aiohttp.web.Request
-    ) -> aiohttp.web.StreamResponse:
+    async def proxy_http(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
         """
-        Proxy handler for HTTP API
+        Proxy handler for non-streaming HTTP API
         It forwards the method, query string, headers, and body to the backend.
         """
         url = f"http://localhost{request.path_qs}"
@@ -248,7 +246,7 @@ class SubprocessModuleHandle:
         self, request: aiohttp.web.Request
     ) -> aiohttp.web.StreamResponse:
         """
-        Proxy handler for streaming responses.
+        Proxy handler for streaming HTTP API.
         It forwards the method, query string, and body to the backend.
         """
         url = f"http://localhost{request.path_qs}"
@@ -259,14 +257,14 @@ class SubprocessModuleHandle:
             client_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
             await client_resp.prepare(request)
 
-            async for chunk in backend_resp.content.iter_chunked(1024):
+            async for chunk in backend_resp.content.iter_chunks():
                 await client_resp.write(chunk)
             await client_resp.write_eof()
             return client_resp
 
     async def proxy_websocket(
         self, request: aiohttp.web.Request
-    ) -> aiohttp.web.StreamResponse:
+    ) -> aiohttp.web.WebSocketResponse:
         """
         Proxy handler for WebSocket API
         It establishes a WebSocket connection with the client and simultaneously connects
