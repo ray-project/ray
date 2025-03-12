@@ -25,7 +25,6 @@ steps:
       - python
       - docker
       - oss
-      - skip-on-microcheck
       - skip-on-premerge
     instance_type: medium
     commands:
