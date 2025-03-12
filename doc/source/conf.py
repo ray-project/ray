@@ -195,9 +195,9 @@ author = "The Ray Team"
 # built documents. Retrieve the version using `find_version` rather than importing
 # directly (from ray import __version__) because initializing ray will prevent
 # mocking of certain external dependencies.
-from setup import find_version  # noqa
+from setup import extract_version_from_file  # noqa
 
-release = find_version("ray", "_version.py")
+ray_version = extract_version_from_file()
 
 language = "en"
 
@@ -354,7 +354,7 @@ html_sidebars = {
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-html_title = f"Ray {release}"
+html_title = f"Ray {ray_version}"
 
 autodoc_typehints_format = "short"
 
