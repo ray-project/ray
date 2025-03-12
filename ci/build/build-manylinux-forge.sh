@@ -17,7 +17,7 @@ fi
 
 # Install ray java dependencies.
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
-  yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
+  yum -y install java-11-openjdk java-11-openjdk-devel maven
   java -version
   JAVA_BIN="$(readlink -f "$(command -v java)")"
   echo "java_bin path ${JAVA_BIN}"
