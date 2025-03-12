@@ -1,9 +1,11 @@
+from __future__ import annotations
 import sys
 import asyncio
 import logging
 import multiprocessing
 import os
 from typing import Optional
+import multidict
 
 from ray.dashboard.optional_deps import aiohttp
 
@@ -25,7 +27,9 @@ messages to it. Requires non-minimal Ray.
 logger = logging.getLogger(__name__)
 
 
-def filter_headers(headers: dict[str, str]) -> dict[str, str]:
+def filter_headers(
+    headers: dict[str, str] | multidict.CIMultiDictProxy[str]
+) -> dict[str, str]:
     """
     Filter out hop-by-hop headers from the headers dict.
     """
@@ -39,6 +43,8 @@ def filter_headers(headers: dict[str, str]) -> dict[str, str]:
         "transfer-encoding",
         "upgrade",
     }
+    if isinstance(headers, multidict.CIMultiDictProxy):
+        headers = dict(headers)
     filtered_headers = {
         key: value
         for key, value in headers.items()
@@ -230,7 +236,7 @@ class SubprocessModuleHandle:
         body = await request.read()
 
         async with self.session.request(
-            request.method, url, data=body, headers=request.headers
+            request.method, url, data=body, headers=filter_headers(request.headers)
         ) as resp:
             resp_body = await resp.read()
             return aiohttp.web.Response(
@@ -246,9 +252,8 @@ class SubprocessModuleHandle:
         """
         url = f"http://localhost{request.path_qs}"
         body = await request.read()
-
         async with self.session.request(
-            request.method, url, data=body, headers=request.headers
+            request.method, url, data=body, headers=filter_headers(request.headers)
         ) as backend_resp:
             client_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
             await client_resp.prepare(request)
@@ -272,7 +277,7 @@ class SubprocessModuleHandle:
         url = f"http://localhost{request.path_qs}"
 
         async with self.session.ws_connect(
-            url, headers=request.headers
+            url, headers=filter_headers(request.headers)
         ) as ws_to_backend:
 
             async def forward(ws_source, ws_target):
