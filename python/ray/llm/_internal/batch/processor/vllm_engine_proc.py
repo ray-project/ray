@@ -23,7 +23,7 @@ from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     TelemetryAgent,
     BatchTelemetryTags,
 )
-from ray.llm._internal.serve.observability.usage_telemetry.usage import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     get_or_create_telemetry_agent,
 )

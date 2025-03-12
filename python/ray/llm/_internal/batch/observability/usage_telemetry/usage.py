@@ -63,7 +63,17 @@ class TelemetryAgent:
                 LLM_BATCH_TELEMETRY_ACTOR_NAME, namespace=LLM_BATCH_TELEMETRY_NAMESPACE
             )
         except ValueError:
-            self.remote_telemetry_agent = _TelemetryAgent.remote()
+            from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+            self.remote_telemetry_agent = _TelemetryAgent.options(
+                # Ensure the actor is created on the head node.
+                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+                # Ensure the actor is not scheduled with the existing placement group.
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=None
+                ),
+            ).remote()
 
     def _update_record_tag_func(self, record_tag_func: Callable):
         self.remote_telemetry_agent._update_record_tag_func.remote(record_tag_func)

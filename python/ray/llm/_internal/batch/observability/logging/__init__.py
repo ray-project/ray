@@ -14,7 +14,7 @@ def _setup_logger(logger_name: str):
         logger_name: logger name used to get the logger.
     """
     logger = logging.getLogger(logger_name)
-    llm_logger = logging.getLogger("ray.data.llm")
+    llm_logger = logging.getLogger("ray.data")
 
     # Skip setup if the logger already has handlers setup or if the parent (Data
     # logger) has handlers.
