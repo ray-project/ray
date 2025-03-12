@@ -21,11 +21,11 @@ import pyarrow.fs
 import ray
 from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
     from ray.tune.callback import Callback
     from ray.tune.execution.placement_groups import PlacementGroupFactory
     from ray.tune.experimental.output import AirVerbosity
