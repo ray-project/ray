@@ -129,7 +129,24 @@ class XGBoostTrainer(DataParallelTrainer):
         # TODO: [Deprecated]
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
+        label_column: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+        num_boost_round: Optional[int] = None,
     ):
+        if (
+            label_column is not None
+            or params is not None
+            or num_boost_round is not None
+        ):
+            raise DeprecationWarning(
+                "The legacy XGBoostTrainer API is deprecated. "
+                "Please switch to passing in a custom `train_loop_per_worker` "
+                "function instead. "
+                "See this issue for more context: "
+                "https://github.com/ray-project/ray/issues/50042"
+            )
+
         from ray.train.xgboost import XGBoostConfig
 
         super(XGBoostTrainer, self).__init__(
@@ -147,7 +164,7 @@ class XGBoostTrainer(DataParallelTrainer):
     @classmethod
     @Deprecated
     def get_model(cls, checkpoint: Checkpoint):
-        """Retrieve the XGBoost model stored in this checkpoint."""
+        """[Deprecated] Retrieve the XGBoost model stored in this checkpoint."""
         raise DeprecationWarning(
             "`XGBoostTrainer.get_model` is deprecated. "
             "Use `RayTrainReportCallback.get_model` instead."
