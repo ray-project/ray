@@ -77,6 +77,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 from ray.util import log_once
+from ray.util.scheduling_strategies import SchedulingStrategyT
 
 Space = gym.Space
 
@@ -325,6 +326,7 @@ class AlgorithmConfig(_Config):
         self.num_cpus_per_env_runner = 1
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
+        self.scheduling_strategy_for_env_runner = "DEFAULT"
         self.validate_env_runners_after_construction = True
         self.episodes_to_numpy = True
         self.max_requests_in_flight_per_env_runner = 1
@@ -1743,6 +1745,7 @@ class AlgorithmConfig(_Config):
         num_cpus_per_env_runner: Optional[int] = NotProvided,
         num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
+        scheduling_strategy_for_env_runner: Optional[SchedulingStrategyT] = NotProvided,
         validate_env_runners_after_construction: Optional[bool] = NotProvided,
         sample_timeout_s: Optional[float] = NotProvided,
         max_requests_in_flight_per_env_runner: Optional[int] = NotProvided,
@@ -1809,6 +1812,8 @@ class AlgorithmConfig(_Config):
                 unusually expensive.
             custom_resources_per_env_runner: Any custom Ray resources to allocate per
                 EnvRunner.
+            scheduling_strategy_for_env_runner: An optional scheduling strategy for 
+                EnvRunners.
             sample_timeout_s: The timeout in seconds for calling `sample()` on remote
                 EnvRunner workers. Results (episode list) from workers that take longer
                 than this time are discarded. Only used by algorithms that sample
@@ -1994,7 +1999,8 @@ class AlgorithmConfig(_Config):
             self.num_gpus_per_env_runner = num_gpus_per_env_runner
         if custom_resources_per_env_runner is not NotProvided:
             self.custom_resources_per_env_runner = custom_resources_per_env_runner
-
+        if scheduling_strategy_for_env_runner is not NotProvided:
+            self.scheduling_strategy_for_env_runner = scheduling_strategy_for_env_runner
         if sample_timeout_s is not NotProvided:
             self.sample_timeout_s = sample_timeout_s
         if max_requests_in_flight_per_env_runner is not NotProvided:
