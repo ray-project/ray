@@ -198,8 +198,7 @@ You can also make calls to deployed models that have an OpenAI compatible API en
 Usage Data Collection
 --------------------------
 
-We collect usage data to improve Ray LLM Batch.
-We collect data for the following features and attributes:
+Data for the following features and attributes is collected to improve Ray Data LLM:
 
 - config name used for building the llm processor
 - number of concurrent users for data parallelism
@@ -211,4 +210,4 @@ We collect data for the following features and attributes:
 - GPU type used and number of GPUs used
 
 If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
-to disable it.
+to turn it off.

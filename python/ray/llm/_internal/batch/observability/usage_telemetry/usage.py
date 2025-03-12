@@ -1,16 +1,14 @@
 from enum import Enum
-from typing import Callable, Dict, Optional
-
+from typing import Callable, Dict
+from collections import defaultdict
 import ray
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
-from ray.llm._internal.serve.observability.usage_telemetry.usage import (
-    RAYLLM_TELEMETRY_NAMESPACE,
-)
 from ray.llm._internal.batch.observability.logging import get_logger
 
-RAYLLM_BATCH_TELEMETRY_ACTOR_NAME = "rayllm_batch_telemetry"
+LLM_BATCH_TELEMETRY_NAMESPACE = "llm_batch_telemetry"
+LLM_BATCH_TELEMETRY_ACTOR_NAME = "llm_batch_telemetry"
 
 logger = get_logger(__name__)
 
@@ -29,8 +27,8 @@ class BatchTelemetryTags(str, Enum):
 
 
 @ray.remote(
-    name=RAYLLM_BATCH_TELEMETRY_ACTOR_NAME,
-    namespace=RAYLLM_TELEMETRY_NAMESPACE,
+    name=LLM_BATCH_TELEMETRY_ACTOR_NAME,
+    namespace=LLM_BATCH_TELEMETRY_NAMESPACE,
     num_cpus=0,
     lifetime="detached",
 )
@@ -38,21 +36,21 @@ class _TelemetryAgent:
     """Named Actor to keep the state of all deployed models and record telemetry."""
 
     def __init__(self):
-        self.record_tag_func = record_extra_usage_tag
+        self._tracking_telemetries = defaultdict(list)
+        self._record_tag_func = record_extra_usage_tag
 
-    def update_record_tag_func(self, record_tag_func: Callable) -> None:
-        self.record_tag_func = record_tag_func
+    def _update_record_tag_func(self, record_tag_func: Callable) -> None:
+        self._record_tag_func = record_tag_func
 
     def record(self, telemetries: Dict[str, str]) -> None:
-        """Record telemetry model."""
+        """Append and record telemetries."""
         from ray._private.usage.usage_lib import TagKey
 
-        for key, value in telemetries.items():
-            try:
-                self.record_tag_func(TagKey.Value(key), value)
-            except ValueError:
-                # If the key doesn't exist in the TagKey enum, skip it.
-                continue
+        for key in BatchTelemetryTags:
+            value = telemetries.get(key, "")
+            self._tracking_telemetries[TagKey.Value(key)].append(value)
+        for key, values in self._tracking_telemetries.items():
+            self._record_tag_func(key, ",".join(values))
 
 
 class TelemetryAgent:
@@ -62,18 +60,18 @@ class TelemetryAgent:
     def __init__(self):
         try:
             self.remote_telemetry_agent = ray.get_actor(
-                RAYLLM_BATCH_TELEMETRY_ACTOR_NAME, namespace=RAYLLM_TELEMETRY_NAMESPACE
+                LLM_BATCH_TELEMETRY_ACTOR_NAME, namespace=LLM_BATCH_TELEMETRY_NAMESPACE
             )
         except ValueError:
             self.remote_telemetry_agent = _TelemetryAgent.remote()
 
-    def update_record_tag_func(self, record_tag_func: Callable):
-        self.remote_telemetry_agent.update_record_tag_func.remote(record_tag_func)
+    def _update_record_tag_func(self, record_tag_func: Callable):
+        self.remote_telemetry_agent._update_record_tag_func.remote(record_tag_func)
 
     def push_telemetry_report(self, telemetries: Dict[BatchTelemetryTags, str]):
         for key in telemetries.keys():
             if key not in BatchTelemetryTags:
-                logger.warning(f"Invalid telemetry key: {key}.")
+                logger.warning("Invalid telemetry key: %s", key)
 
         ray.get(self.remote_telemetry_agent.record.remote(telemetries))
 

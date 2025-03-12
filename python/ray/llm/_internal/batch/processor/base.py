@@ -13,9 +13,6 @@ from ray.llm._internal.batch.stages import (
     wrap_postprocess,
 )
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    get_or_create_telemetry_agent,
-)
 
 
 class ProcessorConfig(BaseModelExtended):

@@ -10,6 +10,9 @@ from ray.llm._internal.batch.processor import ProcessorBuilder
 from ray.llm._internal.batch.processor.vllm_engine_proc import (
     vLLMEngineProcessorConfig,
 )
+from ray.llm._internal.batch.processor.http_request_proc import (
+    HttpRequestProcessorConfig,
+)
 
 
 @ray.remote(num_cpus=0)
@@ -31,10 +34,10 @@ def test_push_telemetry_report():
         recorder.record.remote(key, value)
 
     telemetry_agent = get_or_create_telemetry_agent()
-    telemetry_agent.update_record_tag_func(record_tag_func)
+    telemetry_agent._update_record_tag_func(record_tag_func)
 
     config = vLLMEngineProcessorConfig(
-        model_source="model_opt_125m",
+        model_source="facebook/opt-125m",
         engine_kwargs=dict(
             max_model_len=8192,
         ),
@@ -54,22 +57,28 @@ def test_push_telemetry_report():
     )
     _ = ProcessorBuilder.build(config)
 
+    _ = ProcessorBuilder.build(
+        HttpRequestProcessorConfig(
+            url="http://localhost:8000",
+            headers={"Authorization": "Bearer 1234567890"},
+            qps=2,
+            concurrency=4,
+            batch_size=64,
+        )
+    )
+
     # Ensure that the telemetry is correct after pushing the reports.
     telemetry = ray.get(recorder.telemetry.remote())
-    try:
-        assert telemetry == {
-            TagKey.LLM_BATCH_PROCESSOR_CONFIG_NAME: "vLLMEngineProcessorConfig",
-            TagKey.LLM_BATCH_MODEL_ARCHITECTURE: "model_opt_125m",
-            TagKey.LLM_BATCH_SIZE: "64",
-            TagKey.LLM_BATCH_ACCELERATOR_TYPE: "A10G",
-            TagKey.LLM_BATCH_CONCURRENCY: "4",
-            TagKey.LLM_BATCH_TASK_TYPE: "chat",
-            TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1",
-            TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1",
-        }
-    except AttributeError:
-        # If the key doesn't exist in the TagKey, no telemetry should be logged.
-        assert telemetry == {}
+    assert telemetry == {
+        TagKey.LLM_BATCH_PROCESSOR_CONFIG_NAME: "vLLMEngineProcessorConfig,HttpRequestProcessorConfig",
+        TagKey.LLM_BATCH_MODEL_ARCHITECTURE: "OPTForCausalLM,",
+        TagKey.LLM_BATCH_SIZE: "64,",
+        TagKey.LLM_BATCH_ACCELERATOR_TYPE: "A10G,",
+        TagKey.LLM_BATCH_CONCURRENCY: "4,4",
+        TagKey.LLM_BATCH_TASK_TYPE: "generate,",
+        TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1,",
+        TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1,",
+    }, f"actual telemetry: {telemetry}"
 
 
 if __name__ == "__main__":
