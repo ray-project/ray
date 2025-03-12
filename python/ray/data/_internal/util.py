@@ -112,9 +112,7 @@ def _check_pyarrow_version():
 
         version = get_pyarrow_version()
         if version is not None:
-            from packaging.version import parse as parse_version
-
-            if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
+            if version < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
                     f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
