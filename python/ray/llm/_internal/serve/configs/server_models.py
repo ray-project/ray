@@ -28,8 +28,9 @@ from pydantic import (
     model_validator,
 )
 
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.utils import try_import
-
 
 from ray.llm._internal.serve.observability.logging import get_logger
 import ray.util.accelerators.accelerators as accelerators
@@ -49,7 +50,6 @@ from ray.llm._internal.serve.configs.openai_api_models_patch import (
     ErrorResponse,
     ResponseFormatType,
 )
-from ray.llm._internal.serve.configs.base import BaseModelExtended
 
 transformers = try_import("transformers")
 
@@ -59,47 +59,6 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 logger = get_logger(__name__)
-
-
-class ExtraFiles(BaseModelExtended):
-    bucket_uri: str
-    destination_path: str
-
-
-class CloudMirrorConfig(BaseModelExtended):
-    """Unified mirror config for cloud storage (S3 or GCS).
-
-    Args:
-        bucket_uri: URI of the bucket (s3:// or gs://)
-        extra_files: Additional files to download
-    """
-
-    bucket_uri: Optional[str] = None
-    extra_files: List[ExtraFiles] = Field(default_factory=list)
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def check_uri_format(cls, value):
-        if value is None:
-            return value
-
-        if not (value.startswith("s3://") or value.startswith("gs://")):
-            raise ValueError(
-                f'Got invalid value "{value}" for bucket_uri. '
-                'Expected a URI that starts with "s3://" or "gs://".'
-            )
-        return value
-
-    @property
-    def storage_type(self) -> str:
-        """Returns the storage type ('s3' or 'gcs') based on the URI prefix."""
-        if self.bucket_uri is None:
-            return None
-        elif self.bucket_uri.startswith("s3://"):
-            return "s3"
-        elif self.bucket_uri.startswith("gs://"):
-            return "gcs"
-        return None
 
 
 class ServeMultiplexConfig(BaseModelExtended):
@@ -124,7 +83,7 @@ class InputModality(str, Enum):
 class LLMEngine(str, Enum):
     """Enum that represents an LLMEngine."""
 
-    VLLM = "VLLM"
+    vLLM = "vLLM"
 
 
 class JSONModeOptions(BaseModelExtended):
@@ -214,7 +173,7 @@ class LLMConfig(BaseModelExtended):
     )
 
     llm_engine: str = Field(
-        default=LLMEngine.VLLM.value,
+        default=LLMEngine.vLLM.value,
         description=f"The LLMEngine that should be used to run the model. Only the following values are supported: {str([t.value for t in LLMEngine])}",
     )
 
@@ -347,7 +306,7 @@ class LLMConfig(BaseModelExtended):
 
         LLMConfig not only has engine config but also deployment config, etc.
         """
-        if self.llm_engine == LLMEngine.VLLM:
+        if self.llm_engine == LLMEngine.vLLM:
             from ray.llm._internal.serve.deployments.llm.vllm.vllm_models import (
                 VLLMEngineConfig,
             )
@@ -423,18 +382,16 @@ class LLMConfig(BaseModelExtended):
                 :skipif: True
 
                 from ray import serve
-                from ray.serve.llm.configs import LLMConfig, ModelLoadingConfig
-                from ray.serve.llm.deployments import VLLMDeployment
-
+                from ray.serve.llm import LLMConfig, LLMServer
 
                 llm_config = LLMConfig(
-                    model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                    model_loading_config=dict(model_id="test_model"),
                     accelerator_type="L4",
                     runtime_env={"env_vars": {"FOO": "bar"}},
                 )
                 serve_options = llm_config.get_serve_options(name_prefix="Test:")
-                vllm_app = VLLMDeployment.options(**serve_options).bind(llm_config)
-                serve.run(vllm_app)
+                llm_app = LLMServer.as_deployment().options(**serve_options).bind(llm_config)
+                serve.run(llm_app)
 
         Keyword Args:
             name_prefix: The prefix to use for the deployment name.
@@ -611,37 +568,6 @@ class FinishReason(str, Enum):
         if finish_reason == "abort":
             return cls.CANCELLED
         return cls.STOP
-
-
-class LoraMirrorConfig(BaseModelExtended):
-    lora_model_id: str
-    bucket_uri: str
-    max_total_tokens: Optional[int]
-    sync_args: Optional[List[str]] = None
-
-    @field_validator("bucket_uri")
-    @classmethod
-    def validate_bucket_uri(cls, value: str):
-        # TODO(tchordia): remove this. this is a short term fix.
-        # We should fix this on the LLM-forge side
-        if not value.startswith("s3://") and not value.startswith("gs://"):
-            value = "s3://" + value
-        return value
-
-    @property
-    def _bucket_name_and_path(self) -> str:
-        for prefix in ["s3://", "gs://"]:
-            if self.bucket_uri.startswith(prefix):
-                return self.bucket_uri[len(prefix) :]
-        return self.bucket_uri
-
-    @property
-    def bucket_name(self) -> str:
-        return self._bucket_name_and_path.split("/")[0]
-
-    @property
-    def bucket_path(self) -> str:
-        return "/".join(self._bucket_name_and_path.split("/")[1:])
 
 
 class DiskMultiplexConfig(BaseModelExtended):

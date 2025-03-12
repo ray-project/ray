@@ -111,7 +111,9 @@ def test_callable_classes(shutdown_only):
 
     # map
     actor_reuse = ds.map(StatefulFn, concurrency=1).take()
-    assert sorted(extract_values("id", actor_reuse)) == list(range(10)), actor_reuse
+    assert sorted(extract_values("id", actor_reuse)) == [
+        [v] for v in list(range(10))
+    ], actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -593,6 +595,15 @@ def test_rename_columns(ray_start_regular_shared, names, expected_schema):
     renamed_schema_names = renamed_ds.schema().names
 
     assert sorted(renamed_schema_names) == sorted(expected_schema)
+
+
+def test_default_batch_size_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(
+        DeprecationWarning,
+        match="Passing 'default' to `map_batches` is deprecated and won't be "
+        "supported after September 2025. Use `batch_size=None` instead.",
+    ):
+        ray.data.range(1).map_batches(lambda x: x, batch_size="default")
 
 
 @pytest.mark.parametrize(

@@ -119,7 +119,7 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
 .. tab-set::
 
-    .. tab-item:: Contstructing a LearnerGroup
+    .. tab-item:: Constructing a LearnerGroup
 
 
         .. testcode::
@@ -229,17 +229,17 @@ Updates
             TIMESTEPS = {"num_env_steps_sampled_lifetime": 250}
 
             # This is a blocking update.
-            results = learner_group.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
+            results = learner_group.update(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
 
             # This is a non-blocking update. The results are returned in a future
-            # call to `update_from_batch(..., async_update=True)`
-            _ = learner_group.update_from_batch(batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS)
+            # call to `update(..., async_update=True)`
+            _ = learner_group.update(batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS)
 
             # Artificially wait for async request to be done to get the results
             # in the next call to
-            # `LearnerGroup.update_from_batch(..., async_update=True)`.
+            # `LearnerGroup.update(..., async_update=True)`.
             time.sleep(5)
-            results = learner_group.update_from_batch(
+            results = learner_group.update(
                 batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS
             )
             # `results` is a list of n result dicts from various Learner actors.
@@ -254,7 +254,7 @@ Updates
         .. testcode::
 
             # This is a blocking update (given a training batch).
-            result = learner.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
+            result = learner.update(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
 
         When updating a :py:class:`~ray.rllib.core.learner.learner.Learner` you can only perform blocking updates on batches of data.
         You can perform non-gradient based updates before or after the gradient-based ones by overriding

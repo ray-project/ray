@@ -45,7 +45,10 @@ TEAM_API_CONFIGS = {
     "train": {
         "head_modules": {"ray.train"},
         "head_doc_file": "doc/source/train/api/api.rst",
-        "white_list_apis": {},
+        "white_list_apis": {
+            # TODO(justinvyu): Add this API ref in a follow-up.
+            "ray.train.v2.api.exceptions.TrainingFailedError",
+        },
     },
     "tune": {
         "head_modules": {"ray.tune"},
@@ -122,7 +125,7 @@ def main(ray_checkout_dir: str, team: str) -> None:
 
     all_pass = True
     # Needs to do core first, otherwise, the APIs in other teams may be covered by core.
-    # This is due to the side effect ofo "importlib" and walking through the modules.
+    # This is due to the side effect of "importlib" and walking through the modules.
     if not _check_team(ray_checkout_dir, "core"):
         all_pass = False
     for team in TEAM_API_CONFIGS:

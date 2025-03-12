@@ -863,6 +863,15 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "stats_opentelemetry",
+    srcs = ["src/ray/stats/opentelemetry_metrics.cc"],
+    deps = [
+        "@io_opentelemetry_cpp//sdk/src/logs:logs",
+        "@io_opentelemetry_cpp//sdk/src/trace:trace",
+    ],
+)
+
+ray_cc_library(
     name = "stats_metric",
     srcs = [
         "src/ray/stats/metric.cc",
@@ -1568,7 +1577,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":pull_manager",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1581,7 +1590,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":object_buffer_pool",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1594,7 +1603,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":object_manager",
+        ":ownership_based_object_directory",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -3062,6 +3071,8 @@ pyx_library(
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
         "//src/ray/util:memory",
+        "//src/ray/util:stream_redirection_options",
+        "//src/ray/util:stream_redirection_utils",
     ],
 )
 

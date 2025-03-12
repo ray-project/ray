@@ -60,7 +60,7 @@ class SnowflakeDatasource(Datasource):
                 self.result_batches = [b for b in result_batches if b.rowcount > 0]
 
         if not self.result_batches:
-            logger.warn(f"No data returned from Snowflake query:\n{self._sql}")
+            logger.warning(f"No data returned from Snowflake query:\n{self._sql}")
             return []
 
         parallelism = min(

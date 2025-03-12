@@ -214,7 +214,7 @@ class DataHead(dashboard_utils.DashboardHeadModule):
                         PROMETHEUS_MAX_OVER_TIME_QUERY.format(metric, self.session_name)
                     )
                     for operator_id, operator_metric in operator_metrics.items():
-                        operator_metric.metrics[id] = Metric(
+                        operator_metric.metrics[metric] = Metric(
                             name=self._get_metric_column_name(metric),
                             current_value=float(
                                 current_value_metrics.get(operator_id, "0.0")

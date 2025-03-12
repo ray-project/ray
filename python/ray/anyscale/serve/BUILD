@@ -2,6 +2,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
     files = glob(["tests/test_*.py"]),
+    env={"RAY_SERVE_NODE_COMPACTION_DELAY_S": "1"},
     size = "medium",
     tags = ["team:serve", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],

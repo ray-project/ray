@@ -42,14 +42,14 @@ def test_push_telemetry_report_for_all_models():
         model_loading_config=ModelLoadingConfig(
             model_id="llm_model_id",
         ),
-        llm_engine=LLMEngine.VLLM,
+        llm_engine=LLMEngine.vLLM,
         accelerator_type="L4",
     )
     llm_config_autoscale_model = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="llm_config_autoscale_model_id",
         ),
-        llm_engine=LLMEngine.VLLM,
+        llm_engine=LLMEngine.vLLM,
         accelerator_type="A10G",
         deployment_config=dict(
             autoscaling_config=dict(
@@ -63,14 +63,14 @@ def test_push_telemetry_report_for_all_models():
         model_loading_config=ModelLoadingConfig(
             model_id="llm_config_json_model_id",
         ),
-        llm_engine=LLMEngine.VLLM,
+        llm_engine=LLMEngine.vLLM,
         accelerator_type="A10G",
     )
     llm_config_lora_model = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="llm_config_lora_model_id",
         ),
-        llm_engine=LLMEngine.VLLM,
+        llm_engine=LLMEngine.vLLM,
         accelerator_type="A10G",
         lora_config=LoraConfig(dynamic_lora_loading_path=dynamic_lora_loading_path),
     )

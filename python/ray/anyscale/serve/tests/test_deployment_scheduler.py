@@ -841,7 +841,9 @@ class TestCompactScheduling:
         # Deleting B should allow cluster to compact down to 1 worker node
         del config["applications"][1]
         client.deploy_apps(ServeDeploySchema(**config))
-        wait_for_condition(check_num_alive_nodes, target=2)  # 1 head + 1 worker nodes
+        wait_for_condition(
+            check_num_alive_nodes, target=2, timeout=20
+        )  # 1 head + 1 worker nodes
 
         # The node that was compacted should have been of type cpu_node2 (4CPUs)
         # So the remaining node should be of type cpu_node1 (3CPUs)
