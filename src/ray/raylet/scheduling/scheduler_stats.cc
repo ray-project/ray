@@ -49,7 +49,7 @@ void SchedulerStats::ComputeStats() {
                       static_cast<size_t>(0),
                       accumulator);
 
-  // TODO(sang): Normally, the # of queued tasks are not large, so this is less likley to
+  // TODO(sang): Normally, the # of queued tasks are not large, so this is less likely to
   // be an issue that we iterate all of them. But if it uses lots of CPU, consider
   // optimizing by updating live instead of iterating through here.
   auto per_work_accumulator = [&num_waiting_for_resource,
@@ -158,8 +158,8 @@ void SchedulerStats::RecordMetrics() const {
 std::string SchedulerStats::ComputeAndReportDebugStr() {
   ComputeStats();
   if (num_tasks_to_schedule_ + num_tasks_to_dispatch_ + num_infeasible_tasks_ > 1000) {
-    RAY_LOG(WARNING)
-        << "More than 1000 tasks are queued in this node. This can cause slow down.";
+    RAY_LOG(WARNING) << "More than 1000 tasks are queued for scheduling on this node. "
+                        "This can slow down the raylet.";
   }
 
   std::stringstream buffer;

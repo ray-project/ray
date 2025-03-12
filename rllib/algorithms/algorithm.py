@@ -1800,7 +1800,7 @@ class Algorithm(Checkpointable, Trainable):
         self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -3121,7 +3121,7 @@ class Algorithm(Checkpointable, Trainable):
                 "num_healthy_workers"
             ] = self.eval_env_runner_group.num_healthy_remote_workers()
             eval_results[
-                "num_in_flight_async_reqs"
+                "actor_manager_num_outstanding_async_reqs"
             ] = self.eval_env_runner_group.num_in_flight_async_reqs()
             eval_results[
                 "num_remote_worker_restarts"
@@ -3694,7 +3694,7 @@ class Algorithm(Checkpointable, Trainable):
             "num_healthy_workers"
         ] = self.env_runner_group.num_healthy_remote_workers()
         results[
-            "num_in_flight_async_sample_reqs"
+            "actor_manager_num_outstanding_async_reqs"
         ] = self.env_runner_group.num_in_flight_async_reqs()
         results[
             "num_remote_worker_restarts"

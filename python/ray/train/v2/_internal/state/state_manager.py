@@ -41,6 +41,7 @@ class TrainStateManager:
         name: str,
         job_id: str,
         controller_actor_id: str,
+        controller_log_file_path: str,
     ) -> None:
         run = TrainRun(
             id=id,
@@ -50,6 +51,7 @@ class TrainStateManager:
             status_detail=None,
             controller_actor_id=controller_actor_id,
             start_time_ns=_current_time_ns(),
+            controller_log_file_path=controller_log_file_path,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
@@ -167,6 +169,7 @@ class TrainStateManager:
                 gpu_ids=actor_metadata.gpu_ids,
                 status=ActorStatus.ALIVE,
                 resources=TrainResources(resources=worker.resources),
+                log_file_path=worker.log_file_path,
             )
 
         workers: List[TrainWorker] = [_convert_worker(worker) for worker in workers]

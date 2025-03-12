@@ -18,7 +18,9 @@ DAG Construction
     :nosignatures:
     :toctree: doc/
 
+    ray.actor.ActorMethod.bind
     ray.dag.DAGNode.with_tensor_transport
+    ray.experimental.compiled_dag_ref.CompiledDAGRef
 
 Compiled Graph Operations
 -------------------------

@@ -58,6 +58,8 @@ message ExportTrainRunEventData {
   // The timestamp when the Train run ended in ns. If not set, the run is still
   // in progress
   optional uint64 end_time_ns = 9;
+  // The path to the log file for the Train run controller.
+  string controller_log_file_path = 10;
 }
 
 // Metadata for an individual attempt to execute a Train run
@@ -120,6 +122,8 @@ message ExportTrainRunAttemptEventData {
     optional ActorStatus status = 9;
     // The resources allocated to this Train worker
     TrainResources resources = 10;
+    // The path to the log file for the Train worker
+    string log_file_path = 11;
   }
 
   // Unique identifier for the parent Train run
