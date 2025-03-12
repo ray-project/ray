@@ -397,9 +397,10 @@ def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
-    import ray._private.utils as utils
+    import ray._private.arrow_utils
 
-    utils._PYARROW_VERSION = None
+    ray._private.arrow_utils._PYARROW_INSTALLED = None
+    ray._private.arrow_utils._PYARROW_VERSION = None
     yield request.param
     pa.__version__ = orig_version
 
