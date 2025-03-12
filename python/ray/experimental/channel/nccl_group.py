@@ -102,7 +102,7 @@ class _NcclGroup(Communicator):
             import cupy as cp
 
             # TODO(swang): Allow default device to be overridden.
-            device = get_default_torch_device(cuda_only=True)
+            device = get_default_torch_device(allow_cpu=False)
             self._cuda_stream = cp.cuda.ExternalStream(
                 cuda_stream, device_id=device.index
             )

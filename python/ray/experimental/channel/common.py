@@ -163,7 +163,7 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-            self._torch_device = get_default_torch_device(cuda_only=False)
+            self._torch_device = get_default_torch_device(allow_cpu=True)
 
         return self._torch_device
 
