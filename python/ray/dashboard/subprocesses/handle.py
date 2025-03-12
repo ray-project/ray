@@ -101,7 +101,7 @@ class SubprocessModuleHandle:
         self.incarnation = 0
         # Runtime states, set by start_module(), reset by destroy_module().
         self.process = None
-        self.session = None
+        self.http_client_session: aiohttp.ClientSession | None = None
         self.health_check_task = None
 
     def str_for_state(self, incarnation: int, pid: Optional[int]):
@@ -137,7 +137,7 @@ class SubprocessModuleHandle:
             connector = aiohttp.NamedPipeConnector(socket_path)
         else:
             connector = aiohttp.UnixConnector(socket_path)
-        self.session = aiohttp.ClientSession(connector=connector)
+        self.http_client_session = aiohttp.ClientSession(connector=connector)
 
         self.health_check_task = self.loop.create_task(self._do_periodic_health_check())
 
@@ -151,8 +151,9 @@ class SubprocessModuleHandle:
             self.process.join()
             self.process = None
 
-        if self.session:
-            await self.session.close()
+        if self.http_client_session:
+            await self.http_client_session.close()
+            self.http_client_session = None
 
         if self.health_check_task:
             self.health_check_task.cancel()
@@ -167,7 +168,7 @@ class SubprocessModuleHandle:
         Currently you get a 200 OK with body = b'success'. Later if we want we can add more
         observability payloads.
         """
-        resp = await self.session.get("http://localhost/api/healthz")
+        resp = await self.http_client_session.get("http://localhost/api/healthz")
         return aiohttp.web.Response(
             status=resp.status,
             headers=filter_headers(resp.headers),
@@ -235,7 +236,7 @@ class SubprocessModuleHandle:
         url = f"http://localhost{request.path_qs}"
         body = await request.read()
 
-        async with self.session.request(
+        async with self.http_client_session.request(
             request.method, url, data=body, headers=filter_headers(request.headers)
         ) as resp:
             resp_body = await resp.read()
@@ -252,7 +253,7 @@ class SubprocessModuleHandle:
         """
         url = f"http://localhost{request.path_qs}"
         body = await request.read()
-        async with self.session.request(
+        async with self.http_client_session.request(
             request.method, url, data=body, headers=filter_headers(request.headers)
         ) as backend_resp:
             client_resp = aiohttp.web.StreamResponse(status=backend_resp.status)
@@ -276,7 +277,7 @@ class SubprocessModuleHandle:
 
         url = f"http://localhost{request.path_qs}"
 
-        async with self.session.ws_connect(
+        async with self.http_client_session.ws_connect(
             url, headers=filter_headers(request.headers)
         ) as ws_to_backend:
 
