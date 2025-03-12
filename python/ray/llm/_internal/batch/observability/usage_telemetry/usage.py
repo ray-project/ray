@@ -61,39 +61,21 @@ class TelemetryAgent:
 
     def __init__(self):
         try:
-            self.telemetry_agent = ray.get_actor(
+            self.remote_telemetry_agent = ray.get_actor(
                 RAYLLM_BATCH_TELEMETRY_ACTOR_NAME, namespace=RAYLLM_TELEMETRY_NAMESPACE
             )
         except ValueError:
-            self.telemetry_agent = _TelemetryAgent.remote()
-        self._processor_config_name = None
-
-    def set_processor_config_name(self, processor_config_name: str):
-        if self._processor_config_name is not None:
-            raise ValueError(
-                f"Processor config name is already set to {self._processor_config_name}. This function should only be called once per processor."
-            )
-        self._processor_config_name = processor_config_name
+            self.remote_telemetry_agent = _TelemetryAgent.remote()
 
     def update_record_tag_func(self, record_tag_func: Callable):
-        self.telemetry_agent.update_record_tag_func.remote(record_tag_func)
+        self.remote_telemetry_agent.update_record_tag_func.remote(record_tag_func)
 
-    def push_telemetry_report(self, telemetries: Optional[Dict[str, str]] = None):
-        if self._processor_config_name is None:
-            raise ValueError(
-                "Processor config name is not set. Please call set_processor_config_name first."
-            )
-
-        telemetries = telemetries or {}
-
+    def push_telemetry_report(self, telemetries: Dict[BatchTelemetryTags, str]):
         for key in telemetries.keys():
             if key not in BatchTelemetryTags:
-                raise ValueError(f"Invalid telemetry key: {key}.")
+                logger.warning(f"Invalid telemetry key: {key}.")
 
-        telemetries[
-            BatchTelemetryTags.LLM_BATCH_PROCESSOR_CONFIG_NAME
-        ] = self._processor_config_name
-        ray.get(self.telemetry_agent.record.remote(telemetries))
+        ray.get(self.remote_telemetry_agent.record.remote(telemetries))
 
 
 def get_or_create_telemetry_agent() -> TelemetryAgent:

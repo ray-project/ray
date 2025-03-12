@@ -12,8 +12,8 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorBuilder,
 )
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
-    TelemetryAgent,
     BatchTelemetryTags,
+    get_or_create_telemetry_agent,
 )
 from ray.llm._internal.batch.stages import HttpRequestStage
 
@@ -45,7 +45,6 @@ def build_http_request_processor(
     config: HttpRequestProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
     postprocess: Optional[UserDefinedFunction] = None,
-    telemetry_agent: Optional[TelemetryAgent] = None,
 ) -> Processor:
     """Construct a Processor and configure stages.
 
@@ -72,12 +71,13 @@ def build_http_request_processor(
             ),
         )
     ]
-    if telemetry_agent:
-        telemetry_agent.push_telemetry_report(
-            {
-                BatchTelemetryTags.LLM_BATCH_CONCURRENCY: str(config.concurrency),
-            }
-        )
+    telemetry_agent = get_or_create_telemetry_agent()
+    telemetry_agent.push_telemetry_report(
+        {
+            BatchTelemetryTags.LLM_BATCH_PROCESSOR_CONFIG_NAME: type(config).__name__,
+            BatchTelemetryTags.LLM_BATCH_CONCURRENCY: str(config.concurrency),
+        }
+    )
     processor = Processor(
         config,
         stages,

@@ -200,9 +200,6 @@ class ProcessorBuilder:
                 f"Processor config type {type_name} not registered. "
                 f"Available types: {cls._registry.keys()}"
             )
-        telemetry_agent = get_or_create_telemetry_agent()
-        telemetry_agent.set_processor_config_name(type_name)
-        kwargs.update({"telemetry_agent": telemetry_agent})
         processor = cls._registry[type_name](config, **kwargs)
         if override_stage_config_fn is not None:
             for name, stage in processor.stages.items():
