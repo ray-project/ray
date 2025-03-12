@@ -64,8 +64,8 @@ class Stats:
         check(stats.peek(), 3)
         stats.push(3)
         check(stats.peek(), 6)
-        # For efficiency, we keep the internal values in a reduced state for all Stats with
-        # c'tor options reduce!=mean and infinite window.
+        # For efficiency, we keep the internal values in a reduced state for all Stats
+        # with c'tor options reduce!=mean and infinite window.
         check(stats.values, [6])
 
         # "min" or "max" work analogous to "sum".
@@ -78,8 +78,8 @@ class Stats:
         check(stats.peek(), 5)
         stats.push(100)
         check(stats.peek(), 5)
-        # For efficiency, we keep the internal values in a reduced state for all Stats with
-        # c'tor options reduce!=mean and infinite window.
+        # For efficiency, we keep the internal values in a reduced state for all Stats
+        # with c'tor options reduce!=mean and infinite window.
         check(stats.values, [5])
 
         # Let's try min/max/sum with a `window` now:
