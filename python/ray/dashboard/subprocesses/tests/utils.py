@@ -8,6 +8,7 @@ from ray.dashboard.optional_deps import aiohttp
 
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
+from ray.dashboard.subprocesses.utils import ResponseType
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class TestModule(SubprocessModule):
         # https://github.com/ray-project/ray/pull/49732#discussion_r1919292428
         raise aiohttp.web.HTTPForbidden(reason="you shall not pass")
 
-    @routes.post("/streamed_iota", resp_type="stream")
+    @routes.post("/streamed_iota", resp_type=ResponseType.STREAM)
     async def streamed_iota(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
         """
         Streams the numbers 0 to N.
@@ -71,7 +72,7 @@ class TestModule(SubprocessModule):
             await asyncio.sleep(0.001)
             yield f"{i}\n".encode()
 
-    @routes.post("/streamed_iota_with_503", resp_type="stream")
+    @routes.post("/streamed_iota_with_503", resp_type=ResponseType.STREAM)
     async def streamed_iota_with_503(
         self, req: aiohttp.web.Request
     ) -> AsyncIterator[bytes]:
@@ -90,7 +91,7 @@ class TestModule(SubprocessModule):
             reason=f"Service Unavailable after {n} numbers"
         )
 
-    @routes.post("/streamed_401", resp_type="stream")
+    @routes.post("/streamed_401", resp_type=ResponseType.STREAM)
     async def streamed_401(self, req: aiohttp.web.Request) -> AsyncIterator[bytes]:
         """
         Raises an error directly in a streamed handler before yielding any data.
@@ -101,7 +102,7 @@ class TestModule(SubprocessModule):
         # To make sure Python treats this method as an async generator, we yield something.
         yield b"Hello, World"
 
-    @routes.get("/websocket_one_to_five_bytes", resp_type="websocket")
+    @routes.get("/websocket_one_to_five_bytes", resp_type=ResponseType.WEBSOCKET)
     async def websocket_one_to_five_bytes(
         self, req: aiohttp.web.Request
     ) -> AsyncIterator[bytes]:
@@ -109,7 +110,7 @@ class TestModule(SubprocessModule):
             await asyncio.sleep(0.001)
             yield f"{i}\n".encode()
 
-    @routes.get("/websocket_one_to_five_strs", resp_type="websocket")
+    @routes.get("/websocket_one_to_five_strs", resp_type=ResponseType.WEBSOCKET)
     async def websocket_one_to_five_strs(
         self, req: aiohttp.web.Request
     ) -> AsyncIterator[str]:
@@ -117,7 +118,7 @@ class TestModule(SubprocessModule):
             await asyncio.sleep(0.001)
             yield f"{i}\n"
 
-    @routes.get("/websocket_raise_error", resp_type="websocket")
+    @routes.get("/websocket_raise_error", resp_type=ResponseType.WEBSOCKET)
     async def websocket_raise_error(
         self, req: aiohttp.web.Request
     ) -> AsyncIterator[str]:
@@ -126,7 +127,7 @@ class TestModule(SubprocessModule):
             yield f"{i}\n"
         raise ValueError("This is an error")
 
-    @routes.get("/websocket_error_before_yield", resp_type="websocket")
+    @routes.get("/websocket_error_before_yield", resp_type=ResponseType.WEBSOCKET)
     async def websocket_error_before_yield(
         self, req: aiohttp.web.Request
     ) -> AsyncIterator[str]:

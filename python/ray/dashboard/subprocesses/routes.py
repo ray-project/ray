@@ -57,7 +57,9 @@ class SubprocessRouteTable(BaseRouteTable):
             cls._bind_map[h.__route_method__][h.__route_path__].instance = instance
 
     @classmethod
-    def _register_route(cls, method, path, resp_type: ResponseType = "http", **kwargs):
+    def _register_route(
+        cls, method, path, resp_type: ResponseType = ResponseType.HTTP, **kwargs
+    ):
         """
         Register a route to the module and return the decorated handler.
         """
@@ -77,11 +79,11 @@ class SubprocessRouteTable(BaseRouteTable):
 
             cls._bind_map[method][path] = bind_info
 
-            if resp_type == "http":
+            if resp_type == ResponseType.HTTP:
                 pass
-            elif resp_type == "stream":
+            elif resp_type == ResponseType.STREAM:
                 handler = decorate_stream_handler(handler)
-            elif resp_type == "websocket":
+            elif resp_type == ResponseType.WEBSOCKET:
                 assert method == hdrs.METH_GET, "Websocket only supports GET method"
                 handler = decorate_websocket_handler(handler)
             else:

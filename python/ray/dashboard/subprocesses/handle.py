@@ -213,16 +213,16 @@ class SubprocessModuleHandle:
             await asyncio.sleep(1)
 
     async def proxy_request(
-        self, request: aiohttp.web.Request, resp_type: ResponseType = "http"
+        self, request: aiohttp.web.Request, resp_type: ResponseType = ResponseType.HTTP
     ) -> aiohttp.web.StreamResponse:
         """
         Sends a new request to the subprocess and returns the response.
         """
-        if resp_type == "http":
+        if resp_type == ResponseType.HTTP:
             return await self.proxy_http(request)
-        if resp_type == "stream":
+        if resp_type == ResponseType.STREAM:
             return await self.proxy_stream(request)
-        if resp_type == "websocket":
+        if resp_type == ResponseType.WEBSOCKET:
             return await self.proxy_websocket(request)
         raise ValueError(f"Unknown response type: {resp_type}")
 
