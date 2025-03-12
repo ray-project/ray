@@ -11,7 +11,6 @@ import ray.cluster_utils
 import ray.experimental.collective as collective
 import torch
 import time
-from ray.air._internal import torch_utils
 from ray.dag import InputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.dag.output_node import MultiOutputNode
