@@ -112,10 +112,11 @@ class GroupedData:
         """Apply the given function to each group of records of this dataset.
 
         While map_groups() is very flexible, note that it comes with downsides:
-            * It may be slower than using more specific methods such as min(), max().
-            * It requires that each group fits in memory on a single node.
 
-        In general, prefer to use aggregate() instead of map_groups().
+        * It may be slower than using more specific methods such as min(), max().
+        * It requires that each group fits in memory on a single node.
+
+        In general, prefer to use `aggregate()` instead of `map_groups()`.
 
         .. warning::
             Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
@@ -179,7 +180,7 @@ class GroupedData:
             memory: The heap memory in bytes to reserve for each parallel map worker.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time prior
+                dynamic arguments for each actor or task, and will be called each time prior
                 to initializing the worker. Args returned from this dict will always
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
@@ -190,6 +191,11 @@ class GroupedData:
         Returns:
             The return type is determined by the return type of ``fn``, and the return
             value is combined from results of all groups.
+
+        .. seealso::
+
+            :meth:`Dataset.aggregate`
+                Use this method for common aggregation use cases.
         """
         # Globally sort records by key.
         # Note that sort() will ensure that records of the same key partitioned
