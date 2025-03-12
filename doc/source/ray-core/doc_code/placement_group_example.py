@@ -130,11 +130,12 @@ remove_placement_group(pg)
 # __get_pg_start__
 # first_driver.py
 # Create a placement group with a unique name within a namespace.
-pg = placement_group([{"CPU": 1}], name="pg_name", namespace="pg_namespace")
+# Start Ray or connect to a Ray cluster using: ray.init(namespace="pg_namespace")
+pg = placement_group([{"CPU": 1}], name="pg_name")
 ray.get(pg.ready())
 
 # second_driver.py
 # Retrieve a placement group with a unique name within a namespace.
-ray.init(namespace="pg_namespace")
+# Start Ray or connect to a Ray cluster using: ray.init(namespace="pg_namespace")
 pg = ray.util.get_placement_group("pg_name")
 # __get_pg_end__
