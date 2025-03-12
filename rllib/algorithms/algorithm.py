@@ -1820,7 +1820,7 @@ class Algorithm(Checkpointable, Trainable):
             )
 
     @PublicAPI
-    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> RLModule:
+    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> Optional[RLModule]:
         """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
 
         Args:
@@ -1828,12 +1828,12 @@ class Algorithm(Checkpointable, Trainable):
                 used by the local EnvRunner.
 
         Returns:
-            The SingleAgentRLModule sitting under the ModuleID key inside the
-            local worker's (EnvRunner's) MARLModule.
+            The RLModule found under the ModuleID key inside the local EnvRunner's
+            MultiRLModule. None if `module_id` doesn't exist.
         """
         module = self.env_runner.module
         if isinstance(module, MultiRLModule):
-            return module[module_id]
+            return module.get(module_id)
         else:
             return module
 
