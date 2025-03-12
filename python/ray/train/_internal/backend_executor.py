@@ -7,6 +7,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
+from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.amd_gpu import ROCR_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
 from ray.data import Dataset
 from ray.exceptions import RayActorError
@@ -118,18 +122,18 @@ class BackendExecutor:
             ResourceConfig(
                 ray_constants.NEURON_CORES,
                 ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
-                ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+                NEURON_RT_VISIBLE_CORES_ENV_VAR,
             ),
             ResourceConfig(
                 ray_constants.NPU,
                 ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
-                ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR,
+                ASCEND_RT_VISIBLE_DEVICES_ENV_VAR,
             ),
             # For AMD GPUs, they are using ROCR_VISIBLE_DEVICES env var.
             ResourceConfig(
                 ray_constants.GPU,
                 ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV,
-                ray_constants.ROCR_VISIBLE_DEVICES_ENV_VAR,
+                ROCR_VISIBLE_DEVICES_ENV_VAR,
             ),
         ]
 
@@ -299,9 +303,7 @@ class BackendExecutor:
             - Worker3: "0,1"
 
         """
-        self._share_resource_ids(
-            ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
-        )
+        self._share_resource_ids(ray_constants.GPU, CUDA_VISIBLE_DEVICES_ENV_VAR)
 
     def _share_resource_ids(self, resource: str, env_var: str):
         """Sets the given env_var on all workers.

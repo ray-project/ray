@@ -52,7 +52,7 @@ using rpc::autoscaler::DrainNodeReason;
 /// Class manages the resources of the local node.
 /// It is responsible for allocating/deallocating resources for (task) resource request;
 /// it also supports creating a new resource or delete an existing resource.
-/// Whenever the resouce changes, it notifies the subscriber of the change.
+/// Whenever the resource changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
 class LocalResourceManager : public syncer::ReporterInterface {
  public:

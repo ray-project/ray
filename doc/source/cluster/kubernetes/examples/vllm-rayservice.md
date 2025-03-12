@@ -2,9 +2,7 @@
 
 # Serve a Large Language Model with vLLM on Kubernetes
 
-This guide demonstrates how to [Serve a Large Language Model with vLLM](https://docs.ray.io/en/latest/serve/tutorials/vllm-example.html) on Kubernetes using KubeRay. The example in this guide deploys the `meta-llama/Meta-Llama-3-8B-Instruct` model from Hugging Face on Google Kubernetes Engine (GKE).
-
-* This example uses vLLM with KubeRay. However, Ray provides a native [Serve LLM API](https://docs.ray.io/en/latest/serve/llm/overview.html) to enable users to deploy multiple LLM models together with the Ray Serve API. This API is the recommended path for running LLMs through Ray Serve.
+This guide demonstrates how to Serve a Large Language Model with vLLM on Kubernetes using KubeRay. The example in this guide deploys the `meta-llama/Meta-Llama-3-8B-Instruct` model from Hugging Face on Google Kubernetes Engine (GKE).
 
 ## Prerequisites
 

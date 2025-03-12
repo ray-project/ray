@@ -95,7 +95,7 @@ class ClusterResourceScheduler {
   ///  \param is_infeasible[out]: It is set
   ///  true if the task is not schedulable because it is infeasible.
   ///
-  ///  \return emptry string, if no node can schedule the current request; otherwise,
+  ///  \return empty string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
   scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
                                             const std::string &preferred_node_id,
