@@ -67,7 +67,10 @@ py_test(
 py_test(
     name = "test_arrow",
     size = "small",
-    srcs = ["tests/test_arrow.py"],
+    srcs = [
+        "conftest",
+        "tests/test_arrow.py",
+    ],
     tags = [
         "exclusive",
         "ray_data",
