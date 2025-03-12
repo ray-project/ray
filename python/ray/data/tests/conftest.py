@@ -12,7 +12,7 @@ import pytest
 import ray
 import ray.util.state
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import Schema
@@ -124,7 +124,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
 
     kwargs = aws_credentials.copy()
 
-    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+    if get_pyarrow_version() >= parse_version("9.0.0"):
         kwargs["allow_bucket_creation"] = True
         kwargs["allow_bucket_deletion"] = True
 

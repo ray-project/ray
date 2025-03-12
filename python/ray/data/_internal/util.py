@@ -27,7 +27,7 @@ import numpy as np
 import pyarrow
 
 import ray
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
@@ -110,7 +110,7 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
             return
 
-        version = _get_pyarrow_version()
+        version = get_pyarrow_version()
         if version is not None:
             from packaging.version import parse as parse_version
 

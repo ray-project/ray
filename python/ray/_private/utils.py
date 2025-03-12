@@ -23,6 +23,7 @@ import time
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import warnings
 from inspect import signature
+from packaging.version import parse as parse_version
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import (
@@ -44,6 +45,7 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -67,7 +69,6 @@ win32_job = None
 win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
-_PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
@@ -1818,11 +1819,8 @@ def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
         A URI with the added allow_bucket_creation=true query parameter, if the provided
         URI is an S3 URL; uri will be returned unchanged otherwise.
     """
-    from packaging.version import parse as parse_version
 
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
         # This bucket creation query parameter is not required for pyarrow < 9.0.0.
         return uri
@@ -1830,23 +1828,6 @@ def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
     if parsed_uri.scheme == "s3":
         uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
     return uri
-
-
-def _get_pyarrow_version() -> Optional[str]:
-    """Get the version of the installed pyarrow package, returned as a tuple of ints.
-    Returns None if the package is not found.
-    """
-    global _PYARROW_VERSION
-    if _PYARROW_VERSION is None:
-        try:
-            import pyarrow
-        except ModuleNotFoundError:
-            # pyarrow not installed, short-circuit.
-            pass
-        else:
-            if hasattr(pyarrow, "__version__"):
-                _PYARROW_VERSION = pyarrow.__version__
-    return _PYARROW_VERSION
 
 
 class DeferSigint(contextlib.AbstractContextManager):

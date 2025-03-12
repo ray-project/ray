@@ -9,7 +9,12 @@ import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import (
+    get_arrow_extension_tensor_types,
+    get_arrow_extension_fixed_shape_tensor_types,
+    get_arrow_extension_variable_shape_tensor_types,
+    get_pyarrow_version,
+)
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_tensor,
@@ -20,9 +25,7 @@ from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-PYARROW_VERSION = _get_pyarrow_version()
-if PYARROW_VERSION is not None:
-    PYARROW_VERSION = parse_version(PYARROW_VERSION)
+PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 8.0.0+.
 MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
@@ -297,33 +300,6 @@ def _infer_pyarrow_type_from_datetime_dtype(dtype: np.dtype) -> pa.TimestampType
         arrow_type = pa.timestamp(numpy_precision)
 
     return arrow_type
-
-
-@DeveloperAPI
-def get_arrow_extension_tensor_types():
-    """Returns list of extension types of Arrow Array holding
-    multidimensional tensors
-    """
-    return (
-        *get_arrow_extension_fixed_shape_tensor_types(),
-        *get_arrow_extension_variable_shape_tensor_types(),
-    )
-
-
-@DeveloperAPI
-def get_arrow_extension_fixed_shape_tensor_types():
-    """Returns list of Arrow extension types holding multidimensional
-    tensors of *fixed* shape
-    """
-    return ArrowTensorType, ArrowTensorTypeV2
-
-
-@DeveloperAPI
-def get_arrow_extension_variable_shape_tensor_types():
-    """Returns list of Arrow extension types holding multidimensional
-    tensors of *fixed* shape
-    """
-    return (ArrowVariableShapedTensorType,)
 
 
 class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):

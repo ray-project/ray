@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from packaging.version import parse as parse_version
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     combine_chunks,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
@@ -1125,7 +1125,7 @@ def test_groupby_arrow_multi_agg(
 
     if (
         using_pyarrow
-        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
+        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
     ):
         pytest.skip(
             "Pyarrow < 14.0 doesn't support type promotions (hence fails "
@@ -1227,7 +1227,7 @@ def test_groupby_multi_agg_with_nans(
 
     if (
         using_pyarrow
-        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
+        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
     ):
         pytest.skip(
             "Pyarrow < 14.0 doesn't support type promotions (hence fails "
@@ -1619,7 +1619,7 @@ def test_groupby_map_groups_extra_args(
     assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
 
 
-_NEED_UNWRAP_ARROW_SCALAR = parse_version(_get_pyarrow_version()) <= parse_version(
+_NEED_UNWRAP_ARROW_SCALAR = get_pyarrow_version() <= parse_version(
     "9.0.0"
 )
 
