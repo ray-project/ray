@@ -539,7 +539,3 @@ RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
 )
 
 RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)
-
-# The directory where the sockets for dashboard modules are stored.
-# It's a sub-folder under the /tmp/ray/session_latest/sockets/ folder.
-RAY_DASHBOARD_SOCKET_DIR = "dashboard"

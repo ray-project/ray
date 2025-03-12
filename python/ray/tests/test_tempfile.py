@@ -1,5 +1,4 @@
 import os
-import pathlib
 import shutil
 import sys
 import time
@@ -7,7 +6,6 @@ import time
 import pytest
 
 import ray
-from ray import ray_constants
 from ray._private.test_utils import check_call_ray, wait_for_condition
 
 
@@ -119,17 +117,8 @@ def test_raylet_tempfiles(shutdown_only):
     assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 
-    socket_files = {
-        child.name
-        for child in pathlib.Path(node.get_sockets_dir_path()).iterdir()
-        if child.is_socket()
-    }
+    socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == expected_socket_files
-    dashboard_socket_dir = (
-        pathlib.Path(node.get_sockets_dir_path())
-        / ray_constants.RAY_DASHBOARD_SOCKET_DIR
-    )
-    assert dashboard_socket_dir.exists() and dashboard_socket_dir.is_dir()
     ray.shutdown()
 
     ray.init(num_cpus=2)

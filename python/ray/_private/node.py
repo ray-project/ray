@@ -486,11 +486,6 @@ class Node:
         # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
         try_to_create_directory(self._sockets_dir)
-        # Create a directory to be used for dashboard socket files
-        dashboard_socket_dir = os.path.join(
-            self._sockets_dir, ray_constants.RAY_DASHBOARD_SOCKET_DIR
-        )
-        try_to_create_directory(dashboard_socket_dir)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
         try_to_create_directory(self._logs_dir)
@@ -994,25 +989,22 @@ class Node:
         Args:
             socket_path: the socket file to prepare.
         """
-        ray_dashboard_sockets_dir = (
-            pathlib.PurePath(self._sockets_dir) / ray_constants.RAY_DASHBOARD_SOCKET_DIR
-        )
         if socket_path is not None:
-            if pathlib.PurePath(socket_path).is_relative_to(ray_dashboard_sockets_dir):
+            if pathlib.PurePath(socket_path).name.startswith("dashboard"):
                 raise ValueError(
-                    f"The socket path {socket_path} cannot be {ray_dashboard_sockets_dir} or use it as parent folder."
+                    f"Invalid socket path {socket_path}. Socket file name cannot start with 'dashboard'."
                 )
         else:
-            if default_prefix == ray_constants.RAY_DASHBOARD_SOCKET_DIR:
+            if default_prefix.startswith("dashboard"):
                 raise ValueError(
-                    f"The socket path cannot be {ray_dashboard_sockets_dir} or use it as parent folder."
+                    f"Invalid default prefix {default_prefix}. Socket file name cannot start with 'dashboard'."
                 )
 
         result = socket_path
         is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
-                result = f"tcp://{self._localhost}" f":{self._get_unused_port()}"
+                result = f"tcp://{self._localhost}:{self._get_unused_port()}"
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
