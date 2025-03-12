@@ -8,7 +8,7 @@ _PYARROW_VERSION: Optional[Version] = None
 
 
 def get_pyarrow_version() -> Optional[Version]:
-    """Get the version for the installed pyarrow package or None if not found."""
+    """Get the version of the pyarrow package or None if not installed."""
     global _PYARROW_INSTALLED, _PYARROW_VERSION
     if _PYARROW_INSTALLED is False:
         return None
