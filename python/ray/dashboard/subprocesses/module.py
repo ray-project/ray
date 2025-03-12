@@ -114,26 +114,11 @@ class SubprocessModule(abc.ABC):
         await site.start()
         logger.info(f"Started aiohttp server over {socket_path}.")
 
-    @abc.abstractmethod
-    async def is_healthy(self) -> bool:
-        """
-        Whether the module is considered healthy.
-        Subclasses should implement this method to provide health check logic.
-        """
-        pass
-
     async def _internal_module_health_check(self, request):
-        try:
-            is_healthy = await self.is_healthy()
-        except Exception:
-            logger.exception("Error during internal health check")
-            is_healthy = False
-        if is_healthy:
-            return aiohttp.web.Response(
-                text="success",
-                content_type="application/text",
-            )
-        return aiohttp.web.HTTPServiceUnavailable(reason="Internal health check failed")
+        return aiohttp.web.Response(
+            text="success",
+            content_type="application/text",
+        )
 
 
 async def run_module_inner(

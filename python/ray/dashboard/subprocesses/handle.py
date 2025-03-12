@@ -174,12 +174,14 @@ class SubprocessModuleHandle:
         """
         Do a health check once. We check for:
         1. if the process exits, it's considered died.
+        2. if the health check endpoint returns non-200, it's considered unhealthy.
 
-        # TODO(ryw): also do `await self._health_check()` and define a policy to
-        # determine if the process is dead.
         """
         if self.process.exitcode is not None:
             raise RuntimeError(f"Process exited with code {self.process.exitcode}")
+        resp = await self._health_check()
+        if resp.status != 200:
+            raise RuntimeError(f"Health check failed: status code is {resp.status}")
 
     async def _do_periodic_health_check(self):
         """
