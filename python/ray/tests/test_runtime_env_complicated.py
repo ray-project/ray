@@ -908,11 +908,6 @@ CLIENT_SERVER_PORT = 24001
     sys.platform == "linux" and platform.processor() == "aarch64",
     reason="This test is currently not supported on Linux ARM64",
 )
-# TODO(https://github.com/ray-project/ray/issues/33415)
-@pytest.mark.skipif(
-    sys.version_info.major >= 3 and sys.version_info.minor >= 11,
-    reason="Some dependencies are not available with python 3.11.",
-)
 @pytest.mark.parametrize(
     "call_ray_start",
     [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT} --port 0"],
@@ -962,13 +957,15 @@ def test_e2e_complex(call_ray_start, tmp_path):
         a = TestActor.remote()
         assert ray.get(a.test.remote()) == "Hello"
 
+    pandas_version = "1.5.3"
+    if sys.version_info.major >= 3 and sys.version_info.minor >= 11:
+        pandas_version = "2.2.3"
     requirement_path = tmp_path / "requirements.txt"
     requirement_path.write_text(
         "\n".join(
             [
                 "PyGithub",
-                "xgboost_ray",  # has Ray as a dependency
-                "pandas==1.5.3",
+                f"pandas=={pandas_version}",
                 "typer",
                 "aiofiles",
             ]
@@ -991,7 +988,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
         def test_import():
             import ray  # noqa
             import typer  # noqa
-            import xgboost_ray  # noqa
 
             return Path("./test").read_text()
 
@@ -1003,7 +999,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
             def test(self):
                 import ray  # noqa
                 import typer  # noqa
-                import xgboost_ray  # noqa
 
                 return Path("./test").read_text()
 
