@@ -95,7 +95,7 @@ class StandardScaler(Preprocessor):
             s_mean = self.stats_[f"mean({s.name})"]
             s_std = self.stats_[f"std({s.name})"]
 
-            if s_std is None and s_mean is None:
+            if s_std is None or s_mean is None:
                 s[:] = np.nan
                 return s
 
