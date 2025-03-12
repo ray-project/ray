@@ -79,6 +79,7 @@ def _make_tmp_directories(tmp_dir):
         "ci/ray_ci",
         "python",
         "python/ray",
+        "python/ray/_private",
         "src",
         "src/ray",
         "src/ray/common",
