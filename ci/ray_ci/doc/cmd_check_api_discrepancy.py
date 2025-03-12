@@ -46,8 +46,11 @@ TEAM_API_CONFIGS = {
         "head_modules": {"ray.train"},
         "head_doc_file": "doc/source/train/api/api.rst",
         "white_list_apis": {
-            # TODO(justinvyu): Add this API ref in a follow-up.
-            "ray.train.v2.api.exceptions.TrainingFailedError",
+            # NOTE: These APIs are documented in a separate file (deprecated.rst).
+            # These are deprecated APIs, so just white-listing them here for CI.
+            "ray.train.error.SessionMisuseError",
+            "ray.train.base_trainer.TrainingFailedError",
+            "ray.train.context.TrainContext",
         },
     },
     "tune": {
