@@ -104,6 +104,8 @@ def get_default_torch_device(*, allow_cpu: bool) -> "torch.device":
     If no GPUs are available, a CPU device will be returned if allow_cpu is true, else
     the function will raise a RuntimeError.
     """
+    import torch
+
     accelerator_ids = ray.get_runtime_context().get_accelerator_ids()
     if not accelerator_ids.get("GPU", []):
         if allow_cpu:
