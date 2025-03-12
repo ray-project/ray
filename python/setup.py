@@ -62,8 +62,8 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 
-def extract_version_from_file(path: str):
-    with open(path) as f:
+def extract_version_from_file() -> str:
+    with open(VERSION_FILE_PATH) as f:
         version_match = re.search(r"^version = ['\"]([^'\"]*)['\"]", f.read(), re.M)
         if version_match:
             return version_match.group(1)
@@ -88,7 +88,8 @@ class SetupSpec:
     ):
         self.type: SetupType = type
         self.name: str = name
-        version = extract_version_from_file(VERSION_FILE_PATH)
+
+        version = extract_version_from_file()
         # add .dbg suffix if debug mode is on.
         if build_type == BuildType.DEBUG:
             self.version: str = f"{version}+dbg"
