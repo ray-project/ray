@@ -384,7 +384,7 @@ class DatasetConfig:
     max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
-    per_epoch_preprocessor: Optional[Preprocessor] = None
+    per_epoch_preprocessor: Optional["Preprocessor"] = None
     # Deprecated.
     use_stream_api: Optional[int] = None
     stream_window_size: Optional[int] = None
