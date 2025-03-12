@@ -90,7 +90,11 @@ class BackendExecutor:
             requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
-        placement_group: An optional placement group.
+        placement_group: An optional placement group. If a
+            placement group is provided workers will be scheduled
+            in this placement group, otherwise a placement group
+            is created, if the global worker does not allow to
+            capture child tasks in the same placement group.
     """
 
     def __init__(
