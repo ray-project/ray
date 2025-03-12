@@ -94,6 +94,7 @@ def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
             )
         )
 
+
 def get_default_torch_device(*, cuda_only: bool) -> "torch.device":
     """Get the default torch device inside this actor or driver.
 
