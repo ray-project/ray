@@ -15,8 +15,6 @@ import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
-import io.ray.runtime.util.BinaryFileUtil;
-import io.ray.runtime.util.JniUtils;
 import io.ray.runtime.util.SystemUtil;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -40,7 +38,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
     }
 
     updateSessionDir(rayConfig);
-    JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());

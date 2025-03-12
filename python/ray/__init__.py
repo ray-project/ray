@@ -60,18 +60,6 @@ def _configure_system():
 
         compat.patch_psutil()
 
-    # Expose ray ABI symbols which may be dependent by other shared
-    # libraries such as _streaming.so. See BUILD.bazel:_raylet
-    python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
-    so_path = os.path.join(
-        os.path.dirname(__file__), "_raylet" + python_shared_lib_suffix
-    )
-    if os.path.exists(so_path):
-        import ctypes
-        from ctypes import CDLL
-
-        CDLL(so_path, ctypes.RTLD_GLOBAL)
-
 
 _configure_system()
 # Delete configuration function.

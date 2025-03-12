@@ -22,8 +22,6 @@ import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
 import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
-import io.ray.runtime.util.BinaryFileUtil;
-import io.ray.runtime.util.JniUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -77,15 +75,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       // instead of getting session dir from redis.
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
-        JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
         updateSessionDir();
         Preconditions.checkNotNull(rayConfig.sessionDir);
-      } else {
-        // Expose ray ABI symbols which may be depended by other shared
-        // libraries such as libstreaming_java.so.
-        // See BUILD.bazel:libcore_worker_library_java.so
-        Preconditions.checkNotNull(rayConfig.sessionDir);
-        JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
       }
 
       if (rayConfig.workerMode == WorkerType.DRIVER) {
