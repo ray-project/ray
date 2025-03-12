@@ -208,7 +208,7 @@ enum TagKey {
   LLM_BATCH_PROCESSOR_CONFIG_NAME = 600;
   // Name of model source used to build vLLM engine processor.
   // Example: "facebook/opt-350m"
-  LLM_BATCH_MODEL_SOURCE = 601;
+  LLM_BATCH_MODEL_ARCHITECTURE = 601;
   // The batch size of requests sent to processor.
   // Example: "64"
   LLM_BATCH_SIZE = 602;
