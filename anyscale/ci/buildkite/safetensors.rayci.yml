@@ -1,0 +1,18 @@
+group: safetensors tests
+sort_key: "~safetensors"
+depends_on:
+  - forge
+  - oss-ci-base_build
+steps:
+  - name: rayturbobuild
+    wanda: anyscale/ci/docker/rayturbo.build.wanda.yaml
+
+  - label: "safetensors client tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/safetensors/... serve
+        --build-name rayturbobuild
+    depends_on: rayturbobuild
+    job_env: forge
+    tags:
+      - safetensors

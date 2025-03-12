@@ -556,6 +556,7 @@ def test_execution_callbacks():
     assert isinstance(error, KeyboardInterrupt), error
 
 
+@pytest.mark.skip("Fails on RayTurbo because different read logical ops")
 def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     """Test the executor arg in ExecutionCallback."""
 

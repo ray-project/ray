@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1.3-labs
+
+# Installs a ray wheel on the given base image and saves the site-package
+# contents in /ray.tgz
+
+ARG FULL_BASE_IMAGE
+
+# Install placeholder wheel, and save the ray package and dist info.
+FROM $FULL_BASE_IMAGE as sitepkg
+
+ARG WHEEL_PATH
+ARG RAY_VERSION="3.0.0.dev0"
+ARG RAY_MOD_DATE="UTC 2020-01-01"
+ARG FIND_LINKS_PATH=".whl"
+
+COPY requirements_compiled.txt ./
+RUN --mount=type=bind,source=$FIND_LINKS_PATH,target=$FIND_LINKS_PATH <<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+SITE_PKG_DIR="$(python -c "import site; print(site.getsitepackages()[0])")"
+PIP="/home/ray/anaconda3/bin/pip"
+
+if [[ -d "${SITE_PKG_DIR}/ray" ]]; then
+    # Needs to uninstall ray first, otherwise pip will not overwrite the
+    # existing files if OSS already published a wheel with the same version.
+    # This step is required only for ray-ml images.
+    "${PIP}" uninstall -y ray
+fi
+
+"${PIP}" --no-cache-dir \
+    install -c requirements_compiled.txt "${WHEEL_PATH}"[all] \
+    --find-links "${FIND_LINKS_PATH}"
+
+# Now do the packaging.
+
+# When pip install, it will generate the pyc files, but the compilation is not
+# deterministic (even after we fix the timestamp in the pyc file headers).
+# The pyc bytecode format is private to python interpreter, and it is not
+# part of the Python language spec, so we cannot rely on it to be stable
+# accross different base images (e.g. cpu vs cuda, ml vs non-ml).
+#
+# So we delete the pyc files. The Python interpreter will regenerate them when
+# we run the ray package for the first time, with around 0.2 second penanlty on
+# startup time. This makes the tarball deterministic, and we also only need to
+# maintain one tarball for each Python version.
+
+tar --mtime="${RAY_MOD_DATE}" --sort=name --exclude='*.pyc' \
+    -czf /home/ray/ray.tgz \
+    -C "${SITE_PKG_DIR}" ray "ray-${RAY_VERSION}.dist-info"
+
+EOF
+
+
+FROM scratch as final
+
+COPY --from=sitepkg /home/ray/ray.tgz /ray.tgz

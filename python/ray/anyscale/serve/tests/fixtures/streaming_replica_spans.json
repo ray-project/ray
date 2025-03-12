@@ -1,0 +1,42 @@
+[
+   {
+      "name":"application_span",
+      "kind":"SpanKind.INTERNAL",
+      "status":{
+         "status_code":"UNSET"
+      },
+      "attributes":{
+         "deployment":"StreamingModel",
+         "replica_id":""
+      },
+      "events":[
+
+      ],
+      "links":[
+
+      ]
+   },
+   {
+      "name":"replica_handle_request StreamingModel",
+      "kind":"SpanKind.SERVER",
+      "status":{
+         "status_code":"OK"
+      },
+      "attributes":{
+         "request_id":"",
+         "replica_id":"",
+         "deployment":"StreamingModel",
+         "app":"default",
+         "call_method":"__call__",
+         "route":"/",
+         "multiplexed_model_id":"",
+         "is_streaming":true
+      },
+      "events":[
+
+      ],
+      "links":[
+
+      ]
+   }
+]
