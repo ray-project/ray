@@ -18,7 +18,8 @@ def get_pyarrow_version() -> Optional[Version]:
             import pyarrow
 
             _PYARROW_INSTALLED = True
-            _PYARROW_VERSION = parse_version(pyarrow.__version__)
+            if hasattr(pyarrow, "__version__"):
+                _PYARROW_VERSION = parse_version(pyarrow.__version__)
         except ModuleNotFoundError:
             _PYARROW_INSTALLED = False
 
