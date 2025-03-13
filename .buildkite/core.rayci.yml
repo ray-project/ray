@@ -53,10 +53,10 @@ steps:
     parallelism: 4
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags use_all_core --skip-ray-installation
@@ -69,12 +69,12 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --only-tags use_all_core --skip-ray-installation
@@ -93,7 +93,7 @@ steps:
     parallelism: 4
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //python/ray/autoscaler/v2/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
         --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
@@ -165,7 +165,7 @@ steps:
         --parallelism-per-worker 3
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --except-tags gpu,post_wheel_build,mem_pressure,doctest,multi_gpu
         --parallelism-per-worker 3
         --skip-ray-installation
@@ -176,7 +176,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --build-name datalbuild
         --parallelism-per-worker 2
     depends_on:
@@ -201,7 +201,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --build-type debug
         --parallelism-per-worker 3
         --only-tags debug_tests
@@ -212,7 +212,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --build-type asan
         --parallelism-per-worker 2
         --only-tags asan_tests
@@ -223,7 +223,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --build-type wheel
         --parallelism-per-worker 3
         --only-tags post_wheel_build
@@ -334,7 +334,7 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --run-flaky-tests
         --except-tags multi_gpu
 
@@ -348,7 +348,7 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --run-flaky-tests
         --gpus 4
         --build-name coregpubuild
@@ -393,7 +393,7 @@ steps:
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
         -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
         --only-tags container
     depends_on:
       - manylinux
@@ -419,7 +419,7 @@ steps:
         --gpus 4
         --build-name coregpubuild
         --only-tags multi_gpu
-        --install-mask all-libraries
+        --install-mask all-ray-libraries
     depends_on:
       - block-core-gpu-tests
       - coregpubuild
