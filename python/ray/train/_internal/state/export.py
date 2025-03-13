@@ -50,7 +50,7 @@ def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
 
 def _to_proto_worker(worker: TrainWorkerInfo) -> ProtoTrainRunAttempt.TrainWorker:
     """Convert TrainWorker to protobuf format."""
-    status = None
+    status = ProtoTrainRunAttempt.ActorStatus.ALIVE  # Default to alive
     if worker.status is not None:
         status = _ACTOR_STATUS_MAP[worker.status]
 
