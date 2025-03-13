@@ -7,8 +7,7 @@ import ray
 from botocore.exceptions import ClientError
 from ray import serve
 
-from ray._private.usage.usage_lib import record_extra_usage_tag, TagKey
-
+from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
@@ -173,6 +172,8 @@ class TelemetryAgent:
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
         """Record telemetry model."""
+        from ray._private.usage.usage_lib import TagKey
+
         if model:
             self.models.append(model)
 
