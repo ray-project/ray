@@ -21,7 +21,7 @@ from jsonschema.exceptions import ValidationError
 
 import ray
 from ray._private.test_utils import (
-    RayTestTimeoutException,
+    TimeoutError,
 )
 from ray.tests.autoscaler_test_utils import (
     MockNode,
@@ -389,7 +389,7 @@ class AutoscalingTest(unittest.TestCase):
                 return
             time.sleep(0.1)
         fail_msg = fail_msg or "Timed out waiting for {}".format(condition)
-        raise RayTestTimeoutException(fail_msg)
+        raise TimeoutError(fail_msg)
 
     def waitForUpdatersToFinish(self, autoscaler):
         self.waitFor(

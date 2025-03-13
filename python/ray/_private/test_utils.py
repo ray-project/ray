@@ -70,12 +70,6 @@ except (ImportError, ModuleNotFoundError):
         raise ModuleNotFoundError("`prometheus_client` not found")
 
 
-class RayTestTimeoutException(Exception):
-    """Exception used to identify timeouts from test utilities."""
-
-    pass
-
-
 def make_global_state_accessor(ray_context):
     gcs_options = GcsClientOptions.create(
         ray_context.address_info["gcs_address"],
@@ -415,7 +409,7 @@ def wait_for_pid_to_exit(pid, timeout=20):
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException(f"Timed out while waiting for process {pid} to exit.")
+    raise TimeoutError(f"Timed out while waiting for process {pid} to exit.")
 
 
 def wait_for_children_names_of_pid(pid, children_names, timeout=20):
@@ -430,7 +424,7 @@ def wait_for_children_names_of_pid(pid, children_names, timeout=20):
         if len(not_found_children) == 0:
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException(
+    raise TimeoutError(
         "Timed out while waiting for process {} children to start "
         "({} not found from children {}).".format(pid, not_found_children, children)
     )
@@ -446,7 +440,7 @@ def wait_for_children_of_pid(pid, num_children=1, timeout=20):
         if num_alive >= num_children:
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException(
+    raise TimeoutError(
         f"Timed out while waiting for process {pid} children to start "
         f"({num_alive}/{num_children} started: {alive})."
     )
@@ -459,7 +453,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
     _, alive = psutil.wait_procs(children, timeout=timeout)
     if len(alive) > 0:
-        raise RayTestTimeoutException(
+        raise TimeoutError(
             "Timed out while waiting for process children to exit."
             " Children still alive: {}.".format([p.name() for p in alive])
         )
@@ -589,7 +583,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
         ):
             return
         time.sleep(0.1)
-    raise RayTestTimeoutException("Timed out while waiting for global state.")
+    raise TimeoutError("Timed out while waiting for global state.")
 
 
 def wait_for_num_nodes(num_nodes: int, timeout_s: int):
