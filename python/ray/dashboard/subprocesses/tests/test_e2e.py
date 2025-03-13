@@ -12,6 +12,7 @@ from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule, TestModule1
 import ray._private.ray_constants as ray_constants
+from ray._private.test_utils import async_wait_for_condition_async_predicate
 import ray.dashboard.consts as dashboard_consts
 
 # This test requires non-minimal Ray.
@@ -181,14 +182,18 @@ async def test_kill_self(aiohttp_client, default_module_config):
         == "500 Internal Server Error\n\nServer got itself in trouble"
     )
 
-    # Assert that after we found it's dead, it's auto restarted.
-    await asyncio.sleep(3)
-    response = await client.post("/echo", data=b"a restarted dashboard")
-    assert response.status == 200
-    assert (
-        await response.text()
-        == "Hello, World from POST /echo from a restarted dashboard"
-    )
+    async def verify():
+        response = await client.post(
+            "/echo", data=b"a restarted dashboard", timeout=0.5
+        )
+        assert response.status == 200
+        assert (
+            await response.text()
+            == "Hello, World from POST /echo from a restarted dashboard"
+        )
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
 
 
 async def test_logging_in_module(aiohttp_client, default_module_config):
@@ -203,7 +208,7 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
 
     # Assert the log file name and read the log file
     log_file_path = (
-        pathlib.Path(default_module_config.log_dir) / "dashboard-TestModule.log"
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.log"
     )
     with log_file_path.open("r") as f:
         log_file_content = f.read()

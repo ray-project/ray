@@ -15,7 +15,7 @@ class ResponseType(enum.Enum):
 def module_logging_filename(module_name: str, logging_filename: str) -> str:
     """
     Parse logging_filename = STEM EXTENSION,
-    return STEM - MODULE_NAME EXTENSION
+    return STEM _ MODULE_NAME EXTENSION
 
     Example:
     module_name = "TestModule"
@@ -25,4 +25,4 @@ def module_logging_filename(module_name: str, logging_filename: str) -> str:
     return "dashboard-TestModule.log"
     """
     stem, extension = os.path.splitext(logging_filename)
-    return f"{stem}-{module_name}{extension}"
+    return f"{stem}_{module_name}{extension}"
