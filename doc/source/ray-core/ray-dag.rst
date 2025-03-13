@@ -47,7 +47,7 @@ executed as root node while iterating, or used as input args or kwargs of other
 functions to form more complex DAGs.
 
 Any IR node can be executed directly ``dag_node.execute()`` that acts as root
-of the DAG, where all other non-reachable nodes from the root will be igored.
+of the DAG, where all other non-reachable nodes from the root will be ignored.
 
 .. tab-set::
 
@@ -136,4 +136,5 @@ More resources
 You can find more application patterns and examples in the following resources
 from other Ray libraries built on top of Ray DAG API with the same mechanism.
 
-| `Visualization of DAGs <https://docs.ray.io/en/master/serve/model_composition.html#visualizing-the-graph>`_
+|  `Ray Serve Compositions of Models <https://docs.ray.io/en/master/serve/model_composition.html>`_
+|  `Visualization of Ray Compiled Graph <https://docs.ray.io/en/master/ray-core/compiled-graph/visualization.html>`_

@@ -2070,7 +2070,7 @@ def read_webdataset(
     expand_json: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
-    `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+    `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -3035,7 +3035,7 @@ def from_spark(
     override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
-    `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
+    `Spark DataFrame <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.html>`_.
 
     Args:
         df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
@@ -3153,7 +3153,7 @@ def from_huggingface(
                 )
         except (FileNotFoundError, ClientResponseError):
             logger.warning(
-                "Distrubuted read via Hugging Face Hub parquet files failed, "
+                "Distributed read via Hugging Face Hub parquet files failed, "
                 "falling back on single node read."
             )
 
@@ -3170,8 +3170,8 @@ def from_huggingface(
         if override_num_blocks is not None:
             raise ValueError(
                 "`override_num_blocks` parameter is not supported for "
-                "streaming Hugging Face Datasets. Please omit the parameter or "
-                "use non-streaming mode to read the dataset."
+                "non-streaming Hugging Face Datasets. Please omit the parameter and use `.repartition` instead."
+                "Alternatively, use streaming mode to read the dataset."
             )
 
         # To get the resulting Arrow table from a Hugging Face Dataset after

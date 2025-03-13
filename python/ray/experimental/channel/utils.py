@@ -1,6 +1,9 @@
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
+
+if TYPE_CHECKING:
+    import torch
 
 
 def get_self_actor() -> Optional["ray.actor.ActorHandle"]:
@@ -90,3 +93,24 @@ def get_actor_node(actor: Optional["ray.actor.ActorHandle"]) -> str:
                 lambda self: ray.get_runtime_context().get_node_id()
             )
         )
+
+
+def get_default_torch_device(*, allow_cpu: bool) -> "torch.device":
+    """Get the default torch device inside this actor or driver.
+
+    If any GPUs are available, the default device will be cuda:0 and we will rely on
+    torch to handle mapping CUDA_VISIBLE_DEVICES to a physical device.
+
+    If no GPUs are available, a CPU device will be returned if allow_cpu is true, else
+    the function will raise a RuntimeError.
+    """
+    import torch
+
+    accelerator_ids = ray.get_runtime_context().get_accelerator_ids()
+    if not accelerator_ids.get("GPU", []):
+        if allow_cpu:
+            return torch.device("cpu")
+        else:
+            raise RuntimeError("No CUDA device available.")
+
+    return torch.device("cuda:0")

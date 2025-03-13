@@ -169,6 +169,9 @@ ray_cc_library(
     name = "string_utils",
     srcs = ["string_utils.cc"],
     hdrs = ["string_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 ray_cc_library(
@@ -296,6 +299,7 @@ ray_cc_library(
     hdrs = ["stream_redirection_utils.h"],
     deps = [
         ":pipe_logger",
+        ":scoped_dup2_wrapper",
         ":stream_redirection_options",
         ":util",
     ],
@@ -340,11 +344,33 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "scoped_dup2_wrapper",
+    srcs = select({
+        "@platforms//os:windows": ["scoped_dup2_wrapper_windows.cc"],
+        "//conditions:default": ["scoped_dup2_wrapper_posix.cc"],
+    }),
+    hdrs = ["scoped_dup2_wrapper.h"],
+    deps = [
+        ":compat",
+        ":logging",
+    ],
+)
+
+ray_cc_library(
     name = "process_cleaner",
     srcs = ["process_cleaner.cc"],
     hdrs = ["process_cleaner.h"],
-    deps = select({
-        "@platforms//os:windows": [],
-        "//conditions:default": ["//src/ray/util:logging"],
-    }),
+    deps = [":invoke_once_token"] +
+           select({
+               "@platforms//os:windows": [],
+               "//conditions:default": ["//src/ray/util:logging"],
+           }),
+)
+
+ray_cc_library(
+    name = "invoke_once_token",
+    hdrs = ["invoke_once_token.h"],
+    deps = [
+        ":logging",
+    ],
 )

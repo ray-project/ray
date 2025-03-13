@@ -907,6 +907,24 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.delete_dir(_unwrap_protocol(path))
 
 
+def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "a", "b", "b", "c", "c"]}
+    )
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table, root_path=str(tmp_path), partition_cols=["one"], use_legacy_dataset=False
+    )
+    # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), override_num_blocks=3, filter=(pa.dataset.field("two") == "a")
+    )
+
+    parquet_output_path = os.path.join(tmp_path, "parquet")
+    ds.write_parquet(parquet_output_path, num_rows_per_file=6)
+
+
 def test_parquet_file_extensions(ray_start_regular_shared, tmp_path):
     table = pa.table({"food": ["spam", "ham", "eggs"]})
     pq.write_table(table, tmp_path / "table.parquet")

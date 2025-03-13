@@ -13,6 +13,9 @@ ray_cc_library(
 ray_cc_library(
     name = "cgroup_context",
     hdrs = ["cgroup_context.h"],
+    deps = [
+        "//src/ray/util:compat",
+    ],
 )
 
 ray_cc_library(
