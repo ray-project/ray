@@ -344,7 +344,7 @@ def _pid_alive(pid):
     return alive
 
 
-def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
+def _check_call_windows(main, argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
     stream = io.TextIOWrapper(io.BytesIO(), encoding=sys.stdout.encoding)
@@ -379,7 +379,7 @@ def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     from ray.scripts.scripts import main as ray_main
 
     if sys.platform == "win32":
-        result = check_call_module(
+        result = _check_call_windows(
             ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr
         )
     else:
@@ -403,31 +403,13 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
-def wait_for_pid_to_exit(pid, timeout=20):
+def wait_for_pid_to_exit(pid: int, timeout: float = 20):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
     raise TimeoutError(f"Timed out while waiting for process {pid} to exit.")
-
-
-def wait_for_children_names_of_pid(pid, children_names, timeout=20):
-    p = psutil.Process(pid)
-    start_time = time.time()
-    children_names = set(children_names)
-    not_found_children = []
-    children = []
-    while time.time() - start_time < timeout:
-        children = p.children(recursive=False)
-        not_found_children = set(children_names) - {c.name() for c in children}
-        if len(not_found_children) == 0:
-            return
-        time.sleep(0.1)
-    raise TimeoutError(
-        "Timed out while waiting for process {} children to start "
-        "({} not found from children {}).".format(pid, not_found_children, children)
-    )
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -586,39 +568,6 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     raise TimeoutError("Timed out while waiting for global state.")
 
 
-def wait_for_num_nodes(num_nodes: int, timeout_s: int):
-    curr_nodes = 0
-    start = time.time()
-    next_feedback = start
-    max_time = start + timeout_s
-    while not curr_nodes >= num_nodes:
-        now = time.time()
-
-        if now >= max_time:
-            raise RuntimeError(
-                f"Maximum wait time reached, but only "
-                f"{curr_nodes}/{num_nodes} nodes came up. Aborting."
-            )
-
-        if now >= next_feedback:
-            passed = now - start
-            print(
-                f"Waiting for more nodes to come up: "
-                f"{curr_nodes}/{num_nodes} "
-                f"({passed:.0f} seconds passed)"
-            )
-            next_feedback = now + 10
-
-        time.sleep(5)
-        curr_nodes = len(ray.nodes())
-
-    passed = time.time() - start
-    print(
-        f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
-        f"{passed:.0f} seconds"
-    )
-
-
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
     current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
@@ -694,34 +643,6 @@ async def async_wait_for_condition(
             else:
                 if condition_predictor(**kwargs):
                     return
-        except Exception as ex:
-            last_ex = ex
-        await asyncio.sleep(retry_interval_ms / 1000.0)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
-
-
-async def async_wait_for_condition_async_predicate(
-    async_condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
-):
-    """Wait until a condition is met or time out with an exception.
-
-    Args:
-        condition_predictor: A function that predicts the condition.
-        timeout: Maximum timeout in seconds.
-        retry_interval_ms: Retry interval in milliseconds.
-
-    Raises:
-        RuntimeError: If the condition is not met before the timeout expires.
-    """
-    start = time.time()
-    last_ex = None
-    while time.time() - start <= timeout:
-        try:
-            if await async_condition_predictor(**kwargs):
-                return
         except Exception as ex:
             last_ex = ex
         await asyncio.sleep(retry_interval_ms / 1000.0)
