@@ -1687,39 +1687,6 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
-    """Get a running async event loop if one exists, otherwise create one.
-
-    This function serves as a proxy for the deprecating get_event_loop().
-    It tries to get the running loop first, and if no running loop
-    could be retrieved:
-    - For python version <3.10: it falls back to the get_event_loop
-        call.
-    - For python version >= 3.10: it uses the same python implementation
-        of _get_event_loop() at asyncio/events.py.
-
-    Ideally, one should use high level APIs like asyncio.run() with python
-    version >= 3.7, if not possible, one should create and manage the event
-    loops explicitly.
-    """
-    vers_info = sys.version_info
-    if vers_info.major >= 3 and vers_info.minor >= 10:
-        # This follows the implementation of the deprecating `get_event_loop`
-        # in python3.10's asyncio. See python3.10/asyncio/events.py
-        # _get_event_loop()
-        try:
-            loop = asyncio.get_running_loop()
-            assert loop is not None
-            return loop
-        except RuntimeError as e:
-            # No running loop, relying on the error message as for now to
-            # differentiate runtime errors.
-            assert "no running event loop" in str(e)
-            return asyncio.get_event_loop_policy().get_event_loop()
-
-    return asyncio.get_event_loop()
-
-
 def get_entrypoint_name():
     """Get the entrypoint of the current script."""
     prefix = ""
@@ -1886,38 +1853,6 @@ class DeferSigint(contextlib.AbstractContextManager):
             # If exception was raised in context, returning False will cause it to be
             # reraised.
             return False
-
-
-background_tasks = set()
-
-
-def run_background_task(coroutine: Coroutine) -> asyncio.Task:
-    """Schedule a task reliably to the event loop.
-
-    This API is used when you don't want to cache the reference of `asyncio.Task`.
-    For example,
-
-    ```
-    get_event_loop().create_task(coroutine(*args))
-    ```
-
-    The above code doesn't guarantee to schedule the coroutine to the event loops
-
-    When using create_task in a  "fire and forget" way, we should keep the references
-    alive for the reliable execution. This API is used to fire and forget
-    asynchronous execution.
-
-    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
-    """
-    task = get_or_create_event_loop().create_task(coroutine)
-    # Add task to the set. This creates a strong reference.
-    background_tasks.add(task)
-
-    # To prevent keeping references to finished tasks forever,
-    # make each task remove its own reference from the set after
-    # completion:
-    task.add_done_callback(background_tasks.discard)
-    return task
 
 
 def try_import_each_module(module_names_to_import: List[str]) -> None:
