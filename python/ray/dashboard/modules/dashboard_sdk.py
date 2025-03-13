@@ -333,6 +333,7 @@ class SubmissionClient:
         package_path: str,
         include_parent_dir: Optional[bool] = False,
         excludes: Optional[List[str]] = None,
+        includes: Optional[List[str]] = None,
         is_file: bool = False,
     ) -> bool:
         logger.info(f"Uploading package {package_uri}.")
@@ -347,6 +348,7 @@ class SubmissionClient:
                     package_file,
                     include_parent_dir=include_parent_dir,
                     excludes=excludes,
+                    includes=includes,
                 )
             try:
                 r = self._do_request(
@@ -366,12 +368,15 @@ class SubmissionClient:
         package_path: str,
         include_parent_dir: bool = False,
         excludes: Optional[List[str]] = None,
+        includes: Optional[List[str]] = None,
         is_file: bool = False,
     ) -> str:
         if is_file:
             package_uri = get_uri_for_package(Path(package_path))
         else:
-            package_uri = get_uri_for_directory(package_path, excludes=excludes)
+            package_uri = get_uri_for_directory(
+                package_path, excludes=excludes, includes=includes
+            )
 
         if not self._package_exists(package_uri):
             self._upload_package(
