@@ -82,7 +82,6 @@ def take_table(
             if col.length() > MAX_INT32:
                 # .take() breaks when offset > MAX_INT32
                 col = combine_chunked_array(col)
- 
         new_cols.append(col.take(indices))
     table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
     return table
