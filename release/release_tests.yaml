@@ -4118,7 +4118,7 @@
       python run_llama.py
       --pp-size 2 --concurrency 2
 
-- name: llm_batch_vllm_v1_llava_tp1dp2
+- name: llm_batch_vllm_v1_llava_tp1dp1
   frequency: nightly
   python: "3.11"
   group: llm-batch
@@ -4134,4 +4134,4 @@
     timeout: 3600
     script: >
       python run_vision_language_model.py
-      --tp-size 1 --concurrency 2 --vllm-use-v1
+      --tp-size 1 --concurrency 1 --vllm-use-v1
