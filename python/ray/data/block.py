@@ -159,42 +159,61 @@ class BlockExecStats:
 
 
 class _BlockExecStatsBuilder:
-    """Helper class for building block stats.
+    """Helper context manager for building block stats.
 
     When this class is created, we record the start time. When build() is
     called, the time delta is saved as part of the stats.
     """
 
-    _POLL_INTERVAL_S = 1
+    def __init__(self, poll_interval_s: Optional[float] = None):
+        """
 
-    def __init__(self):
-        self._process = psutil.Process(os.getpid())
+        Args:
+            poll_interval_s: The interval to poll the RSS of the process. If `None`,
+                this class won't poll the RSS.
+        """
+        self._poll_interval_s = poll_interval_s
 
+        # Record start times.
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
+
+        # Record initial RSS.
+        self._process = psutil.Process(os.getpid())
         self._max_rss = int(self._process.memory_info().rss)
 
-        self._rss_poll_thread, self._stop_rss_poll_event = self._start_rss_poll_thread()
+        # If necessary, start the RSS poll thread.
+        self._rss_poll_thread = None
+        self._stop_rss_poll_event = None
+        if self._poll_interval_s is not None:
+            (
+                self._rss_poll_thread,
+                self._stop_rss_poll_event,
+            ) = self._start_rss_poll_thread()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._stop_rss_poll_thread()
+        if self._rss_poll_thread is not None:
+            self._stop_rss_poll_thread()
 
     def build(self) -> "BlockExecStats":
+        # Record end times.
         end_time = time.perf_counter()
         end_cpu = time.process_time()
 
+        # Record max RSS.
         self._max_rss = max(self._max_rss, int(self._process.memory_info().rss))
 
+        # Build the stats.
         stats = BlockExecStats()
         stats.start_time_s = self._start_time
         stats.end_time_s = end_time
         stats.wall_time_s = end_time - self._start_time
         stats.cpu_time_s = end_cpu - self._start_cpu
         stats.rss_bytes = self._max_rss
-        print(self._max_rss)
+
         return stats
 
     def reset(self):
@@ -203,13 +222,15 @@ class _BlockExecStatsBuilder:
         self._max_rss = int(self._process.memory_info().rss)
 
     def _start_rss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
+        assert self._poll_interval_s is not None
+
         stop_event = threading.Event()
 
         def poll_rss():
             while not stop_event.is_set():
                 rss_bytes = int(self._process.memory_info().rss)
                 self._max_rss = max(self._max_rss, rss_bytes)
-                time.sleep(self._POLL_INTERVAL_S)
+                time.sleep(self._poll_interval_s)
 
         thread = threading.Thread(target=poll_rss)
         thread.start()
@@ -217,8 +238,9 @@ class _BlockExecStatsBuilder:
         return thread, stop_event
 
     def _stop_rss_poll_thread(self):
-        self._stop_rss_poll_event.set()
-        self._rss_poll_thread.join()
+        if self._stop_rss_poll_event is not None:
+            self._stop_rss_poll_event.set()
+            self._rss_poll_thread.join()
 
 
 @DeveloperAPI
