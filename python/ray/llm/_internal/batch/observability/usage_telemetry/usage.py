@@ -4,7 +4,7 @@ import ray
 from pydantic import BaseModel
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
-
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.batch.observability.logging import get_logger
 
 LLM_BATCH_TELEMETRY_NAMESPACE = "llm_batch_telemetry"
@@ -13,7 +13,7 @@ LLM_BATCH_TELEMETRY_ACTOR_NAME = "llm_batch_telemetry"
 logger = get_logger(__name__)
 
 
-class BatchModelTelemetry(BaseModel):
+class BatchModelTelemetry(BaseModelExtended):
     processor_config_name: str = ""
     model_architecture: str = ""
     batch_size: int = 0
