@@ -12,7 +12,7 @@ from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule, TestModule1
 import ray._private.ray_constants as ray_constants
-from ray._private.test_utils import async_wait_for_condition_async_predicate
+from ray._private.test_utils import async_wait_for_condition
 import ray.dashboard.consts as dashboard_consts
 
 # This test requires non-minimal Ray.
@@ -193,7 +193,7 @@ async def test_kill_self(aiohttp_client, default_module_config):
         )
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 async def test_logging_in_module(aiohttp_client, default_module_config):
