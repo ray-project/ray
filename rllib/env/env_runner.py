@@ -127,6 +127,30 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         pass
 
     @DeveloperAPI
+    def set_state_sample_get_state_and_metrics(
+        self,
+        state,
+    ) -> Tuple[ray.ObjectRef, StateDict, StateDict]:
+        """Convenience method for fast, async algorithms.
+
+        Use this in Algorithms that need to sample Episode lists as ray.ObjectRef, but
+        also require (in the same remote call) the metrics and the EnvRunner states,
+        except for the module weights.
+        """
+        if state:
+            # print(f"State: {state}")
+            self.set_state(state)
+
+        _episodes = self.sample()
+
+        # Get the EnvRunner's connector states.
+        _connector_states = self.get_state(not_components=COMPONENT_RL_MODULE)
+        _metrics = self.get_metrics()
+        # Return episode lists by reference so we don't have to send them to the
+        # main algo process, but to the Aggregator- or Learner actors directly.
+        return ray.put(_episodes), _connector_states, _metrics
+
+    @DeveloperAPI
     def sample_get_state_and_metrics(
         self,
     ) -> Tuple[ray.ObjectRef, StateDict, StateDict]:

@@ -1,4 +1,5 @@
 import copy
+import functools
 import logging
 import queue
 from typing import Dict, List, Optional, Set, Tuple, Type, Union
@@ -12,6 +13,7 @@ from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate, NumpyToT
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -542,6 +544,8 @@ class IMPALA(Algorithm):
             i: [] for i in range(self.config.num_learners or 1)
         }
 
+        if self.config.enable_rl_module_and_learner:
+            self._current_env_runner_state = {}
         # Create local mixin buffer if on old API stack and replay
         # proportion is set.
         if not self.config.enable_rl_module_and_learner:
@@ -582,7 +586,9 @@ class IMPALA(Algorithm):
                 connector_states,
                 env_runner_metrics,
                 env_runner_indices_to_update,
-            ) = self._sample_and_get_connector_states()
+            ) = (
+                self._set_state_sample_and_get_connector_states()
+            )  # ä sample_and_get_connector_states()
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_metrics,
@@ -594,6 +600,24 @@ class IMPALA(Algorithm):
                 (ENV_RUNNER_RESULTS, MEAN_NUM_EPISODE_LISTS_RECEIVED),
                 len(episode_refs),
             )
+
+            self.metrics.set_value(
+                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
+            )
+            self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
+
+        if connector_states:
+            self._current_env_runner_state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = ray.put(
+                self.env_runner._env_to_module.merge_states(
+                    [s[COMPONENT_ENV_TO_MODULE_CONNECTOR] for s in connector_states]
+                )
+            )
+            self._current_env_runner_state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = ray.put(
+                self.env_runner._env_to_module.merge_states(
+                    [s[COMPONENT_MODULE_TO_ENV_CONNECTOR] for s in connector_states]
+                )
+            )
+            connector_states = []
 
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
@@ -739,18 +763,20 @@ class IMPALA(Algorithm):
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
         if rl_module_state is not None:
-            self.metrics.set_value(
-                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
+            self._current_env_runner_state.update(
+                {
+                    **rl_module_state,
+                }
             )
-            self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
-            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                self.env_runner_group.sync_env_runner_states(
-                    config=self.config,
-                    connector_states=connector_states,
-                    rl_module_state=rl_module_state,
-                )
 
-    def _sample_and_get_connector_states(self):
+            # with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+            #     self.env_runner_group.sync_env_runner_states(
+            #         config=self.config,
+            #         connector_states=connector_states,
+            #         #rl_module_state=rl_module_state,
+            #     )
+
+    def _set_state_sample_and_get_connector_states(self):
         env_runner_indices_to_update = set()
         episode_refs = []
         connector_states = []
@@ -765,8 +791,17 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
             )
+
+            def _env_runner_remote(worker, state):
+
+                return worker.set_state_sample_get_state_and_metrics(state)
+
             self.env_runner_group.foreach_env_runner_async(
-                "sample_get_state_and_metrics"
+                functools.partial(
+                    _env_runner_remote,
+                    state=self._current_env_runner_state,
+                )
+                # "sample_get_state_and_metrics"
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.
@@ -799,6 +834,56 @@ class IMPALA(Algorithm):
             env_runner_metrics,
             env_runner_indices_to_update,
         )
+
+    # def _sample_and_get_connector_states(self):
+    #     env_runner_indices_to_update = set()
+    #     episode_refs = []
+    #     connector_states = []
+    #     env_runner_metrics = []
+    #     num_healthy_remote_workers = self.env_runner_group.num_healthy_remote_workers()
+
+    #     # Perform asynchronous sampling on all (healthy) remote rollout workers.
+    #     if num_healthy_remote_workers > 0:
+    #         async_results: List[
+    #             Tuple[int, ObjectRef]
+    #         ] = self.env_runner_group.fetch_ready_async_reqs(
+    #             timeout_seconds=self.config.timeout_s_sampler_manager,
+    #             return_obj_refs=False,
+    #         )
+    #         self.env_runner_group.foreach_env_runner_async(
+    #             "sample_get_state_and_metrics"
+    #         )
+    #         # Get results from the n different async calls and store those EnvRunner
+    #         # indices we should update.
+    #         results = []
+    #         for r in async_results:
+    #             env_runner_indices_to_update.add(r[0])
+    #             results.append(r[1])
+
+    #         for (episodes, states, metrics) in results:
+    #             episode_refs.append(episodes)
+    #             connector_states.append(states)
+    #             env_runner_metrics.append(metrics)
+    #     # Sample from the local EnvRunner.
+    #     else:
+    #         episodes = self.env_runner.sample()
+    #         env_runner_metrics = [self.env_runner.get_metrics()]
+    #         episode_refs = [ray.put(episodes)]
+    #         connector_states = [
+    #             self.env_runner.get_state(
+    #                 components=[
+    #                     COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    #                     COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    #                 ]
+    #             )
+    #         ]
+
+    #     return (
+    #         episode_refs,
+    #         connector_states,
+    #         env_runner_metrics,
+    #         env_runner_indices_to_update,
+    #     )
 
     def _pre_queue_episode_refs(
         self, episode_refs: List[ObjectRef], package_size: int
