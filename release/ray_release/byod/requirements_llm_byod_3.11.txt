@@ -1,1 +1,4 @@
-# Just a stub for now; please keep this empty.
+pytest-asyncio==0.21.2
+pytest-timeout==2.1.0
+locust==2.33.0
+orjson==3.10.15

@@ -20,8 +20,8 @@ from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
 logger = logging.getLogger(__name__)
 
 
-def _current_time_ms() -> int:
-    return int(time.time() * 1000)
+def _current_time_ns() -> int:
+    return time.time_ns()
 
 
 class TrainStateManager:
@@ -41,6 +41,7 @@ class TrainStateManager:
         name: str,
         job_id: str,
         controller_actor_id: str,
+        controller_log_file_path: str,
     ) -> None:
         run = TrainRun(
             id=id,
@@ -49,7 +50,8 @@ class TrainStateManager:
             status=RunStatus.INITIALIZING,
             status_detail=None,
             controller_actor_id=controller_actor_id,
-            start_time_ms=_current_time_ms(),
+            start_time_ns=_current_time_ns(),
+            controller_log_file_path=controller_log_file_path,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
@@ -97,7 +99,7 @@ class TrainStateManager:
         run = self._runs[run_id]
         run.status = RunStatus.FINISHED
         run.status_detail = None
-        run.end_time_ms = _current_time_ms()
+        run.end_time_ns = _current_time_ns()
         self._create_or_update_train_run(run)
 
     def update_train_run_errored(
@@ -108,7 +110,7 @@ class TrainStateManager:
         run = self._runs[run_id]
         run.status = RunStatus.ERRORED
         run.status_detail = status_detail
-        run.end_time_ms = _current_time_ms()
+        run.end_time_ns = _current_time_ns()
         self._create_or_update_train_run(run)
 
     # TODO: This may be handled in the StateManager.
@@ -119,7 +121,7 @@ class TrainStateManager:
         run = self._runs[run_id]
         run.status = RunStatus.ABORTED
         run.status_detail = None  # TODO: Add status detail.
-        run.end_time_ms = _current_time_ms()
+        run.end_time_ns = _current_time_ns()
         self._create_or_update_train_run(run)
 
     def create_train_run_attempt(
@@ -137,7 +139,7 @@ class TrainStateManager:
         run_attempt = TrainRunAttempt(
             run_id=run_id,
             attempt_id=attempt_id,
-            start_time_ms=_current_time_ms(),
+            start_time_ns=_current_time_ns(),
             status=RunAttemptStatus.PENDING,
             status_detail=None,
             resources=resources,
@@ -167,6 +169,7 @@ class TrainStateManager:
                 gpu_ids=actor_metadata.gpu_ids,
                 status=ActorStatus.ALIVE,
                 resources=TrainResources(resources=worker.resources),
+                log_file_path=worker.log_file_path,
             )
 
         workers: List[TrainWorker] = [_convert_worker(worker) for worker in workers]
@@ -185,7 +188,7 @@ class TrainStateManager:
         run_attempt = self._run_attempts[run_id][attempt_id]
         run_attempt.status = RunAttemptStatus.FINISHED
         run_attempt.status_detail = None
-        run_attempt.end_time_ms = _current_time_ms()
+        run_attempt.end_time_ns = _current_time_ns()
         self._create_or_update_train_run_attempt(run_attempt)
 
     def update_train_run_attempt_errored(
@@ -197,7 +200,7 @@ class TrainStateManager:
         run_attempt = self._run_attempts[run_id][attempt_id]
         run_attempt.status = RunAttemptStatus.ERRORED
         run_attempt.status_detail = status_detail
-        run_attempt.end_time_ms = _current_time_ms()
+        run_attempt.end_time_ns = _current_time_ns()
         self._create_or_update_train_run_attempt(run_attempt)
 
     def update_train_run_attempt_aborted(
@@ -208,7 +211,7 @@ class TrainStateManager:
         run_attempt = self._run_attempts[run_id][attempt_id]
         run_attempt.status_detail = None  # TODO: Add status detail.
         run_attempt.status = RunAttemptStatus.ABORTED
-        run_attempt.end_time_ms = _current_time_ms()
+        run_attempt.end_time_ns = _current_time_ns()
         self._create_or_update_train_run_attempt(run_attempt)
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:

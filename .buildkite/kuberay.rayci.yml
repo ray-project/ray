@@ -25,7 +25,7 @@ steps:
       - python
       - docker
       - oss
-      - skip-on-microcheck
+      - skip-on-premerge
     instance_type: medium
     commands:
       - bash ci/k8s/run-chaos-test.sh {{matrix.fault}} {{matrix.workload}}

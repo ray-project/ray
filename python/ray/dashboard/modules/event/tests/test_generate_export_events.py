@@ -163,9 +163,7 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
     """
 
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     job_manager = JobManager(gcs_aio_client, tmp_path)
 
     # Submit a job.
