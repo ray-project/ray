@@ -116,9 +116,9 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
             deval = lightgbm.Dataset(eval_X, label=eval_y)
 
             params = {
-                "tree_method": "approx",
-                "objective": "reg:squarederror",
-                "eta": 1e-4,
+                "objective": "regression",
+                "metric": "l2",
+                "learning_rate": 1e-4,
                 "subsample": 0.5,
                 "max_depth": 2,
             }
