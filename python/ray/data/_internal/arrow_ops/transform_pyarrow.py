@@ -78,10 +78,9 @@ def take_table(
             # .take() will concatenate internally, which currently breaks for
             # extension arrays.
             col = combine_chunked_array(col)
-        elif col.num_chunks > 1:
-            if col.nbytes > MAX_INT32:
-                # .take() breaks when offset > MAX_INT32
-                col = combine_chunked_array(col)
+        elif col.nbytes > MAX_INT32 and col.num_chunks > 1:
+            # .take() breaks when offset > MAX_INT32
+            col = combine_chunked_array(col)
         new_cols.append(col.take(indices))
     table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
     return table
