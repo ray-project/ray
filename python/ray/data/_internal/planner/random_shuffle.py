@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
@@ -15,6 +16,7 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.util.common import INT32_MAX
 
 
 def generate_random_shuffle_fn(
@@ -25,6 +27,10 @@ def generate_random_shuffle_fn(
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to randomly shuffle each records of blocks."""
+
+    # If no seed has been specified, pin timestamp based one
+    # so that task could be safely retried (w/o changing their output)
+    seed = seed if seed is not None else (time.time_ns() % INT32_MAX)
 
     def fn(
         refs: List[RefBundle],
