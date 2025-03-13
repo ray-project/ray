@@ -437,7 +437,7 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address)
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     assert gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -467,9 +467,7 @@ def test_gcs_aio_client_reconnect(ray_start_regular_with_external_redis):
     passed = [False]
 
     async def async_kv_get():
-        gcs_aio_client = gcs_utils.GcsAioClient(
-            address=gcs_address, nums_reconnect_retry=20
-        )
+        gcs_aio_client = gcs_utils.GcsAioClient(address=gcs_address)
         assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
         return True
 
