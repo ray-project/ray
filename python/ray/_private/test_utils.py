@@ -799,57 +799,6 @@ def get_metric_check_condition(
     return f
 
 
-def wait_for_stdout(strings_to_match: List[str], timeout_s: int):
-    """Returns a decorator which waits until the stdout emitted
-    by a function contains the provided list of strings.
-    Raises an exception if the stdout doesn't have the expected output in time.
-
-    Note: The decorated function should not block!
-    (It should return soon after being called.)
-
-    Args:
-        strings_to_match: Wait until stdout contains all of these string.
-        timeout_s: Max time to wait, in seconds, before raising a RuntimeError.
-    """
-
-    def decorator(func):
-        @functools.wraps(func)
-        def decorated_func(*args, **kwargs):
-            success = False
-            try:
-                # Redirect stdout to an in-memory stream.
-                out_stream = io.StringIO()
-                sys.stdout = out_stream
-                # Execute the func. (Make sure the function doesn't block!)
-                out = func(*args, **kwargs)
-                # Check out_stream once a second until the timeout.
-                # Raise a RuntimeError if we timeout.
-                wait_for_condition(
-                    # Does redirected stdout contain all of the expected strings?
-                    lambda: all(
-                        string in out_stream.getvalue() for string in strings_to_match
-                    ),
-                    timeout=timeout_s,
-                    retry_interval_ms=1000,
-                )
-                # out_stream has the expected strings
-                success = True
-                return out
-            # Exception raised on failure.
-            finally:
-                sys.stdout = sys.__stdout__
-                if success:
-                    print("Confirmed expected function stdout. Stdout follows:")
-                else:
-                    print("Did not confirm expected function stdout. Stdout follows:")
-                print(out_stream.getvalue())
-                out_stream.close()
-
-        return decorated_func
-
-    return decorator
-
-
 def wait_until_succeeded_without_exception(
     func, exceptions, *args, timeout_ms=1000, retry_interval_ms=100, raise_last_ex=False
 ):
