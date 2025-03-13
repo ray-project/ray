@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 import importlib
+import random
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -59,9 +60,34 @@ def _ensure_debugger_port_open_thread_safe():
 
         debugger_port = ray._private.worker.global_worker.debugger_port
         if not debugger_port:
-            (host, port) = debugpy.listen(
-                (ray._private.worker.global_worker.node_ip_address, 0)
+            # Define the port range to use
+            port_range_start = int(
+                os.environ.get("RAY_DEBUGGER_PORT_RANGE_START", "52000")
             )
+            port_range_end = int(os.environ.get("RAY_DEBUGGER_PORT_RANGE_END", "52100"))
+
+            # Create a list of ports in the range and shuffle it
+            available_ports = list(range(port_range_start, port_range_end + 1))
+            random.shuffle(available_ports)
+
+            # Try ports in random order from the range
+            node_ip = ray._private.worker.global_worker.node_ip_address
+            port = None
+
+            for attempt_port in available_ports:
+                try:
+                    (host, port) = debugpy.listen((node_ip, attempt_port))
+                    break
+                except Exception as e:
+                    log.debug(f"Failed to open debugger on port {attempt_port}: {e}")
+                    continue
+
+            if port is None:
+                log.error(
+                    f"Failed to open debugger on any port in range {port_range_start}-{port_range_end}"
+                )
+                return
+
             ray._private.worker.global_worker.set_debugger_port(port)
             log.info(f"Ray debugger is listening on {host}:{port}")
         else:
