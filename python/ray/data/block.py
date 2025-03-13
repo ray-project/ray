@@ -184,17 +184,19 @@ class _BlockExecStatsBuilder:
         # Record initial RSS.
         self._process = psutil.Process(os.getpid())
         self._max_rss = int(self._process.memory_info().rss)
+        self._max_rss_lock = threading.Lock()
 
         # If necessary, start the RSS poll thread.
         self._rss_poll_thread = None
         self._stop_rss_poll_event = None
+
+    def __enter__(self):
         if self._poll_interval_s is not None:
             (
                 self._rss_poll_thread,
                 self._stop_rss_poll_event,
             ) = self._start_rss_poll_thread()
 
-    def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -207,7 +209,8 @@ class _BlockExecStatsBuilder:
         end_cpu = time.process_time()
 
         # Record max RSS.
-        self._max_rss = max(self._max_rss, int(self._process.memory_info().rss))
+        with self._max_rss_lock:
+            self._max_rss = max(self._max_rss, int(self._process.memory_info().rss))
 
         # Build the stats.
         stats = BlockExecStats()
@@ -222,7 +225,8 @@ class _BlockExecStatsBuilder:
     def reset(self):
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
-        self._max_rss = int(self._process.memory_info().rss)
+        with self._max_rss_lock:
+            self._max_rss = int(self._process.memory_info().rss)
 
     def _start_rss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         assert self._poll_interval_s is not None
@@ -232,10 +236,11 @@ class _BlockExecStatsBuilder:
         def poll_rss():
             while not stop_event.is_set():
                 rss_bytes = int(self._process.memory_info().rss)
-                self._max_rss = max(self._max_rss, rss_bytes)
+                with self._max_rss_lock:
+                    self._max_rss = max(self._max_rss, rss_bytes)
                 stop_event.wait(self._poll_interval_s)
 
-        thread = threading.Thread(target=poll_rss)
+        thread = threading.Thread(target=poll_rss, daemon=True)
         thread.start()
 
         return thread, stop_event

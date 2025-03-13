@@ -1,3 +1,4 @@
+import gc
 import logging
 import re
 import threading
@@ -30,10 +31,35 @@ from ray.data._internal.stats import (
     _StatsActor,
 )
 from ray.data._internal.util import create_dataset_tag
-from ray.data.block import BlockMetadata
+from ray.data.block import BlockMetadata, _BlockExecStatsBuilder
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+def test_block_exec_stats_max_rss_bytes_with_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    poll_interval_s = 0.01
+    with _BlockExecStatsBuilder(poll_interval_s=poll_interval_s) as builder:
+        array = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+        time.sleep(poll_interval_s * 2)
+
+        del array
+        gc.collect()
+
+        stats = builder.build()
+
+        assert stats.max_rss_bytes > array_nbytes
+
+
+def test_block_exec_stats_max_rss_bytes_without_polling(ray_start_regular_shared):
+    array_nbytes = 1024**3  # 1 GiB
+    with _BlockExecStatsBuilder() as builder:
+        _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
+
+        stats = builder.build()
+
+        assert stats.max_rss_bytes > array_nbytes
 
 
 def gen_expected_metrics(
