@@ -844,7 +844,7 @@ setuptools.setup(
         "ray": [
             "includes/*.pxd",
             "*.pxd",
-            "ray/llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+            "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
         ],
     },
     include_package_data=True,
