@@ -1,5 +1,4 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
