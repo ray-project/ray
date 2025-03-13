@@ -13,9 +13,11 @@ import pytest
 import ray
 import ray._private.storage as storage
 from ray._private.test_utils import simulate_storage
+from ray._private.arrow_utils import (
+    get_pyarrow_version,
+)
 from ray._private.utils import (
     _add_creatable_buckets_param_if_s3_uri,
-    _get_pyarrow_version,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -258,7 +260,7 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
 
 
 def test_add_creatable_buckets_param_if_s3_uri():
-    if parse_version(_get_pyarrow_version()) >= parse_version("9.0.0"):
+    if get_pyarrow_version() >= parse_version("9.0.0"):
         # Test that the allow_bucket_creation=true query arg is added to an S3 URI.
         uri = "s3://bucket/foo"
         assert (
