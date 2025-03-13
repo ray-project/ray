@@ -541,6 +541,12 @@ Windows powershell users need additional escaping:
     help="object store directory for memory mapped files",
 )
 @click.option(
+    "--fallback-directory",
+    required=False,
+    type=str,
+    help="The directory for fallback allocation files.",
+)
+@click.option(
     "--autoscaling-config",
     required=False,
     type=str,
@@ -674,6 +680,7 @@ def start(
     runtime_env_agent_port,
     block,
     plasma_directory,
+    fallback_directory,
     autoscaling_config,
     no_redirect_output,
     plasma_store_socket_name,
@@ -767,6 +774,7 @@ def start(
         labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
+        fallback_directory=fallback_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
