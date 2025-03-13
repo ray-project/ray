@@ -1,16 +1,29 @@
 load("//bazel:python.bzl", "doctest")
+load("//bazel:python.bzl", "py_test_module_list")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+
+# -------------------------------------------------------
+# Runs tests against docstrings on all source files.
+# We use a custom conftest, see tests/doctest_conftest.py
+# -------------------------------------------------------
+copy_file(
+    name = "data_doctest_conftest",
+    src = "tests/doctest_conftest.py",
+    out = "data_doctest_conftest.py",
+)
 
 doctest(
     files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
     tags = ["team:data"],
-    size = "large"
+    size = "large",
+    conftest_file = ":data_doctest_conftest",
 )
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/data/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
-load("//bazel:python.bzl", "py_test_module_list")
 
 py_library(
     name = "conftest",
