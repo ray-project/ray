@@ -23,6 +23,9 @@ steps:
     key: uv_pip_compile_llm_dependencies
     instance_type: small
     commands:
+      - pip install uv
+      - uv python install 3.11
+      - uv python pin 3.11
       - cp ./python/requirements_compiled_rayllm_py311_cpu.txt requirements_compiled_rayllm_py311_cpu_backup.txt
       - cp ./python/requirements_compiled_rayllm_py311_cu121.txt requirements_compiled_rayllm_py311_cu121_backup.txt
       - cp ./python/requirements_compiled_rayllm_py311_cu124.txt requirements_compiled_rayllm_py311_cu124_backup.txt
