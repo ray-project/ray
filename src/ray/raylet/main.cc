@@ -74,8 +74,8 @@ DEFINE_string(native_library_path,
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
-DEFINE_string(stdout_filepath, "", "The filepath to dump raylet stdout");
-DEFINE_string(stderr_filepath, "", "The filepath to dump raylet stderr");
+DEFINE_string(stdout_filepath, "", "The filepath to dump raylet stdout.");
+DEFINE_string(stderr_filepath, "", "The filepath to dump raylet stderr.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options

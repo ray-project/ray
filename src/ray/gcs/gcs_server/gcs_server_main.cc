@@ -32,7 +32,7 @@ DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_string(stdout_filepath, "", "The filepath to dump gcs server stdout.");
-DEFINE_string(stderr_filepath, "", "The filepath to dump gcs server stderr");
+DEFINE_string(stderr_filepath, "", "The filepath to dump gcs server stderr.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
