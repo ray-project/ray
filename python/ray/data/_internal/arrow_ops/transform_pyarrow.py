@@ -57,6 +57,9 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
+MAX_INT32 = (2**31) - 1
+
+
 def take_table(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
@@ -67,22 +70,21 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
-    from ray.air.util.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_column_extension_type,
-    )
+    from ray.air.util.transform_pyarrow import _is_column_extension_type
 
-    if any(_is_column_extension_type(col) for col in table.columns):
-        new_cols = []
-        for col in table.columns:
-            if _is_column_extension_type(col) and col.num_chunks > 1:
-                # .take() will concatenate internally, which currently breaks for
-                # extension arrays.
-                col = _concatenate_extension_column(col)
-            new_cols.append(col.take(indices))
-        table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
-    else:
-        table = table.take(indices)
+    new_cols = []
+    for col in table.columns:
+        if _is_column_extension_type(col) and col.num_chunks > 1:
+            # .take() will concatenate internally, which currently breaks for
+            # extension arrays.
+            col = combine_chunked_array(col)
+        elif (
+            sum(chunk.length for chunk in col.chunks) > MAX_INT32 and col.num_chunks > 1
+        ):
+            # .take() breaks when offset > MAX_INT32
+            col = combine_chunked_array(col)
+        new_cols.append(col.take(indices))
+    table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
     return table
 
 
