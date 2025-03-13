@@ -1,10 +1,11 @@
 # coding: utf-8
 import asyncio
-import pytest
 import sys
 import threading
 import time
 from typing import Any, Tuple
+
+import pytest
 
 import ray
 from ray._common.utils import get_or_create_event_loop
