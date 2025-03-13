@@ -20,9 +20,6 @@ import yaml
 from jsonschema.exceptions import ValidationError
 
 import ray
-from ray._private.test_utils import (
-    TimeoutError,
-)
 from ray.tests.autoscaler_test_utils import (
     MockNode,
     MockProcessRunner,
