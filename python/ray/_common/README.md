@@ -1,4 +1,4 @@
-# Common Utilities
+# Common Utilities Shared Across the Libraries
 
 This directory contains logic shared across Ray Core and the native libraries.
 
