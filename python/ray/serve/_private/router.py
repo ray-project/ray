@@ -543,8 +543,9 @@ class AsyncioRouter:
                     return result, r.replica_id
                 else:
                     logger.info(
-                        f"{r.replica_id} at max capacity of {r.max_ongoing_requests} "
-                        f"ongoing requests. Retrying request {pr.metadata.request_id}.",
+                        f"{r.replica_id} rejected request because it is at max "
+                        f"capacity of {r.max_ongoing_requests} ongoing requests. "
+                        f"Retrying request {pr.metadata.request_id}.",
                         extra={"log_to_stderr": False},
                     )
             except asyncio.CancelledError:
