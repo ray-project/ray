@@ -521,6 +521,15 @@ def smi_get_device_compute_process():
     else:
         return []
 
+def smi_get_compute_process_info_by_device(dev, proc_ids):
+    """returns list of process info running compute on the device provided by process ids"""
+    proc_infos = []
+    for proc_id in proc_ids:
+        proc_info = rsmi_process_info_t()
+        ret = rocm_lib.rsmi_compute_process_info_by_device_get(proc_id, dev, byref(proc_info))
+        if rsmi_ret_ok(ret):
+            proc_infos.append(proc_info)
+    return proc_infos
 
 def smi_get_device_average_power(dev):
     """returns average power of device_id dev"""
