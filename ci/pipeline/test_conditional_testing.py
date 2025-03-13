@@ -65,7 +65,7 @@ ci/ray_ci/tester.py: lint tools
 ci/ci.sh: lint tools
 
 src/ray.cpp:
-    - lint ml tune train core_cpp cpp java python
+    - lint core_cpp cpp java python
     - linux_wheels macos_wheels dashboard release_tests accelerated_dag
 
 .github/CODEOWNERS: lint
