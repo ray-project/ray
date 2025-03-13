@@ -18,7 +18,6 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.numpy_support import is_array_like
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import MiB, keys_equal, NULL_SENTINEL, is_nan
@@ -92,9 +91,8 @@ class TableBlockBuilder(BlockBuilder):
             self._column_names = item_column_names
 
         for key, value in item.items():
-            if is_array_like(value) and not isinstance(value, np.ndarray):
-                value = np.array(value)
             self._columns[key].append(value)
+
         self._num_rows += 1
         self._compact_if_needed()
         self._uncompacted_size.add(item)
@@ -191,6 +189,7 @@ class TableBlockAccessor(BlockAccessor):
         # Always promote Arrow blocks to pandas for consistency, since
         # we lazily convert pandas->Arrow internally for efficiency.
         default = self.to_pandas()
+
         return default
 
     def column_names(self) -> List[str]:
