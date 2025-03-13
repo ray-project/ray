@@ -3,11 +3,12 @@ import pytest
 import sys
 import time
 import signal
+from typing import Tuple
 
 import ray
-from ray._private.test_utils import close_common_connections
 from ray.exceptions import ActorUnavailableError, ActorDiedError
-from typing import Tuple
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 @ray.remote

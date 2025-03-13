@@ -277,9 +277,7 @@ def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
                 pass
 
     if len(ports) != num:
-        raise RuntimeError(
-            f"Can't find {num} available port from {start} to {end}."
-        )
+        raise RuntimeError(f"Can't find {num} available port from {start} to {end}.")
 
     return ports
 
