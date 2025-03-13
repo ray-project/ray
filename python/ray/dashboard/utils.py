@@ -12,7 +12,10 @@ from base64 import b64decode
 from collections import namedtuple
 from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, List, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
 import aiosignal  # noqa: F401
 from frozenlist import FrozenList  # noqa: F401
@@ -166,7 +169,6 @@ class DashboardHeadModule(abc.ABC):
         if self._gcs_client is None:
             self._gcs_client = GcsClient(
                 address=self._config.gcs_address,
-                nums_reconnect_retry=0,
                 cluster_id=self._config.cluster_id_hex,
             )
         return self._gcs_client
@@ -176,7 +178,6 @@ class DashboardHeadModule(abc.ABC):
         if self._gcs_aio_client is None:
             self._gcs_aio_client = GcsAioClient(
                 address=self._config.gcs_address,
-                nums_reconnect_retry=0,
                 cluster_id=self._config.cluster_id_hex,
             )
             if not internal_kv._internal_kv_initialized():
@@ -358,6 +359,29 @@ def address_tuple(address):
     return ip, int(port)
 
 
+def node_stats_to_dict(
+    message: "GetNodeStatsReply",
+) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+    decode_keys = {
+        "actorId",
+        "jobId",
+        "taskId",
+        "parentTaskId",
+        "sourceActorId",
+        "callerId",
+        "rayletId",
+        "workerId",
+        "placementGroupId",
+    }
+    core_workers_stats = message.core_workers_stats
+    result = message_to_dict(message, decode_keys)
+    result["coreWorkersStats"] = [
+        message_to_dict(m, decode_keys, always_print_fields_with_no_presence=True)
+        for m in core_workers_stats
+    ]
+    return result
+
+
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, bytes):
@@ -479,15 +503,23 @@ class Change:
 class NotifyQueue:
     """Asyncio notify queue for Dict signal."""
 
-    _queue = asyncio.Queue()
+    _queue = None
+
+    @classmethod
+    def queue(cls):
+        # Lazy initialization to avoid creating a asyncio.Queue
+        # whenever this Python file is imported.
+        if cls._queue is None:
+            cls._queue = asyncio.Queue()
+        return cls._queue
 
     @classmethod
     def put(cls, co):
-        cls._queue.put_nowait(co)
+        cls.queue().put_nowait(co)
 
     @classmethod
     async def get(cls):
-        return await cls._queue.get()
+        return await cls.queue().get()
 
 
 """
@@ -801,7 +833,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     """
 
     address = services.canonicalize_bootstrap_address_or_die(address)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    gcs_client = GcsClient(address=address)
 
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(

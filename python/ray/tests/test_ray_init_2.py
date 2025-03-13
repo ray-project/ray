@@ -10,7 +10,6 @@ import pytest
 
 import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
-from ray.air.util.node import _get_node_id_from_node_ip
 import ray._private.services
 from ray._private.services import get_node_ip_address
 from ray.dashboard.utils import ray_address_to_api_server_url
@@ -364,20 +363,20 @@ def test_driver_node_ip_address_auto_configuration(monkeypatch, ray_start_cluste
         with patch(
             "ray._private.services.node_ip_address_from_perspective"
         ) as mocked_node_ip_address:  # noqa
-            # Mock the node_ip_address_from_perspective will return the
-            # IP that's not assigned to ray start.
+            # Mock the node_ip_address_from_perspective to return a different IP
+            # address than the one that will be passed to ray start.
             mocked_node_ip_address.return_value = "134.31.31.31"
+            print("IP address passed to ray start:", ray_start_ip)
+            print("Mock local IP address:", get_node_ip_address())
+
             cluster = ray_start_cluster
             cluster.add_node(node_ip_address=ray_start_ip)
-            print(get_node_ip_address())
-            print(ray_start_ip)
 
-            # If the IP is not correctly configured, it will hang.
+            # If the IP address is not correctly configured, it will hang.
             ray.init(address=cluster.address)
-            assert (
-                _get_node_id_from_node_ip(get_node_ip_address())
-                == ray.get_runtime_context().get_node_id()
-            )
+            [node_info] = ray.nodes()
+            assert node_info["NodeManagerAddress"] == ray_start_ip
+            assert node_info["NodeID"] == ray.get_runtime_context().get_node_id()
 
 
 @pytest.fixture

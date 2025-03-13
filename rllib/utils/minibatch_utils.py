@@ -188,6 +188,37 @@ class MiniBatchDummyIterator(MiniBatchIteratorBase):
 
 
 @DeveloperAPI
+class MiniBatchRayDataIterator:
+    def __init__(self, *, iterator, finalize_fn, num_iters, **kwargs):
+        self._iterator = iterator
+        self._finalize_fn = finalize_fn
+        self._num_iters = num_iters
+        self._kwargs = kwargs
+
+    def __iter__(self):
+        iter = 0
+        while self._num_iters is None or iter < self._num_iters:
+            for batch in self._iterator.iter_batches(
+                # Note, this needs to be one b/c data is already mapped to
+                # `MultiAgentBatch`es of `minibatch_size`.
+                batch_size=1,
+                _finalize_fn=self._finalize_fn,
+                **self._kwargs,
+            ):
+                # Update the iteration counter.
+                iter += 1
+
+                # Note, `_finalize_fn`  must return a dictionary.
+                batch = batch["batch"]
+
+                yield (batch)
+
+                # If `num_iters` is reached break and return.
+                if self._num_iters and iter == self._num_iters:
+                    break
+
+
+@DeveloperAPI
 class ShardBatchIterator:
     """Iterator for sharding batch into num_shards batches.
 
