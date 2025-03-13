@@ -8,7 +8,7 @@ import uuid
 from enum import Enum
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type, Union
 
 import numpy as np
 
@@ -175,7 +175,9 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
-    def _maybe_convert_ndarray_to_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _maybe_convert_ndarray_to_list(
+        self, params: Union[np.ndarray, List[Any], Dict[str, Any]]
+    ) -> Union[List[Any], Dict[str, Any]]:
         """Convert all ndarray to list in the params. This is because Ray Data
         by default converts all lists to ndarrays when passing data around, but
         vLLM expects lists.
@@ -208,7 +210,9 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt").tolist()
+            tokenized_prompt = self._maybe_convert_ndarray_to_list(
+                row.pop("tokenized_prompt")
+            )
         else:
             tokenized_prompt = None
 
