@@ -47,7 +47,7 @@ class TrainWorkerInfo(BaseModel):
     gpu_ids: List[int] = Field(
         description="A list of GPU ids allocated to that worker."
     )
-    status: Optional[ActorStatusEnum] = Field(
+    status: ActorStatusEnum = Field(
         description="The status of the train worker actor. It can be ALIVE or DEAD."
     )
     resources: Dict[str, float] = Field(

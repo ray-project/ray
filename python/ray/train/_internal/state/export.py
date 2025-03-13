@@ -50,11 +50,7 @@ def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
 
 def _to_proto_worker(worker: TrainWorkerInfo) -> ProtoTrainRunAttempt.TrainWorker:
     """Convert TrainWorker to protobuf format."""
-    status = ProtoTrainRunAttempt.ActorStatus.ALIVE  # Default to alive
-    if worker.status is not None:
-        status = _ACTOR_STATUS_MAP[worker.status]
-
-    return ProtoTrainRunAttempt.TrainWorker(
+    proto_worker = ProtoTrainRunAttempt.TrainWorker(
         world_rank=worker.world_rank,
         local_rank=worker.local_rank,
         node_rank=worker.node_rank,
@@ -63,10 +59,12 @@ def _to_proto_worker(worker: TrainWorkerInfo) -> ProtoTrainRunAttempt.TrainWorke
         node_ip=worker.node_ip,
         pid=worker.pid,
         gpu_ids=worker.gpu_ids,
-        status=status,
+        status=_ACTOR_STATUS_MAP[worker.status],
         resources=_to_proto_resources(worker.resources),
         log_file_path=worker.worker_log_file_path,
     )
+
+    return proto_worker
 
 
 # Main conversion functions

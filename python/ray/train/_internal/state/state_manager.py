@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import ray
 from ray.data import Dataset
 from ray.train._internal.state.schema import (
+    ActorStatusEnum,
     RunStatusEnum,
     TrainDatasetInfo,
     TrainRunInfo,
@@ -64,6 +65,7 @@ class TrainRunStateManager:
                 pid=os.getpid(),
                 resources=resources[0],
                 worker_log_file_path=worker_log_file_path,
+                status=ActorStatusEnum.ALIVE,
             )
 
         futures = [

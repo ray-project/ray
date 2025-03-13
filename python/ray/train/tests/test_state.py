@@ -8,6 +8,7 @@ import ray
 from ray.cluster_utils import Cluster
 from ray.train import RunConfig, ScalingConfig
 from ray.train._internal.state.schema import (
+    ActorStatusEnum,
     RunStatusEnum,
     TrainDatasetInfo,
     TrainRunInfo,
@@ -98,6 +99,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         node_ip="10.0.208.100",
         pid=76071,
         gpu_ids=[0],
+        status=ActorStatusEnum.ALIVE,
     )
 
     worker_info_1 = TrainWorkerInfo(
@@ -109,6 +111,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         node_ip="10.0.208.100",
         pid=76072,
         gpu_ids=[1],
+        status=ActorStatusEnum.ALIVE,
     )
 
     run_info = TrainRunInfo(
