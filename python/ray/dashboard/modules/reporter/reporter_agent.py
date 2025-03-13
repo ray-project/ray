@@ -9,6 +9,7 @@ import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple, TypedDict, Union
+import subprocess
 
 from opencensus.stats import stats as stats_module
 from prometheus_client.core import REGISTRY
@@ -57,6 +58,7 @@ import psutil
 logger = logging.getLogger(__name__)
 
 enable_gpu_usage_check = True
+gpu_type = ""
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -540,6 +542,7 @@ class ReporterAgent(
     @staticmethod
     def _get_gpu_usage():
         import ray._private.thirdparty.pynvml as pynvml
+        import ray._private.thirdparty.pyamdsmi as pyamdsmi
 
         global enable_gpu_usage_check
         if not enable_gpu_usage_check:
@@ -551,66 +554,144 @@ class ReporterAgent(
                 return b.decode("utf-8")  # for python3, to unicode
             return b
 
-        try:
-            pynvml.nvmlInit()
-        except Exception as e:
-            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
-
-            # On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
-            # spew to stderr. Then with log_to_driver=True, we get log spew from every
-            # single raylet. To avoid this, disable the GPU usage check on
-            # certain errors.
-            # https://github.com/ray-project/ray/issues/14305
-            # https://github.com/ray-project/ray/pull/21686
-            if type(e).__name__ == "NVMLError_DriverNotLoaded":
-                enable_gpu_usage_check = False
-            return gpu_utilizations
-
-        num_gpus = pynvml.nvmlDeviceGetCount()
-        for i in range(num_gpus):
-            gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            memory_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
-            utilization = None
+        lib_initialized = False
+        # Cache the GPU type to avoid reinitializing the wrong library again
+        global gpu_type
+        if gpu_type == "":
             try:
-                utilization_info = pynvml.nvmlDeviceGetUtilizationRates(gpu_handle)
-                utilization = int(utilization_info.gpu)
-            except pynvml.NVMLError as e:
-                logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
+                # Check if NVIDIA GPU is available
+                pynvml.nvmlInit()
+                gpu_type = "nvidia"
+                lib_initialized = True
+            except Exception as e_nvml:
+                logger.debug(f"pynvml failed to retrieve GPU information: {e_nvml}")
 
-            # processes pids
-            processes_pids = None
-            try:
-                nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
-                    gpu_handle
-                )
-                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
-                    gpu_handle
-                )
-                processes_pids = [
-                    ProcessGPUInfo(
-                        pid=int(nv_process.pid),
-                        gpu_memory_usage=(
-                            int(nv_process.usedGpuMemory) // MB
-                            if nv_process.usedGpuMemory
-                            else 0
-                        ),
+                # Check if AMD GPU is available
+                try:
+                    pyamdsmi.smi_initialize()
+                    gpu_type = "amd"
+                    lib_initialized = True
+                except Exception as e_amd:
+                    logger.debug(
+                        f"pyamdsmi also failed to retrieve GPU information: {e_amd}"
                     )
-                    for nv_process in (nv_comp_processes + nv_graphics_processes)
-                ]
-            except pynvml.NVMLError as e:
-                logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
 
-            info = GpuUtilizationInfo(
-                index=i,
-                name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
-                uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
-                utilization_gpu=utilization,
-                memory_used=int(memory_info.used) // MB,
-                memory_total=int(memory_info.total) // MB,
-                processes_pids=processes_pids,
-            )
-            gpu_utilizations.append(info)
-        pynvml.nvmlShutdown()
+                    # On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
+                    # spew to stderr. Then with log_to_driver=True, we get log spew from every
+                    # single raylet. To avoid this, disable the GPU usage check on
+                    # certain errors.
+                    # https://github.com/ray-project/ray/issues/14305
+                    # https://github.com/ray-project/ray/pull/21686
+                    if (
+                        type(e_nvml).__name__ == "NVMLError_DriverNotLoaded"
+                        and len(
+                            str(
+                                subprocess.check_output(
+                                    "cat /sys/module/amdgpu/initstate |grep live",
+                                    shell=True,
+                                    stderr=subprocess.DEVNULL,
+                                )
+                            )
+                        )
+                        == 0
+                    ):
+                        enable_gpu_usage_check = False
+                    return gpu_utilizations
+
+        if gpu_type == "nvidia":
+            if not lib_initialized:
+                try:
+                    pynvml.nvmlInit()
+                except Exception as e:
+                    logger.debug(f"pynvml failed to retrieve GPU information: {e}")
+                    return gpu_utilizations
+
+            num_gpus = pynvml.nvmlDeviceGetCount()
+            for i in range(num_gpus):
+                gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                memory_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+                utilization = None
+                try:
+                    utilization_info = pynvml.nvmlDeviceGetUtilizationRates(gpu_handle)
+                    utilization = int(utilization_info.gpu)
+                except pynvml.NVMLError as e:
+                    logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
+
+                # processes pids
+                processes_pids = None
+                try:
+                    nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
+                        gpu_handle
+                    )
+                    nv_graphics_processes = (
+                        pynvml.nvmlDeviceGetGraphicsRunningProcesses(gpu_handle)
+                    )
+                    processes_pids = [
+                        ProcessGPUInfo(
+                            pid=int(nv_process.pid),
+                            gpu_memory_usage=(
+                                int(nv_process.usedGpuMemory) // MB
+                                if nv_process.usedGpuMemory
+                                else 0
+                            ),
+                        )
+                        for nv_process in (nv_comp_processes + nv_graphics_processes)
+                    ]
+                except pynvml.NVMLError as e:
+                    logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
+
+                info = GpuUtilizationInfo(
+                    index=i,
+                    name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
+                    uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                    utilization_gpu=utilization,
+                    memory_used=int(memory_info.used) // MB,
+                    memory_total=int(memory_info.total) // MB,
+                    processes_pids=processes_pids,
+                )
+                gpu_utilizations.append(info)
+            pynvml.nvmlShutdown()
+
+        elif gpu_type == "amd":
+            if not lib_initialized:
+                try:
+                    pyamdsmi.smi_initialize()
+                except Exception as e:
+                    logger.debug(f"pyamdsmi failed to retrieve GPU information: {e}")
+                    return gpu_utilizations
+
+            num_gpus = pyamdsmi.smi_get_device_count()
+            processes = pyamdsmi.smi_get_device_compute_process()
+            for i in range(num_gpus):
+                gpu_handle = pyamdsmi.smi_get_device_id(i)
+                utilization = pyamdsmi.smi_get_device_utilization(i)
+                if utilization == -1:
+                    utilization = None
+
+                # processes pids
+                processes_pids = []
+                for process in pyamdsmi.smi_get_compute_process_info_by_device(
+                    i, processes
+                ):
+                    if process.vram_usage:
+                        processes_pids.append(
+                            ProcessGPUInfo(
+                                pid=int(process.process_id),
+                                gpu_memory_usage=int(process.vram_usage) // MB,
+                            )
+                        )
+
+                info = GpuUtilizationInfo(
+                    index=i,
+                    name=decode(pyamdsmi.smi_get_device_name(i)),
+                    uuid=hex(pyamdsmi.smi_get_device_unique_id(i)),
+                    utilization_gpu=utilization,
+                    memory_used=int(pyamdsmi.smi_get_device_memory_used(i)) // MB,
+                    memory_total=int(pyamdsmi.smi_get_device_memory_total(i)) // MB,
+                    processes_pids=processes_pids,
+                )
+                gpu_utilizations.append(info)
+            pyamdsmi.smi_shutdown()
 
         return gpu_utilizations
 
