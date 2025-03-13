@@ -51,6 +51,10 @@ from ray.core.generated.runtime_env_common_pb2 import (
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
 
+
+INT32_MAX = (2**31) - 1
+
+
 pwd = None
 if sys.platform != "win32":
     import pwd
