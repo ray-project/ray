@@ -51,7 +51,9 @@ def test_arrow_native_list_conversion(input, disable_fallback_to_object_extensio
     upon serialization into Arrow format (and are NOT converted to numpy
     tensor using extension)"""
 
-    if isinstance(input[0], pa.Scalar) and get_pyarrow_version() <= parse_version("13.0.0"):
+    if isinstance(input[0], pa.Scalar) and get_pyarrow_version() <= parse_version(
+        "13.0.0"
+    ):
         pytest.skip(
             "Pyarrow < 13.0 not able to properly infer native types from its own Scalars"
         )
