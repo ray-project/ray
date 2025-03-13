@@ -4,6 +4,7 @@ import sys
 import threading
 import importlib
 import random
+from typing import Optional
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -45,7 +46,7 @@ def _override_breakpoint_hooks():
     __builtin__.breakpoint = set_trace
 
 
-def _ensure_debugger_port_open_thread_safe():
+def _ensure_debugger_port_open_thread_safe() -> Optional[int]:
     """
     This is a thread safe method that ensure that the debugger port
     is open, and if not, open it.
@@ -61,37 +62,48 @@ def _ensure_debugger_port_open_thread_safe():
         debugger_port = ray._private.worker.global_worker.debugger_port
         if not debugger_port:
             # Define the port range to use
-            port_range_start = int(
-                os.environ.get("RAY_DEBUGGER_PORT_RANGE_START", "52000")
-            )
-            port_range_end = int(os.environ.get("RAY_DEBUGGER_PORT_RANGE_END", "52100"))
+            port_range_start = os.environ.get("RAY_DEBUGGER_PORT_RANGE_START")
+            port_range_end = os.environ.get("RAY_DEBUGGER_PORT_RANGE_END")
 
-            # Create a list of ports in the range and shuffle it
-            available_ports = list(range(port_range_start, port_range_end + 1))
-            random.shuffle(available_ports)
+            if port_range_start and port_range_end:
+                # Create a list of ports in the range and shuffle it
+                port_range_start = int(port_range_start)
+                port_range_end = int(port_range_end)
+                available_ports = list(range(port_range_start, port_range_end + 1))
+                random.shuffle(available_ports)
+            else:
+                # If the port range is not set, set to 0 which means the port will be chosen by the system randomly
+                available_ports = [0]
 
-            # Try ports in random order from the range
-            node_ip = ray._private.worker.global_worker.node_ip_address
+            # Try opening ports in available_ports
             port = None
-
             for attempt_port in available_ports:
                 try:
-                    (host, port) = debugpy.listen((node_ip, attempt_port))
+                    (host, port) = debugpy.listen(
+                        (
+                            ray._private.worker.global_worker.node_ip_address,
+                            attempt_port,
+                        )
+                    )
                     break
                 except Exception as e:
                     log.debug(f"Failed to open debugger on port {attempt_port}: {e}")
-                    continue
 
             if port is None:
-                log.error(
-                    f"Failed to open debugger on any port in range {port_range_start}-{port_range_end}"
-                )
-                return
+                if port_range_start and port_range_end:
+                    log.error(
+                        f"Failed to open debugger on any port in range {port_range_start}-{port_range_end}"
+                    )
+                else:
+                    log.error(f"Failed to open debugger on any port")
+                return None
 
             ray._private.worker.global_worker.set_debugger_port(port)
             log.info(f"Ray debugger is listening on {host}:{port}")
+            return port
         else:
             log.info(f"Ray debugger is already open on {debugger_port}")
+            return debugger_port
 
 
 @DeveloperAPI
