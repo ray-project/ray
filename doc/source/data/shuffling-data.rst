@@ -91,8 +91,8 @@ To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dat
     # Randomize the block order of this dataset.
     ds = ds.randomize_block_order()
 
-Shuffle all rows
-~~~~~~~~~~~~~~~~
+Shuffle all rows (Global shuffle)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To randomly shuffle all rows globally, call :meth:`~ray.data.Dataset.random_shuffle`.
 This is the slowest option for shuffle, and requires transferring data across
@@ -128,13 +128,7 @@ to data transfer costs. This cost can be prohibitive when using very large datas
 
 The best route for determining the best tradeoff between preprocessing time and cost and
 per-epoch shuffle quality is to measure the precision gain per training step for your
-particular model under different shuffling policies:
-
-* no shuffling,
-* local (per-shard) limited-memory shuffle buffer,
-* local (per-shard) shuffling,
-* windowed (pseudo-global) shuffling, and
-* fully global shuffling.
+particular model under different shuffling policies such as no shuffling, local shuffling, or global shuffling.
 
 As long as your data loading and shuffling throughput is higher than your training throughput, your GPU should
 be saturated. If you have shuffle-sensitive models, push the
