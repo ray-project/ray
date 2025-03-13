@@ -230,7 +230,7 @@ class _BlockExecStatsBuilder:
             while not stop_event.is_set():
                 rss_bytes = int(self._process.memory_info().rss)
                 self._max_rss = max(self._max_rss, rss_bytes)
-                time.sleep(self._poll_interval_s)
+                stop_event.wait(self._poll_interval_s)
 
         thread = threading.Thread(target=poll_rss)
         thread.start()
