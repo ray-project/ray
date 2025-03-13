@@ -10,13 +10,15 @@ copy_file(
     name = "data_doctest_conftest",
     src = "tests/doctest_conftest.py",
     out = "data_doctest_conftest.py",
+    # Used by the doctest builds in `doc/source/`.
+    visibility = ["//visibility:public"],
 )
 
 doctest(
     files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
     tags = ["team:data"],
     size = "large",
-    conftest_file = ":data_doctest_conftest",
+    conftest_file = "//python/ray/data:data_doctest_conftest",
 )
 
 # --------------------------------------------------------------------
