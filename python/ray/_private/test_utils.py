@@ -1992,91 +1992,6 @@ def kill_raylet(raylet, graceful=False):
         assert not graceful
 
 
-# Global counter to test different return values
-# for external_ray_cluster_activity_hook1.
-ray_cluster_activity_hook_counter = 0
-ray_cluster_activity_hook_5_counter = 0
-
-
-def external_ray_cluster_activity_hook1():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns valid response and increments counter in `reason`
-    field on each call.
-    """
-    global ray_cluster_activity_hook_counter
-    ray_cluster_activity_hook_counter += 1
-
-    from pydantic import BaseModel, Extra
-
-    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
-        """
-        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
-        used in test_component_activities_hook to mimic typical
-        usage of redefining or extending response type.
-        """
-
-        is_active: str
-        reason: Optional[str] = None
-        timestamp: float
-
-    return {
-        "test_component1": TestRayActivityResponse(
-            is_active="ACTIVE",
-            reason=f"Counter: {ray_cluster_activity_hook_counter}",
-            timestamp=datetime.now().timestamp(),
-        )
-    }
-
-
-def external_ray_cluster_activity_hook2():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns invalid output because the value of `test_component2`
-    should be of type RayActivityResponse.
-    """
-    return {"test_component2": "bad_output"}
-
-
-def external_ray_cluster_activity_hook3():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns invalid output because return type is not
-    Dict[str, RayActivityResponse]
-    """
-    return "bad_output"
-
-
-def external_ray_cluster_activity_hook4():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Errors during execution.
-    """
-    raise Exception("Error in external cluster activity hook")
-
-
-def external_ray_cluster_activity_hook5():
-    """
-    Example external hook for test_component_activities_hook.
-
-    Returns valid response and increments counter in `reason`
-    field on each call.
-    """
-    global ray_cluster_activity_hook_5_counter
-    ray_cluster_activity_hook_5_counter += 1
-    return {
-        "test_component5": {
-            "is_active": "ACTIVE",
-            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
-            "timestamp": datetime.now().timestamp(),
-        }
-    }
-
-
 def get_gcs_memory_used():
     import psutil
 
@@ -2132,65 +2047,6 @@ def get_current_unused_port():
     return port
 
 
-def search_words(string: str, words: str):
-    """Check whether each word is in the given string.
-
-    Args:
-        string: String to search
-        words: Space-separated string of words to search for
-    """
-    return [word in string for word in words.split(" ")]
-
-
-def has_all_words(string: str, words: str):
-    """Check that string has all of the given words.
-
-    Args:
-        string: String to search
-        words: Space-separated string of words to search for
-    """
-    return all(search_words(string, words))
-
-
-def has_no_words(string, words):
-    """Check that string has none of the given words.
-
-    Args:
-        string: String to search
-        words: Space-separated string of words to search for
-    """
-    return not any(search_words(string, words))
-
-
-def find_available_port(start, end, port_num=1):
-    ports = []
-    for _ in range(port_num):
-        random_port = 0
-        with socket.socket() as s:
-            s.bind(("", 0))
-            random_port = s.getsockname()[1]
-        if random_port >= start and random_port <= end and random_port not in ports:
-            ports.append(random_port)
-            continue
-
-        for port in range(start, end + 1):
-            if port in ports:
-                continue
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind(("", port))
-                ports.append(port)
-                break
-            except OSError:
-                pass
-
-    if len(ports) != port_num:
-        raise RuntimeError(
-            f"Can't find {port_num} available port from {start} to {end}."
-        )
-    return ports
-
-
 # TODO(rickyx): We could remove this once we unify the autoscaler v1 and v2
 # code path for ray status
 def reset_autoscaler_v2_enabled_cache():
@@ -2214,32 +2070,6 @@ def skip_flaky_core_test_premerge(reason: str):
         )(func)
 
     return wrapper
-
-
-def close_common_connections(pid):
-    """
-    Closes ipv4 connections between the current process and another process specified by
-    its PID.
-    """
-    current_process = psutil.Process()
-    current_connections = current_process.connections(kind="inet")
-    try:
-        other_process = psutil.Process(pid)
-        other_connections = other_process.connections(kind="inet")
-    except psutil.NoSuchProcess:
-        print(f"No process with PID {pid} found.")
-        return
-    # Finding common connections based on matching addresses and ports.
-    common_connections = []
-    for conn1 in current_connections:
-        for conn2 in other_connections:
-            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
-                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
-    # Closing the FDs.
-    for fd, laddr, raddr in common_connections:
-        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
-            os.close(fd)
-            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
 
 
 def _get_library_usages() -> Set[str]:
