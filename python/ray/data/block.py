@@ -140,7 +140,10 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        self.rss_bytes: int = 0
+        # The maximum RSS (Resident Set Size) of the process while computing this block.
+        # If the polling interval is `None`, or if the block was computed before the
+        # memory was polled, this might be a underestimate.
+        self.max_rss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -212,7 +215,7 @@ class _BlockExecStatsBuilder:
         stats.end_time_s = end_time
         stats.wall_time_s = end_time - self._start_time
         stats.cpu_time_s = end_cpu - self._start_cpu
-        stats.rss_bytes = self._max_rss
+        stats.max_rss_bytes = self._max_rss
 
         return stats
 
