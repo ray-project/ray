@@ -3365,7 +3365,7 @@
     timeout: 3600
     script: python object_store/test_object_store.py
     wait_for_nodes:
-      num_nodes: 50
+      num_nodes: 3
 
   variations:
     - __suffix__: aws
