@@ -238,7 +238,7 @@ enum TagKey {
   // Example: "vLLMEngineProcessorConfig"
   LLM_BATCH_PROCESSOR_CONFIG_NAME = 614;
   // Comma separated list of names of model source used to build vLLM engine processor.
-  // Example: "facebook/opt-350m"
+  // Example: "OPTForCausalLM"
   LLM_BATCH_MODEL_ARCHITECTURE = 615;
   // Comma separated list of batch sizes of requests sent to processor.
   // Example: "64"

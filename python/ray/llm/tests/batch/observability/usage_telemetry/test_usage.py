@@ -72,12 +72,12 @@ def test_push_telemetry_report():
     assert telemetry == {
         TagKey.LLM_BATCH_PROCESSOR_CONFIG_NAME: "vLLMEngineProcessorConfig,HttpRequestProcessorConfig",
         TagKey.LLM_BATCH_MODEL_ARCHITECTURE: "OPTForCausalLM,",
-        TagKey.LLM_BATCH_SIZE: "64,",
+        TagKey.LLM_BATCH_SIZE: "64,0",
         TagKey.LLM_BATCH_ACCELERATOR_TYPE: "A10G,",
         TagKey.LLM_BATCH_CONCURRENCY: "4,4",
         TagKey.LLM_BATCH_TASK_TYPE: "generate,",
-        TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1,",
-        TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1,",
+        TagKey.LLM_BATCH_PIPELINE_PARALLEL_SIZE: "1,0",
+        TagKey.LLM_BATCH_TENSOR_PARALLEL_SIZE: "1,0",
     }, f"actual telemetry: {telemetry}"
 
 

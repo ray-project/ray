@@ -21,7 +21,7 @@ from ray.llm._internal.batch.stages import (
 from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     TelemetryAgent,
-    BatchTelemetryTags,
+    BatchModelTelemetry,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
@@ -205,21 +205,18 @@ def build_vllm_engine_processor(
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
-        {
-            BatchTelemetryTags.LLM_BATCH_PROCESSOR_CONFIG_NAME: type(config).__name__,
-            BatchTelemetryTags.LLM_BATCH_MODEL_ARCHITECTURE: architecture,
-            BatchTelemetryTags.LLM_BATCH_SIZE: str(config.batch_size),
-            BatchTelemetryTags.LLM_BATCH_ACCELERATOR_TYPE: config.accelerator_type
-            or DEFAULT_GPU_TYPE,
-            BatchTelemetryTags.LLM_BATCH_CONCURRENCY: str(config.concurrency),
-            BatchTelemetryTags.LLM_BATCH_TASK_TYPE: vLLMTaskType(config.task_type),
-            BatchTelemetryTags.LLM_BATCH_PIPELINE_PARALLEL_SIZE: str(
-                config.engine_kwargs.get("pipeline_parallel_size", 1)
+        BatchModelTelemetry(
+            processor_config_name=type(config).__name__,
+            model_architecture=architecture,
+            batch_size=config.batch_size,
+            accelerator_type=config.accelerator_type or DEFAULT_GPU_TYPE,
+            concurrency=config.concurrency,
+            task_type=vLLMTaskType(config.task_type),
+            pipeline_parallel_size=config.engine_kwargs.get(
+                "pipeline_parallel_size", 1
             ),
-            BatchTelemetryTags.LLM_BATCH_TENSOR_PARALLEL_SIZE: str(
-                config.engine_kwargs.get("tensor_parallel_size", 1)
-            ),
-        }
+            tensor_parallel_size=config.engine_kwargs.get("tensor_parallel_size", 1),
+        )
     )
 
     processor = Processor(

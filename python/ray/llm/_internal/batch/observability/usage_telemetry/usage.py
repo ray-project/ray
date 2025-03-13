@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import Callable, Dict
-from collections import defaultdict
+from typing import Callable, Dict, List
 import ray
+from pydantic import BaseModel
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
 
@@ -11,6 +11,17 @@ LLM_BATCH_TELEMETRY_NAMESPACE = "llm_batch_telemetry"
 LLM_BATCH_TELEMETRY_ACTOR_NAME = "llm_batch_telemetry"
 
 logger = get_logger(__name__)
+
+
+class BatchModelTelemetry(BaseModel):
+    processor_config_name: str = ""
+    model_architecture: str = ""
+    batch_size: int = 0
+    accelerator_type: str = ""
+    concurrency: int = 0
+    task_type: str = ""
+    pipeline_parallel_size: int = 0
+    tensor_parallel_size: int = 0
 
 
 class BatchTelemetryTags(str, Enum):
@@ -36,21 +47,48 @@ class _TelemetryAgent:
     """Named Actor to keep the state of all deployed models and record telemetry."""
 
     def __init__(self):
-        self._tracking_telemetries = defaultdict(list)
+        self._tracking_telemetries: List[BatchModelTelemetry] = []
         self._record_tag_func = record_extra_usage_tag
 
     def _update_record_tag_func(self, record_tag_func: Callable) -> None:
         self._record_tag_func = record_tag_func
 
-    def record(self, telemetries: Dict[str, str]) -> None:
+    def generate_report(self) -> Dict[str, str]:
+        return {
+            BatchTelemetryTags.LLM_BATCH_PROCESSOR_CONFIG_NAME: ",".join(
+                [t.processor_config_name for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_MODEL_ARCHITECTURE: ",".join(
+                [t.model_architecture for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_SIZE: ",".join(
+                [str(t.batch_size) for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_ACCELERATOR_TYPE: ",".join(
+                [t.accelerator_type for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_CONCURRENCY: ",".join(
+                [str(t.concurrency) for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_TASK_TYPE: ",".join(
+                [t.task_type for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_PIPELINE_PARALLEL_SIZE: ",".join(
+                [str(t.pipeline_parallel_size) for t in self._tracking_telemetries]
+            ),
+            BatchTelemetryTags.LLM_BATCH_TENSOR_PARALLEL_SIZE: ",".join(
+                [str(t.tensor_parallel_size) for t in self._tracking_telemetries]
+            ),
+        }
+
+    def record(self, telemetry: BatchModelTelemetry) -> None:
         """Append and record telemetries."""
         from ray._private.usage.usage_lib import TagKey
 
-        for key in BatchTelemetryTags:
-            value = telemetries.get(key, "")
-            self._tracking_telemetries[TagKey.Value(key)].append(value)
-        for key, values in self._tracking_telemetries.items():
-            self._record_tag_func(key, ",".join(values))
+        self._tracking_telemetries.append(telemetry)
+        telemetry_dict = self.generate_report()
+        for key, value in telemetry_dict.items():
+            self._record_tag_func(TagKey.Value(key), value)
 
 
 class TelemetryAgent:
@@ -78,12 +116,8 @@ class TelemetryAgent:
     def _update_record_tag_func(self, record_tag_func: Callable):
         self.remote_telemetry_agent._update_record_tag_func.remote(record_tag_func)
 
-    def push_telemetry_report(self, telemetries: Dict[BatchTelemetryTags, str]):
-        for key in telemetries.keys():
-            if key not in BatchTelemetryTags:
-                logger.warning("Invalid telemetry key: %s", key)
-
-        ray.get(self.remote_telemetry_agent.record.remote(telemetries))
+    def push_telemetry_report(self, telemetry: BatchModelTelemetry):
+        ray.get(self.remote_telemetry_agent.record.remote(telemetry))
 
 
 def get_or_create_telemetry_agent() -> TelemetryAgent:
