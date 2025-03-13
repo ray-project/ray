@@ -105,11 +105,11 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
 @pytest.mark.parametrize("placement_strategy", ["SPREAD", "STRICT_SPREAD"])
 def test_fake_autoscaler_placement_group_partial_idle(
     autoscaler_v2, placement_strategy
-):  # This test make sure a placement group can be scheduled
-    # even if the time for setting up required new nodes (start_node_delay_s) exceed
+):  # This test ensures that a placement group can be scheduled
+    # even if the time required to set up new nodes (start_node_delay_s) exceeds
     # the idle_timeout_minutes config. Previously, when new nodes
-    # are ready after the idle_timeout_minutes, autoscaler will kill
-    # other old idle nodes and cause the placement group never be scheduled.
+    # were ready after the idle_timeout_minutes, the autoscaler would kill
+    # other old idle nodes, preventing the placement group from being scheduled.
     # TODO: (rueian) enable this test for autoscaler_v2.
 
     cluster = AutoscalingCluster(

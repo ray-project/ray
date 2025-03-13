@@ -398,6 +398,7 @@ class FakeMultiNodeProvider(NodeProvider):
             all_tags.update(tags)
             self._nodes[next_id] = {
                 "tags": all_tags,
+                # When the worker node is ready, the "node" points to the "ray._private.node.Node" of that worker node.
                 "node": None,
             }
             if self._start_node_delay_s <= 0:
