@@ -2,6 +2,8 @@ import asyncio
 import importlib
 import sys
 
+from typing import Coroutine
+
 
 def import_attr(full_path: str, *, reload_module: bool = False):
     """Given a full import path to a module attr, return the imported attr.

@@ -8,9 +8,11 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.utils import (
+    get_or_create_event_loop,
+)
 from ray._private.test_utils import wait_for_condition
 from ray._private.utils import (
-    get_or_create_event_loop,
     run_background_task,
     background_tasks,
 )
