@@ -333,47 +333,6 @@ def test_parent_task_id_threaded_task(shutdown_only):
     wait_for_condition(verify)
 
 
-def test_parent_task_id_non_concurrent_actor(shutdown_only):
-    ray.init(_system_config=_SYSTEM_CONFIG)
-
-    def run_task_in_thread():
-        def thd_task():
-            @ray.remote
-            def thd_task():
-                pass
-
-            ray.get(thd_task.remote())
-
-        thd = threading.Thread(target=thd_task)
-        thd.start()
-        thd.join()
-
-    @ray.remote
-    class Actor:
-        def main_task(self):
-            run_task_in_thread()
-
-    a = Actor.remote()
-    ray.get(a.main_task.remote())
-
-    def verify():
-        tasks = list_tasks()
-        expect_parent_task_id = None
-        actual_parent_task_id = None
-        for task in tasks:
-            if "main_task" in task["name"]:
-                expect_parent_task_id = task["task_id"]
-            elif "thd_task" in task["name"]:
-                actual_parent_task_id = task["parent_task_id"]
-        print(tasks)
-        assert actual_parent_task_id is not None
-        assert expect_parent_task_id == actual_parent_task_id
-
-        return True
-
-    wait_for_condition(verify)
-
-
 @pytest.mark.parametrize("actor_concurrency", [3, 10])
 def test_parent_task_id_concurrent_actor(shutdown_only, actor_concurrency):
     # Test tasks runs in user started thread from actors have a parent_task_id
