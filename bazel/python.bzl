@@ -16,17 +16,19 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
 
     native.py_test(
         name = name,
-        srcs = ["//bazel:pytest_wrapper.py"] + srcs,
+        srcs = [
+            # "//bazel:conftest.py",
+            "//bazel:pytest_wrapper.py",
+        ] + srcs,
         main = "//bazel:pytest_wrapper.py",
         size = size,
         args = [
             "--doctest-modules",
             "--doctest-glob='*.md'",
-            "-c=$(location //bazel:conftest.py)",
             "--disable-warnings",
             "-v"
         ] + args + ["$(location :%s)" % file for file in files],
-        data = ["//bazel:conftest.py"] + files + data,
+        data = files + data,
         python_version = "PY3",
         srcs_version = "PY3",
         tags = ["doctest"] + tags,
