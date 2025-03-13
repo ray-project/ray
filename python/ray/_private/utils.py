@@ -22,7 +22,6 @@ import threading
 import time
 import warnings
 from inspect import signature
-from packaging.version import parse as parse_version
 from pathlib import Path
 from subprocess import list2cmdline
 from typing import (

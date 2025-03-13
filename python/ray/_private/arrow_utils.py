@@ -1,4 +1,5 @@
-from typing import Optional
+import json
+from typing import Dict, Optional
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 
 from packaging.version import Version
