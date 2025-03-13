@@ -37,6 +37,9 @@ fi
 
 if [[ "$RAY_INSTALL_MASK" != "" ]]; then
   echo "--- Apply mask: $RAY_INSTALL_MASK"
+  if [[ "$RAY_INSTALL_MASK" =~ llm ]]; then
+    rm -rf python/ray/llm
+  fi
   if [[ "$RAY_INSTALL_MASK" =~ rllib ]]; then
     # Remove the actual directory and the symlink.
     rm -rf rllib python/ray/rllib
