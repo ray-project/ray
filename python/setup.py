@@ -588,7 +588,7 @@ def build(build_python, build_java, build_cpp):
         )
 
         # runtime env agent dependenceis
-        runtime_env_agent_pip_packages = ["aiohttp"]
+        runtime_env_agent_pip_packages = ["aiohttp", "aiohappyeyeballs==2.4.8"]
         subprocess.check_call(
             [
                 sys.executable,
