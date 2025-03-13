@@ -195,7 +195,6 @@
           python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
           --shuffle-strategy hash_shuffle
 
-
 #######################
 # Streaming split tests
 #######################
