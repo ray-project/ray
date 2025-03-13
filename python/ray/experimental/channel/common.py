@@ -19,6 +19,7 @@ from typing import (
 import ray
 import ray.exceptions
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.utils import get_default_torch_device
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -162,17 +163,7 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-
-            if not ray.get_gpu_ids():
-                import torch
-
-                # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
-                # by Ray. We instead want the default to be CPU.
-                self._torch_device = torch.device("cpu")
-
-            from ray.air._internal import torch_utils
-
-            self._torch_device = torch_utils.get_devices()[0]
+            self._torch_device = get_default_torch_device(allow_cpu=True)
 
         return self._torch_device
 

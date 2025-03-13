@@ -260,19 +260,15 @@ class FaultTolerantActorManager:
                 dropped. This only applies to the asynchronous remote call mode.
             init_id: The initial ID to use for the next remote actor. Default is 0.
         """
-        # For historic reasons, just start remote worker ID from 1, so they never
-        # collide with local worker ID (0).
-        self._next_id = init_id
+        # For round-robin style async requests, keep track of which actor to send
+        # a new func next (current).
+        self._next_id = self._current_actor_id = init_id
 
         # Actors are stored in a map and indexed by a unique (int) ID.
         self._actors: Dict[int, ActorHandle] = {}
         self._remote_actor_states: Dict[int, self._ActorState] = {}
         self._restored_actors = set()
         self.add_actors(actors or [])
-
-        # For round-robin style async requests, keep track of which actor to send
-        # a new func next.
-        self._current_actor_id = self._next_id
 
         # Maps outstanding async requests to the IDs of the actor IDs that
         # are executing them.
@@ -580,6 +576,9 @@ class FaultTolerantActorManager:
                 ):
                     num_calls_to_make[raid] += 1
                     limited_remote_actor_ids.append(raid)
+
+        if not limited_remote_actor_ids:
+            return 0
 
         remote_calls = self._call_actors(
             func=limited_func,
