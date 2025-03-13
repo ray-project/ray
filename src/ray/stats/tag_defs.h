@@ -18,7 +18,6 @@
 /// You can follow these examples to define and register your tag keys.
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "opencensus/tags/tag_key.h"
