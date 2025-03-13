@@ -12,7 +12,6 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 from ray._private.arrow_utils import get_pyarrow_version
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
