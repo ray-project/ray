@@ -24,15 +24,12 @@ class TestGetOrCreateEventLoop:
 
             assert actual_loop == expect_loop, "Loop should not be recreated."
 
-
     def test_new_event_loop(self):
         with warnings.catch_warnings():
             # Assert no deprecating warnings raised for python>=3.10.
             warnings.simplefilter("error")
             loop = get_or_create_event_loop()
             assert loop is not None, "new event loop should be created."
-
-
 
 
 @pytest.mark.asyncio
@@ -59,6 +56,7 @@ async def test_run_background_task():
 
     assert result.get("start") == 1
     assert result.get("end") == 1
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
