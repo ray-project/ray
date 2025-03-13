@@ -79,7 +79,7 @@ def take_table(
             # extension arrays.
             col = combine_chunked_array(col)
         elif col.num_chunks > 1:
-            if col.length() > MAX_INT32:
+            if col.nbytes > MAX_INT32:
                 # .take() breaks when offset > MAX_INT32
                 col = combine_chunked_array(col)
         new_cols.append(col.take(indices))
