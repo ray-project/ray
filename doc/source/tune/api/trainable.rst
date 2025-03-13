@@ -110,18 +110,18 @@ It is up to the user to correctly update the hyperparameters of your trainable.
     from time import sleep
     import ray
     from ray import tune
-    import time
+    from ray.tune.tuner import Tuner
 
 
     def expensive_setup():
         print("EXPENSIVE SETUP")
         sleep(1)
 
+
     class QuadraticTrainable(tune.Trainable):
         def setup(self, config):
-            # Store the configuration containing hparam1 and hparam2
             self.config = config
-            expensive_setup()
+            expensive_setup()  # use reuse_actors=True to only run this once
             self.max_steps = 5
             self.step_count = 0
 
@@ -129,7 +129,7 @@ It is up to the user to correctly update the hyperparameters of your trainable.
             # Extract hyperparameters from the config
             h1 = self.config["hparam1"]
             h2 = self.config["hparam2"]
-            
+
             # Compute a simple quadratic objective where the optimum is at hparam1=3 and hparam2=5
             loss = (h1 - 3) ** 2 + (h2 - 5) ** 2
 
@@ -138,7 +138,7 @@ It is up to the user to correctly update the hyperparameters of your trainable.
             self.step_count += 1
             if self.step_count > self.max_steps:
                 metrics["done"] = True
-            
+
             # Return the computed loss as the metric
             return metrics
 
@@ -147,43 +147,28 @@ It is up to the user to correctly update the hyperparameters of your trainable.
             self.config = new_config
             return True
 
+
     ray.init()
-    
-    tune_options = {
-        "config": {  # Define the search space for two hyperparameters hparam1 and hparam2
+
+
+    tuner_with_reuse = Tuner(
+        QuadraticTrainable,
+        param_space={
             "hparam1": tune.uniform(-10, 10),
-            "hparam2": tune.uniform(-10, 10)
+            "hparam2": tune.uniform(-10, 10),
         },
-        "num_samples": 1,
-        "max_concurrent_trials": 1,
-        "verbose": 0,
-        "progress_reporter": None
-    }
-
-    print("Running experiment with actor reuse")
-    start_time = time.time()
-    tune.run(
-        QuadraticTrainable,
-        reuse_actors=True,
-        **tune_options
+        tune_config=tune.TuneConfig(
+            num_samples=10,
+            max_concurrent_trials=1,
+            reuse_actors=True,  # Enable actor reuse and avoid expensive setup
+        ),
+        run_config=ray.tune.RunConfig(
+            verbose=0,
+            checkpoint_config=ray.tune.CheckpointConfig(checkpoint_at_end=False),
+        ),
     )
-    elapsed_reuse = time.time() - start_time
+    tuner_with_reuse.fit()
 
-    print("Running experiment without actor reuse")
-    start_time = time.time()
-    tune.run(
-        QuadraticTrainable,
-        reuse_actors=False,
-        **tune_options
-    )
-    elapsed_no_reuse = time.time() - start_time
-
-    print("#" * 15)
-    print("Timing results")
-    print("-" * 15)
-    print(f"Timing with reuse_actors=True: {elapsed_reuse:.2f} seconds")
-    print(f"Timing without reuse_actors: {elapsed_no_reuse:.2f} seconds")
-    print("#" * 15)
 
 
 Comparing Tune's Function API and Class API
