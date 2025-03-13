@@ -79,17 +79,10 @@ def take_table(
             # extension arrays.
             col = combine_chunked_array(col)
         elif col.num_chunks > 1:
-            total_length = sum(chunk.length for chunk in col.chunks)
-            if total_length > MAX_INT32:
+            if col.length() > MAX_INT32:
                 # .take() breaks when offset > MAX_INT32
                 col = combine_chunked_array(col)
-            else:
-                # Check individual chunk size in case any single chunk is larger than MAX_INT32
-                for chunk in col.chunks:
-                    if chunk.length > MAX_INT32:
-                        col = combine_chunked_array(col)
-                        break
-
+ 
         new_cols.append(col.take(indices))
     table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
     return table
