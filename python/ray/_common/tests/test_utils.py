@@ -29,5 +29,6 @@ def test_get_or_create_event_loop_new_event_loop():
         loop = get_or_create_event_loop()
         assert loop is not None, "new event loop should be created."
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

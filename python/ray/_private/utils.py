@@ -1,4 +1,3 @@
-import asyncio
 import binascii
 import random
 import string
@@ -33,7 +32,6 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    Coroutine,
     List,
     Mapping,
 )
