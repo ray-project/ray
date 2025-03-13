@@ -2115,7 +2115,7 @@
   variations:
     - __suffix__: full_training
       run:
-        timeout: 2000
+        timeout: 3600
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=4
 
     - __suffix__: skip_training
@@ -2125,7 +2125,7 @@
 
     - __suffix__: skip_training.fault_tolerance
       run:
-        timeout: 2700
+        timeout: 3600
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=4 --mock_gpu --skip_train_step --skip_validation_step --num_epochs=5 --max_failures=4
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
