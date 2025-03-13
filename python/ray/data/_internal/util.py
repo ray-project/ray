@@ -1483,11 +1483,19 @@ def _validate_rows_per_file_args(
     return min_rows_per_file
 
 
-def is_nan(value):
+def is_nan(value) -> bool:
+    """Returns true if provide value is ``np.nan``"""
+
     try:
         return isinstance(value, float) and np.isnan(value)
     except TypeError:
         return False
+
+
+def is_null(value: Any) -> bool:
+    """This generalization of ``is_nan`` util qualifying both None and np.nan
+    as null values"""
+    return value is None or is_nan(value)
 
 
 def keys_equal(keys1, keys2):
