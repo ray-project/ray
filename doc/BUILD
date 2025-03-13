@@ -426,8 +426,8 @@ doctest(
             "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
-            "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst",
+            "source/data/**/*.rst",
+            "source/data/**/*.md",
             "source/train/**/*.rst",
             "source/train/**/*.md",
             "source/workflows/**/*.rst",
@@ -497,19 +497,36 @@ doctest(
 doctest(
     name = "doctest[rllib2]",
     size = "large",
-    files = glob(
-        include = [
-            "source/rllib/getting-started.rst",
-        ],
-    ),
+    files = [
+        "source/rllib/getting-started.rst",
+    ],
     tags = ["team:rllib"],
 )
 
 doctest(
+    name = "doctest[data]",
+    files = glob(
+        include = [
+            "source/data/**/*.rst",
+            "source/data/**/*.rst",
+        ],
+        exclude = [
+            # These tests run on GPU (see below).
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst",
+        ],
+    ),
+    conftest_file = "//python/ray/data:data_doctest_conftest",
+    tags = ["team:data"],
+)
+
+doctest(
+    name = "doctest[data-gpu]",
     files = [
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst",
     ],
-    gpu = True,
+    conftest_file = "//python/ray/data:data_doctest_conftest",
     tags = ["team:data"],
+    gpu = True,
 )
