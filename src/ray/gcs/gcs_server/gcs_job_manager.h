@@ -147,7 +147,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   rpc::CoreWorkerClientPool core_worker_clients_;
 
   /// If true, driver job events are exported for Export API
-  bool export_event_write_enabled_ = false;
+  bool export_event_write_enabled_ {false};
 };
 
 }  // namespace gcs
