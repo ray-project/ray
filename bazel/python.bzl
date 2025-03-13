@@ -1,10 +1,11 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
 
 
-def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=[], size="medium", tags=[], **kwargs):
+def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=[], size="medium", tags=[], conftest_file="//bazel:default_doctest_conftest.py", **kwargs):
     # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
     # package. We don't want that, so we exclude it from the list of input files.
     files = native.glob(include=files, exclude=["__init__.py"])
@@ -14,6 +15,15 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
     else:
         tags = tags + ["cpu"]
 
+
+    # `conftest.py` is a hard-coded name in pytest, so rename the provided file.
+    conftest_file_name = name + "_conftest"
+    copy_file(
+        name = conftest_file_name,
+        src = conftest_file,
+        out = "conftest.py",
+    )
+
     native.py_test(
         name = name,
         srcs = ["//bazel:pytest_wrapper.py"] + srcs,
@@ -22,11 +32,10 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
         args = [
             "--doctest-modules",
             "--doctest-glob='*.md'",
-            "-c=$(location //bazel:conftest.py)",
             "--disable-warnings",
             "-v"
         ] + args + ["$(location :%s)" % file for file in files],
-        data = ["//bazel:conftest.py"] + files + data,
+        data = [conftest_file_name] + files + data,
         python_version = "PY3",
         srcs_version = "PY3",
         tags = ["doctest"] + tags,
