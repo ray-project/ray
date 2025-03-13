@@ -61,8 +61,7 @@ class SubprocessModuleHandle:
     Lifecycle:
     1. In SubprocessModuleHandle creation, the subprocess is started and runs an aiohttp
        server.
-    2. User must call SubprocessModuleHandle.start_module() before it can handle parent
-       bound messages.
+    2. User must call start_module() and wait_for_module_ready() first.
     3. SubprocessRouteTable.bind(handle)
     4. app.add_routes(routes=SubprocessRouteTable.bound_routes())
     5. Run the app.
@@ -98,7 +97,9 @@ class SubprocessModuleHandle:
 
         # Increment this when the module is restarted.
         self.incarnation = 0
-        # Runtime states, set by start_module(), reset by destroy_module().
+        # Runtime states, set by start_module() and wait_for_module_ready(),
+        # reset by destroy_module().
+        self.process_ready_event = self.mp_context.Event()
         self.process = None
         self.http_client_session: Optional[aiohttp.ClientSession] = None
         self.health_check_task = None
@@ -112,19 +113,26 @@ class SubprocessModuleHandle:
         )
 
     def start_module(self):
-        ready_event = self.mp_context.Event()
-
+        """
+        Start the module. Should be non-blocking.
+        """
         self.process = self.mp_context.Process(
             target=run_module,
             args=(
                 self.module_cls,
                 self.config,
-                ready_event,
+                self.process_ready_event,
             ),
             daemon=True,
         )
         self.process.start()
-        ready_event.wait()
+
+    def wait_for_module_ready(self):
+        """
+        Wait for the module to be ready. This is called after start_module()
+        and can be blocking.
+        """
+        self.process_ready_event.wait()
 
         socket_path = os.path.join(
             self.config.socket_dir, "dashboard_" + self.module_cls.__name__
@@ -142,6 +150,8 @@ class SubprocessModuleHandle:
         Destroy the module. This is called when the module is unhealthy.
         """
         self.incarnation += 1
+        self.process_ready_event.clear()
+
         if self.process:
             self.process.kill()
             self.process.join()
@@ -205,6 +215,7 @@ class SubprocessModuleHandle:
                 )
                 await self.destroy_module()
                 self.start_module()
+                self.wait_for_module_ready()
                 return
             await asyncio.sleep(1)
 

@@ -10,7 +10,7 @@ import pytest
 from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
 from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModuleConfig
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
-from ray.dashboard.subprocesses.tests.utils import TestModule
+from ray.dashboard.subprocesses.tests.utils import TestModule, TestModule1
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 
@@ -39,6 +39,7 @@ async def test_handle_can_health_check(default_module_config):
 
     subprocess_handle = SubprocessModuleHandle(loop, TestModule, default_module_config)
     subprocess_handle.start_module()
+    subprocess_handle.wait_for_module_ready()
     response = await subprocess_handle._health_check()
     assert response.status == 200
     assert response.body == b"success"
@@ -52,8 +53,12 @@ async def start_http_server_app(
         SubprocessModuleHandle(loop, module, default_module_config)
         for module in modules
     ]
+    # Parallel start all modules.
     for handle in handles:
         handle.start_module()
+    # Wait for all modules to be ready.
+    for handle in handles:
+        handle.wait_for_module_ready()
         SubprocessRouteTable.bind(handle)
 
     app = aiohttp.web.Application()
@@ -88,6 +93,22 @@ async def test_http_server(aiohttp_client, default_module_config):
     response = await client.put("/error_403")
     assert response.status == 403
     assert "you shall not pass" in await response.text()
+
+
+async def test_load_multiple_modules(aiohttp_client, default_module_config):
+    """
+    Tests multiple modules can be loaded.
+    """
+    app = await start_http_server_app(default_module_config, [TestModule, TestModule1])
+    client = await aiohttp_client(app)
+
+    response = await client.get("/test")
+    assert response.status == 200
+    assert await response.text() == "Hello, World from GET /test, run_finished: True"
+
+    response = await client.get("/test1")
+    assert response.status == 200
+    assert await response.text() == "Hello from TestModule1"
 
 
 async def test_streamed_iota(aiohttp_client, default_module_config):

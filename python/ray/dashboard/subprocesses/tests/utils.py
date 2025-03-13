@@ -28,9 +28,6 @@ class TestModule(SubprocessModule):
         await asyncio.sleep(0.1)
         logger.info("TestModule is done initing")
 
-    async def is_healthy(self) -> bool:
-        return True
-
     @property
     def gcs_aio_client(self):
         return None
@@ -126,3 +123,20 @@ class TestModule(SubprocessModule):
         os.kill(os.getpid(), signal.SIGKILL)
         asyncio.sleep(1000)
         return aiohttp.web.Response(text="done!")
+
+
+class TestModule1(SubprocessModule):
+    """
+    For some reason you can't put this inline with the pytest that calls pytest.main.
+    """
+
+    async def init(self):
+        pass
+
+    @property
+    def gcs_aio_client(self):
+        return None
+
+    @routes.get("/test1")
+    async def test(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        return aiohttp.web.Response(text="Hello from TestModule1")
