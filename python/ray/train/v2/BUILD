@@ -165,6 +165,15 @@ py_test(
 )
 
 py_test(
+    name = "test_telemetry",
+    size = "small",
+    srcs = ["tests/test_telemetry.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
