@@ -5,11 +5,13 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pandas.core.dtypes.generic import ABCSeries
 
 
+@DeveloperAPI(stability="beta")
 class ArrayLike(Protocol):
     """Protocol matching ndarray-like objects (like torch.Tensor)"""
 
@@ -20,6 +22,7 @@ class ArrayLike(Protocol):
         ...
 
 
+@DeveloperAPI(stability="beta")
 def is_ndarray_like(value: ArrayLike) -> bool:
     """Checks whether objects are ndarray-like (for ex, torch.Tensor)
     but NOT and ndarray itself"""

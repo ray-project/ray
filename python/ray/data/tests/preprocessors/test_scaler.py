@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+import numpy as np
 
 import ray
 from ray.data.preprocessor import PreprocessorNotFittedException
@@ -263,33 +264,50 @@ def test_standard_scaler():
     col_a = [-1, 0, 1, 2]
     col_b = [1, 1, 5, 5]
     col_c = [1, 1, 1, None]
-    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
-    ds = ray.data.from_pandas(in_df)
+    col_d = [None, None, None, None]
+    sample_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
+    ds = ray.data.from_pandas(sample_df)
 
-    scaler = StandardScaler(["B", "C"])
+    scaler = StandardScaler(["B", "C", "D"])
 
     # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
         scaler.transform(ds)
 
     # Fit data.
-    scaler.fit(ds)
+    scaler = scaler.fit(ds)
     assert scaler.stats_ == {
         "mean(B)": 3.0,
         "mean(C)": 1.0,
+        "mean(D)": None,
         "std(B)": 2.0,
         "std(C)": 0.0,
+        "std(D)": None,
     }
 
     # Transform data.
-    transformed = scaler.transform(ds)
+    in_col_a = [-1, 0, 1, 2]
+    in_col_b = [1, 1, 5, 5]
+    in_col_c = [1, 1, 1, None]
+    in_col_d = [0, None, None, None]
+    in_df = pd.DataFrame.from_dict(
+        {"A": in_col_a, "B": in_col_b, "C": in_col_c, "D": in_col_d}
+    )
+    in_ds = ray.data.from_pandas(in_df)
+    transformed = scaler.transform(in_ds)
     out_df = transformed.to_pandas()
 
     processed_col_a = col_a
     processed_col_b = [-1.0, -1.0, 1.0, 1.0]
     processed_col_c = [0.0, 0.0, 0.0, None]
+    processed_col_d = [np.nan, np.nan, np.nan, np.nan]
     expected_df = pd.DataFrame.from_dict(
-        {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
+        {
+            "A": processed_col_a,
+            "B": processed_col_b,
+            "C": processed_col_c,
+            "D": processed_col_d,
+        }
     )
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
@@ -298,8 +316,9 @@ def test_standard_scaler():
     pred_col_a = [1, 2, 3]
     pred_col_b = [3, 5, 7]
     pred_col_c = [0, 1, 2]
+    pred_col_d = [None, None, None]
     pred_in_df = pd.DataFrame.from_dict(
-        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c}
+        {"A": pred_col_a, "B": pred_col_b, "C": pred_col_c, "D": pred_col_d}
     )
 
     pred_out_df = scaler.transform_batch(pred_in_df)
@@ -307,11 +326,13 @@ def test_standard_scaler():
     pred_processed_col_a = pred_col_a
     pred_processed_col_b = [0.0, 1.0, 2.0]
     pred_processed_col_c = [-1.0, 0.0, 1.0]
+    pred_processed_col_d = [None, None, None]
     pred_expected_df = pd.DataFrame.from_dict(
         {
             "A": pred_processed_col_a,
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
+            "D": pred_processed_col_d,
         }
     )
 

@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional
 
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 from ray.anyscale.serve._private.constants import (
     ANYSCALE_TRACING_EXPORTER_IMPORT_PATH,
     ANYSCALE_TRACING_SAMPLING_RATIO,
