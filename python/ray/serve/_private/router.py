@@ -544,7 +544,8 @@ class AsyncioRouter:
                 else:
                     logger.info(
                         f"{r.replica_id} rejected request because it is at max "
-                        f"capacity of {r.max_ongoing_requests} ongoing requests. "
+                        f"capacity of {r.max_ongoing_requests} ongoing request"
+                        f"{'s' if r.max_ongoing_requests > 1 else ''}. "
                         f"Retrying request {pr.metadata.request_id}.",
                         extra={"log_to_stderr": False},
                     )
