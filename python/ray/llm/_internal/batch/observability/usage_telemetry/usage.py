@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import Callable, Dict, List
 import ray
-from pydantic import BaseModel
 
 from ray._private.usage.usage_lib import record_extra_usage_tag
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
