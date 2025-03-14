@@ -345,14 +345,22 @@ class WorkerGroup:
         new_actors = []
         new_actor_metadata = []
         for i in range(num_workers):
-            actor = self._remote_cls.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
+            # If a `PlacementGroup` is provided schedule actors therein.
+            if isinstance(self._placement_group, PlacementGroup):
+                # If the number of bundles equals the number of actors to schedule
+                # the user likely wants to place them in round-robin.
+                index = i if self._placement_group.bundle_count == num_workers else -1
+                scheduling_strategy = (
+                    scheduling_strategy
+                ) = PlacementGroupSchedulingStrategy(
                     placement_group=self._placement_group,
-                    placement_group_bundle_index=i
-                    if isinstance(self._placement_group, PlacementGroup)
-                    and self._placement_group.bundle_count == num_workers
-                    else -1,
-                ),
+                    placement_group_bundle_index=index,
+                )
+            # Otherwise use the default `PlacementGroup`.
+            else:
+                scheduling_strategy = "DEFAULT"
+            actor = self._remote_cls.options(
+                scheduling_strategy=scheduling_strategy
             ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
