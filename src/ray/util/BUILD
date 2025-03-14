@@ -373,3 +373,11 @@ ray_cc_library(
         ":logging",
     ],
 )
+
+ray_cc_library(
+    name = "concurrent_flat_map",
+    hdrs = ["concurrent_flat_map.h"],
+    deps = [
+        ":mutex_protected",
+    ],
+)
