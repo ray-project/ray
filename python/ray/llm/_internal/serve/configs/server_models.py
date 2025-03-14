@@ -187,6 +187,15 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
+    accelerator_name: str = Field(
+        default="GPU",
+        description=(
+            "The primary accelerator category used to run the model (e.g., 'GPU', 'NPU'), "
+            "while `accelerator_type` acts as a more specific identifier within name category. "
+            "For example, 'L20' can be futher spcified as `accelerator_type` for 'GPU' major type."
+        ),
+    )
+
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
