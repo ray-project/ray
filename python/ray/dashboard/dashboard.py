@@ -40,6 +40,11 @@ class Dashboard:
         serve_frontend: If configured, frontend HTML
             is not served from the dashboard.
         log_dir: Log directory of dashboard.
+        logging_level: The logging level (e.g. logging.INFO, logging.DEBUG)
+        logging_format: The format string for log messages
+        logging_filename: The name of the log file
+        logging_rotate_bytes: Max size in bytes before rotating log file
+        logging_rotate_backup_count: Number of backup files to keep when rotating
     """
 
     def __init__(
