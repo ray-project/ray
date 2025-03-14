@@ -91,6 +91,10 @@ class FakeReplica(RunningReplica):
         return self._replica_id
 
     @property
+    def max_ongoing_requests(self) -> int:
+        return 5
+
+    @property
     def is_cross_language(self) -> bool:
         return self._is_cross_language
 
