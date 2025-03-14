@@ -749,8 +749,14 @@ py_test(
     name = "test_state_export",
     size = "small",
     srcs = ["tests/test_state_export.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib", ":conftest"]
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
 )
 
 py_test(
