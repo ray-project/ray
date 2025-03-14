@@ -15,7 +15,7 @@ from typing import (
 
 import numpy as np
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
@@ -189,9 +189,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         element = row[col_name][0]
         # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
         # 9.0.0+.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
+        pyarrow_version = get_pyarrow_version()
         if pyarrow_version is None or pyarrow_version >= parse_version("8.0.0"):
             assert isinstance(element, pyarrow.ExtensionScalar)
             if pyarrow_version is None or pyarrow_version >= parse_version("9.0.0"):
