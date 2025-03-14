@@ -77,7 +77,7 @@ void RedirectStream(MEMFD_TYPE_NON_UNIQUE stream_fd, const StreamRedirectionOpti
   RAY_CHECK(is_new) << "Redirection has been register for stream " << stream_fd;
 }
 
-void FlushOnRedirectedStream(int stream_fd) {
+void FlushOnRedirectedStream(MEMFD_TYPE_NON_UNIQUE stream_fd) {
   auto iter = redirection_file_handles.find(stream_fd);
   RAY_CHECK(iter != redirection_file_handles.end())
       << "Stream with file descriptor " << stream_fd << " is not registered.";
@@ -92,7 +92,7 @@ void RedirectStdout(const StreamRedirectionOption &opt) {
 void RedirectStderr(const StreamRedirectionOption &opt) {
   RedirectStream(GetStderrHandle(), opt);
 }
-void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutFd()); }
-void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrFd()); }
+void FlushOnRedirectedStdout() { FlushOnRedirectedStream(GetStdoutHandle()); }
+void FlushOnRedirectedStderr() { FlushOnRedirectedStream(GetStderrHandle()); }
 
 }  // namespace ray
