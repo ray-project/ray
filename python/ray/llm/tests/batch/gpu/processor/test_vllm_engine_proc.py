@@ -47,6 +47,7 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         },
         "task_type": "generate",
         "max_pending_requests": 111,
+        "dynamic_lora_loading_path": None,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")

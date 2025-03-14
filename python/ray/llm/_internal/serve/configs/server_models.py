@@ -29,7 +29,10 @@ from pydantic import (
 )
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
-from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.common.utils.cloud_utils import (
+    CloudMirrorConfig,
+    is_remote_path,
+)
 from ray.llm._internal.utils import try_import
 
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -122,7 +125,7 @@ class LoraConfig(BaseModelExtended):
         if value is None:
             return value
 
-        assert value.startswith("s3://") or value.startswith("gs://"), (
+        assert is_remote_path(value), (
             "Only AWS S3 and Google Cloud Storage are supported. The "
             'dynamic_lora_loading_path must start with "s3://" or "gs://". '
             f'Got "{value}" instead.'

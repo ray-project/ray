@@ -4117,3 +4117,24 @@
     script: >
       python run_llama.py
       --pp-size 2 --concurrency 2
+
+- name: llm_batch_vllm_llama_lora
+  frequency: nightly
+  python: "3.11"
+  group: llm-batch
+  team: llm
+  working_dir: llm_tests/batch
+
+  cluster:
+    byod:
+      type: llm-cu124
+    cluster_compute: llm_1xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python run_llama.py
+      --model-source s3://air-example-data/llama-3.2-216M-dummy/
+      --dynamic-lora-loading-path s3://air-example-data/
+      --lora-name llama-3.2-216M-lora-dummy
+      --max-lora-rank 32

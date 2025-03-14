@@ -28,6 +28,18 @@ T = TypeVar("T")
 logger = get_logger(__name__)
 
 
+def is_remote_path(path: str) -> bool:
+    """Check if the path is a remote path.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        True if the path is a remote path, False otherwise.
+    """
+    return path.startswith("s3://") or path.startswith("gs://")
+
+
 class ExtraFiles(BaseModelExtended):
     bucket_uri: str
     destination_path: str
@@ -50,7 +62,7 @@ class CloudMirrorConfig(BaseModelExtended):
         if value is None:
             return value
 
-        if not value.startswith("s3://") and not value.startswith("gs://"):
+        if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
                 'Expected a URI that starts with "s3://" or "gs://".'
@@ -81,7 +93,7 @@ class LoraMirrorConfig(BaseModelExtended):
         if value is None:
             return value
 
-        if not value.startswith("s3://") and not value.startswith("gs://"):
+        if not is_remote_path(value):
             raise ValueError(
                 f'Got invalid value "{value}" for bucket_uri. '
                 'Expected a URI that starts with "s3://" or "gs://".'

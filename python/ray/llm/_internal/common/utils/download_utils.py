@@ -28,16 +28,24 @@ def get_model_location_on_disk(model_id: str) -> str:
 
     model_dir_refs_main = Path(model_dir, "refs", "main")
 
-    if model_dir.exists() and model_dir_refs_main.exists():
-        with open(model_dir_refs_main, "r") as f:
-            snapshot_hash = f.read().strip()
+    if model_dir.exists():
+        if model_dir_refs_main.exists():
+            # If refs/main exists, use the snapshot hash to find the model
+            # and check if *config.json (could be config.json for general models
+            # or adapter_config.json for LoRA adapters) exists to make sure it
+            # follows HF model repo structure.
+            with open(model_dir_refs_main, "r") as f:
+                snapshot_hash = f.read().strip()
 
-        snapshot_hash_path = Path(model_dir, "snapshots", snapshot_hash)
-        if (
-            snapshot_hash_path.exists()
-            and Path(snapshot_hash_path, "config.json").exists()
-        ):
-            model_id_or_path = str(snapshot_hash_path.absolute())
+            snapshot_hash_path = Path(model_dir, "snapshots", snapshot_hash)
+            if snapshot_hash_path.exists() and list(
+                Path(snapshot_hash_path).glob("*config.json")
+            ):
+                model_id_or_path = str(snapshot_hash_path.absolute())
+        else:
+            # If it doesn't have refs/main, it is a custom model repo
+            # and we can just return the model_dir.
+            model_id_or_path = str(model_dir.absolute())
 
     return model_id_or_path
 

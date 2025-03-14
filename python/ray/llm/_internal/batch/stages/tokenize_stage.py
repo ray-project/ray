@@ -6,7 +6,10 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
-from ray.llm._internal.batch.utils import get_cached_tokenizer
+from ray.llm._internal.batch.utils import (
+    get_cached_tokenizer,
+    download_hf_model,
+)
 
 
 class TokenizeUDF(StatefulStageUDF):
@@ -25,9 +28,10 @@ class TokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
+        model_path = download_hf_model(model, tokenizer_only=True)
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
-                model,
+                model_path,
                 trust_remote_code=True,
             )
         )
@@ -81,9 +85,10 @@ class DetokenizeUDF(StatefulStageUDF):
         from transformers import AutoTokenizer
 
         super().__init__(data_column)
+        model_path = download_hf_model(model, tokenizer_only=True)
         self.tokenizer = get_cached_tokenizer(
             AutoTokenizer.from_pretrained(
-                model,
+                model_path,
                 trust_remote_code=True,
             )
         )
