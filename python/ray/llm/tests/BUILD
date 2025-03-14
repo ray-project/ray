@@ -24,7 +24,10 @@ py_test_module_list(
 # Batch test
 py_test_module_list(
     size = "small",
-    files = glob(["batch/cpu/**/test_*.py"]),
+    files = glob([
+        "batch/cpu/**/test_*.py",
+        "batch/observability/usage_telemetry/test_*.py",
+    ]),
     tags = [
         "cpu",
         "exclusive",
