@@ -30,8 +30,12 @@ from ray.train.constants import (
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
 from ray.train.torch import TorchConfig
-from ray.util.placement_group import get_current_placement_group
+from ray.util.placement_group import (
+    get_current_placement_group,
+    placement_group,
+)
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -164,6 +168,24 @@ def test_train(ray_start_2_cpus):
 
     _start_training(e, lambda: 1)
     assert e.finish_training() == [1, 1]
+
+
+def test_train_with_external_placement_group(ray_start_2_cpus):
+    config = TestConfig()
+    pg = placement_group([{"CPU": 1} for _ in range(2)])
+    e = BackendExecutor(config, num_workers=2, placement_group=pg)
+    e.start()
+
+    bundle_ids = []
+    for actor in list_actors(detail=True):
+        # Assert that the placement group is the one created above.
+        assert actor.placement_group_id == pg.id.hex()
+        # Retrieve the bundle group in which the actor was placed.
+        bundle_ids.append(
+            [k for k, v in actor.required_resources.items() if "bundle_group" in k][0]
+        )
+    # Assert the actors are placed into different bundle groups.
+    assert bundle_ids[0] != bundle_ids[1]
 
 
 def test_local_ranks(ray_start_2_cpus):
