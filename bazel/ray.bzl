@@ -14,7 +14,7 @@ COPTS_WITHOUT_LOG = select({
     "//conditions:default": [
         "-Wunused-result",
         "-Wconversion-null",
-        "-Wmisleading-indentation",
+        "-Wnomisleading-indentation",
     ],
 }) + select({
     "//:clang-cl": [
