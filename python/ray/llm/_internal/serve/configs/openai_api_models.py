@@ -240,7 +240,7 @@ class ChatCompletionRequest(BaseModel):
         Union[Literal["none"], Literal["auto"], ChatCompletionNamedToolChoiceParam]
     ] = "none"
 
-    # NOTE this will be ignored by VLLM -- the model determines the behavior
+    # NOTE this will be ignored by vLLM -- the model determines the behavior
     parallel_tool_calls: Optional[bool] = False
     user: Optional[str] = None
 

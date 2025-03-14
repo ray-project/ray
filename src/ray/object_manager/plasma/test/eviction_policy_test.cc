@@ -14,12 +14,16 @@
 
 #include "ray/object_manager/plasma/eviction_policy.h"
 
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/object_store.h"
 
-using namespace ray;
-using namespace testing;
+using ray::ObjectID;
+using testing::_;
+using testing::Return;
+using testing::Test;
 
 namespace plasma {
 TEST(LRUCacheTest, Test) {

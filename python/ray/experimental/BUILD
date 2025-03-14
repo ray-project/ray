@@ -1,6 +1,9 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"]),
-    tags = ["team:none"]
+    files = glob(
+        ["**/*.py"],
+        exclude = ["tf_utils.py"],
+    ),
+    tags = ["team:none"],
 )

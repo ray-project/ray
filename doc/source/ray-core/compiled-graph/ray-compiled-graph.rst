@@ -1,12 +1,12 @@
 .. _ray-compiled-graph:
 
-Ray Compiled Graph
-==================
+Ray Compiled Graph (beta)
+=========================
 
 .. warning::
 
-    Ray Compiled Graph is currently in developer preview. The APIs are subject to change and expected to evolve.
-    The API is available from Ray 2.32.
+    Ray Compiled Graph is currently in beta (since Ray 2.44). The APIs are subject to change and expected to evolve.
+    The API is available from Ray 2.32, but it's recommended to use a version after 2.44.
 
 As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential.
 :ref:`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
@@ -43,7 +43,7 @@ This code shows how to compile and execute the same example as a Compiled Graph.
     ref = graph.execute(data)
     ray.get(ref)
 
-Ray Compiled Graph has a static execution model. It is different from classic Ray APIs, which are eager. Because
+Ray Compiled Graph has a static execution model. It's different from classic Ray APIs, which are eager. Because
 of the static nature, Ray Compiled Graph can perform various optimizations such as:
 
 - Pre-allocate resources so that it can reduce system overhead.
@@ -57,7 +57,7 @@ Ray Compiled Graph APIs simplify development of high-performance multi-GPU workl
 
 - Sub-millisecond level task orchestration.
 - Direct GPU-GPU peer-to-peer or collective communication.
-- `Heterogeneous <https://www.youtube.com/watch?v=Mg08QTBILWU>` or MPMD (Multiple Program Multiple Data) execution.
+- `Heterogeneous <https://www.youtube.com/watch?v=Mg08QTBILWU>`_ or MPMD (Multiple Program Multiple Data) execution.
 
 More Resources
 --------------
@@ -78,4 +78,5 @@ Learn more details about Ray Compiled Graph from the following links.
     quickstart
     profiling
     overlap
+    troubleshooting
     compiled-graph-api

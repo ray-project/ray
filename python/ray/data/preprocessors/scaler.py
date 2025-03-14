@@ -95,6 +95,10 @@ class StandardScaler(Preprocessor):
             s_mean = self.stats_[f"mean({s.name})"]
             s_std = self.stats_[f"std({s.name})"]
 
+            if s_std is None or s_mean is None:
+                s[:] = np.nan
+                return s
+
             # Handle division by zero.
             # TODO: extend this to handle near-zero values.
             if s_std == 0:

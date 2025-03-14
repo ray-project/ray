@@ -1,4 +1,6 @@
 import abc
+from datetime import datetime
+
 import itertools
 import json
 import logging
@@ -9,20 +11,22 @@ import numpy as np
 import pyarrow as pa
 from packaging.version import parse as parse_version
 
-from ray._private.utils import _get_pyarrow_version
-from ray.air.constants import TENSOR_COLUMN_NAME
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
-    _is_ndarray_tensor,
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
+    _should_convert_to_tensor,
+    ArrayLike,
+)
+from ray.data._internal.numpy_support import (
+    convert_to_numpy,
+    _convert_datetime_to_np_datetime,
 )
 from ray.data._internal.util import GiB
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-PYARROW_VERSION = _get_pyarrow_version()
-if PYARROW_VERSION is not None:
-    PYARROW_VERSION = parse_version(PYARROW_VERSION)
+PYARROW_VERSION = get_pyarrow_version()
 # Minimum version of Arrow that supports ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 8.0.0+.
 MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
@@ -37,6 +41,7 @@ NUM_BYTES_PER_UNICODE_CHAR = 4
 # NOTE: Overflow threshold in bytes for most Arrow types using int32 as
 #       its offsets
 INT32_OVERFLOW_THRESHOLD = 2 * GiB
+
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +101,9 @@ def pyarrow_table_from_pydict(
 
 
 @DeveloperAPI(stability="alpha")
-def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.Array:
+def convert_to_pyarrow_array(
+    column_values: Union[List[Any], np.ndarray, ArrayLike], column_name: str
+) -> pa.Array:
     """Converts provided NumPy `ndarray` into PyArrow's `array` while utilizing
     both Arrow's natively supported types as well as custom extension types:
 
@@ -110,10 +117,16 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
         # Since Arrow does NOT support tensors (aka multidimensional arrays) natively,
         # we have to make sure that we handle this case utilizing `ArrowTensorArray`
         # extension type
-        if column_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(column_values):
+        if len(column_values) > 0 and _should_convert_to_tensor(
+            column_values, column_name
+        ):
             from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-            return ArrowTensorArray.from_numpy(column_values, column_name)
+            # Convert to Numpy before creating instance of `ArrowTensorArray` to
+            # align tensor shapes falling back to ragged ndarray only if necessary
+            return ArrowTensorArray.from_numpy(
+                convert_to_numpy(column_values), column_name
+            )
         else:
             return _convert_to_pyarrow_native_array(column_values, column_name)
 
@@ -153,21 +166,23 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
                     "= False)"
                 )
 
-        if not object_ext_type_fallback_allowed:
-            # To avoid logging following warning for every block it's
-            # only going to be logged in following cases
-            #   - When fallback is disallowed, and
-            #   - Fallback configuration is not set or set to false, and
-            #   - It's being logged for the first time
-            if not enable_fallback_config and log_once(
-                "_fallback_to_arrow_object_extension_type_warning"
-            ):
-                logger.warning(
-                    f"Failed to convert column '{column_name}' into pyarrow "
-                    f"array due to: {ace}; {object_ext_type_detail}",
-                    exc_info=ace,
-                )
+        # To avoid logging following warning for every block it's
+        # only going to be logged in following cases
+        #   - It's being logged for the first time, and
+        #   - When config enabling fallback is not set explicitly (in this case
+        #       fallback will still occur by default for compatibility reasons), or
+        #   - Fallback is disallowed (either explicitly or due to use of incompatible
+        #       Pyarrow version)
+        if (
+            enable_fallback_config is None or not object_ext_type_fallback_allowed
+        ) and log_once("_fallback_to_arrow_object_extension_type_warning"):
+            logger.warning(
+                f"Failed to convert column '{column_name}' into pyarrow "
+                f"array due to: {ace}; {object_ext_type_detail}",
+                exc_info=ace,
+            )
 
+        if not object_ext_type_fallback_allowed:
             # If `ArrowPythonObjectType` is not supported raise original exception
             raise
 
@@ -176,48 +191,74 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
 
 
 def _convert_to_pyarrow_native_array(
-    column_values: np.ndarray, column_name: str
+    column_values: Union[List[Any], np.ndarray], column_name: str
 ) -> pa.Array:
     """Converts provided NumPy `ndarray` into PyArrow's `array` while only utilizing
     Arrow's natively supported types (ie no custom extension types)"""
 
     try:
+        # NOTE: Python's `datetime` only supports precision up to us and could
+        #       inadvertently lose precision when handling Pandas `Timestamp` type.
+        #       To avoid that we convert provided list of `datetime` objects into
+        #       ndarray of `np.datetime64`
+        if len(column_values) > 0 and isinstance(column_values[0], datetime):
+            column_values = _convert_datetime_to_np_datetime(column_values)
+
         # NOTE: We explicitly infer PyArrow `DataType` so that
         #       we can perform upcasting to be able to accommodate
         #       blocks that are larger than 2Gb in size (limited
         #       by int32 offsets used by Arrow internally)
-        dtype = _infer_pyarrow_type(column_values)
+        pa_type = _infer_pyarrow_type(column_values)
 
-        if pa.types.is_timestamp(dtype):
-            assert np.issubdtype(column_values.dtype, np.datetime64)
-            numpy_precision, _ = np.datetime_data(column_values.dtype)
-            arrow_precision = dtype.unit
-            if arrow_precision != numpy_precision:
-                # Arrow supports fewer timestamp resolutions than NumPy. So, if Arrow
-                # doesn't support the resolution, we need to cast the NumPy array to a
-                # different type. This can be a lossy conversion.
-                column_values = column_values.astype(f"datetime64[{arrow_precision}]")
-
-                if log_once(f"column_{column_name}_timestamp_warning"):
-                    logger.warning(
-                        f"Converting a {numpy_precision!r} precision datetime NumPy "
-                        f"array to '{arrow_precision}' precision Arrow timestamp. This "
-                        "conversion occurs because Arrow supports fewer precisions "
-                        "than Arrow and might result in a loss of precision or "
-                        "unrepresentable values."
-                    )
+        if pa_type and pa.types.is_timestamp(pa_type):
+            # NOTE: Quirky Arrow behavior will coerce unsupported Numpy `datetime64`
+            #       precisions that are nested inside a list type, but won't do it,
+            #       if these are top-level ndarray. To work this around we have to cast
+            #       ndarray values manually
+            if isinstance(column_values, np.ndarray):
+                column_values = _coerce_np_datetime_to_pa_timestamp_precision(
+                    column_values, pa_type, column_name
+                )
 
         logger.log(
             logging.getLevelName("TRACE"),
-            f"Inferred dtype of '{dtype}' for column '{column_name}'",
+            f"Inferred dtype of '{pa_type}' for column '{column_name}'",
         )
 
-        return pa.array(column_values, type=dtype)
+        return pa.array(column_values, type=pa_type)
     except Exception as e:
         raise ArrowConversionError(str(column_values)) from e
 
 
-def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
+def _coerce_np_datetime_to_pa_timestamp_precision(
+    column_values: np.ndarray, dtype: pa.TimestampType, column_name: str
+):
+    assert np.issubdtype(column_values.dtype, np.datetime64)
+
+    numpy_precision, _ = np.datetime_data(column_values.dtype)
+    arrow_precision = dtype.unit
+
+    if arrow_precision != numpy_precision:
+        # Arrow supports fewer timestamp resolutions than NumPy. So, if Arrow
+        # doesn't support the resolution, we need to cast the NumPy array to a
+        # different type. This can be a lossy conversion.
+        column_values = column_values.astype(f"datetime64[{arrow_precision}]")
+
+        if log_once(f"column_{column_name}_timestamp_warning"):
+            logger.warning(
+                f"Converting a {numpy_precision!r} precision datetime NumPy "
+                f"array to '{arrow_precision}' precision Arrow timestamp. This "
+                "conversion occurs because Arrow supports fewer precisions "
+                "than Arrow and might result in a loss of precision or "
+                "unrepresentable values."
+            )
+
+    return column_values
+
+
+def _infer_pyarrow_type(
+    column_values: Union[List[Any], np.ndarray]
+) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
 
@@ -246,8 +287,10 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
     # `pyarrow.infer_type` leaks memory if you pass an array with a datetime64 dtype.
     # To avoid this, we handle datetime64 dtypes separately.
     # See https://github.com/apache/arrow/issues/45493.
-    if np.issubdtype(column_values.dtype, np.datetime64):
-        return _infer_pyarrow_type_from_datetime_dtype(column_values.dtype)
+    dtype_with_timestamp_type = _try_infer_pa_timestamp_type(column_values)
+
+    if dtype_with_timestamp_type is not None:
+        return dtype_with_timestamp_type
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
@@ -276,27 +319,43 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
     return inferred_pa_dtype
 
 
-def _infer_pyarrow_type_from_datetime_dtype(dtype: np.dtype) -> pa.TimestampType:
-    assert np.issubdtype(dtype, np.datetime64)
-    numpy_precision, _ = np.datetime_data(dtype)
+_NUMPY_TO_ARROW_PRECISION_MAP = {
+    # Coarsest timestamp precision in Arrow is seconds
+    "Y": "s",
+    "D": "s",
+    "M": "s",
+    "W": "s",
+    "h": "s",
+    "m": "s",
+    "s": "s",
+    "ms": "ms",
+    "us": "us",
+    "ns": "ns",
+    # Finest timestamp precision in Arrow is nanoseconds
+    "ps": "ns",
+    "fs": "ns",
+    "as": "ns",
+}
 
-    # For day precision, use Arrow's date32 type since it's optimized for dates
-    if numpy_precision == "D":
-        arrow_type = pa.date32()
-    # For precisions coarser than seconds (year, month, week, hour, minute), use Arrow
-    # seconds unit since it's the coarsest Arrow timestamp supports
-    elif numpy_precision in {"Y", "M", "W", "h", "m"}:
-        arrow_type = pa.timestamp("s")
-    # For precisions finer than nanoseconds (pico, femto, atto), use Arrow
-    # nanoseconds unit since it's the finest Arrow timestamp supports
-    elif numpy_precision in {"ps", "fs", "as"}:
-        arrow_type = pa.timestamp("ns")
-    # For second, milli, micro and nano precisions, use matching Arrow unit
-    # since they are directly supported
+
+def _try_infer_pa_timestamp_type(
+    column_values: Union[List[Any], np.ndarray]
+) -> Optional[pa.DataType]:
+    if isinstance(column_values, list) and len(column_values) > 0:
+        # In case provided column values is a list of elements, this
+        # utility assumes homogeneity (in line with the behavior of Arrow
+        # type inference utils)
+        element_type = _try_infer_pa_timestamp_type(column_values[0])
+        return pa.list_(element_type) if element_type else None
+
+    if isinstance(column_values, np.ndarray) and np.issubdtype(
+        column_values.dtype, np.datetime64
+    ):
+        np_precision, _ = np.datetime_data(column_values.dtype)
+        return pa.timestamp(_NUMPY_TO_ARROW_PRECISION_MAP[np_precision])
+
     else:
-        arrow_type = pa.timestamp(numpy_precision)
-
-    return arrow_type
+        return None
 
 
 @DeveloperAPI
@@ -488,6 +547,13 @@ class ArrowTensorType(_BaseFixedShapeArrowTensorType):
         shape = tuple(json.loads(serialized))
         return cls(shape, storage_type.value_type)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, ArrowTensorType)
+            and other.shape == self.shape
+            and other.scalar_type == self.scalar_type
+        )
+
 
 @PublicAPI(stability="alpha")
 class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
@@ -511,12 +577,19 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
         shape = tuple(json.loads(serialized))
         return cls(shape, storage_type.value_type)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, ArrowTensorTypeV2)
+            and other.shape == self.shape
+            and other.scalar_type == self.scalar_type
+        )
+
 
 if _arrow_extension_scalars_are_subclassable():
     # TODO(Clark): Remove this version guard once we only support Arrow 9.0.0+.
     @PublicAPI(stability="beta")
     class ArrowTensorScalar(pa.ExtensionScalar):
-        def as_py(self) -> np.ndarray:
+        def as_py(self, **kwargs) -> np.ndarray:
             return self.type._extension_scalar_to_ndarray(self)
 
         def __array__(self) -> np.ndarray:
@@ -640,12 +713,24 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
                 # ndarray stacking may fail if the arrays are heterogeneously-shaped.
                 arr = np.array(arr, dtype=object)
+
         if not isinstance(arr, np.ndarray):
             raise ValueError(
                 f"Must give ndarray or iterable of ndarrays, got {type(arr)} {arr}"
             )
 
         try:
+            timestamp_dtype = _try_infer_pa_timestamp_type(arr)
+
+            if timestamp_dtype:
+                # NOTE: Quirky Arrow behavior will coerce unsupported Numpy `datetime64`
+                #       precisions that are nested inside a list type, but won't do it,
+                #       if these are top-level ndarray. To work this around we have to cast
+                #       ndarray values manually
+                arr = _coerce_np_datetime_to_pa_timestamp_precision(
+                    arr, timestamp_dtype, column_name
+                )
+
             return cls._from_numpy(arr)
         except Exception as e:
             data_str = ""

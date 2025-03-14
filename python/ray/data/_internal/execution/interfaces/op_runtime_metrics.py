@@ -1,13 +1,15 @@
+import math
 import time
+from collections import defaultdict
 from dataclasses import Field, dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-import math
 
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
+from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -23,6 +25,8 @@ _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
 _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["MetricDefinition"] = []
+
+NODE_UNKNOWN = "unknown"
 
 
 class MetricsGroup(Enum):
@@ -104,6 +108,13 @@ class RunningTaskInfo:
     start_time: float
 
 
+@dataclass
+class NodeMetrics:
+    num_tasks_finished: int = 0
+    bytes_outputs_of_finished_tasks: int = 0
+    blocks_outputs_of_finished_tasks: int = 0
+
+
 class OpRuntimesMetricsMeta(type):
     def __init__(cls, name, bases, dict):
         # NOTE: `Field.name` isn't set until the dataclass is created, so we can't
@@ -123,6 +134,14 @@ class OpRuntimesMetricsMeta(type):
                     map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
+
+
+def node_id_from_block_metadata(meta: BlockMetadata) -> str:
+    if meta.exec_stats is not None and meta.exec_stats.node_id is not None:
+        node_id = meta.exec_stats.node_id
+    else:
+        node_id = NODE_UNKNOWN
+    return node_id
 
 
 class TaskDurationStats:
@@ -352,6 +371,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._pending_task_inputs = create_bundle_queue()
         self._op_task_duration_stats = TaskDurationStats()
 
+        self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
+        self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
+
+        self._cum_rss_bytes: Optional[int] = None
+
     @property
     def extra_metrics(self) -> Dict[str, Any]:
         """Return a dict of extra metrics."""
@@ -499,6 +523,19 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         else:
             return self.bytes_outputs_of_finished_tasks / self.num_tasks_finished
 
+    @metric_property(
+        description="Average RSS usage of tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        map_only=True,
+    )
+    def average_memory_usage_per_task(self) -> Optional[float]:
+        """Average RSS usage of tasks."""
+        if self._cum_rss_bytes is None:
+            return None
+        else:
+            assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
+            return self._cum_rss_bytes / self.num_task_outputs_generated
+
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
@@ -577,11 +614,29 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.bytes_outputs += output_bytes
 
         for block_ref, meta in output.blocks:
-            assert meta.exec_stats and meta.exec_stats.wall_time_s
+            assert (
+                meta.exec_stats is not None and meta.exec_stats.wall_time_s is not None
+            )
             self.block_generation_time += meta.exec_stats.wall_time_s
             assert meta.num_rows is not None
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
+            if meta.exec_stats.rss_bytes is not None:
+                if self._cum_rss_bytes is None:
+                    self._cum_rss_bytes = meta.exec_stats.rss_bytes
+                else:
+                    self._cum_rss_bytes += meta.exec_stats.rss_bytes
+            else:
+                assert not self._is_map, "Map operators should collect RSS metrics"
+
+        # Update per node metrics
+        if self._per_node_metrics_enabled:
+            for _, meta in output.blocks:
+                node_id = node_id_from_block_metadata(meta)
+                node_metrics = self._per_node_metrics[node_id]
+
+                node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
+                node_metrics.blocks_outputs_of_finished_tasks += 1
 
     def on_task_finished(self, task_index: int, exception: Optional[Exception]):
         """Callback when a task is finished."""
@@ -618,6 +673,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                     self.obj_store_mem_spilled += meta.size_bytes
 
         self.obj_store_mem_freed += total_input_size
+
+        # Update per node metrics
+        if self._per_node_metrics_enabled:
+            node_ids = set()
+            for _, meta in inputs.blocks:
+                node_id = node_id_from_block_metadata(meta)
+                node_metrics = self._per_node_metrics[node_id]
+
+                # Stats to update once per node id or if node id is unknown
+                if node_id not in node_ids or node_id == NODE_UNKNOWN:
+                    node_metrics.num_tasks_finished += 1
+
+                # Keep track of node ids to ensure we don't double count
+                node_ids.add(node_id)
 
         inputs.destroy_if_owned()
         del self._running_tasks[task_index]
