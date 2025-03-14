@@ -60,22 +60,42 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
 
-  // Never seen any autoscaling state before - so just takes this.
-  if (!autoscaling_state_.has_value()) {
-    autoscaling_state_ = *std::move(request.mutable_autoscaling_state());
-    send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-    return;
-  }
-
-  // Cancel the infeasible requests if the feature is enabled
-  std::function<void()> callback = [this]() {
+  // Create the callback to cancel the infeasible requests if the feature is enabled
+  bool has_new_infeasible_requests = false;
+  std::function<void()> callback = [this, &has_new_infeasible_requests]() {
     bool enable_infeasible_task_early_exit =
         RayConfig::instance().enable_infeasible_task_early_exit();
 
     if (enable_infeasible_task_early_exit) {
       this->CancelInfeasibleRequests();
+    } else if (has_new_infeasible_requests) {
+      RAY_LOG(WARNING)
+          << "There are tasks with infeasible resource requests and won't "
+          << "be scheduled. See "
+          << "https://docs.ray.io/en/latest/ray-core/scheduling/"
+             "index.html#ray-scheduling-resources "
+          << "for more details. Please consider taking the following actions to solve "
+             "the issue: "
+          << "1. Updating the ray cluster to include nodes with all required resources "
+          << "in order to let the tasks be scheduled. 2. To prevent the tasks from "
+          << "hanging, you can consider enabling the infeasible task early exit feature "
+          << "by setting the 'enable_infeasible_task_early_exit' system config to 'true'."
+          << "In a future release of Ray, we are planning to enable infeasible task "
+             "early exit by default.";
     }
   };
+
+  // Never seen any autoscaling state before - so just takes this.
+  if (!autoscaling_state_.has_value()) {
+    autoscaling_state_ = *std::move(request.mutable_autoscaling_state());
+
+    if (autoscaling_state_->infeasible_resource_requests_size() > 0) {
+      has_new_infeasible_requests = true;
+    }
+
+    send_reply_callback(ray::Status::OK(), callback, nullptr);
+    return;
+  }
 
   // We have a state cached. We discard the incoming state if it's older than the
   // cached state.
@@ -91,6 +111,10 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
   }
 
   // We should overwrite the cache version.
+  if (autoscaling_state_->infeasible_resource_requests_size() <
+      request.mutable_autoscaling_state()->infeasible_resource_requests_size()) {
+    has_new_infeasible_requests = true;
+  }
   autoscaling_state_ = std::move(*request.mutable_autoscaling_state());
   send_reply_callback(ray::Status::OK(), callback, nullptr);
 }
