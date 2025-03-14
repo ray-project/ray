@@ -394,6 +394,12 @@ class DashboardHead:
         dashboard_head_modules, subprocess_module_handles = self._load_modules(
             self._modules_to_load
         )
+        # Parallel start all subprocess modules.
+        for handle in subprocess_module_handles:
+            handle.start_module()
+        # Wait for all subprocess modules to be ready.
+        for handle in subprocess_module_handles:
+            handle.wait_for_module_ready()
 
         http_host, http_port = self.http_host, self.http_port
         if self.serve_frontend:
@@ -431,13 +437,6 @@ class DashboardHead:
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
-
-        # Parallel start all subprocess modules.
-        for handle in subprocess_module_handles:
-            handle.start_module()
-        # Wait for all subprocess modules to be ready.
-        for handle in subprocess_module_handles:
-            handle.wait_for_module_ready()
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()

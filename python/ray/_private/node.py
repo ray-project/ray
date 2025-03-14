@@ -30,7 +30,7 @@ from ray._private.utils import (
     open_log,
     try_to_create_directory,
     try_to_symlink,
-    validate_socket_filename,
+    validate_socket_filepath,
 )
 
 # Logger for this module. It should be configured at the entry point
@@ -1005,7 +1005,7 @@ class Node:
             else:
                 try_to_create_directory(os.path.dirname(socket_path))
 
-            validate_socket_filename(result.split("://", 1)[-1])
+            validate_socket_filepath(result.split("://", 1)[-1])
         return result
 
     def _get_cached_port(

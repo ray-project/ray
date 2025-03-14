@@ -51,14 +51,12 @@ class SubprocessModule(abc.ABC):
     def __init__(
         self,
         config: SubprocessModuleConfig,
-        parent_process_pid: int,
     ):
         """
         Initialize current module when DashboardHead loading modules.
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
-        self._parent_process_pid = parent_process_pid
         # Lazy init
         self._gcs_aio_client = None
 
@@ -132,7 +130,6 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
 
@@ -143,7 +140,7 @@ async def run_module_inner(
     )
 
     try:
-        module = cls(config, parent_process_pid)
+        module = cls(config)
         await module.run()
         ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
@@ -156,14 +153,10 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
     """
     Entrypoint for a subprocess module.
-
-    parent_process_pid: Used to detect if the parent process died every 1s. If it does,
-    the module will exit.
     """
     module_name = cls.__name__
     current_proctitle = setproctitle.getproctitle()
@@ -186,7 +179,6 @@ def run_module(
             cls,
             config,
             incarnation,
-            parent_process_pid,
             ready_event,
         )
     )

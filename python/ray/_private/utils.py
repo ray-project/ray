@@ -2080,7 +2080,7 @@ def get_current_node_cpu_model_name() -> Optional[str]:
         return None
 
 
-def validate_socket_filename(filename: str):
+def validate_socket_filepath(filepath: str):
     """
     Validate the provided filename is a valid Unix socket filename.
     """
@@ -2089,7 +2089,7 @@ def validate_socket_filename(filename: str):
         return
     is_mac = sys.platform.startswith("darwin")
     maxlen = (104 if is_mac else 108) - 1
-    if len(filename) > maxlen:
+    if len(filepath) > maxlen:
         raise OSError(
-            f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filename}"
+            f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filepath}"
         )

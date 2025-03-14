@@ -1,7 +1,7 @@
 import os
 import enum
 from typing import TypeVar
-from ray._private.utils import validate_socket_filename
+from ray._private.utils import validate_socket_filepath
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -35,5 +35,5 @@ def module_logging_filename(module_name: str, logging_filename: str) -> str:
 
 def get_socket_path(socket_dir: str, module_name: str) -> str:
     socket_path = os.path.join(socket_dir, "dash_" + module_name)
-    validate_socket_filename(socket_path)
+    validate_socket_filepath(socket_path)
     return socket_path

@@ -125,7 +125,6 @@ class SubprocessModuleHandle:
                 self.module_cls,
                 self.config,
                 self.incarnation,
-                os.getpid(),
                 self.process_ready_event,
             ),
             daemon=True,
