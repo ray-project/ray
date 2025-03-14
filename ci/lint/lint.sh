@@ -18,6 +18,8 @@ pre_commit() {
   HOOKS=(
     python-no-log-warn
     ruff
+    buildifier
+    buildifier-lint
     check-added-large-files
     check-ast
     check-toml
