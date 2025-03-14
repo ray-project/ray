@@ -46,7 +46,7 @@ def _override_breakpoint_hooks():
     __builtin__.breakpoint = set_trace
 
 
-def _ensure_debugger_port_open_thread_safe() -> Optional[int]:
+def _ensure_debugger_port_open_thread_safe():
     """
     This is a thread safe method that ensure that the debugger port
     is open, and if not, open it.
@@ -96,14 +96,12 @@ def _ensure_debugger_port_open_thread_safe() -> Optional[int]:
                     )
                 else:
                     log.error(f"Failed to open debugger on any port")
-                return None
+                return
 
             ray._private.worker.global_worker.set_debugger_port(port)
             log.info(f"Ray debugger is listening on {host}:{port}")
-            return port
         else:
             log.info(f"Ray debugger is already open on {debugger_port}")
-            return debugger_port
 
 
 @DeveloperAPI
