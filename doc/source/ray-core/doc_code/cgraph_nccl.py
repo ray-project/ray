@@ -23,6 +23,8 @@ cdag = dag.experimental_compile()
 print(ray.get(cdag.execute(torch.zeros(10))))
 # __cgraph_cpu_to_gpu_end__
 
+cdag.teardown()
+
 # __cgraph_cpu_to_gpu_override_start__
 from ray.experimental.channel import ChannelContext
 

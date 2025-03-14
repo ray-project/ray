@@ -343,7 +343,6 @@ steps:
     tags:
       - gpu
       - python
-      - skip-on-premerge
     instance_type: gpu-large
     soft_fail: true
     commands:
@@ -418,6 +417,7 @@ steps:
         --build-name coregpubuild
         --only-tags multi_gpu
         --install-mask llm,rllib,serve,train,tune,workflow
+      - sleep 1000000
     depends_on:
       - block-core-gpu-tests
       - coregpubuild

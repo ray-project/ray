@@ -84,6 +84,7 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
+doc/
 @ python accelerated_dag
 ;
 
