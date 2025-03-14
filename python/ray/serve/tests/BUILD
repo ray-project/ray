@@ -480,9 +480,9 @@ py_test_module_list(
         "team:serve",
     ],
     deps = [
-      ":common",
-      ":conftest",
-      "//python/ray/serve:serve_lib",
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
     ],
 )
 

@@ -61,11 +61,14 @@ py_test(
 )
 
 py_test(
-    name="test_job_manager",
-    size="large",
+    name = "test_job_manager",
+    size = "large",
     srcs = ["modules/job/tests/test_job_manager.py"],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
     deps = [":conftest"],
-    tags = ["exclusive", "team:serve"],
 )
 
 py_test(

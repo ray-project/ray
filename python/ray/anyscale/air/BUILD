@@ -1,8 +1,11 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
-    files = glob(["tests/test_*.py"]),
     size = "small",
-    tags = ["team:ml", "exclusive"],
+    files = glob(["tests/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
     deps = ["//:ray_lib"],
 )

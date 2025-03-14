@@ -1459,7 +1459,7 @@ async def test_job_manager_tolerates_gcs_failures(
         raise NotImplementedError(f"unexpected job status: {expected_job_status}")
 
     # Wait for the job to reach expected target state
-    await async_wait_for_condition_async_predicate(
+    await async_wait_for_condition(
         expected_job_state_check,
         timeout=10,
         get_job_info=original_get_info,

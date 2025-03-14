@@ -1,29 +1,56 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 
 py_test_module_list(
-    files = glob(
-        ["tests/test_*.py", "tests/*/test_*.py"],
-        exclude=["tests/test_checkpoint.py", "tests/test_snowflake.py", "tests/test_delta.py"]
-    ),
     size = "medium",
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
+    files = glob(
+        [
+            "tests/test_*.py",
+            "tests/*/test_*.py",
+        ],
+        exclude = [
+            "tests/test_checkpoint.py",
+            "tests/test_snowflake.py",
+            "tests/test_delta.py",
+        ],
+    ),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
-    name="test_snowflake",
+    name = "test_snowflake",
     size = "medium",
     srcs = ["tests/test_snowflake.py"],
-    tags = ["team:data", "exclusive", "manual"],
-    deps = ["//:ray_lib", ":conftest"],
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
     name = "test_checkpoint",
     size = "large",
     srcs = ["tests/test_checkpoint.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_library(
@@ -35,6 +62,13 @@ py_test(
     name = "test_delta",
     size = "small",
     srcs = ["tests/test_delta.py"],
-    tags = ["team:data", "exclusive", "manual"],
-    deps = ["//:ray_lib", ":conftest"],
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )

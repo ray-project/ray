@@ -47,10 +47,16 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    files = glob(["tests/anyscale/test_*.py"]),
     size = "small",
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
+    files = glob(["tests/anyscale/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
