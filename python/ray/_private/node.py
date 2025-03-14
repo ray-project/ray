@@ -992,7 +992,7 @@ class Node:
         is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
-                result = f"tcp://{self._localhost}" f":{self._get_unused_port()}"
+                result = f"tcp://{self._localhost}:{self._get_unused_port()}"
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -1204,8 +1204,8 @@ class Node:
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             log_dir=self._logs_dir,
-            ray_log_filepath=stdout_log_fname,
-            ray_err_log_filepath=stderr_log_fname,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             session_name=self.session_name,
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
@@ -1277,8 +1277,8 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            ray_log_filepath=stdout_log_fname,
-            ray_err_log_filepath=stderr_log_fname,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,
