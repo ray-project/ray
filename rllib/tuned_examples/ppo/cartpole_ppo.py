@@ -16,9 +16,6 @@ config = (
         num_epochs=6,
         vf_loss_coeff=0.01,
     )
-    .env_runners(
-        num_env_runners=10,
-    )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[32],
