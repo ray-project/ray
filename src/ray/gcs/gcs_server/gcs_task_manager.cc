@@ -339,6 +339,7 @@ void GcsTaskManager::GcsTaskManagerStorage::EvictTaskEvent() {
 
 void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
     rpc::TaskEvents &&events_by_task) {
+  RAY_LOG(INFO) << "[myan] Adding task event: " << events_by_task.DebugString();
   auto job_id = JobID::FromBinary(events_by_task.job_id());
   auto task_id = TaskID::FromBinary(events_by_task.task_id());
 
@@ -411,7 +412,7 @@ bool apply_predicate_ignore_case(std::string_view lhs,
 void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
+  RAY_LOG(INFO) << "Getting task status:" << request.ShortDebugString();
 
   // TODO(meyan): In the future, we could improve the query performance by leveraging
   // the index on all the equal filters.
@@ -460,6 +461,11 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
         task_event_storage_->NumProfileEventsDropped());
     reply->set_num_status_task_events_dropped(
         task_event_storage_->NumTaskAttemptsDropped());
+  }
+
+  RAY_LOG(INFO) << "[myan] Total task events: " << task_events->size();
+  for (const auto &task_event : *task_events) {
+    RAY_LOG(INFO) << "[myan] Task events: " << task_event.DebugString();
   }
 
   // Populate reply.
@@ -636,6 +642,8 @@ void GcsTaskManager::GcsTaskManagerStorage::RecordDataLossFromWorker(
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "[myan] Received adding task event data:"
+                << request.ShortDebugString();
   auto data = std::move(request.data());
   task_event_storage_->RecordDataLossFromWorker(data);
 

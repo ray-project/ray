@@ -875,6 +875,7 @@ Status TaskInfoAccessor::AsyncAddTaskEventData(
     std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback) {
   rpc::AddTaskEventDataRequest request;
   // Prevent copy here
+  RAY_LOG(INFO) << "[myan] Async adding task event data";
   request.mutable_data()->Swap(data_ptr.get());
   client_impl_->GetGcsRpcClient().AddTaskEventData(
       request, [callback](const Status &status, rpc::AddTaskEventDataReply &&reply) {

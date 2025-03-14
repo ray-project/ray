@@ -3250,7 +3250,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
@@ -3847,6 +3847,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
+    RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+        << "Received Handle Actor Task";
     task_execution_service_.post(
         [this,
          request,
@@ -3864,6 +3866,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
+    RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+        << "Received Handle Normal Task";
     // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
     // the task execution service.
     task_receiver_->HandleTask(request, reply, send_reply_callback);

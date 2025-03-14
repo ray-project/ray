@@ -207,6 +207,9 @@ bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
     rpc::TaskStatus status,
     bool include_task_info,
     absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
+  RAY_LOG(INFO) << "[myan] RecordTaskStatusEventIfNeeded: " << task_id << " " << job_id
+                << " " << attempt_number << " " << status;
+
   if (!Enabled()) {
     return false;
   }
@@ -494,9 +497,11 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     return;
   }
 
+  RAY_LOG(INFO) << "[myan] Flushing task events to GCS.";
+
   // Skip if GCS hasn't finished processing the previous message.
   if (grpc_in_progress_ && !forced) {
-    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 100)
+    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 1)
         << "GCS hasn't replied to the previous flush events call (likely "
            "overloaded). "
            "Skipping reporting task state events and retry later."
@@ -563,6 +568,9 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
     grpc_in_progress_ = false;
   };
 
+  RAY_LOG(INFO) << "attempting to send " << num_task_attempts_to_send
+                << " task attempts and " << num_dropped_task_attempts_to_send
+                << " task attempts lost on worker to GCS.";
   auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
   RAY_CHECK_OK(status);
 }
@@ -596,6 +604,8 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
 }
 
 void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_event) {
+  RAY_LOG(INFO) << "[myan] AddTaskStatusEvent...";
+
   absl::MutexLock lock(&mutex_);
   if (!enabled_) {
     return;
@@ -640,6 +650,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventsStored);
   }
   status_events_.push_back(status_event_shared_ptr);
+  RAY_LOG(INFO) << "[myan] AddTaskStatusEvent added...";
 }
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {
