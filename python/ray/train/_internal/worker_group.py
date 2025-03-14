@@ -350,13 +350,11 @@ class WorkerGroup:
                 # If the number of bundles equals the number of actors to schedule
                 # the user likely wants to place them in round-robin.
                 index = i if self._placement_group.bundle_count == num_workers else -1
-                scheduling_strategy = (
-                    scheduling_strategy
-                ) = PlacementGroupSchedulingStrategy(
+                scheduling_strategy = PlacementGroupSchedulingStrategy(
                     placement_group=self._placement_group,
                     placement_group_bundle_index=index,
                 )
-            # Otherwise use the default `PlacementGroup`.
+            # Otherwise use a "DEFAULT" scheduling strategy.
             else:
                 scheduling_strategy = "DEFAULT"
             actor = self._remote_cls.options(
