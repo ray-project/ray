@@ -5,7 +5,7 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.ray_constants import env_integer
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
@@ -266,7 +266,7 @@ def unify_schemas(
         schemas_to_unify = schemas
 
     try:
-        if parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
             return pyarrow.unify_schemas(schemas_to_unify)
 
         # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
@@ -614,7 +614,7 @@ def concat(
         # to vary b/w blocks
         #
         # NOTE: Type promotions aren't available in Arrow < 14.0
-        if parse_version(_get_pyarrow_version()) < parse_version("14.0.0"):
+        if get_pyarrow_version() < parse_version("14.0.0"):
             table = pyarrow.concat_tables(blocks, promote=True)
         else:
             arrow_promote_types_mode = "permissive" if promote_types else "default"

@@ -673,7 +673,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages come from a Driver/Worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<CreateActorCallback>>
       actor_to_create_callbacks_;
-  /// All registered actors (unresoved and pending actors are also included).
+  /// All registered actors (unresolved and pending actors are also included).
   /// TODO(swang): Use unique_ptr instead of shared_ptr.
   absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> registered_actors_;
   /// All destroyed actors.
