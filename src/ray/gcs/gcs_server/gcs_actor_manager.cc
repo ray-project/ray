@@ -689,18 +689,28 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
                                             rpc::KillActorViaGcsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   const auto &actor_id = ActorID::FromBinary(request.actor_id());
-  bool force_kill = request.force_kill();
-  bool no_restart = request.no_restart();
-  if (no_restart) {
-    DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
-  } else {
-    KillActor(actor_id, force_kill);
-  }
+  auto it = registered_actors_.find(actor_id);
+  if (it != registered_actors_.end()) {
+    bool force_kill = request.force_kill();
+    bool no_restart = request.no_restart();
+    if (no_restart) {
+      DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
+    } else {
+      KillActor(actor_id, force_kill);
+    }
 
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
-      << "Finished killing actor, force_kill = " << force_kill
-      << ", no_restart = " << no_restart;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Finished killing actor, force_kill = " << force_kill
+        << ", no_restart = " << no_restart;
+  } else {
+    GCS_RPC_SEND_REPLY(send_reply_callback,
+                       reply,
+                       Status::NotFound(absl::StrFormat(
+                           "Could not find actor with ID %s.", actor_id.Hex())));
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Could not find actor with ID " << actor_id.Hex();
+  }
   ++counts_[CountType::KILL_ACTOR_REQUEST];
 }
 
