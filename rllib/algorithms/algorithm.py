@@ -1800,7 +1800,7 @@ class Algorithm(Checkpointable, Trainable):
         self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            learner_results = self.learner_group.update_from_episodes(
+            learner_results = self.learner_group.update(
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -1820,7 +1820,7 @@ class Algorithm(Checkpointable, Trainable):
             )
 
     @PublicAPI
-    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> RLModule:
+    def get_module(self, module_id: ModuleID = DEFAULT_MODULE_ID) -> Optional[RLModule]:
         """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
 
         Args:
@@ -1828,12 +1828,12 @@ class Algorithm(Checkpointable, Trainable):
                 used by the local EnvRunner.
 
         Returns:
-            The SingleAgentRLModule sitting under the ModuleID key inside the
-            local worker's (EnvRunner's) MARLModule.
+            The RLModule found under the ModuleID key inside the local EnvRunner's
+            MultiRLModule. None if `module_id` doesn't exist.
         """
         module = self.env_runner.module
         if isinstance(module, MultiRLModule):
-            return module[module_id]
+            return module.get(module_id)
         else:
             return module
 

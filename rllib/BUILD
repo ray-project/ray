@@ -1071,6 +1071,19 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Callback tests
+# rllib/callbacks/
+#
+# Tag: callbacks
+# --------------------------------------------------------------------
+py_test(
+    name = "test_multicallback",
+    tags = ["team:rllib", "callbacks_dir"],
+    size = "medium",
+    srcs = ["callbacks/tests/test_multicallback.py"]
+)
+
+# --------------------------------------------------------------------
 # ConnectorV2 tests
 # rllib/connector/
 #

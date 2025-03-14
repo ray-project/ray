@@ -1,3 +1,5 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
 py_test(
     name = "test_runtime_env_validation",
     srcs = ["test_runtime_env_validation.py"],

@@ -31,7 +31,7 @@ from ray._raylet import ActorID, JobID, TaskID
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
-    async_wait_for_condition_async_predicate,
+    async_wait_for_condition,
     find_free_port,
     SignalActor,
 )
@@ -148,7 +148,7 @@ def state_source_client(gcs_address):
     gcs_channel = ray._private.utils.init_grpc_channel(
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_aio_client = GcsAioClient(address=gcs_address)
     client = StateDataSourceClient(
         gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
     )
@@ -563,7 +563,7 @@ del b
         assert result.num_after_truncation == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test actor id filtering on source
@@ -575,7 +575,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test state filtering on source
@@ -586,7 +586,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test job filtering on source
@@ -598,7 +598,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         with pytest.raises(ValueError):
@@ -608,7 +608,7 @@ del b
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.asyncio
@@ -1810,7 +1810,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             assert len(c.object_refs) == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
     for ref in refs:
         ray.cancel(ref, force=True, recursive=True)
     del refs
@@ -2177,7 +2177,7 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.skipif(

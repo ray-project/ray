@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from ray.train.v2.api.config import RunConfig
 
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
-from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2._internal.execution.context import DistributedContext, TrainRunContext
 from ray.train.v2._internal.execution.controller.state import (
     ErroredState,
@@ -38,6 +37,7 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
+from ray.train.v2.api.exceptions import TrainingFailedError
 
 
 @pytest.fixture(scope="function")
@@ -312,7 +312,11 @@ def test_callback_controller_state_transitions(ray_start_regular, callback):
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
         RunningState(),
-        RestartingState(training_failed_error=TrainingFailedError(worker_failures={})),
+        RestartingState(
+            training_failed_error=TrainingFailedError(
+                error_message="", worker_failures={}
+            )
+        ),
         SchedulingState(
             scaling_decision=ResizeDecision(num_workers=2, resources_per_worker={})
         ),
