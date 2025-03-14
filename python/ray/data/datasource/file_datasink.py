@@ -66,7 +66,7 @@ class _FileDatasink(Datasink[None]):
         self.unresolved_path = path
         paths, self.filesystem = _resolve_paths_and_filesystem(path, filesystem)
         self.filesystem = RetryingPyFileSystem.wrap(
-            self.filesystem, context=self._data_context
+            self.filesystem, retryable_errors=self._data_context.retried_io_errors
         )
         assert len(paths) == 1, len(paths)
         self.path = paths[0]

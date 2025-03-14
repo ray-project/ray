@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray._private.test_utils import async_wait_for_condition_async_predicate
+from ray._private.test_utils import async_wait_for_condition
 from ray.dashboard.modules.job.tests.conftest import (
     _driver_script_path,
     create_job_manager,
@@ -59,7 +59,7 @@ class TestRuntimeEnvStandalone:
                 runtime_env={"env_vars": {"TEST_SUBPROCESS_RANDOM_VAR": "0xDEEDDEED"}},
             )
 
-            await async_wait_for_condition_async_predicate(
+            await async_wait_for_condition(
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
 

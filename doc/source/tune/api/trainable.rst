@@ -107,27 +107,68 @@ It is up to the user to correctly update the hyperparameters of your trainable.
 
 .. code-block:: python
 
-    class PytorchTrainable(tune.Trainable):
-        """Train a Pytorch ConvNet."""
+    from time import sleep
+    import ray
+    from ray import tune
+    from ray.tune.tuner import Tuner
 
+
+    def expensive_setup():
+        print("EXPENSIVE SETUP")
+        sleep(1)
+
+
+    class QuadraticTrainable(tune.Trainable):
         def setup(self, config):
-            self.train_loader, self.test_loader = get_data_loaders()
-            self.model = ConvNet()
-            self.optimizer = optim.SGD(
-                self.model.parameters(),
-                lr=config.get("lr", 0.01),
-                momentum=config.get("momentum", 0.9))
+            self.config = config
+            expensive_setup()  # use reuse_actors=True to only run this once
+            self.max_steps = 5
+            self.step_count = 0
+
+        def step(self):
+            # Extract hyperparameters from the config
+            h1 = self.config["hparam1"]
+            h2 = self.config["hparam2"]
+
+            # Compute a simple quadratic objective where the optimum is at hparam1=3 and hparam2=5
+            loss = (h1 - 3) ** 2 + (h2 - 5) ** 2
+
+            metrics = {"loss": loss}
+
+            self.step_count += 1
+            if self.step_count > self.max_steps:
+                metrics["done"] = True
+
+            # Return the computed loss as the metric
+            return metrics
 
         def reset_config(self, new_config):
-            for param_group in self.optimizer.param_groups:
-                if "lr" in new_config:
-                    param_group["lr"] = new_config["lr"]
-                if "momentum" in new_config:
-                    param_group["momentum"] = new_config["momentum"]
-
-            self.model = ConvNet()
+            # Update the configuration for a new trial while reusing the actor
             self.config = new_config
             return True
+
+
+    ray.init()
+
+
+    tuner_with_reuse = Tuner(
+        QuadraticTrainable,
+        param_space={
+            "hparam1": tune.uniform(-10, 10),
+            "hparam2": tune.uniform(-10, 10),
+        },
+        tune_config=tune.TuneConfig(
+            num_samples=10,
+            max_concurrent_trials=1,
+            reuse_actors=True,  # Enable actor reuse and avoid expensive setup
+        ),
+        run_config=ray.tune.RunConfig(
+            verbose=0,
+            checkpoint_config=ray.tune.CheckpointConfig(checkpoint_at_end=False),
+        ),
+    )
+    tuner_with_reuse.fit()
+
 
 
 Comparing Tune's Function API and Class API

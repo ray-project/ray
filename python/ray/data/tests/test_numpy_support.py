@@ -92,7 +92,10 @@ DATETIME64_NANOSEC_PRECISION = np.datetime64("2024-01-01T01:01:01.000000001", "n
 @pytest.mark.parametrize(
     "data,expected_output",
     [
-        ([DATETIME_DAY_PRECISION], np.array([DATETIME64_DAY_PRECISION])),
+        (
+            [DATETIME_DAY_PRECISION],
+            np.array([DATETIME64_DAY_PRECISION], dtype="datetime64[s]"),
+        ),
         ([DATETIME_HOUR_PRECISION], np.array([DATETIME64_HOUR_PRECISION])),
         ([DATETIME_MIN_PRECISION], np.array([DATETIME64_MIN_PRECISION])),
         ([DATETIME_SEC_PRECISION], np.array([DATETIME64_SEC_PRECISION])),
@@ -119,7 +122,10 @@ DATETIME64_NANOSEC_PRECISION = np.datetime64("2024-01-01T01:01:01.000000001", "n
                 dtype="datetime64[s]",
             ),
         ),
-        ([PANDAS_DAY_PRECISION], np.array([DATETIME64_DAY_PRECISION])),
+        (
+            [PANDAS_DAY_PRECISION],
+            np.array([DATETIME64_DAY_PRECISION], dtype="datetime64[s]"),
+        ),
         ([PANDAS_HOUR_PRECISION], np.array([DATETIME64_HOUR_PRECISION])),
         ([PANDAS_MIN_PRECISION], np.array([DATETIME64_MIN_PRECISION])),
         ([PANDAS_SEC_PRECISION], np.array([DATETIME64_SEC_PRECISION])),

@@ -36,7 +36,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     Project,
 )
-from ray.data._internal.numpy_support import is_valid_udf_return
+from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -359,7 +359,7 @@ def _validate_batch_output(batch: Block) -> None:
 
     if isinstance(batch, collections.abc.Mapping):
         for key, value in list(batch.items()):
-            if not is_valid_udf_return(value):
+            if not _is_valid_column_values(value):
                 raise ValueError(
                     f"Error validating {_truncated_repr(batch)}: "
                     "The `fn` you passed to `map_batches` returned a "

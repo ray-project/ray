@@ -18,7 +18,7 @@ from ray._private.state_api_test_utils import (
 )
 from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
+    async_wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
@@ -1019,7 +1019,7 @@ ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
         # Run the script
         run_string_as_driver(script.format(task_name=i))
 
-        await async_wait_for_condition_async_predicate(
+        await async_wait_for_condition(
             verify_tasks, task_name=f"f.{i}", retry_interval_ms=500
         )
 

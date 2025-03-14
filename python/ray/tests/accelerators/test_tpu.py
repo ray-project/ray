@@ -282,8 +282,21 @@ def test_empty_get_current_pod_name_returns_none():
 @pytest.mark.parametrize(
     "test_case",
     [
-        (4, "v4-16", 4),
+        # (number_chips_per_host, accl_type, expected_worker_count)
+        (4, "v2-4", 1),
+        (4, "v3-32", 4),
+        (4, "v4-8", 1),
+        (4, "v4-16", 2),
+        (8, "v5litepod-4", 1),
+        (8, "v5litepod-8", 1),
+        (8, "v5litepod-16", 2),
+        (8, "v5litepod-32", 4),
+        (4, "v5p-4", 1),
+        (4, "v5p-8", 1),
+        (4, "v5p-16", 2),
+        (8, "v6e-4", 1),
         (8, "v6e-8", 1),
+        (8, "v6e-16", 2),
     ],
 )
 @patch("glob.glob")

@@ -110,7 +110,9 @@ def test_callable_classes(shutdown_only):
 
     # map
     actor_reuse = ds.map(StatefulFn, concurrency=1).take()
-    assert sorted(extract_values("id", actor_reuse)) == list(range(10)), actor_reuse
+    assert sorted(extract_values("id", actor_reuse)) == [
+        [v] for v in list(range(10))
+    ], actor_reuse
 
     class StatefulFn:
         def __init__(self):

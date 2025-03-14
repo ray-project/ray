@@ -552,3 +552,19 @@ If you are using huggingface models, you can enable fast download by setting `HF
     deployment = LLMServer.as_deployment(llm_config.get_serve_options(name_prefix="vLLM:")).bind(llm_config)
     llm_app = LLMRouter.as_deployment().bind([deployment])
     serve.run(llm_app)
+
+Usage Data Collection
+--------------------------
+We collect usage data to improve Ray Serve LLM.
+We collect data about the following features and attributes:
+
+- model architecture used for serving
+- whether JSON mode is used
+- whether LoRA is used and how many LoRA weights are loaded initially at deployment time
+- whether autoscaling is used and the min and max replicas setup
+- tensor parallel size used
+- initial replicas count
+- GPU type used and number of GPUs used
+
+If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
+to disable it.

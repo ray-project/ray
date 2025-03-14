@@ -43,6 +43,22 @@ TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 
+# By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
+# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
+DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
+DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
+
+# Accelerators that are 4 chips per host: v2, v3, v4, v5p
+# Accelerators that are 8 chips per host: v5e, v6e
+SINGLE_HOST_8_CHIPS_TPU_TYPES = ("v5litepod", "v6e")
+
+# Accelerators that are 2 cores per chip: v2, v3, v4, v5p
+# Accelerators that are 1 core per chip: v5e, v6e
+SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
+
+# The valid TPU types.
+VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e")
+
 
 def _get_tpu_metadata(key: str) -> Optional[str]:
     """Poll and get TPU metadata."""
@@ -65,6 +81,29 @@ def _get_tpu_metadata(key: str) -> Optional[str]:
     except requests.RequestException as e:
         logging.debug("Unable to poll the TPU GCE Metadata: %s", e)
     return None
+
+
+def _accelerator_type_check(accelerator_type: str):
+    if not accelerator_type.startswith(VALID_TPU_TYPES):
+        raise ValueError(
+            f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
+        )
+
+
+def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
+    _accelerator_type_check(accelerator_type)
+    if accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPES):
+        return 8
+
+    return DEFAULT_TPU_NUM_CHIPS_PER_HOST
+
+
+def get_tpu_cores_per_chip(accelerator_type: str) -> int:
+    _accelerator_type_check(accelerator_type)
+    if accelerator_type.startswith(SINGLE_CORE_TPU_TYPES):
+        return 1
+
+    return DEFAULT_TPU_NUM_CORES_PER_CHIP
 
 
 class TPUAcceleratorManager(AcceleratorManager):
@@ -273,10 +312,16 @@ class TPUAcceleratorManager(AcceleratorManager):
     def get_num_workers_in_current_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
         tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
-        cores_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
+        chips_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
+        cores_per_chip = get_tpu_cores_per_chip(tpu_pod_type)  # Hard-coded map.
+        cores_per_host = chips_per_host * cores_per_chip
         if tpu_pod_type and cores_per_host > 0:
-            num_chips_or_cores = int(tpu_pod_type.split("-")[1])
-            return num_chips_or_cores // cores_per_host
+            num_cores = int(tpu_pod_type.split("-")[1])
+            num_workers = num_cores // cores_per_host
+            # If the chip count doesn't fill a full host, a sub-host is still treated as a host.
+            if num_cores % cores_per_host != 0:
+                num_workers += 1
+            return num_workers
         else:
             logging.debug("Could not get num workers in TPU pod.")
             return None

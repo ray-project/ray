@@ -11,7 +11,7 @@ More Ray ML Libraries
     raydp
     mars-on-ray
     modin/index
-    Ray Workflows (Alpha) <../workflows/index>
+    Ray Workflows (Deprecated) <../workflows/index>
 
 
 .. TODO: we added the three Ray Core examples below, since they don't really belong there.

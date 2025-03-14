@@ -1,7 +1,6 @@
 from collections import defaultdict
 from typing import Dict
 
-import conda
 import os
 import pytest
 import sys
@@ -272,6 +271,8 @@ def test_failed_task_unschedulable(shutdown_only):
 
 
 def test_failed_task_runtime_env_setup(shutdown_only):
+    import conda
+
     @ray.remote
     def f():
         pass

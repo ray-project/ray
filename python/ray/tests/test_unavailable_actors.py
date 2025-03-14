@@ -3,11 +3,12 @@ import pytest
 import sys
 import time
 import signal
+from typing import Tuple
 
 import ray
-from ray._private.test_utils import close_common_connections
 from ray.exceptions import ActorUnavailableError, ActorDiedError
-from typing import Tuple
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 @ray.remote
@@ -65,6 +66,29 @@ def sigkill_actor(actor):
     os.kill(pid, signal.SIGKILL)
 
 
+def _close_common_connections(pid: int):
+    """Closes ipv2 connections between the current process and the target process."""
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports.
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs.
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")
+
+
 @pytest.mark.parametrize(
     "caller",
     ["actor", "task", "driver"],
@@ -79,7 +103,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         task = a.slow_increment.remote(3, 5)
         # Break the grpc connection from this process to the actor process. The
         # next `ray.get` call should fail with ActorUnavailableError.
-        close_common_connections(pid)
+        _close_common_connections(pid)
         with pytest.raises(ActorUnavailableError, match="RpcError"):
             ray.get(task)
         # Since the remote() call happens *before* the break, the actor did receive the
@@ -91,7 +115,7 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
         # so it did not reach the actor. The actor is still in the previous state and
         # the side effects are not observable. Regardless, the method call `.remote()`
         # itself won't raise an error.
-        close_common_connections(pid)
+        _close_common_connections(pid)
         task2 = a.slow_increment.remote(5, 0.1)
         with pytest.raises(ActorUnavailableError, match="RpcError"):
             ray.get(task2)

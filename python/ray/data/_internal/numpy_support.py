@@ -1,47 +1,29 @@
-import collections
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Union
+from typing import Any, List
 
 import numpy as np
 
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
+from ray.air.util.tensor_extensions.utils import (
+    create_ragged_ndarray,
+    is_ndarray_like,
+)
 from ray.data._internal.util import _truncated_repr
 
 logger = logging.getLogger(__name__)
 
 
-def is_array_like(value: Any) -> bool:
-    """Checks whether objects are array-like, excluding numpy scalars."""
-
-    return hasattr(value, "__array__") and hasattr(value, "__len__")
-
-
-def is_valid_udf_return(udf_return_col: Any) -> bool:
+def _is_valid_column_values(column_values: Any) -> bool:
     """Check whether a UDF column is valid.
 
     Valid columns must either be a list of elements, or an array-like object.
     """
 
-    return isinstance(udf_return_col, list) or is_array_like(udf_return_col)
-
-
-def is_nested_list(udf_return_col: List[Any]) -> bool:
-    for e in udf_return_col:
-        if isinstance(e, list):
-            return True
-    return False
-
-
-def validate_numpy_batch(batch: Union[Dict[str, np.ndarray], Dict[str, list]]) -> None:
-    if not isinstance(batch, collections.abc.Mapping) or any(
-        not is_valid_udf_return(col) for col in batch.values()
-    ):
-        raise ValueError(
-            "Batch must be an ndarray or dictionary of ndarrays when converting "
-            f"a numpy batch to a block, got: {type(batch)} "
-            f"({_truncated_repr(batch)})"
-        )
+    return (
+        isinstance(column_values, list)
+        or isinstance(column_values, np.ndarray)
+        or is_ndarray_like(column_values)
+    )
 
 
 def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
@@ -114,8 +96,8 @@ def _convert_to_datetime64(dt: datetime, precision: str) -> np.datetime64:
         return np.datetime64(dt).astype(f"datetime64[{precision}]")
 
 
-def _convert_datetime_list_to_array(datetime_list: List[datetime]) -> np.ndarray:
-    """Convert a list of datetime objects to a NumPy array of datetime64 with proper
+def _convert_datetime_to_np_datetime(datetime_list: List[datetime]) -> np.ndarray:
+    """Convert a list of datetime objects to a NumPy array of datetime64 with nanosecond
     precision.
 
     Args:
@@ -159,7 +141,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
             return np.expand_dims(column_values[0], axis=0)
 
         if all(isinstance(elem, datetime) for elem in column_values):
-            return _convert_datetime_list_to_array(column_values)
+            return _convert_datetime_to_np_datetime(column_values)
 
         # Try to convert list values into an numpy array via
         # np.array(), so users don't need to manually cast.
@@ -167,8 +149,8 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         # `str` are also Iterable.
         try:
             # Convert array-like objects (like torch.Tensor) to `np.ndarray`s
-            if all(is_array_like(e) for e in column_values):
-                # Use np.asarray() instead of np.array() to avoid copying if possible.
+            if all(is_ndarray_like(e) for e in column_values):
+                # Use `np.asarray` instead of `np.array` to avoid copying if possible.
                 column_values = [np.asarray(e) for e in column_values]
 
             shapes = set()
@@ -212,10 +194,10 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 f"({_truncated_repr(column_values)}): {e}."
             ) from e
 
-    elif is_array_like(column_values):
+    elif is_ndarray_like(column_values):
         # Converts other array-like objects such as torch.Tensor.
         try:
-            # Use np.asarray() instead of np.array() to avoid copying if possible.
+            # Use `np.asarray` instead of `np.array` to avoid copying if possible.
             return np.asarray(column_values)
         except Exception as e:
             logger.error(

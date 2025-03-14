@@ -20,9 +20,7 @@ def create_ray_cluster(_tracing_startup_hook=None):
 
 def create_job_manager(ray_cluster, tmp_path):
     address_info = ray_cluster
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
+    gcs_aio_client = GcsAioClient(address=address_info["gcs_address"])
     return JobManager(gcs_aio_client, tmp_path)
 
 

@@ -106,8 +106,8 @@
 /src/ray/ray_exported_symbols.lds @aslonnie
 
 # Ray usage stats
-/python/ray/_private/usage/ @richardliaw @rkooo567 @jjyao
-/python/ray/dashboard/modules/usage_stats/ @richardliaw @rkooo567 @jjyao
+/python/ray/_private/usage/ @edoakes @richardliaw @jjyao
+/python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw @jjyao
 
 
 # ==== Build and CI ====

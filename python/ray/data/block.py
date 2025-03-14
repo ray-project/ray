@@ -414,9 +414,9 @@ class BlockAccessor:
     @classmethod
     def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
         """Create a Pandas block from user-facing data formats."""
-        from ray.data._internal.pandas_block import PandasBlockAccessor
+        from ray.data._internal.pandas_block import PandasBlockBuilder
 
-        return PandasBlockAccessor.numpy_to_block(batch)
+        return PandasBlockBuilder._table_from_pydict(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":

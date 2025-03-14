@@ -194,3 +194,20 @@ You can also make calls to deployed models that have an OpenAI compatible API en
 
     ds = processor(ds)
     print(ds.take_all())
+
+Usage Data Collection
+--------------------------
+
+Data for the following features and attributes is collected to improve Ray Data LLM:
+
+- config name used for building the llm processor
+- number of concurrent users for data parallelism
+- batch size of requests
+- model architecture used for building vLLMEngineProcessor
+- task type used for building vLLMEngineProcessor
+- engine arguments used for building vLLMEngineProcessor
+- tensor parallel size and pipeline parallel size used
+- GPU type used and number of GPUs used
+
+If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
+to turn it off.

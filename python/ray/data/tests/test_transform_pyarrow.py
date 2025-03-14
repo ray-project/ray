@@ -16,6 +16,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     try_combine_chunked_columns,
     unify_schemas,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    shuffle,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -44,6 +45,20 @@ def test_try_defragment_table():
 
     assert len(dt["id"].chunks) == 1
     assert dt == t
+
+
+def test_shuffle():
+    t = pa.Table.from_pydict(
+        {
+            "index": pa.array(list(range(10))),
+        }
+    )
+
+    shuffled = shuffle(t, seed=0xDEED)
+
+    assert shuffled == pa.Table.from_pydict(
+        {"index": pa.array([4, 3, 6, 8, 7, 1, 5, 2, 9, 0])}
+    )
 
 
 def test_arrow_concat_empty():

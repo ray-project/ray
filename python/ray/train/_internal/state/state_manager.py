@@ -1,11 +1,12 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import ray
 from ray.data import Dataset
 from ray.train._internal.state.schema import (
+    ActorStatusEnum,
     RunStatusEnum,
     TrainDatasetInfo,
     TrainRunInfo,
@@ -37,6 +38,8 @@ class TrainRunStateManager:
         datasets: Dict[str, Dataset],
         worker_group: WorkerGroup,
         start_time_ms: float,
+        controller_log_file_path: str,
+        resources: List[Dict[str, float]],
         status_detail: str = "",
     ) -> None:
         """Collect Train Run Info and report to StateActor."""
@@ -50,7 +53,7 @@ class TrainRunStateManager:
         def collect_train_worker_info():
             train_context = ray.train.get_context()
             core_context = ray.runtime_context.get_runtime_context()
-
+            worker_log_file_path = ray._private.worker.global_worker.get_err_file_path()
             return TrainWorkerInfo(
                 world_rank=train_context.get_world_rank(),
                 local_rank=train_context.get_local_rank(),
@@ -60,6 +63,9 @@ class TrainRunStateManager:
                 node_ip=ray.util.get_node_ip_address(),
                 gpu_ids=ray.get_gpu_ids(),
                 pid=os.getpid(),
+                resources=resources[0],
+                worker_log_file_path=worker_log_file_path,
+                status=ActorStatusEnum.ALIVE,
             )
 
         futures = [
@@ -97,6 +103,8 @@ class TrainRunStateManager:
             start_time_ms=start_time_ms,
             run_status=run_status,
             status_detail=status_detail,
+            controller_log_file_path=controller_log_file_path,
+            resources=resources,
         )
 
         # Clear the cached info to avoid registering the same run twice

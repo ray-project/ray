@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import subprocess
 import urllib
 from pathlib import Path
@@ -141,6 +142,9 @@ def test_get_filesystem_invalid(shutdown_only, tmp_path):
         ray.init(storage="blahblah://bad")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Fails on Windows + Deprecating storage"
+)
 def test_get_filesystem_remote_workers(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "foo/bar")
     ray.init(storage=path, num_gpus=1)

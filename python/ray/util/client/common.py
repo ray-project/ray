@@ -742,6 +742,7 @@ def _id_is_newer(id1: int, id2: int) -> bool:
     still be used to replace the one in cache.
     """
     diff = abs(id2 - id1)
+    # Int32 max is also the maximum number of simultaneous in-flight requests.
     if diff > (INT32_MAX // 2):
         # Rollover likely occurred. In this case the smaller ID is newer
         return id1 < id2

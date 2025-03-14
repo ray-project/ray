@@ -460,7 +460,10 @@ message TaskSpec {
   bytes job_id = 5;
   // Task ID of the task.
   bytes task_id = 6;
-  // Task ID of the parent task.
+  // Task ID of the parent task. If the parent is a normal task, it will be the task's ID.
+  // If the parent runs in a concurrent actor (async actor or threaded actor),
+  // it will be the actor's creation task ID.
+  // See https://github.com/ray-project/ray/pull/32157 for more context.
   bytes parent_task_id = 7;
   // A count of the number of tasks submitted by the parent task before this one.
   uint64 parent_counter = 8;

@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Dict, Any, Optional, Type, Union
 # Third-party imports
 from pydantic import ValidationError as PydanticValidationError
 from ray import serve
-from ray._private.utils import import_attr
+from ray._common.utils import import_attr
 
 # Local imports
 from ray.llm._internal.serve.configs.constants import (
@@ -443,7 +443,7 @@ class LLMServer(_LLMServerBase):
         await super().__init__(llm_config)
 
         self._engine_cls = engine_cls or self._default_engine_cls
-        self.engine = self._get_engine_class(llm_config)
+        self.engine = self._get_engine_class(self._llm_config)
         await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         self.image_retriever = (
@@ -452,7 +452,7 @@ class LLMServer(_LLMServerBase):
             else self._default_image_retriever_cls()
         )
 
-        multiplex_config = llm_config.multiplex_config()
+        multiplex_config = self._llm_config.multiplex_config()
         if model_downloader:
             self.model_downloader = model_downloader
         elif multiplex_config:
@@ -470,9 +470,6 @@ class LLMServer(_LLMServerBase):
             )(lambda lora_model_id: self._load_model(lora_model_id))
 
         self.response_postprocessor = ResponsePostprocessor()
-
-        # Push telemetry reports for the model in the current deployment.
-        push_telemetry_report_for_all_models(all_models=[llm_config])
 
     @property
     def _get_engine_class(self) -> VLLMEngine:
@@ -493,6 +490,12 @@ class LLMServer(_LLMServerBase):
 
     async def _start_engine(self):
         await self.engine.start()
+
+        # Push telemetry reports for the model in the current deployment.
+        # Note: the model architecture is only available after node initialized and the
+        # engine is started.
+        if self._llm_config.model_architecture:
+            push_telemetry_report_for_all_models(all_models=[self._llm_config])
 
     async def _predict(
         self,
