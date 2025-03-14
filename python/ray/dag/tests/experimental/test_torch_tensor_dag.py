@@ -11,7 +11,6 @@ import ray.cluster_utils
 import ray.experimental.collective as collective
 import torch
 import time
-from ray.air._internal import torch_utils
 from ray.dag import InputNode
 from ray.exceptions import RayChannelError, RayTaskError
 from ray.dag.output_node import MultiOutputNode
@@ -19,6 +18,7 @@ from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )
+from ray.experimental.channel.utils import get_default_torch_device
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray._private.test_utils import (
@@ -40,7 +40,7 @@ USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 @ray.remote
 class TorchTensorWorker:
     def __init__(self):
-        self.device = torch_utils.get_devices()[0]
+        self.device = get_default_torch_device(allow_cpu=True)
 
     def init_distributed(self, world_size, rank):
         torch.distributed.init_process_group(
@@ -569,7 +569,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = torch_utils.get_devices()[0]
+            self._device = get_default_torch_device(allow_cpu=True)
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -703,7 +703,7 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = torch_utils.get_devices()[0]
+            self._device = get_default_torch_device(allow_cpu=True)
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
@@ -850,7 +850,7 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
                 rank == expected_rank
             ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
             self._rank = rank
-            self._device = torch_utils.get_devices()[0]
+            self._device = get_default_torch_device(allow_cpu=True)
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
             actor_ids = [a._ray_actor_id for a in self._actor_handles]
