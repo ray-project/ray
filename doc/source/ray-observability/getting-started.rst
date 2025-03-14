@@ -618,6 +618,8 @@ To get the most out of Flow Insight:
 
 Flow Insight is a powerful tool for understanding, debugging, and optimizing Ray applications,
 providing insights into both the logical structure and physical deployment of your distributed workloads.
+
+
 .. _dash-overview:
 
 Overview view
