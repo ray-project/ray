@@ -183,8 +183,8 @@ class LoggingConfig(BaseModel):
         for attr in v:
             if attr not in LOGRECORD_STANDARD_ATTRS:
                 raise ValueError(
-                    f"Got '{attr}' for additional_log_standard_attrs. "
-                    f"Additional log standard attrs must be one of {LOGRECORD_STANDARD_ATTRS}."
+                    f"Unknown attribute '{attr}'. "
+                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
                 )
         return list(set(v))
 

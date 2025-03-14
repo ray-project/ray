@@ -129,7 +129,7 @@ class ServeFormatter(TextFormatter):
         validate: bool = True,
     ):
         super().__init__(fmt, datefmt, style, validate)
-        self.component_log_fmt = self.COMPONENT_LOG_FMT.format(
+        self.component_log_fmt = ServeFormatter.COMPONENT_LOG_FMT.format(
             component_name=component_name, component_id=component_id
         )
 
