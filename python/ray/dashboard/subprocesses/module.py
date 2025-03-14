@@ -5,7 +5,6 @@ import inspect
 import logging
 import sys
 from dataclasses import dataclass
-import os
 import setproctitle
 import multiprocessing
 
@@ -62,7 +61,6 @@ class SubprocessModule(abc.ABC):
         self._parent_process_pid = parent_process_pid
         # Lazy init
         self._gcs_aio_client = None
-        self._parent_process_death_detection_task = None
 
     @staticmethod
     def is_minimal_module():
@@ -129,19 +127,6 @@ class SubprocessModule(abc.ABC):
             content_type="application/text",
         )
 
-    async def _detect_parent_process_death(self):
-        """
-        Detect parent process death by checking if ppid is still the same.
-        """
-        while True:
-            ppid = os.getppid()
-            if ppid != self._parent_process_pid:
-                logger.warning(
-                    f"Parent process {self._parent_process_pid} died because ppid changed to {ppid}. Exiting..."
-                )
-                sys.exit()
-            await asyncio.sleep(1)
-
 
 async def run_module_inner(
     cls: type[SubprocessModule],
@@ -159,9 +144,6 @@ async def run_module_inner(
 
     try:
         module = cls(config, parent_process_pid)
-        module._parent_process_death_detection_task = asyncio.create_task(
-            module._detect_parent_process_death()
-        )
         await module.run()
         ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
