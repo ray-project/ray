@@ -1,0 +1,43 @@
+# RayTurbo CI conditional testing rules definition files
+#
+# Comment content, after '#', will be ignored.
+# Empty lines will be ignored too.
+#
+#   dir/  # Directory to match
+#   file  # File to match
+#   dir/*.py  # Pattern to match, using fnmatch, matches dir/a.py dir/dir/b.py or dir/.py
+#   @ tag1 tag2 tag3 # Tags to emit for a rule. A rule without tags is a skipping rule.
+#
+#   ;  # Semicolon to separate rules
+#
+# These rules run before
+
+anyscale/go/
+@ gotools
+;
+
+anyscale/ci/buildkite/ml.rayci.yml
+python/ray/anyscale/train/
+@ ml ml-turbo
+;
+
+anyscale/ci/buildkite/serve.rayci.yml
+@ serve
+;
+
+anyscale/ci/buildkite/data.rayci.yml
+python/ray/anyscale/data/
+@ data data-turbo ml ml-turbo train linux_wheels
+;
+
+anyscale/ci/buildkite/core.rayci.yml
+python/ray/anyscale/
+@ python core-turbo linux_wheels
+
+anyscale/ci/buildkite/rayturbo.rayci.yml
+python/ray/anyscale/safetensors/
+@ safetensors
+
+anyscale/
+@ docker tools
+;

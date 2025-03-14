@@ -82,9 +82,9 @@ class EliminateBuildOutputBlocks(ZeroCopyMapFusionRule):
                 next_fn = transform_fns[i + 1]
                 if (
                     prev_fn.output_type == MapTransformFnDataType.Block
+                    and prev_fn.category == MapTransformFnCategory.DataProcess
                     and next_fn.input_type == MapTransformFnDataType.Block
                 ):
-                    assert prev_fn.category == MapTransformFnCategory.DataProcess
                     drop = True
             if not drop:
                 new_transform_fns.append(cur_fn)

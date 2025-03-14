@@ -752,7 +752,8 @@ ray_cc_library(
         "src/ray/gcs/gcs_server/gcs_server.cc",
         "src/ray/gcs/gcs_server/gcs_task_manager.cc",
     ],
-    hdrs = [
+    hdrs =[
+        "src/ray/anyscale/gcs/gcs_server/gcs_server_io_context_policy.h",
         "src/ray/gcs/gcs_server/gcs_actor_manager.h",
         "src/ray/gcs/gcs_server/gcs_actor_scheduler.h",
         "src/ray/gcs/gcs_server/gcs_autoscaler_state_manager.h",
@@ -790,6 +791,7 @@ ray_cc_library(
         ":raylet_client_lib",
         ":scheduler",
         ":worker_rpc",
+        "//src/ray/common:ray_syncer",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/util:counter_map",
         "//src/ray/util:thread_checker",

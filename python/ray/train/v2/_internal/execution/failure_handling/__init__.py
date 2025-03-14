@@ -14,3 +14,7 @@ __all__ = [
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.
+
+from ray.anyscale.train._internal.execution.failure_handling.factory import (  # noqa: E402, E501, F811, isort:skip
+    create_failure_policy,
+)

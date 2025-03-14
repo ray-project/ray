@@ -30,6 +30,7 @@ class ShuffleStrategy(str, enum.Enum):
 
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
+    HASH_SHUFFLE = "hash_shuffle"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -74,6 +75,10 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 
 DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
     "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+)
+
+DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
+    "RAY_DATA_MAX_HASH_SHUFFLE_AGGREGATORS", 64
 )
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
@@ -343,6 +348,49 @@ class DataContext:
     pipeline_push_based_shuffle_reduce_tasks: bool = True
 
     ################################################################
+    # Hash-based shuffling configuration
+    ################################################################
+
+    # Default hash-shuffle parallelism level (will be used when not
+    # provided explicitly)
+    default_hash_shuffle_parallelism = DEFAULT_MIN_PARALLELISM
+
+    # Max number of aggregating actors that could be provisioned
+    # to perform aggregations on partitions produced during hash-shuffling
+    #
+    # When unset defaults to `DataContext.min_parallelism`
+    max_hash_shuffle_aggregators: Optional[int] = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+    # Max number of *concurrent* hash-shuffle finalization tasks running
+    # at the same time. This config is helpful to control concurrency of
+    # finalization tasks to prevent single aggregator running multiple tasks
+    # concurrently (for ex, to prevent it failing w/ OOM)
+    #
+    # When unset defaults to `DataContext.max_hash_shuffle_aggregators`
+    max_hash_shuffle_finalization_batch_size: Optional[int] = None
+
+    # Following CPU allocations for aggregating actors of
+    # Join/Shuffle/Aggregate operators are calculated as:
+    #
+    #   num_cpus (per partition) = CPU budget / # partitions
+    #
+    # Assuming:
+    #
+    #   - Default number of partitions:
+    #       - Join: 64 (no default)
+    #       - Shuffle: 64 (no default)
+    #       - Aggregate: 200 (defaults to `DataContext.min_default_parallelism`)
+    #
+    #   - Total operator's CPU budget with default settings (ie operator executed with
+    #     default settings should require no more than that).
+    #       - Join: 8 cores
+    #       - Shuffle: 8 cores
+    #       - Aggregate: 4 cores
+    #
+    # These CPU budgets are derived such that Ray Data pipeline could run on a
+    # single node (using the default settings).
+    default_join_operator_actor_num_cpus_per_partition: float = 0.125
+    default_hash_shuffle_operator_actor_num_cpus_per_partition: float = 0.05
+    default_hash_aggregate_operator_actor_num_cpus_per_partition: float = 0.025
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (

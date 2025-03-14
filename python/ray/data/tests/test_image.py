@@ -80,9 +80,12 @@ class TestReadImages:
         ]
 
         if ignore_missing_paths:
-            ds = ray.data.read_images(paths, ignore_missing_paths=ignore_missing_paths)
+            ds = ray.data.read_images(
+                paths, include_paths=True, ignore_missing_paths=ignore_missing_paths
+            )
+            paths = [row["path"] for row in ds.take_all()]
             # example:// directive redirects to /ray/python/ray/data/examples/data
-            assert len(ds.input_files()) == 1 and ds.input_files()[0].endswith(
+            assert len(paths) == 1 and paths[0].endswith(
                 "ray/data/examples/data/image-datasets/simple/image1.jpg",
             )
         else:
