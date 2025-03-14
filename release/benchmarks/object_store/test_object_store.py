@@ -8,7 +8,7 @@ import os
 from time import perf_counter
 from tqdm import tqdm
 
-NUM_NODES = 50
+NUM_NODES = 3
 OBJECT_SIZE = 2**30
 
 
