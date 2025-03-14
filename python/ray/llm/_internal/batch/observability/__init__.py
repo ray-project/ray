@@ -3,7 +3,7 @@ from ray.llm._internal.common.observability.logging_utils import (
     disable_datasets_logger,
     disable_vllm_custom_ops_logger_on_cpu_nodes,
 )
-from ray.llm._internal.serve.observability.logging.setup import (
+from ray.llm._internal.batch.observability.logging.setup import (
     setup_logging,
 )
 
