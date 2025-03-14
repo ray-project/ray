@@ -416,7 +416,208 @@ Key Features
 For more in-depth information, please refer to the complete
 :ref:`virtual-cluster-index` documentation.
 
+Flow Insight View
+-----------------
 
+The Flow Insight view provides a powerful visualization of your Ray application's
+execution flow, helping you understand the relationships between actors, tasks, and
+data transfers in your distributed application. This view offers both logical and
+physical perspectives of your application's execution, making it easier to analyze
+performance, identify bottlenecks, and optimize your Ray workloads.
+
+Key Features
+~~~~~~~~~~~~
+
+**Dual Visualization Modes:**
+
+- **Logical View:** Displays the call graph between functions and actors, showing the control flow and data dependencies in your application.
+
+- **Physical View:** Shows the physical distribution of actors across nodes with their resource usage and placement groups.
+
+**Interactive Exploration:**
+
+- **Zoom and Pan:** Navigate through complex graphs with intuitive zoom and pan controls.
+
+- **Element Selection:** Click on any node to view detailed information in the info card.
+
+- **Highlighting:** Automatically highlights related nodes and edges when selecting an element.
+
+- **Search:** Filter the visualization to highlight elements matching your search term.
+
+**Resource Usage Visualization:**
+
+- Monitor CPU, memory, and GRAM usage of actors in the physical view.
+
+- View detailed GPU memory utilization for actors using GPU resources.
+
+- Select different resource metrics to visualize (GRAM, CPU, memory).
+
+**Context-Based Filtering:**
+
+- Filter actors based on custom context information registered by your application.
+
+- Visualize actors with different colors based on their context values.
+
+Enabling Flow Insight
+~~~~~~~~~~~~~~~~~~~~~
+
+To enable Flow Insight, set the `RAY_FLOW_INSIGHT` environment variable to "1" before starting your Ray cluster.
+
+Accessing Flow Insight
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+.. image:: ./images/flow-insight-entry.jpg
+    :align: center
+    :alt: Flow Insight View screenshot
+
+
+To access the Flow Insight view, click on the "Insight" link in the Jobs view for a specific job.
+This will open the Flow Insight visualization for that job, showing the execution graph and
+relationships between components.
+
+Logical View
+~~~~~~~~~~~~
+
+
+.. image:: ./images/flow-insight-logical-view.jpg
+    :align: center
+    :alt: Flow Insight View screenshot
+
+
+The logical view displays the call graph of your Ray application, showing the relationships
+between functions, actors, and methods. This view helps you understand the control flow
+and data dependencies in your application.
+
+- **Nodes:** Represent functions, actors, and methods in your application.
+- **Edges:** Show the call relationships and data transfers between nodes.
+- **Edge Thickness:** Indicates the frequency or volume of calls/data transfers.
+
+The logical view is particularly useful for understanding the high-level structure of your
+application and identifying communication patterns between components.
+
+Physical View
+~~~~~~~~~~~~~
+
+
+.. image:: ./images/flow-insight-physical-view.jpg
+    :align: center
+    :alt: Flow Insight View screenshot
+
+
+The physical view shows how actors are distributed across nodes in your Ray cluster,
+organized by placement groups. This view helps you understand the physical deployment
+of your application and resource utilization.
+
+- **Nodes:** Represent physical machines in your Ray cluster.
+- **Placement Groups:** Show how actors are grouped together for locality.
+- **Actor Boxes:** Display individual actors with their resource usage.
+- **Color Coding:** Indicates resource utilization levels or context-based grouping.
+
+The physical view is valuable for identifying resource bottlenecks, understanding actor
+placement, and optimizing resource utilization in your Ray cluster.
+
+Resource Visualization
+~~~~~~~~~~~~~~~~~~~~~~
+
+Flow Insight provides detailed resource usage visualization for your Ray application:
+
+- **CPU Usage:** View CPU utilization for each actor and node.
+- **Memory Usage:** Monitor memory consumption across your application.
+- **GPU Usage:** Track GPU memory utilization for actors using GPUs.
+- **Resource Selection:** Switch between different resource metrics to visualize.
+
+This helps you identify resource-intensive components and optimize resource allocation
+in your Ray application.
+
+Context-Based Filtering
+~~~~~~~~~~~~~~~~~~~~~~~
+
+You can register custom context information for your actors to enable context-based
+filtering and visualization in the Flow Insight view. This is particularly useful for
+categorizing actors by their role, status, or other application-specific attributes.
+
+To register context information for an actor:
+
+.. code-block:: python
+
+    import ray
+    from ray.util.insight import register_current_context, async_register_current_context
+    
+    @ray.remote
+    class MyActor:
+        def __init__(self, role):
+            # Register context synchronously
+            register_current_context({"role": role, "status": "initialized"})
+            
+        async def update_status(self, status):
+            # Register context asynchronously
+            await async_register_current_context({"status": status})
+            
+        def process(self):
+            # Update context with current processing information
+            register_current_context({"processing": True})
+            # ... processing logic ...
+            register_current_context({"processing": False})
+
+In the Flow Insight physical view, you can then select the context key (e.g., "role" or "status")
+to color-code actors based on their context values, making it easy to identify actors with
+specific roles or states.
+
+Info Card
+~~~~~~~~~
+
+When you click on an element in either the logical or physical view, the info card displays
+detailed information about that element:
+
+- **For Actors:**
+  - Basic information (name, ID, language)
+  - State and PID
+  - GPU devices and memory usage
+  - Methods implemented by the actor
+  - Callers and callees (who calls this actor and who this actor calls)
+  - Data dependencies
+
+- **For Methods:**
+  - Basic information (name, actor, language)
+  - Callers and callees
+  - Data dependencies
+
+- **For Functions:**
+  - Basic information (name, language)
+  - Callers and callees
+  - Data dependencies
+
+The info card helps you understand the detailed characteristics and relationships of
+individual components in your Ray application.
+
+Search Functionality
+~~~~~~~~~~~~~~~~~~~~
+
+The search functionality allows you to filter the visualization to show only elements
+matching your search term. This is particularly useful for finding specific actors,
+methods, or functions in complex applications.
+
+Simply enter your search term in the search box, and the visualization will highlight
+matching elements while fading out non-matching ones.
+
+Best Practices
+~~~~~~~~~~~~~~
+
+To get the most out of Flow Insight:
+
+1. **Enable Flow Insight:** Set the `RAY_FLOW_INSIGHT` environment variable to "1" before starting your Ray cluster.
+
+2. **Register Context Information:** Use `register_current_context` or `async_register_current_context` to provide additional filtering capabilities.
+
+3. **Use Meaningful Names:** Give your actors and tasks descriptive names to make the visualization more informative.
+
+4. **Explore Both Views:** Switch between logical and physical views to understand both the structural and deployment aspects of your application.
+
+5. **Use Search and Filtering:** For complex applications, use search and context-based filtering to focus on specific components.
+
+Flow Insight is a powerful tool for understanding, debugging, and optimizing Ray applications,
+providing insights into both the logical structure and physical deployment of your distributed workloads.
 .. _dash-overview:
 
 Overview view
