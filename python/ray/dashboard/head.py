@@ -311,16 +311,10 @@ class DashboardHead:
                 cls for cls in subprocess_cls_list if cls.__name__ in modules_to_load
             ]
 
-        # Parallel start all modules.
         for cls in subprocess_cls_list:
             logger.info(f"Loading {SubprocessModule.__name__}: {cls}.")
             handle = SubprocessModuleHandle(loop, cls, config)
-            handle.start_module()
             handles.append(handle)
-
-        # Wait for all modules to be ready.
-        for handle in handles:
-            handle.wait_for_module_ready()
 
         logger.info(f"Loaded {len(handles)} subprocess modules: {handles}.")
         return handles
@@ -437,6 +431,13 @@ class DashboardHead:
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
+
+        # Parallel start all subprocess modules.
+        for handle in subprocess_module_handles:
+            handle.start_module()
+        # Wait for all subprocess modules to be ready.
+        for handle in subprocess_module_handles:
+            handle.wait_for_module_ready()
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
