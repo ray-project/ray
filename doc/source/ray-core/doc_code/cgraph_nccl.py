@@ -23,24 +23,6 @@ cdag = dag.experimental_compile()
 print(ray.get(cdag.execute(torch.zeros(10))))
 # __cgraph_cpu_to_gpu_end__
 
-# __cgraph_cpu_to_gpu_override_start__
-from ray.experimental.channel import ChannelContext
-
-
-@ray.remote(num_gpus=1)
-class GPUActor:
-    def __init__(self):
-        # Set the default device to CPU.
-        ctx = ChannelContext.get_current()
-        ctx.set_torch_device(torch.device("cpu"))
-
-    def process(self, tensor: torch.Tensor):
-        assert tensor.device.type == "cpu"
-        return tensor.shape
-
-
-# __cgraph_cpu_to_gpu_override_end__
-
 # __cgraph_nccl_setup_start__
 import torch
 import ray
