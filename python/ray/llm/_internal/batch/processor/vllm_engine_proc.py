@@ -178,7 +178,7 @@ def build_vllm_engine_processor(
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),
-            accelerator_anme=config.accelerator_name,
+            accelerator_name=config.accelerator_name,
         )
     )
 
