@@ -13,7 +13,6 @@ from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate, NumpyToT
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
-    COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
