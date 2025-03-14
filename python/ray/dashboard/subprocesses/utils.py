@@ -1,6 +1,7 @@
 import os
 import enum
 from typing import TypeVar
+from ray._private.utils import validate_socket_filename
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -33,14 +34,6 @@ def module_logging_filename(module_name: str, logging_filename: str) -> str:
 
 
 def get_socket_path(socket_dir: str, module_name: str) -> str:
-    socket_path = os.path.join(socket_dir, "dashboard_" + module_name)
-    # The max length of a Unix socket path is 108 bytes.
-    if len(socket_path) > 108:
-        # Discard the "dashboard_" prefix.
-        socket_path = os.path.join(socket_dir, module_name)
-    if len(socket_path) > 108:
-        raise ValueError(
-            f"Socket path {socket_path} is too long. "
-            "Please use a shorter module name or a shorter socket_dir."
-        )
+    socket_path = os.path.join(socket_dir, "dash_" + module_name)
+    validate_socket_filename(socket_path)
     return socket_path
