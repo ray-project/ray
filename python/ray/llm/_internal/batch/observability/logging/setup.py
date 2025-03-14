@@ -2,7 +2,6 @@ import logging
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter
-from ray.serve._private.logging_utils import ServeContextFilter
 
 
 def _configure_stdlib_logging():
@@ -13,7 +12,6 @@ def _configure_stdlib_logging():
 
     handler = logging.StreamHandler()
     handler.addFilter(CoreContextFilter())
-    handler.addFilter(ServeContextFilter())
     handler.setFormatter(JSONFormatter())
 
     root_logger = logging.getLogger()
