@@ -1,5 +1,5 @@
 from .local_limit import ApplyLocalLimitRule
-from .map_fusion import RedundantMapTransformPruning
+from .map_fusion import RedundantMapTransformPruning, FuseRepartitionOutputBlocks
 from .predicate_pushdown import PredicatePushdown
 from .projection_pushdown import ProjectionPushdown
 from .pushdown_count_files import PushdownCountFiles
@@ -10,4 +10,5 @@ __all__ = [
     "ProjectionPushdown",
     "PredicatePushdown",
     "RedundantMapTransformPruning",
+    "FuseRepartitionOutputBlocks",
 ]

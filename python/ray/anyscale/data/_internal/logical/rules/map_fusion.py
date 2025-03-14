@@ -301,3 +301,28 @@ class RedundantMapTransformPruning(ZeroCopyMapFusionRule):
                 return False
 
         return True
+
+
+class FuseRepartitionOutputBlocks(ZeroCopyMapFusionRule):
+    """This rule fuses BuildOutputBlocksMapTransformFn intended to repartition on
+    target_num_rows_per_block with the previous fn, if the previous fn is also
+    BuildOutputBlocksMapTransformFn.
+    """
+
+    def _optimize(self, transform_fns: List[MapTransformFn]) -> List[MapTransformFn]:
+        new_transform_fns = [transform_fns[0]]
+        for cur_fn in transform_fns[1:]:
+            prev_fn = new_transform_fns[-1]
+            if isinstance(cur_fn, BuildOutputBlocksMapTransformFn) and isinstance(
+                prev_fn, BuildOutputBlocksMapTransformFn
+            ):
+                assert (
+                    cur_fn.category
+                    == prev_fn.category
+                    == MapTransformFnCategory.PostProcess
+                )
+                prev_fn.set_target_num_rows_per_block(cur_fn.target_num_rows_per_block)
+            else:
+                new_transform_fns.append(cur_fn)
+
+        return new_transform_fns
