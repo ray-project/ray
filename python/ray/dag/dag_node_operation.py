@@ -88,7 +88,7 @@ class _DAGOperationGraphNode:
         operation: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        requires_nccl: bool,
+        requires_comm_backend: bool,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -101,12 +101,13 @@ class _DAGOperationGraphNode:
             task_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
-            requires_nccl: Whether this operation requires NCCL.
+            requires_comm_backend: Whether this operation requires communication
+            backend.
         """
         self.operation = operation
         self.task_idx = task_idx
         self.actor_handle = actor_handle
-        self.requires_nccl = requires_nccl
+        self.requires_comm_backend = requires_comm_backend
         # The in_edges and out_edges are dicts of tuples to strings.
         # Each tuple (the key) contains an integer `task_idx`, which can be
         # used to index into `idx_to_task` to get the corresponding task,
@@ -131,7 +132,7 @@ class _DAGOperationGraphNode:
             f"operation: {self.operation}, "
             f"task_idx: {self.task_idx}, "
             f"actor_handle: {self.actor_handle}, "
-            f"requires_nccl: {self.requires_nccl})"
+            f"requires_comm_backend: {self.requires_comm_backend})"
         )
 
     def __lt__(self, other: "_DAGOperationGraphNode"):
@@ -154,13 +155,13 @@ class _DAGOperationGraphNode:
         if self.actor_handle == other.actor_handle:
             # When both nodes belong to the same actor, use the default comparison.
             return compare(self, other)
-        elif self.is_nccl_op != other.is_nccl_op:
-            # When one node is a NCCL operation and the other is not, prioritize
-            # the non-NCCL operation.
-            return not self.is_nccl_op
+        elif self.is_comm_backend_op != other.is_comm_backend_op:
+            # When one node is a communication backend operation and the other is not, prioritize
+            # the non-communication backend operation.
+            return not self.is_comm_backend_op
         else:
-            # When either both nodes are NCCL operations or both nodes are not
-            # NCCL operations, use the default comparison.
+            # When either both nodes are communication backend operations or both nodes are not
+            # communication backend operations, use the default comparison.
             return compare(self, other)
 
     def __eq__(self, other: "_DAGOperationGraphNode"):
@@ -187,8 +188,8 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        If a node is not a NCCL collective, it is ready when it has a zero
-        in-degree. If it is a NCCL collective, it is ready when all the nodes
+        If a node is not a communication backend collective, it is ready when it has a zero
+        in-degree. If it is a communication backend collective, it is ready when all the nodes
         in its collective operation have zero in-degrees.
         """
         return self.in_degree == 0 and (
@@ -200,24 +201,28 @@ class _DAGOperationGraphNode:
         return self.operation.type == _DAGNodeOperationType.READ
 
     @property
-    def is_nccl_collective(self) -> bool:
+    def is_comm_backend_collective(self) -> bool:
         """
-        A node is a NCCL collective if it is a compute node and requires NCCL.
+        A node is a communication backend collective if it is a compute node and requires communication backend.
         """
         return (
-            self.operation.type == _DAGNodeOperationType.COMPUTE and self.requires_nccl
+            self.operation.type == _DAGNodeOperationType.COMPUTE
+            and self.requires_comm_backend
         )
 
     @property
-    def is_nccl_write(self) -> bool:
+    def is_comm_backend_write(self) -> bool:
         """
-        A node is a NCCL write if it is a write node and requires NCCL.
+        A node is a communication backend write if it is a write node and requires communication backend.
         """
-        return self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
+        return (
+            self.operation.type == _DAGNodeOperationType.WRITE
+            and self.requires_comm_backend
+        )
 
     @property
-    def is_nccl_op(self) -> bool:
-        return self.is_nccl_collective or self.is_nccl_write
+    def is_comm_backend_op(self) -> bool:
+        return self.is_comm_backend_collective or self.is_comm_backend_write
 
     def viz_str(self):
         """
@@ -262,7 +267,7 @@ def _push_candidate_node_if_ready(
 ) -> None:
     # Collective operations are ready when all the collective nodes have zero
     # in-degrees. Only one node per collective will be added as ready.
-    if node.is_nccl_collective:
+    if node.is_comm_backend_collective:
         for collective_node_metadata in node.collective_idxs:
             task_idx, op_type = collective_node_metadata
             collective_node = graph[task_idx][op_type]
@@ -289,18 +294,18 @@ def _select_next_nodes(
     For the implementation details, we maintain a priority queue for each actor,
     where the head of the priority queue is the node with the smallest `exec_task_idx`.
     When a node has a zero in-degree, it is added to the corresponding actor's
-    priority queue. For a node other than a NCCL collective node, it is ready to be
-    executed if it has a zero in-degree. For a NCCL collective node, it is ready to
+    priority queue. For a node other than a communication backend collective node, it is ready to be
+    executed if it has a zero in-degree. For a communication backend collective node, it is ready to
     be executed when all the nodes in its collective operation have zero in-degrees.
 
-    If a node is a NCCL collective node, it updates the `ready_collective_nodes` of
+    If a node is a communication backend collective node, it updates the `ready_collective_nodes` of
     all the nodes in its collective operation. Unless all the nodes in its collective
     group have zero in-degrees, this node is removed from the candidate list.
-    Eventually, exactly one NCCL collective node from its collective operation is
+    Eventually, exactly one communication backend collective node from its collective operation is
     selected from the candidate list.
 
-    If the selected node is a NCCL write node, select all the downstream NCCL
-    read nodes. If the selected node is a NCCL collective node, select all the NCCL
+    If the selected node is a communication backend write node, select all the downstream communication backend
+    read nodes. If the selected node is a communication backend collective node, select all the communication backend
     compute nodes in its collective operation.
 
     Args:
@@ -328,26 +333,28 @@ def _select_next_nodes(
         heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
     ]
 
-    if not top_priority_node.is_nccl_op:
-        # A non-NCCL operation node is picked.
+    if not top_priority_node.is_comm_backend_op:
+        # A non-communication backend operation node is picked.
         assert len(next_nodes) == 1
-    elif top_priority_node.is_nccl_write:
-        # a NCCL write node is picked. NCCL is a blocking operation, so we need
-        # to pick all the corresponding NCCL read nodes to avoid a deadlock.
+    elif top_priority_node.is_comm_backend_write:
+        # a communication backend write node is picked. communication backend is a blocking operation, so we need
+        # to pick all the corresponding communication backend read nodes to avoid a deadlock.
         for downstream_node_metadata in top_priority_node.out_edges:
             task_idx, op_type = downstream_node_metadata
             downstream_node = graph[task_idx][op_type]
             assert downstream_node.is_read
             next_nodes.append(downstream_node)
         assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
-    elif top_priority_node.is_nccl_collective:
-        # a NCCL collective node is picked. NCCL is a blocking operation, so we need
-        # to pick all the corresponding NCCL collective nodes in its collective
+    elif top_priority_node.is_comm_backend_collective:
+        # a communication backend collective node is picked. communication backend is a blocking operation, so we need
+        # to pick all the corresponding communication backend collective nodes in its collective
         # operation to avoid a deadlock.
         for collective_node_metadata in top_priority_node.collective_idxs:
             task_idx, op_type = collective_node_metadata
             collective_node = graph[task_idx][op_type]
-            assert collective_node.is_nccl_collective and collective_node.is_ready
+            assert (
+                collective_node.is_comm_backend_collective and collective_node.is_ready
+            )
             if collective_node != top_priority_node:
                 next_nodes.append(collective_node)
         assert len(next_nodes) == len(top_priority_node.collective_idxs)
@@ -455,7 +462,7 @@ def _build_dag_node_operation_graph(
                             "nccl"
                             if graph[task_idx][
                                 _DAGNodeOperationType.WRITE
-                            ].requires_nccl
+                            ].requires_comm_backend
                             else "shm",
                         )
                 continue
@@ -463,7 +470,7 @@ def _build_dag_node_operation_graph(
                 graph[task_idx][_DAGNodeOperationType.WRITE],
                 graph[downstream_task_idx][_DAGNodeOperationType.READ],
                 "nccl"
-                if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
+                if graph[task_idx][_DAGNodeOperationType.WRITE].requires_comm_backend
                 else "shm",
             )
 
@@ -677,13 +684,13 @@ def _generate_actor_to_execution_schedule(
     # Use topological sort algorithm to generate the execution schedule.
     while True:
         # Select a list of nodes to be executed. There are three cases:
-        # 1. If a selected node is not a NCCL operation, only itself is returned.
-        # 2. If a selected node is a NCCL write operation, the corresponding NCCL
+        # 1. If a selected node is not a communication backend operation, only itself is returned.
+        # 2. If a selected node is a communication backend write operation, the corresponding communication backend
         #    read operations are also returned.
-        # 3. If a selected node is a NCCL collective operation, all the nodes in
+        # 3. If a selected node is a communication backend collective operation, all the nodes in
         #    its collective operation are returned.
-        # In cases 1 and 3, all the selected nodes are ready. In case 2, the NCCL
-        # write node is ready, while the NCCL read nodes are not ready until their
+        # In cases 1 and 3, all the selected nodes are ready. In case 2, the communication backend
+        # write node is ready, while the communication backend read nodes are not ready until their
         # in-degrees are updated.
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
@@ -701,7 +708,7 @@ def _generate_actor_to_execution_schedule(
                 out_node.in_edges.pop((node.task_idx, node.operation.type))
                 if out_node.in_degree == 0 and out_node not in visited_nodes:
                     # If the downstream node is already visited, it has been added
-                    # to the execution schedule. They are the NCCL read nodes in
+                    # to the execution schedule. They are the communication backend read nodes in
                     # case 2.
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
@@ -723,8 +730,8 @@ def _generate_overlapped_execution_schedule(
     computation and communication.
 
     Currently, the algorithm generates a new schedule for each actor as follows:
-    For each NCCL read operation (i.e., recv), scan backwards to find the nearest
-    compute node to swap with so that the NCCL read operation can be overlapped
+    For each communication backend read operation (i.e., recv), scan backwards to find the nearest
+    compute node to swap with so that the communication backend read operation can be overlapped
     with computation.
 
     Collective operations are not yet supported.
@@ -746,30 +753,30 @@ def _generate_overlapped_execution_schedule(
         for i in range(len(overlapped_schedule)):
             if (
                 overlapped_schedule[i].operation.type == _DAGNodeOperationType.READ
-                and overlapped_schedule[i].requires_nccl
+                and overlapped_schedule[i].requires_comm_backend
             ):
-                # For each NCCL read operation (i.e., recv), scan backwards
+                # For each communication backend read operation (i.e., recv), scan backwards
                 # to find the nearest compute node to swap with so that
-                # the NCCL read operation can be overlapped with computation.
+                # the communication backend read operation can be overlapped with computation.
                 for j in range(i - 1, -1, -1):
                     if (
                         overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.COMPUTE
                     ):
                         # Found a desired compute operation, make the swap
-                        nccl_read_op = overlapped_schedule[i]
+                        comm_backend_read_op = overlapped_schedule[i]
                         prev_ops = overlapped_schedule[j:i]
                         overlapped_schedule[j + 1 : i + 1] = prev_ops
-                        overlapped_schedule[j] = nccl_read_op
+                        overlapped_schedule[j] = comm_backend_read_op
                         break
                     if (
                         overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.READ
                         or overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.WRITE
-                    ) and overlapped_schedule[j].requires_nccl:
-                        # Found a NCCL read/write operation, skip the overlap
-                        # optimization to keep relative order of NCCL operations
+                    ) and overlapped_schedule[j].requires_comm_backend:
+                        # Found a communication backend read/write operation, skip the overlap
+                        # optimization to keep relative order of communication backend operations
                         break
     return actor_to_overlapped_schedule
 
