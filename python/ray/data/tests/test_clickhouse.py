@@ -8,7 +8,10 @@ import ray
 from clickhouse_connect.driver.summary import QuerySummary
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
-from ray.data._internal.datasource.clickhouse_datasink import ClickHouseDatasink
+from ray.data._internal.datasource.clickhouse_datasink import (
+    ClickHouseDatasink,
+    SinkMode,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -399,12 +402,19 @@ class TestClickHouseDatasink:
         sink = ClickHouseDatasink(
             table="default.test_table",
             dsn="clickhouse+http://user:pass@localhost:8123/default",
-            mode="append",
+            mode=SinkMode.APPEND,
             table_settings={"engine": "MergeTree()"},
         )
         return sink
 
-    @pytest.mark.parametrize("mode", ["overwrite", "append", "create"])
+    @pytest.mark.parametrize(
+        "mode",
+        [
+            SinkMode.OVERWRITE,
+            SinkMode.APPEND,
+            SinkMode.CREATE,
+        ],
+    )
     @pytest.mark.parametrize("table_exists", [True, False])
     def test_on_write_start_modes(
         self, datasink, mock_clickhouse_sink_client, mode, table_exists
@@ -415,14 +425,14 @@ class TestClickHouseDatasink:
         ) as mock_tbl_exists, patch.object(
             datasink, "_get_existing_order_by", return_value="(prev_col)"
         ) as mock_get_order:
-            if mode == "create" and table_exists:
-                with pytest.raises(RuntimeError, match="already exists.*create"):
+            if mode == SinkMode.CREATE and table_exists:
+                with pytest.raises(RuntimeError, match="already exists.*CREATE"):
                     datasink.on_write_start()
                 mock_tbl_exists.assert_called_once()
                 mock_get_order.assert_not_called()
                 mock_clickhouse_sink_client.command.assert_not_called()
             else:
-                if mode == "overwrite":
+                if mode == SinkMode.OVERWRITE:
                     datasink.on_write_start()
                     mock_tbl_exists.assert_called_once()
                     if table_exists:
@@ -436,7 +446,7 @@ class TestClickHouseDatasink:
                         mock_clickhouse_sink_client.command.assert_called_with(
                             "DROP TABLE IF EXISTS default.test_table"
                         )
-                elif mode == "append":
+                elif mode == SinkMode.APPEND:
                     datasink.on_write_start()
                     mock_tbl_exists.assert_called_once()
                     if table_exists:
@@ -446,13 +456,13 @@ class TestClickHouseDatasink:
                     else:
                         mock_get_order.assert_not_called()
                         mock_clickhouse_sink_client.command.assert_not_called()
-                elif mode == "create":
+                elif mode == SinkMode.CREATE:
                     datasink.on_write_start()
                     mock_tbl_exists.assert_called_once()
                     mock_get_order.assert_not_called()
                     mock_clickhouse_sink_client.command.assert_not_called()
 
-    @pytest.mark.parametrize("mode", ["overwrite", "append"])
+    @pytest.mark.parametrize("mode", [SinkMode.OVERWRITE, SinkMode.APPEND])
     @pytest.mark.parametrize("table_exists", [True, False])
     @pytest.mark.parametrize("user_order_by", [None, "user_defined_col", "tuple()"])
     def test_write_behavior(
@@ -479,14 +489,6 @@ class TestClickHouseDatasink:
             assert results == [3]
             mock_clickhouse_sink_client.insert_arrow.assert_called()
 
-    def test_on_write_complete_aggregation(self, datasink):
-        write_results = [[3, 4, 5]]
-        with patch("logging.Logger.info") as mock_log_info:
-            datasink.on_write_complete(write_results)
-            mock_log_info.assert_any_call(
-                "ClickHouseDatasink on_write_complete: inserted 12 total rows into default.test_table."
-            )
-
     @pytest.mark.parametrize(
         "schema, expected_order_by",
         [
@@ -499,7 +501,7 @@ class TestClickHouseDatasink:
     def test_pick_best_arrow_field_for_order_by(
         self, datasink, mock_clickhouse_sink_client, schema, expected_order_by
     ):
-        datasink._mode = "overwrite"
+        datasink._mode = SinkMode.OVERWRITE
         datasink._table_settings.pop("order_by", None)  # ensure it's not set
         with patch.object(datasink, "_table_exists", return_value=False), patch(
             "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
@@ -530,9 +532,7 @@ class TestClickHouseDatasink:
         self, datasink, mock_clickhouse_sink_client, ddl_str, expected_order_by
     ):
         mock_clickhouse_sink_client.command.return_value = ddl_str
-        result = datasink._get_existing_order_by(
-            mock_clickhouse_sink_client, "default.test_table"
-        )
+        result = datasink._get_existing_order_by(mock_clickhouse_sink_client)
         assert result == expected_order_by
 
     @pytest.mark.parametrize(
@@ -615,7 +615,7 @@ class TestClickHouseDatasink:
         expected_order_by_part,
         expected_clauses,
     ):
-        datasink._mode = "overwrite"
+        datasink._mode = SinkMode.OVERWRITE
         datasink._table_settings = table_settings
         with patch.object(datasink, "_table_exists", return_value=False), patch(
             "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client

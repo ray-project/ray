@@ -35,7 +35,10 @@ from ray.air.util.tensor_extensions.arrow import (
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
-from ray.data._internal.datasource.clickhouse_datasink import ClickHouseDatasink
+from ray.data._internal.datasource.clickhouse_datasink import (
+    ClickHouseDatasink,
+    SinkMode,
+)
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
@@ -4068,7 +4071,7 @@ class Dataset:
         table: str,
         dsn: str,
         *,
-        mode: Literal["create", "append", "overwrite"] = "create",
+        mode: SinkMode = SinkMode.CREATE,
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
         table_settings: Optional[Dict[str, Any]] = None,
@@ -4093,7 +4096,7 @@ class Dataset:
                 ds.write_clickhouse(
                     table="default.my_table",
                     dsn="clickhouse+http://user:pass@localhost:8123/default",
-                    mode="overwrite",
+                    mode=ray.data.SinkMode.OVERWRITE,
                     table_settings={"engine": "ReplacingMergeTree()", "order_by": "id"}
                 )
 
@@ -4104,14 +4107,15 @@ class Dataset:
                 (e.g., "clickhouse+http://username:password@host:8123/default").
                 For more information, see `ClickHouse Connection String doc
                 <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
-            mode: One of "create", "append", or "overwrite":
+            mode: One of SinkMode.CREATE, SinkMode.APPEND, or
+                SinkMode.OVERWRITE:
 
-                * "create": Create a new table; fail if it already exists.
+                * SinkMode.CREATE: Create a new table; fail if it already exists.
 
-                * "append": Use an existing table if present, otherwise create one;
+                * SinkMode.APPEND: Use an existing table if present, otherwise create one;
                     data will be appended to the table.
 
-                * "overwrite": Drop an existing table (if any) and re-create it.
+                * SinkMode.OVERWRITE: Drop an existing table (if any) and re-create it.
 
             client_settings: Optional ClickHouse server settings to be used with the
                 session/every request. For more information, see
