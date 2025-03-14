@@ -22,8 +22,7 @@ class LightGBMTrainer(DataParallelTrainer):
 
         import ray.data
         import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback
-        from ray.train.lightgbm.v2 import LightGBMTrainer
+        from ray.train.lightgbm import RayTrainReportCallback, LightGBMTrainer
 
 
         def train_fn_per_worker(config: dict):
