@@ -790,7 +790,7 @@ def test_groupby_tabular_max(
     if (
         num_parts == 30
         and current.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE
-        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
+        and parse_version(get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
     ):
         # NOTE: When partitioning by large number of partitions some of these
         #       will be empty, hence resulting in the type deduced as a double
