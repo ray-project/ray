@@ -25,18 +25,27 @@ type ElementsPanelProps = {
   onElementSelect: (element: any) => void;
   selectedElementId: string | null;
   graphData: GraphData;
+  onSearchChange?: (searchTerm: string) => void;
 };
 
 const ElementsPanel = ({
   onElementSelect,
   selectedElementId,
   graphData,
+  onSearchChange,
 }: ElementsPanelProps) => {
   const [activeTab, setActiveTab] = useState("actors");
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedActors, setExpandedActors] = useState<Record<string, boolean>>(
     {},
   );
+
+  // Notify parent component when search term changes
+  useEffect(() => {
+    if (onSearchChange) {
+      onSearchChange(searchTerm);
+    }
+  }, [searchTerm, onSearchChange]);
 
   // Filter items based on search term
   const filterItems = useCallback(

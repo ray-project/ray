@@ -1,11 +1,13 @@
 import ray
 import time
+import os
 from collections import defaultdict
 import aiohttp.web
 import asyncio
 import socket
 import json
 from ray.experimental import internal_kv
+import ray.dashboard.consts as dashboard_consts
 
 
 @ray.remote
@@ -28,12 +30,20 @@ class _ray_internal_insight_monitor:
         self.function_counter = defaultdict(int)
 
         # Data flow tracking
-        self.data_flows = defaultdict(list)
+        self.data_flows = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
         self.object_events = defaultdict(lambda: defaultdict())
+
+        # Context info
+        self.context_info = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+        self.resource_usage = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(dict))
+        )
 
         # Start HTTP server
         self.app = aiohttp.web.Application()
         self.app.router.add_get("/get_call_graph_data", self.handle_get_call_graph_data)
+        self.app.router.add_get("/get_context_info", self.handle_get_context_info)
+        self.app.router.add_get("/get_resource_usage", self.handle_get_resource_usage)
         self.runner = None
         self.site = None
         self.node_ip_address = ray._private.services.get_node_ip_address()
@@ -70,6 +80,21 @@ class _ray_internal_insight_monitor:
         job_id = request.query.get("job_id", "default_job")
         data = self.get_call_graph_data(job_id)
         return aiohttp.web.json_response(data)
+
+    async def handle_get_context_info(self, request):
+        """Handle HTTP request for context info data."""
+        job_id = request.query.get("job_id", "default_job")
+        data = self.get_context(job_id)
+        return aiohttp.web.json_response(data)
+
+    async def handle_get_resource_usage(self, request):
+        """Handle HTTP request for resource usage data."""
+        job_id = request.query.get("job_id", "default_job")
+        data = self.get_resource_usage(job_id)
+        return aiohttp.web.json_response(data)
+
+    async def async_emit_call_record(self, call_record):
+        self.emit_call_record(call_record)
 
     def emit_call_record(self, call_record):
         job_id = call_record["job_id"]
@@ -196,73 +221,100 @@ class _ray_internal_insight_monitor:
                     {"source": source_id, "target": target_id, "count": count}
                 )
 
-        # Add data flows
-        for flow_data in self.data_flows.get(job_id, []):
-            source, target = flow_data["flow_key"].split("->")
+        # Add data flows with merged statistics
+        for flow_key, entry in self.data_flows.get(job_id, {}).items():
+            for argpos, flow_stats in entry.items():
+                source, target = flow_key.split("->")
 
-            # Get source ID
-            source_id = None
-            if source in self.methods.get(job_id, {}):
-                source_id = self.methods[job_id][source]["id"]
-            elif source in self.function_id_map.get(job_id, {}):
-                source_id = self.function_id_map[job_id][source]
+                # Get source ID
+                source_id = None
+                if source in self.methods.get(job_id, {}):
+                    source_id = self.methods[job_id][source]["id"]
+                elif source in self.function_id_map.get(job_id, {}):
+                    source_id = self.function_id_map[job_id][source]
 
-            # Get target ID
-            target_id = None
-            if target in self.methods.get(job_id, {}):
-                target_id = self.methods[job_id][target]["id"]
-            elif target in self.function_id_map.get(job_id, {}):
-                target_id = self.function_id_map[job_id][target]
+                # Get target ID
+                target_id = None
+                if target in self.methods.get(job_id, {}):
+                    target_id = self.methods[job_id][target]["id"]
+                elif target in self.function_id_map.get(job_id, {}):
+                    target_id = self.function_id_map[job_id][target]
 
-            if source_id and target_id:
-                # Calculate speed in MB/s (assuming size is in bytes)
-                size_mb = (
-                    flow_data["size"] / (1024 * 1024) / flow_data["duration"]
-                )  # Convert bytes to MB
-                speed = f"{size_mb:.2f}MB/s"
-
-                graph_data["dataFlows"].append(
-                    {"source": source_id, "target": target_id, "speed": speed}
-                )
+                if source_id and target_id:
+                    total_size_mb = flow_stats["size"] / (1024 * 1024)
+                    graph_data["dataFlows"].append(
+                        {
+                            "argpos": argpos,
+                            "source": source_id,
+                            "target": target_id,
+                            "duration": flow_stats["duration"],
+                            "size": total_size_mb,
+                            "timestamp": flow_stats["timestamp"],
+                        }
+                    )
 
         return graph_data
+
+    async def async_emit_object_record_get(self, recv_record):
+        self.emit_object_record_get(recv_record)
 
     def emit_object_record_get(self, recv_record):
         """Record object transfer between methods/functions."""
         job_id = recv_record["job_id"]
         object_id = recv_record["object_id"]
         timestamp = recv_record["timestamp"]
-        object_event = self.object_events[job_id][object_id]
-        caller_class = object_event["caller_class"]
-        caller_func = object_event["caller_func"]
-        callee_class = recv_record["recv_class"]
-        callee_func = recv_record["recv_func"]
+        object_event = self.object_events.get(job_id, {}).get(object_id, {})
+        if len(object_event) == 0:
+            return
+        caller_class = object_event.get("caller_class", "")
+        caller_func = object_event.get("caller_func", "")
+        callee_class = recv_record.get("recv_class", "")
+        callee_func = recv_record.get("recv_func", "")
+        argpos = object_event.get("argpos", 0)
         size = object_event.get("size", 0)
 
-        # Create source and target identifiers
-        source_id = None
-        target_id = None
+        if object_id in self.object_events.get(job_id, {}):
+            del self.object_events[job_id][object_id]
 
+        # Create source and target identifiers
         source = f"{caller_class}.{caller_func}" if caller_class else caller_func
         target = f"{callee_class}.{callee_func}" if callee_class else callee_func
 
-        # Update data flow tracking
+        # Update data flow tracking with accumulated values
         flow_key = f"{source}->{target}"
-        self.data_flows[job_id].append(
-            {
-                "flow_key": flow_key,
-                "source": source_id,
-                "target": target_id,
-                "size": size,
-                "duration": timestamp - object_event["timestamp"],
-            }
-        )
+        duration = timestamp - object_event["timestamp"]
+        self.data_flows[job_id][flow_key][argpos]["size"] = size
+        self.data_flows[job_id][flow_key][argpos]["duration"] = duration
+        self.data_flows[job_id][flow_key][argpos]["timestamp"] = timestamp
+
+    async def async_emit_object_record_put(self, object_record):
+        self.emit_object_record_put(object_record)
 
     def emit_object_record_put(self, object_record):
         """Record object transfer between methods/functions."""
         job_id = object_record["job_id"]
         object_id = object_record["object_id"]
         self.object_events[job_id][object_id] = object_record
+
+    def emit_context(self, context_info):
+        """Record context info."""
+        job_id = context_info["job_id"]
+        actor_id = context_info["actor_id"]
+        self.context_info[job_id][actor_id].update(context_info["context"])
+
+    def get_context(self, job_id):
+        """Get context info."""
+        return self.context_info[job_id]
+
+    async def emit_resource_usage(self, resource_usage):
+        """Record resource usage."""
+        job_id = resource_usage["job_id"]
+        actor_id = resource_usage["actor_id"]
+        self.resource_usage[job_id][actor_id].update(resource_usage["usage"])
+
+    def get_resource_usage(self, job_id):
+        """Get resource usage."""
+        return self.resource_usage[job_id]
 
 
 _inner_class_name = "_ray_internal_insight_monitor"
@@ -286,11 +338,11 @@ def get_monitor_actor():
 
 
 def _get_current_task_name():
-    current_task_name = ray.get_runtime_context().get_task_name()
-    if current_task_name is not None:
-        return current_task_name.split(".")[-1]
-    else:
-        return "main"
+    if ray.get_runtime_context().worker.mode == ray._private.worker.WORKER_MODE:
+        current_task_name = ray.get_runtime_context().get_task_name()
+        if current_task_name is not None:
+            return current_task_name.split(".")[-1]
+    return "main"
 
 
 def _get_caller_class():
@@ -311,6 +363,25 @@ def _get_caller_class():
     return caller_class
 
 
+def is_flow_insight_enabled():
+    """
+    Check if flow insight is enabled.
+    """
+    return os.getenv(dashboard_consts.FLOW_INSIGHT_ENABLED_ENV_VAR, "0") == "1"
+
+
+def run_async(coro):
+    try:
+        loop = asyncio.get_running_loop()
+        # If we have a running loop, use run_coroutine_threadsafe
+        asyncio.ensure_future(coro, loop=loop)
+    except RuntimeError:
+        # If no loop is running, create one and run until complete
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(coro)
+
+
 def record_control_flow(callee_class, callee_func):
     """
     record the control flow between the caller and the callee
@@ -320,6 +391,9 @@ def record_control_flow(callee_class, callee_func):
         callee_class: the class name of the callee
         callee_func: the function name of the callee
     """
+    if not is_flow_insight_enabled():
+        return
+
     if callee_class is not None and callee_class.startswith(_inner_class_name):
         return
 
@@ -334,8 +408,14 @@ def record_control_flow(callee_class, callee_func):
         "call_times": 1,
         "job_id": ray.get_runtime_context().get_job_id(),
     }
+    if ray._private.worker.global_worker.core_worker.current_actor_is_asyncio():
 
-    ray.get(get_monitor_actor().emit_call_record.remote(call_record))
+        async def _emit():
+            await get_monitor_actor().async_emit_call_record.remote(call_record)
+
+        run_async(_emit())
+    else:
+        ray.get(get_monitor_actor().emit_call_record.remote(call_record))
 
 
 def record_object_arg_get(object_id):
@@ -346,6 +426,9 @@ def record_object_arg_get(object_id):
     param:
         object_id: the object id of the task's args
     """
+    if not is_flow_insight_enabled():
+        return
+
     if object_id is None or object_id == _null_object_id:
         return
     caller_class = _get_caller_class()
@@ -364,8 +447,16 @@ def record_object_arg_get(object_id):
         "timestamp": time.time(),
         "job_id": ray.get_runtime_context().get_job_id(),
     }
+    if ray._private.worker.global_worker.core_worker.current_actor_is_asyncio():
 
-    ray.get(get_monitor_actor().emit_object_record_get.remote(object_recv_record))
+        async def _emit():
+            await get_monitor_actor().async_emit_object_record_get.remote(
+                object_recv_record
+            )
+
+        run_async(_emit())
+    else:
+        ray.get(get_monitor_actor().emit_object_record_get.remote(object_recv_record))
 
 
 def record_object_put(object_id, size):
@@ -377,6 +468,9 @@ def record_object_put(object_id, size):
         object_id: the object id of the object to be put
         size: the size of the object to be put
     """
+    if not is_flow_insight_enabled():
+        return
+
     if object_id == _null_object_id:
         return
 
@@ -386,16 +480,24 @@ def record_object_put(object_id, size):
     object_record = {
         "object_id": object_id,
         "size": size,
+        "argpos": -2,
         "timestamp": time.time(),
         "caller_class": caller_class,
         "caller_func": caller_func,
         "job_id": ray.get_runtime_context().get_job_id(),
     }
 
-    ray.get(get_monitor_actor().emit_object_record_put.remote(object_record))
+    if ray._private.worker.global_worker.core_worker.current_actor_is_asyncio():
+
+        async def _emit():
+            await get_monitor_actor().async_emit_object_record_put.remote(object_record)
+
+        run_async(_emit())
+    else:
+        ray.get(get_monitor_actor().emit_object_record_put.remote(object_record))
 
 
-def record_object_arg_put(object_id, size, callee):
+def record_object_arg_put(object_id, argpos, size, callee):
     """
     record the object put event for the task's args
     this will get caller context automatically from the runtime context
@@ -406,6 +508,9 @@ def record_object_arg_put(object_id, size, callee):
         size: the size of the task's args
         callee: the callee function info, e.g. "ActorClass.method_name"
     """
+    if not is_flow_insight_enabled():
+        return
+
     if object_id == _null_object_id:
         return
     callee_class = None
@@ -423,6 +528,7 @@ def record_object_arg_put(object_id, size, callee):
     # Create a record for this call
     object_record = {
         "object_id": object_id,
+        "argpos": argpos,
         "size": size,
         "timestamp": time.time(),
         "caller_class": caller_class,
@@ -430,7 +536,14 @@ def record_object_arg_put(object_id, size, callee):
         "job_id": ray.get_runtime_context().get_job_id(),
     }
 
-    ray.get(get_monitor_actor().emit_object_record_put.remote(object_record))
+    if ray._private.worker.global_worker.core_worker.current_actor_is_asyncio():
+
+        async def _emit():
+            await get_monitor_actor().async_emit_object_record_put.remote(object_record)
+
+        run_async(_emit())
+    else:
+        ray.get(get_monitor_actor().emit_object_record_put.remote(object_record))
 
 
 def record_object_return_put(object_id, size):
@@ -442,6 +555,9 @@ def record_object_return_put(object_id, size):
         object_id: the object id of the task's return value
         size: the size of the task's return value
     """
+    if not is_flow_insight_enabled():
+        return
+
     if object_id == _null_object_id:
         return
 
@@ -460,13 +576,21 @@ def record_object_return_put(object_id, size):
     object_record = {
         "object_id": object_id,
         "size": size,
+        "argpos": -1,
         "timestamp": time.time(),
         "caller_class": caller_class,
         "caller_func": caller_func,
         "job_id": ray.get_runtime_context().get_job_id(),
     }
 
-    ray.get(get_monitor_actor().emit_object_record_put.remote(object_record))
+    if ray._private.worker.global_worker.core_worker.current_actor_is_asyncio():
+
+        async def _emit():
+            await get_monitor_actor().async_emit_object_record_put.remote(object_record)
+
+        run_async(_emit())
+    else:
+        ray.get(get_monitor_actor().emit_object_record_put.remote(object_record))
 
 
 def record_object_get(object_id, task_id):
@@ -480,6 +604,9 @@ def record_object_get(object_id, task_id):
         object_id: the object id of the object to be get
         task_id: the task id of the task to be get
     """
+    if not is_flow_insight_enabled():
+        return
+
     if object_id is None or object_id == _null_object_id:
         return
 
@@ -499,4 +626,153 @@ def record_object_get(object_id, task_id):
     if task_id.actor_id() == monitor_actor._ray_actor_id:
         return
 
-    ray.get(get_monitor_actor().emit_object_record_get.remote(object_recv_record))
+    if ray._private.worker.global_worker.core_worker.current_actor_is_asyncio():
+
+        async def _emit():
+            await get_monitor_actor().async_emit_object_record_get.remote(
+                object_recv_record
+            )
+
+        run_async(_emit())
+    else:
+        ray.get(get_monitor_actor().emit_object_record_get.remote(object_recv_record))
+
+
+def report_resource_usage(usage: dict):
+    """
+    report the resource usage of the current task
+    usage is a dict of the resource usage
+    e.g. {"torch_gram": {"used": 1024, "base": "gpu"}}
+    """
+    if not is_flow_insight_enabled():
+        return
+
+    current_class = _get_caller_class()
+    if current_class is None:
+        return
+    actor_info = current_class.split(":")
+    ray.get(
+        get_monitor_actor().emit_resource_usage.remote(
+            {
+                "actor_id": actor_info[1],
+                "job_id": ray.get_runtime_context().get_job_id(),
+                "usage": usage,
+            }
+        )
+    )
+
+
+async def async_register_current_context(context: dict):
+    """
+    register the current context info of the current node
+    """
+    if not is_flow_insight_enabled():
+        return
+
+    current_class = _get_caller_class()
+    if current_class is None:
+        return
+    actor_info = current_class.split(":")
+    await get_monitor_actor().emit_context.remote(
+        {
+            "actor_id": actor_info[1],
+            "job_id": ray.get_runtime_context().get_job_id(),
+            "context": context,
+        }
+    )
+
+
+def register_current_context(context: dict):
+    """
+    register the current context info of the current node
+    """
+    if not is_flow_insight_enabled():
+        return
+
+    current_class = _get_caller_class()
+    if current_class is None:
+        return
+    actor_info = current_class.split(":")
+    ray.get(
+        get_monitor_actor().emit_context.remote(
+            {
+                "actor_id": actor_info[1],
+                "job_id": ray.get_runtime_context().get_job_id(),
+                "context": context,
+            }
+        )
+    )
+
+
+def report_torch_gram():
+    """
+    report the torch gram usage of the current task
+    """
+    if not is_flow_insight_enabled():
+        return
+
+    try:
+        import torch
+    except ImportError:
+        return
+
+    report_resource_usage(
+        {
+            "torch_gram_allocated": {
+                "used": torch.cuda.memory_allocated() / 1024 / 1024,
+                "base": "gpu",
+            },
+            "torch_gram_max_allocated": {
+                "used": torch.cuda.max_memory_allocated() / 1024 / 1024,
+                "base": "gpu",
+            },
+        }
+    )
+
+
+async def async_report_resource_usage(usage: dict):
+    """
+    report the resource usage of the current task
+    usage is a dict of the resource usage
+    e.g. {"torch_gram": {"used": 1024, "base": "gpu"}}
+    """
+    if not is_flow_insight_enabled():
+        return
+
+    current_class = _get_caller_class()
+    if current_class is None:
+        return
+    actor_info = current_class.split(":")
+    await get_monitor_actor().emit_resource_usage.remote(
+        {
+            "actor_id": actor_info[1],
+            "job_id": ray.get_runtime_context().get_job_id(),
+            "usage": usage,
+        }
+    )
+
+
+async def async_report_torch_gram():
+    """
+    report the torch gram usage of the current task
+    """
+    if not is_flow_insight_enabled():
+        return
+
+    try:
+        import torch
+    except ImportError:
+        return
+
+    await async_report_resource_usage(
+        {
+            "torch_gram_allocated": {
+                "used": torch.cuda.memory_allocated() / 1024 / 1024,
+                "base": "gpu",
+            },
+            "torch_gram_max_allocated": {
+                "used": torch.cuda.max_memory_allocated() / 1024 / 1024,
+                "base": "gpu",
+            },
+        }
+    )

@@ -236,12 +236,12 @@
 }
 
 .connection-speed {
-  color: #f5222d;
-  background-color: #fff1f0;
-  padding: 1px 6px;
-  border-radius: 10px;
-  font-size: 11px;
-  margin-left: auto;
+  background-color: #f5222d;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  margin-left: 8px;
 }
 
 /* Flow detail styles */
@@ -313,4 +313,114 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.info-section {
+  margin: 15px 0;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+}
+
+.info-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #1976d2;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.info-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.info-value {
+  color: #333;
+  text-align: right;
+  word-break: break-word;
+  max-width: 60%;
+}
+
+.device-info-container {
+  padding: 8px;
+}
+
+.device-section {
+  margin-bottom: 16px;
+}
+
+.device-section:last-child {
+  margin-bottom: 0;
+}
+
+.device-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+  padding-left: 4px;
+}
+
+.gpu-info {
+  margin: 10px 0;
+  padding: 8px;
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.gpu-info:first-child {
+  margin-top: 4px;
+}
+
+.gpu-info:last-child {
+  margin-bottom: 0;
+}
+
+.gpu-info .info-row {
+  margin-bottom: 4px;
+}
+
+.gpu-info .info-row:last-child {
+  margin-bottom: 0;
+}
+
+.data-flow-details {
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  font-size: 0.9em;
+  border-left: 3px solid #f5222d;
+}
+
+.data-flow-details .detail-row {
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.data-flow-details .detail-label {
+  font-weight: bold;
+  color: #555;
+}
+
+.data-flow-details .detail-value {
+  text-align: right;
+}
+
+.connection-speed {
+  background-color: #f5222d;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  margin-left: 8px;
 } 

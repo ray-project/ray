@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import ElementsPanel from "../../components/ray-visualization/ElementsPanel";
 import InfoCard from "../../components/ray-visualization/InfoCard";
 import RayVisualization from "../../components/ray-visualization/RayVisualization";
+import { get } from "../../service/requestHandlers";
 
 type BaseNode = {
   id: string;
@@ -37,7 +38,20 @@ type GraphData = {
   methods: Method[];
   functions: FunctionNode[];
   callFlows: { source: string; target: string; count: number }[];
-  dataFlows: { source: string; target: string; speed: string }[];
+  dataFlows: {
+    source: string;
+    target: string;
+    speed: string;
+    timestamp: number;
+  }[];
+};
+
+type GraphDataRsp = {
+  result: boolean;
+  msg: string;
+  data: {
+    graphData: GraphData;
+  };
 };
 
 const ActorGraph = () => {
@@ -48,6 +62,7 @@ const ActorGraph = () => {
   const [updateKey, setUpdateKey] = useState(0);
   const [updating, setUpdating] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | undefined>(jobId);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // State management similar to App.tsx
   const [infoCardData, setInfoCardData] = useState<ElementData>({
@@ -60,31 +75,32 @@ const ActorGraph = () => {
   const [selectedElementId, setSelectedElementId] =
     useState<string | null>(null);
 
-  const fetchGraphData = async (id?: string) => {
-    if (!id) {
-      return;
-    }
-
-    try {
-      setUpdating(true);
-      const response = await fetch(`/call_graph?job_id=${id}`);
-      const data = await response.json();
-
-      if (data.result) {
-        setGraphData(data.data.graphData);
-        setError(null);
-        setUpdateKey((prev) => prev + 1);
-      } else {
-        setError(data.msg || "Failed to fetch graph data");
+  const fetchGraphData = useCallback(
+    async (id?: string) => {
+      if (!id) {
+        return;
       }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch graph data",
-      );
-    } finally {
-      setUpdating(false);
-    }
-  };
+
+      try {
+        setUpdating(true);
+        const path = jobId ? `call_graph?job_id=${jobId}` : "call_graph";
+        const result = await get<GraphDataRsp>(path);
+
+        if (result.data) {
+          setGraphData(result.data.data.graphData);
+          setError(null);
+          setUpdateKey((prev) => prev + 1);
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch graph data",
+        );
+      } finally {
+        setUpdating(false);
+      }
+    },
+    [jobId],
+  );
 
   // Update currentJobId when route jobId changes
   useEffect(() => {
@@ -99,20 +115,30 @@ const ActorGraph = () => {
       setLoading(true);
       fetchGraphData(currentJobId).finally(() => setLoading(false));
     }
-  }, [currentJobId]);
+  }, [currentJobId, fetchGraphData]);
 
-  const handleElementClick = useCallback((data: ElementData) => {
-    console.log("Element clicked:", data);
-    setInfoCardData({ ...data });
+  const handleElementClick = useCallback(
+    (data: ElementData, skip_zoom = false) => {
+      console.log("Element clicked:", data);
+      setInfoCardData({ ...data });
+      if (skip_zoom) {
+        return;
+      }
 
-    if (data && data.id) {
-      setSelectedElementId(data.id);
-    }
-  }, []);
+      if (data && data.id) {
+        setSelectedElementId(data.id);
+      }
+    },
+    [],
+  );
 
-  const handleUpdate = () => {
+  const handleUpdate = useCallback(() => {
     fetchGraphData(currentJobId);
-  };
+  }, [fetchGraphData, currentJobId]);
+
+  const handleSearchChange = useCallback((term: string) => {
+    setSearchTerm(term);
+  }, []);
 
   if (loading) {
     return <Box>Loading...</Box>;
@@ -134,6 +160,7 @@ const ActorGraph = () => {
       <ElementsPanel
         onElementSelect={handleElementClick}
         selectedElementId={selectedElementId || ""}
+        onSearchChange={handleSearchChange}
         graphData={
           graphData || {
             actors: [],
@@ -163,6 +190,7 @@ const ActorGraph = () => {
             updateKey={updateKey}
             onUpdate={handleUpdate}
             updating={updating}
+            searchTerm={searchTerm}
           />
         )}
 

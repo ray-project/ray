@@ -890,7 +890,7 @@ cdef prepare_args_internal(
     put_threshold = RayConfig.instance().max_direct_call_object_size()
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
-    for arg in args:
+    for i, arg in enumerate(args):
         from ray.experimental.compiled_dag_ref import CompiledDAGRef
         if isinstance(arg, CompiledDAGRef):
             raise TypeError("CompiledDAGRef cannot be used as Ray task/actor argument.")
@@ -958,7 +958,7 @@ cdef prepare_args_internal(
                         core_worker.put_serialized_object_and_increment_local_ref(
                             serialized_arg, inline_small_object=False))
                 from ray.util.insight import record_object_arg_put
-                record_object_arg_put(put_id.Hex().decode(), size, function_descriptor.repr)
+                record_object_arg_put(put_id.Hex().decode(), i, size, function_descriptor.repr)
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(
                             put_id,

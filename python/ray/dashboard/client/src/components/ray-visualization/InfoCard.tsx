@@ -12,6 +12,17 @@ type BaseNode = {
 type Actor = BaseNode & {
   type: "actor";
   devices: string[];
+  state?: string;
+  pid?: number;
+  required_resources?: Record<string, number>;
+  gpuDevices?: Array<{
+    index: number;
+    name: string;
+    uuid: string;
+    memoryUsed: number;
+    memoryTotal: number;
+    utilization?: number;
+  }>;
 };
 
 type Method = BaseNode & {
@@ -33,7 +44,11 @@ type CallFlow = {
 type DataFlow = {
   source: string;
   target: string;
-  speed: string;
+  speed?: string;
+  argpos?: number;
+  duration?: number;
+  size?: number;
+  timestamp?: number;
 };
 
 type GraphData = {
@@ -55,6 +70,9 @@ type NodeWithCount = BaseNode & {
 type NodeWithSpeed = BaseNode & {
   type: "actor" | "method" | "function";
   speed?: string;
+  argpos?: number;
+  duration?: number;
+  size?: number;
   devices?: string[];
   actorId?: string;
   actorName?: string;
@@ -103,6 +121,9 @@ const findDataInputs = (
       return {
         ...sourceNode,
         speed: flow.speed,
+        argpos: flow.argpos,
+        duration: flow.duration,
+        size: flow.size,
       } as NodeWithSpeed;
     });
 };
@@ -133,6 +154,9 @@ const findDataOutputs = (
       return {
         ...targetNode,
         speed: flow.speed,
+        argpos: flow.argpos,
+        duration: flow.duration,
+        size: flow.size,
       } as NodeWithSpeed;
     });
 };
@@ -236,8 +260,14 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
   };
 
   // Render devices section
-  const renderDevicesSection = (devices: string[]) => {
-    if (!devices || devices.length === 0) {
+  const renderDevicesSection = (
+    devices: string[],
+    gpuDevices?: Actor["gpuDevices"],
+  ) => {
+    const hasDevices =
+      (devices && devices.length > 0) || (gpuDevices && gpuDevices.length > 0);
+
+    if (!hasDevices) {
       return (
         <div className="connection-section">
           <div
@@ -257,6 +287,17 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
       );
     }
 
+    // Function to get color for memory usage
+    const getMemoryUsageColor = (usage: number) => {
+      if (usage < 0.5) {
+        return "#4caf50";
+      } // Green for low usage
+      if (usage < 0.8) {
+        return "#ff9800";
+      } // Orange for medium usage
+      return "#f44336"; // Red for high usage
+    };
+
     return (
       <div className="connection-section">
         <div
@@ -269,20 +310,114 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
             </span>
             <h4>Devices</h4>
           </div>
-          <span className="connection-count-badge">({devices.length})</span>
+          <span className="connection-count-badge">
+            ({(devices?.length || 0) + (gpuDevices?.length || 0)})
+          </span>
         </div>
         {!foldedSections["Devices"] && (
-          <ul className="connection-list">
-            {devices.map((device, index) => (
-              <li key={index} className="connection-item">
-                <div className="connection-main-info">
-                  <div>
-                    <span className="connection-name">{device}</span>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="device-info-container">
+            {devices && devices.length > 0 && (
+              <div className="device-section">
+                <h5>General Devices</h5>
+                <ul className="connection-list">
+                  {devices.map((device, index) => (
+                    <li key={index} className="connection-item">
+                      <div className="connection-main-info">
+                        <div>
+                          <span className="connection-name">{device}</span>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {gpuDevices && gpuDevices.length > 0 && (
+              <div className="device-section">
+                <h5>GPU Devices</h5>
+                {gpuDevices.map((gpu) => {
+                  const memoryUsage = gpu.memoryUsed / gpu.memoryTotal;
+                  const memoryUsageColor = getMemoryUsageColor(memoryUsage);
+
+                  return (
+                    <div
+                      key={gpu.uuid}
+                      className="gpu-info"
+                      style={{
+                        border: "1px solid #e0e0e0",
+                        borderRadius: "4px",
+                        padding: "12px",
+                        marginBottom: "12px",
+                        backgroundColor: "#f8f9fa",
+                      }}
+                    >
+                      <div className="info-row" style={{ marginBottom: "8px" }}>
+                        <span
+                          className="info-label"
+                          style={{ fontWeight: "bold" }}
+                        >
+                          Device {gpu.index}:
+                        </span>
+                        <span className="info-value">{gpu.name}</span>
+                      </div>
+
+                      <div className="info-row" style={{ marginBottom: "8px" }}>
+                        <span className="info-label">UUID:</span>
+                        <span
+                          className="info-value"
+                          style={{ fontSize: "0.9em", fontFamily: "monospace" }}
+                        >
+                          {gpu.uuid}
+                        </span>
+                      </div>
+
+                      <div className="info-row" style={{ marginBottom: "8px" }}>
+                        <span className="info-label">GRAM Usage:</span>
+                        <span className="info-value">
+                          {Math.round(gpu.memoryUsed)}MB /{" "}
+                          {Math.round(gpu.memoryTotal)}MB
+                        </span>
+                      </div>
+
+                      <div
+                        className="memory-usage-bar"
+                        style={{
+                          width: "100%",
+                          height: "8px",
+                          backgroundColor: "#e0e0e0",
+                          borderRadius: "4px",
+                          overflow: "hidden",
+                          marginTop: "4px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${memoryUsage * 100}%`,
+                            height: "100%",
+                            backgroundColor: memoryUsageColor,
+                            transition: "width 0.3s ease",
+                          }}
+                        />
+                      </div>
+
+                      <div
+                        className="memory-usage-text"
+                        style={{
+                          textAlign: "right",
+                          fontSize: "0.9em",
+                          color: memoryUsageColor,
+                          marginTop: "4px",
+                        }}
+                      >
+                        {Math.round(memoryUsage * 100)}% Used
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
     );
@@ -403,6 +538,51 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
                   )}
                 </div>
 
+                {/* Display additional data flow information if available */}
+                {"speed" in node && title === "Data Dependencies" && (
+                  <div className="data-flow-details">
+                    <div className="detail-row">
+                      <span className="detail-label">Object Type:</span>
+                      <span className="detail-value">
+                        {node.argpos === undefined
+                          ? "val"
+                          : node.argpos === -1
+                          ? "return val"
+                          : node.argpos === -2
+                          ? "ray.put"
+                          : "argument at " + Math.floor(node.argpos / 2)}
+                      </span>
+                    </div>
+                    {node.size !== undefined && (
+                      <div className="detail-row">
+                        <span className="detail-label">Size:</span>
+                        <span className="detail-value">
+                          {node.size.toFixed(8)} MB
+                        </span>
+                      </div>
+                    )}
+                    {node.duration !== undefined && (
+                      <div className="detail-row">
+                        <span className="detail-label">Duration:</span>
+                        <span className="detail-value">
+                          {node.duration.toFixed(5)} seconds
+                        </span>
+                      </div>
+                    )}
+                    {node.duration !== undefined && (
+                      <div className="detail-row">
+                        <span className="detail-label">Throughput:</span>
+                        <span className="detail-value">
+                          {node.size !== undefined
+                            ? (node.size / node.duration).toFixed(2)
+                            : "N/A"}{" "}
+                          MB/s
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {node.type === "actor" && (
                   <div className="connection-actor-info">
                     <span className="connection-language">
@@ -445,8 +625,20 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
               <span className="info-label">ID:</span>
               <span className="info-value">{data.id}</span>
             </div>
+            {data.state && (
+              <div className="info-row">
+                <span className="info-label">State:</span>
+                <span className="info-value">{data.state}</span>
+              </div>
+            )}
+            {data.pid && (
+              <div className="info-row">
+                <span className="info-label">PID:</span>
+                <span className="info-value">{data.pid}</span>
+              </div>
+            )}
 
-            {renderDevicesSection(data.devices)}
+            {renderDevicesSection(data.devices, data.gpuDevices)}
             {renderMethodsSection(connections.methods)}
 
             <div className="connections-container">
@@ -482,7 +674,7 @@ const InfoCard = ({ data, visible, graphData }: InfoCardProps) => {
               <span className="info-value">{data.actorName}</span>
             </div>
 
-            {actor && actor.devices && renderDevicesSection(actor.devices)}
+            {actor && renderDevicesSection(actor.devices, actor.gpuDevices)}
 
             <div className="connections-container">
               {renderConnectedNodes(callInputs, "Callers")}
