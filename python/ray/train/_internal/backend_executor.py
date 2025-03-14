@@ -565,6 +565,9 @@ class BackendExecutor:
             from ray.train._internal.state.schema import RunStatusEnum
 
             core_context = ray.runtime_context.get_runtime_context()
+            controller_log_file_path = (
+                ray._private.worker.global_worker.get_err_file_path()
+            )
 
             self.state_manager.register_train_run(
                 run_id=self._trial_info.run_id,
@@ -575,6 +578,8 @@ class BackendExecutor:
                 worker_group=self.worker_group,
                 start_time_ms=self._start_time_ms,
                 run_status=RunStatusEnum.RUNNING,
+                controller_log_file_path=controller_log_file_path,
+                resources=[self._resources_per_worker] * self._num_workers,
             )
 
         # Run the training function asynchronously in its own thread.
