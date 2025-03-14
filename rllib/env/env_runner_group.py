@@ -55,6 +55,7 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.annotations import DeveloperAPI
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -1251,16 +1252,22 @@ class EnvRunnerGroup:
         if worker_index == 0:
             return self.env_runner_cls(**kwargs)
 
-        pg_bundle_idx = (
-            -1
-            if ray.util.get_current_placement_group() is None
-            else self._pg_offset + worker_index
-        )
+        # If we run in Ray Tune schedule `EnvRunner`s in the predefined
+        # bundles. See `Algorithm.default_ressource_request` for more info.
+        if ray.util.get_current_placement_group():
+            scheduling_strategy = PlacementGroupSchedulingStrategy(
+                placement_group=ray.util.get_current_placement_group(),
+                # Use an offset for the already created `EnvRunner`s.
+                placement_group_bundle_index=self._pg_offset + worker_index,
+            )
+        # Otherwise schedule `EnvRunner`s using their scheduling strategy.
+        else:
+            scheduling_strategy = (ray.get(config).scheduling_strategy_for_env_runners,)
+
         return (
             ray.remote(**self._remote_args)(self.env_runner_cls)
             .options(
-                placement_group_bundle_index=pg_bundle_idx,
-                scheduling_strategy=ray.get(config).scheduling_strategy_for_env_runner,
+                scheduling_strategy=scheduling_strategy,
             )
             .remote(**kwargs)
         )

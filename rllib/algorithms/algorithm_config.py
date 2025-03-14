@@ -1813,7 +1813,10 @@ class AlgorithmConfig(_Config):
             custom_resources_per_env_runner: Any custom Ray resources to allocate per
                 EnvRunner.
             scheduling_strategy_for_env_runner: An optional scheduling strategy for
-                EnvRunners.
+                EnvRunners. Defaults to `DEFAULT`. Note, this scheduling strategy only
+                becomes effective, if RLlib is run without Ray Tune. When Ray Tune is
+                used the `self.placement_strategy` defines how the complete RLlib
+                workload is scheduled.
             sample_timeout_s: The timeout in seconds for calling `sample()` on remote
                 EnvRunner workers. Results (episode list) from workers that take longer
                 than this time are discarded. Only used by algorithms that sample
