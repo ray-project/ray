@@ -235,6 +235,27 @@ class TestThreadingLocalData:
         assert value == "f2"
 
 
+def test_default_executor(ray_start_regular_shared):
+    """
+    The default executor should always be created. This test verifies that
+    an actor task without a concurrency group will use the default executor
+    instead of "MainThread".
+    """
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def thread_name(self):
+            thread = threading.current_thread()
+            return thread.name
+
+    a = Actor.remote()
+    thread_name = ray.get(a.thread_name.remote())
+    assert thread_name == "Dummy-1"
+
+
 def test_invalid_concurrency_group():
     """Verify that when a concurrency group has max concurrency set to 0,
     an error is raised when the actor is created. This test uses

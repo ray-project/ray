@@ -184,13 +184,10 @@ void ActorSchedulingQueue::ScheduleRequests() {
       RAY_CHECK(pool_manager_ != nullptr);
       auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                              request.FunctionDescriptor());
-      if (pool == nullptr) {
+      RAY_CHECK(pool != nullptr);
+      pool->Post([this, request, task_id]() mutable {
         AcceptRequestOrRejectIfCanceled(task_id, request);
-      } else {
-        pool->Post([this, request, task_id]() mutable {
-          AcceptRequestOrRejectIfCanceled(task_id, request);
-        });
-      }
+      });
     }
     pending_actor_tasks_.erase(head);
     next_seq_no_++;
