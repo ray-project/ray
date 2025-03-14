@@ -105,7 +105,8 @@ class GrpcServer {
         cluster_id_(ClusterID::Nil()),
         is_closed_(true),
         num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms) {
+        keepalive_time_ms_(keepalive_time_ms),
+        shutdown_(false) {
     Init();
   }
 
