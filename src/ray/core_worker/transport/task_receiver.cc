@@ -18,6 +18,7 @@
 
 #include "ray/common/task/task.h"
 #include "ray/gcs/pb_util.h"
+#include "scheduling_util.h"
 
 using ray::rpc::ActorTableData;
 using namespace ray::gcs;
@@ -227,6 +228,8 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
   auto cancel_callback = [reply](const TaskSpecification &task_spec,
                                  const Status &status,
                                  rpc::SendReplyCallback send_reply_callback) {
+    RAY_LOG(INFO) << "Cancelling task " << task_spec.TaskId() << " with spec "
+                  << task_spec.DebugString();
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
       send_reply_callback(status, nullptr, nullptr);

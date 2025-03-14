@@ -75,6 +75,9 @@ void OutOfOrderActorSchedulingQueue::Add(
         reject_request,
     rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
+  RAY_LOG(INFO) << "[myan] Adding task " << task_spec.TaskId()
+                << " to out-of-order actor "
+                << "scheduling task queue. task_spec=" << task_spec.DebugString();
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
@@ -93,11 +96,18 @@ void OutOfOrderActorSchedulingQueue::Add(
   {
     absl::MutexLock lock(&mu_);
     if (pending_task_id_to_is_canceled.contains(task_id)) {
+      RAY_LOG(INFO) << "[myan] task_id=" << task_id
+                    << " exists in the pending_task_id_to_is_canceled";
       // There is a previous attempt of the same task running,
       // queue the current attempt.
       run_request = false;
 
       if (queued_actor_tasks_.contains(task_id)) {
+        RAY_LOG(INFO) << "[myan] task_id=" << task_id
+                      << " exists in the queued_actor_tasks_";
+        RAY_LOG(INFO) << "[myan] queued_actor_tasks_[task_id].AttemptNumber()="
+                      << queued_actor_tasks_[task_id].AttemptNumber();
+        RAY_LOG(INFO) << "[myan] request.AttemptNumber()=" << request.AttemptNumber();
         // There is already an attempt of the same task queued,
         // keep the one with larger attempt number and cancel the other one.
         RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(),
@@ -110,19 +120,27 @@ void OutOfOrderActorSchedulingQueue::Add(
           queued_actor_tasks_[task_id] = request;
         }
       } else {
+        RAY_LOG(INFO) << "[myan] task_id=" << task_id
+                      << " does not exist in the queued_actor_tasks_";
         queued_actor_tasks_[task_id] = request;
       }
     } else {
+      RAY_LOG(INFO) << "[myan] task_id=" << task_id
+                    << " does not exist in the pending_task_id_to_is_canceled";
       pending_task_id_to_is_canceled.emplace(task_id, false);
       run_request = true;
     }
   }
 
   if (run_request) {
+    RAY_LOG(INFO) << "[myan] Running request for task=" << task_id << " in Add()";
     RunRequest(std::move(request));
   }
 
   if (request_to_cancel.has_value()) {
+    RAY_LOG(INFO) << "[myan] Canceling request for task=" << request_to_cancel->TaskID()
+                  << "; attempt=" << request_to_cancel->AttemptNumber()
+                  << "; function_descriptor=" << request_to_cancel->FunctionDescriptor();
     request_to_cancel->Cancel(Status::SchedulingCancelled(
         "In favor of the same task with larger attempt number"));
   }
@@ -142,9 +160,13 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
 
 void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
     InboundRequest &request) {
+  RAY_LOG(INFO) << "[myan] Running request for task=" << request.TaskID()
+                << " in RunRequestWithSatisfiedDependencies()";
   RAY_CHECK(request.CanExecute());
   const auto task_id = request.TaskID();
   if (is_asyncio_) {
+    RAY_LOG(INFO) << "[myan] Running request for task=" << task_id
+                  << " in RunRequestWithSatisfiedDependencies() with asyncio";
     // Process async actor task.
     auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                    request.FunctionDescriptor());
@@ -152,6 +174,8 @@ void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
       AcceptRequestOrRejectIfCanceled(task_id, request);
     });
   } else {
+    RAY_LOG(INFO) << "[myan] Running request for task=" << task_id
+                  << " in RunRequestWithSatisfiedDependencies() without asyncio";
     // Process actor tasks.
     RAY_CHECK(pool_manager_ != nullptr);
     auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
@@ -167,8 +191,11 @@ void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
 }
 
 void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
+  RAY_LOG(INFO) << "[myan] Running request for task=" << request.TaskID()
+                << " in RunRequest()";
   const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
+    RAY_LOG(INFO) << "[myan] Waiting for dependencies for task=" << task_spec.TaskId();
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -194,6 +221,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
       RunRequestWithSatisfiedDependencies(request);
     });
   } else {
+    RAY_LOG(INFO) << "[myan] No dependencies for task=" << task_spec.TaskId();
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -208,6 +236,7 @@ void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
 
 void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
     TaskID task_id, InboundRequest &request) {
+  RAY_LOG(INFO) << "[myan] AcceptRequestOrRejectIfCanceled for task=" << task_id;
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
@@ -219,9 +248,13 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
 
   // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
+    RAY_LOG(INFO) << "[myan] Cancel request for task=" << task_id
+                  << " in AcceptRequestOrRejectIfCanceled()";
     request.Cancel(
         Status::SchedulingCancelled("Task is canceled before it is scheduled."));
   } else {
+    RAY_LOG(INFO) << "[myan] Accept request for task=" << task_id
+                  << " in AcceptRequestOrRejectIfCanceled()";
     request.Accept();
   }
 
@@ -229,9 +262,13 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   {
     absl::MutexLock lock(&mu_);
     if (queued_actor_tasks_.contains(task_id)) {
+      RAY_LOG(INFO) << "[myan] task_id=" << task_id
+                    << " exists in the queued_actor_tasks_";
       request_to_run = queued_actor_tasks_[task_id];
       queued_actor_tasks_.erase(task_id);
     } else {
+      RAY_LOG(INFO) << "[myan] task_id=" << task_id
+                    << " does not exist in the queued_actor_tasks_";
       pending_task_id_to_is_canceled.erase(task_id);
     }
   }
@@ -239,6 +276,8 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   if (request_to_run.has_value()) {
     io_service_.post(
         [this, request = std::move(*request_to_run)]() mutable {
+          RAY_LOG(INFO) << "[myan] Running request for task=" << request.TaskID()
+                        << " in AcceptRequestOrRejectIfCanceled()";
           RunRequest(std::move(request));
         },
         "OutOfOrderActorSchedulingQueue.RunRequest");
