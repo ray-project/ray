@@ -205,7 +205,7 @@ def test_controller_deserialization_deployment_def(
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
-        from ray._private.utils import import_attr
+        from ray._common.utils import import_attr
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
