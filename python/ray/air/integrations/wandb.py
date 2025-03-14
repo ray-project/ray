@@ -395,39 +395,41 @@ class _WandbLoggingActor:
         self._logdir = logdir
 
     def run(self):
-        # Since we're running in a separate process already, use threads.
+        # In very old wandb versions, this prevents wandb from starting up
+        # new processes using the multiprocessing module. In any recent version,
+        # this is ignored.
         os.environ["WANDB_START_METHOD"] = "thread"
-        run = self._wandb.init(*self.args, **self.kwargs)
-        run.config.trial_log_path = self._logdir
 
-        _run_wandb_process_run_info_hook(run)
+        with self._wandb.init(*self.args, **self.kwargs) as run:
+            run.config.trial_log_path = self._logdir
 
-        while True:
-            item_type, item_content = self.queue.get()
-            if item_type == _QueueItem.END:
-                break
+            _run_wandb_process_run_info_hook(run)
 
-            if item_type == _QueueItem.CHECKPOINT:
-                self._handle_checkpoint(item_content)
-                continue
+            while True:
+                item_type, item_content = self.queue.get()
+                if item_type == _QueueItem.END:
+                    break
 
-            assert item_type == _QueueItem.RESULT
-            log, config_update = self._handle_result(item_content)
-            try:
-                self._wandb.config.update(config_update, allow_val_change=True)
-                self._wandb.log(log, step=log.get(TRAINING_ITERATION))
-            except urllib.error.HTTPError as e:
-                # Ignore HTTPError. Missing a few data points is not a
-                # big issue, as long as things eventually recover.
-                logger.warning("Failed to log result to w&b: {}".format(str(e)))
-        self._wandb.finish()
+                if item_type == _QueueItem.CHECKPOINT:
+                    self._handle_checkpoint(run, item_content)
+                    continue
 
-    def _handle_checkpoint(self, checkpoint_path: str):
+                assert item_type == _QueueItem.RESULT
+                log, config_update = self._handle_result(item_content)
+                try:
+                    run.config.update(config_update, allow_val_change=True)
+                    run.log(log, step=log.get(TRAINING_ITERATION))
+                except urllib.error.HTTPError as e:
+                    # Ignore HTTPError. Missing a few data points is not a
+                    # big issue, as long as things eventually recover.
+                    logger.warning("Failed to log result to w&b: {}".format(str(e)))
+
+    def _handle_checkpoint(self, run, checkpoint_path: str):
         artifact = self._wandb.Artifact(
             name=f"checkpoint_{self._trial_name}", type="model"
         )
         artifact.add_dir(checkpoint_path)
-        self._wandb.log_artifact(artifact)
+        run.log_artifact(artifact)
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
