@@ -258,4 +258,12 @@ enum TagKey {
   // Comma separated list of tensor parallelism degrees used to build vLLM engine
   // processor. Example: "4"
   LLM_BATCH_TENSOR_PARALLEL_SIZE = 621;
+
+  //
+  // (a Haiku about Ray in the ocean; please keep this at the bottom.)
+  //
+  // Gliding through the waves,
+  // shadow dances in the deep,
+  // ocean breathes with him.
+  //
 }
