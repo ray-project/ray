@@ -12,27 +12,24 @@ class ResponseType(enum.Enum):
     WEBSOCKET = "websocket"
 
 
-def module_logging_filename(
-    module_name: str, incarnation: int, logging_filename: str
-) -> str:
+def module_logging_filename(module_name: str, logging_filename: str) -> str:
     """
     Parse logging_filename = STEM EXTENSION,
-    return STEM _ MODULE_NAME _ INCARNATION EXTENSION
+    return STEM _ MODULE_NAME _ EXTENSION
 
     If logging_filename is empty, return "stderr"
 
     Example:
     module_name = "TestModule"
-    incarnation = 5
     logging_filename = "dashboard.log"
     STEM = "dashboard"
     EXTENSION = ".log"
-    return "dashboard_TestModule_5.log"
+    return "dashboard_TestModule.log"
     """
     if not logging_filename:
         return "stderr"
     stem, extension = os.path.splitext(logging_filename)
-    return f"{stem}_{module_name}_{incarnation}{extension}"
+    return f"{stem}_{module_name}{extension}"
 
 
 def get_socket_path(socket_dir: str, module_name: str) -> str:

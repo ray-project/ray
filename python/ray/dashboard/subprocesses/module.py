@@ -77,20 +77,10 @@ class SubprocessModule(abc.ABC):
         """
         return False
 
-    @abc.abstractmethod
-    async def init(self):
+    async def run(self):
         """
-        Run the module in an asyncio loop. A head module can provide
-        servicers to the server.
-
-        Only after this method is returned, the module will start receiving messages
-        from the parent queue.
-        """
-        pass
-
-    async def start_server(self):
-        """
-        Start the aiohttp server.
+        Start running the module.
+        This method should be called first before the module starts receiving requests.
         """
         app = aiohttp.web.Application()
         routes: list[aiohttp.web.RouteDef] = [
@@ -121,7 +111,6 @@ class SubprocessModule(abc.ABC):
             site = aiohttp.web.NamedPipeSite(runner, socket_path)
         else:
             site = aiohttp.web.UnixSite(runner, socket_path)
-        logger.info(f"ABC: {socket_path=}, {len(socket_path)}")
         await site.start()
         logger.info(f"Started aiohttp server over {socket_path}.")
 
@@ -173,9 +162,7 @@ async def run_module_inner(
         module._parent_process_death_detection_task = asyncio.create_task(
             module._detect_parent_process_death()
         )
-        # First init the module, then start the aiohttp server.
-        await module.init()
-        await module.start_server()
+        await module.run()
         ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
@@ -201,9 +188,7 @@ def run_module(
     setproctitle.setproctitle(
         f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
     )
-    logging_filename = module_logging_filename(
-        module_name, incarnation, config.logging_filename
-    )
+    logging_filename = module_logging_filename(module_name, config.logging_filename)
     setup_component_logger(
         logging_level=config.logging_level,
         logging_format=config.logging_format,

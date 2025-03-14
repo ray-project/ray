@@ -210,7 +210,7 @@ async def test_logging_in_module(aiohttp_client, default_module_config):
 
     # Assert the log file name and read the log file
     log_file_path = (
-        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule_0.log"
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.log"
     )
     with log_file_path.open("r") as f:
         log_file_content = f.read()
@@ -261,19 +261,12 @@ async def test_logging_in_module_with_multiple_incarnations(
 
     await async_wait_for_condition(verify)
 
-    # Expect logs from both incarnations.
     log_file_path = (
-        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule_0.log"
+        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule.log"
     )
     with log_file_path.open("r") as f:
         log_file_content = f.read()
     assert "In /logging_in_module, this is from incarnation 0." in log_file_content
-
-    log_file_path = (
-        pathlib.Path(default_module_config.log_dir) / "dashboard_TestModule_1.log"
-    )
-    with log_file_path.open("r") as f:
-        log_file_content = f.read()
     assert "In /logging_in_module, and this is from incarnation 1." in log_file_content
 
 

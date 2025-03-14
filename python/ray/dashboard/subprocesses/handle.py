@@ -205,13 +205,12 @@ class SubprocessModuleHandle:
         2. log the last N lines of the log file
         3. restart the module
         """
-        incarnation = self.incarnation
         while True:
             try:
                 await self._do_once_health_check()
             except Exception:
                 filename = module_logging_filename(
-                    self.module_cls.__name__, incarnation, self.config.logging_filename
+                    self.module_cls.__name__, self.config.logging_filename
                 )
                 logger.exception(
                     f"Module {self.module_cls.__name__} is unhealthy. Please refer to "
