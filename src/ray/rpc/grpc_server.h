@@ -182,6 +182,8 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
+
+  std::atomic_bool shutdown_;
 };
 
 /// Base class that represents an abstract gRPC service.
