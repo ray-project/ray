@@ -259,7 +259,7 @@ async def test_logging_in_module_with_multiple_incarnations(
         assert await response.text() == "done!"
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     # Expect logs from both incarnations.
     log_file_path = (
