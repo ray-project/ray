@@ -169,8 +169,8 @@ class SchedulingNode:
     # The instance id of the IM(Instance Manager) instance. None if the node
     # is not yet in IM.
     im_instance_id: Optional[str] = None
-    # The instance status of the IM(Instance Manager) instance. None if the node
-    # is not yet in IM.
+    # The instance status of the IM(Instance Manager) instance. None if the in-flight node
+    # has not yet been assigned to an IM instance.
     im_instance_status: Optional[Instance.InstanceStatus.ValueType] = None
     # The ray node id of the ray node. None if the node is not included in
     # ray cluster's GCS report yet (not running ray yet).
