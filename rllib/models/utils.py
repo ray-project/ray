@@ -220,7 +220,7 @@ def get_filter_config(shape):
         if shape == [210, 160, 3]:
             atari_help = (
                 "This is the default atari obs shape. You may want to look at one of "
-                "RLLib's Atari examples for an example of how to wrap an Atari env."
+                "RLlib's Atari examples for an example of how to wrap an Atari env."
             )
         else:
             atari_help = ""
