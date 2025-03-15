@@ -5,9 +5,12 @@ import logging
 import math
 import time
 import uuid
+from enum import Enum
 from functools import partial
 from pydantic import BaseModel, Field, root_validator
-from typing import Any, Dict, AsyncIterator, Optional, List, Tuple
+from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
+
+import numpy as np
 
 import ray
 from ray.llm._internal.batch.stages.base import (
@@ -21,6 +24,16 @@ vllm = try_import("vllm")
 
 
 logger = logging.getLogger(__name__)
+
+
+class vLLMTaskType(str, Enum):
+    """The type of task to run on the vLLM engine."""
+
+    """Generate text."""
+    GENERATE = "generate"
+
+    """Generate embeddings."""
+    EMBED = "embed"
 
 
 class vLLMEngineRequest(BaseModel):
@@ -39,6 +52,8 @@ class vLLMEngineRequest(BaseModel):
     prompt_token_ids: Optional[List[int]]
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
+    # LoRA request.
+    lora_request: Optional[Any] = None
 
     class Config:
         validate_assignment = True
@@ -68,10 +83,14 @@ class vLLMOutputData(BaseModel):
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
         """Create a vLLMOutputData from a vLLM engine output."""
 
+        prompt_token_ids = output.prompt_token_ids
+        if isinstance(prompt_token_ids, np.ndarray):
+            prompt_token_ids = prompt_token_ids.tolist()
+
         data = cls(
             prompt=output.prompt,
-            prompt_token_ids=output.prompt_token_ids,
-            num_input_tokens=len(output.prompt_token_ids),
+            prompt_token_ids=prompt_token_ids,
+            num_input_tokens=len(prompt_token_ids),
         )
 
         if isinstance(output, vllm.outputs.RequestOutput):
@@ -105,34 +124,45 @@ class vLLMEngineWrapper:
 
     def __init__(
         self,
-        *args,
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
         **kwargs,
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
-        self.task_type = kwargs.get("task", "generate")
+        self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.model = kwargs.get("model", None)
+        assert self.model is not None
+
+        # LoRA related.
+        self.lora_lock = asyncio.Lock()
+        self.lora_name_to_request = {}
+
+        # Convert the task type back to a string to pass to the engine.
+        kwargs["task"] = self.task_type.value
 
         if vllm is None:
-            raise ImportError("vLLM is not installed")
+            raise ImportError(
+                "vLLM is not installed or failed to import. Please run "
+                "`pip install ray[llm]` to install required dependencies."
+            )
 
         # Construct PoolerConfig if override_pooler_config is specified.
-        if self.task_type == "embed" and "override_pooler_config" in kwargs:
+        if self.task_type == vLLMTaskType.EMBED and "override_pooler_config" in kwargs:
             kwargs["override_pooler_config"] = vllm.config.PoolerConfig(
                 **kwargs["override_pooler_config"]
             )
 
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
-            *args,
             **kwargs,
             disable_log_requests=True,
         )
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
         # Determine the generate function based on vLLM v0 or v1.
-        if vllm.envs.VLLM_USE_V1:
+        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
+        if self.vllm_use_v1:
             self._generate_async = self.generate_async_v1
         else:
             self._generate_async = self.generate_async_v0
@@ -145,7 +175,28 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
-    def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
+    def _maybe_convert_ndarray_to_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert all ndarray to list in the params. This is because Ray Data
+        by default converts all lists to ndarrays when passing data around, but
+        vLLM expects lists.
+
+        Args:
+            params: The parameters to convert.
+
+        Returns:
+            The converted parameters.
+        """
+        if isinstance(params, dict):
+            return {
+                k: self._maybe_convert_ndarray_to_list(v) for k, v in params.items()
+            }
+        elif isinstance(params, list):
+            return [self._maybe_convert_ndarray_to_list(v) for v in params]
+        elif isinstance(params, np.ndarray):
+            return params.tolist()
+        return params
+
+    async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         """Prepare the inputs for LLM inference.
 
         Args:
@@ -157,7 +208,7 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt")
+            tokenized_prompt = row.pop("tokenized_prompt").tolist()
         else:
             tokenized_prompt = None
 
@@ -166,12 +217,49 @@ class vLLMEngineWrapper:
         else:
             image = []
 
-        if self.task_type == "generate":
-            params = vllm.SamplingParams(**row.pop("sampling_params"))
-        elif self.task_type == "embed":
+        # If the model name is given and is different from the model
+        # set in the config, then this is a LoRA.
+        lora_request = None
+        if "model" in row and row["model"] != self.model:
+            if self.vllm_use_v1:
+                raise ValueError("LoRA is only supported with vLLM v0")
+
+            lora_name = row["model"]
+            if lora_name not in self.lora_name_to_request:
+                async with self.lora_lock:
+                    if lora_name not in self.lora_name_to_request:
+                        # Load a new LoRA adapter if it is not loaded yet.
+                        lora_request = vllm.lora.request.LoRARequest(
+                            lora_name=lora_name,
+                            # LoRA ID starts from 1.
+                            lora_int_id=len(self.lora_name_to_request) + 1,
+                            lora_path=lora_name,
+                        )
+                        self.lora_name_to_request[lora_name] = lora_request
+            lora_request = self.lora_name_to_request[lora_name]
+
+        # Prepare sampling parameters.
+        if self.task_type == vLLMTaskType.GENERATE:
+            sampling_params = row.pop("sampling_params")
+            if "guided_decoding" in sampling_params:
+                if self.vllm_use_v1:
+                    raise ValueError("Guided decoding is only supported with vLLM v0")
+
+                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
+                    **self._maybe_convert_ndarray_to_list(
+                        sampling_params.pop("guided_decoding")
+                    )
+                )
+            else:
+                guided_decoding = None
+            params = vllm.SamplingParams(
+                **sampling_params,
+                guided_decoding=guided_decoding,
+            )
+        elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams()
         else:
-            raise ValueError("Unsupported task type: %s", self.task_type)
+            raise ValueError(f"Unsupported task type: {self.task_type}")
 
         request = vLLMEngineRequest(
             request_id=self.request_id,
@@ -180,6 +268,7 @@ class vLLMEngineWrapper:
             prompt_token_ids=tokenized_prompt,
             images=image,
             params=params,
+            lora_request=lora_request,
         )
         self.request_id += 1
         return request
@@ -195,7 +284,7 @@ class vLLMEngineWrapper:
         Returns:
             A tuple of index in batch, request output and bypassed custom fields.
         """
-        request = self._prepare_llm_request(row)
+        request = await self._prepare_llm_request(row)
 
         async with self.semaphore:
             output = await self._generate_async(request)
@@ -234,6 +323,7 @@ class vLLMEngineWrapper:
             request_id=str(request.request_id),
             prompt=llm_prompt,
             params=request.params,
+            lora_request=request.lora_request,
         )
         # Consume the stream until the request is finished.
         async for request_output in stream:
@@ -304,7 +394,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         data_column: str,
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: str = "generate",
+        task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
     ):
         """
@@ -328,7 +418,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         # Set up the max pending requests.
         pp_size = self.engine_kwargs.get("pipeline_parallel_size", 1)
         self.max_pending_requests = max_pending_requests or math.ceil(
-            self.engine_kwargs["max_num_seqs"] * pp_size * 1.1
+            self.engine_kwargs.get("max_num_seqs", 128) * pp_size * 1.1
         )
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
@@ -344,7 +434,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: str,
+        task_type: vLLMTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -368,7 +458,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             )
 
         # Override the task if it is different from the stage.
-        task = engine_kwargs.get("task", task_type)
+        task = vLLMTaskType(engine_kwargs.get("task", task_type))
         if task != task_type:
             logger.warning(
                 "The task set in engine kwargs (%s) is different from the "
@@ -422,12 +512,13 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         """The expected input keys."""
 
         ret = ["prompt"]
-        if self.task_type == "generate":
+        if self.task_type == vLLMTaskType.GENERATE:
             ret.append("sampling_params")
         return ret
 
     def __del__(self):
-        self.llm.shutdown()
+        if hasattr(self, "llm"):
+            self.llm.shutdown()
 
 
 def _ray_scheduling_strategy_fn(num_gpus_per_instance: int, accelerator_type: str):
@@ -464,11 +555,7 @@ class vLLMEngineStage(StatefulStage):
     A stage that runs vLLM engine.
     """
 
-    fn: StatefulStageUDF = vLLMEngineStageUDF
-    fn_constructor_kwargs: Dict[str, Any]
-    map_batches_kwargs: Dict[str, Any] = dict(
-        concurrency=1,
-    )
+    fn: Type[StatefulStageUDF] = vLLMEngineStageUDF
 
     @root_validator(pre=True)
     def post_init(cls, values):
@@ -484,10 +571,9 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs = values["map_batches_kwargs"]
         accelerator_type = map_batches_kwargs.get("accelerator_type", "")
         fn_constructor_kwargs = values["fn_constructor_kwargs"]
-        runtime_env = fn_constructor_kwargs.get("runtime_env", {})
         engine_kwargs = fn_constructor_kwargs.get("engine_kwargs", {})
 
-        ray_remote_args = {"runtime_env": runtime_env}
+        ray_remote_args = {}
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 

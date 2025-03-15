@@ -12,7 +12,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
-from ray._private.storage import _load_class
+from ray._private.utils import load_class
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 
 logger = logging.getLogger(__name__)
@@ -89,21 +89,31 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 success=False, message="actor_id is required."
             )
 
-        await self.gcs_aio_client.kill_actor(
+        status_code = await self.gcs_aio_client.kill_actor(
             ActorID.from_hex(actor_id),
             force_kill,
             no_restart,
             timeout=SNAPSHOT_API_TIMEOUT_SECONDS,
         )
 
-        message = (
-            f"Force killed actor with id {actor_id}"
-            if force_kill
-            else f"Requested actor with id {actor_id} to terminate. "
-            + "It will exit once running tasks complete"
-        )
+        success = status_code == 200
+        if status_code == 404:
+            message = f"Actor with id {actor_id} not found."
+        elif status_code == 500:
+            message = f"Failed to kill actor with id {actor_id}."
+        elif status_code == 200:
+            message = (
+                f"Force killed actor with id {actor_id}"
+                if force_kill
+                else f"Requested actor with id {actor_id} to terminate. "
+                + "It will exit once running tasks complete"
+            )
+        else:
+            message = f"Unknown status code: {status_code}. Please open a bug report in the Ray repository."
 
-        return dashboard_optional_utils.rest_response(success=True, message=message)
+        # TODO(kevin85421): The utility function needs to be refactored to handle
+        # different status codes. Currently, it only returns 200 and 500.
+        return dashboard_optional_utils.rest_response(success=success, message=message)
 
     @routes.get("/api/component_activities")
     async def get_component_activities(self, req) -> aiohttp.web.Response:
@@ -119,7 +129,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
             try:
-                cluster_activity_callable = _load_class(
+                cluster_activity_callable = load_class(
                     os.environ[RAY_CLUSTER_ACTIVITY_HOOK]
                 )
                 external_activity_output = cluster_activity_callable()

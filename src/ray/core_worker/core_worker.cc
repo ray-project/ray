@@ -422,6 +422,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         task_execution_service_,
         *task_event_buffer_,
         execute_task,
+        options_.initialize_thread_callback,
         [this] { return local_raylet_client_->ActorCreationTaskDone(); });
   }
 
@@ -964,9 +965,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       "CoreWorker.RecordMetrics");
 
   periodical_runner_->RunFnPeriodically(
-      [this] { TryDeleteObjectRefStreams(); },
+      [this] { TryDelPendingObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
-      "CoreWorker.GCStreamingGeneratorMetadata");
+      "CoreWorker.TryDelPendingObjectRefStreams");
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
@@ -1098,11 +1099,17 @@ void CoreWorker::Disconnect(
 
   opencensus::stats::StatsExporter::ExportNow();
   if (connected_) {
-    RAY_LOG(INFO) << "Disconnecting to the raylet.";
+    RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";
     connected_ = false;
     if (local_raylet_client_) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect(
-          exit_type, exit_detail, creation_task_exception_pb_bytes));
+      Status status = local_raylet_client_->Disconnect(
+          exit_type, exit_detail, creation_task_exception_pb_bytes);
+      if (status.ok()) {
+        RAY_LOG(INFO) << "Disconnected from the local raylet.";
+      } else {
+        RAY_LOG(WARNING) << "Failed to disconnect from the local raylet: "
+                         << status.ToString();
+      }
     }
   }
 }
@@ -1171,8 +1178,7 @@ void CoreWorker::Exit(
     exiting_detail_ = std::optional<std::string>{detail};
   }
   // Release the resources early in case draining takes a long time.
-  auto status =
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  auto status = local_raylet_client_->NotifyDirectCallTaskBlocked();
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << "Failed to notify Raylet. It is either the raylet is already dead or the "
@@ -1367,7 +1373,7 @@ void CoreWorker::InternalHeartbeat() {
     actor_task_submitter_->CheckTimeoutTasks();
   }
 
-  // Periodically report the lastest backlog so that
+  // Periodically report the latest backlog so that
   // local raylet will have the eventually consistent view of worker backlogs
   // even in cases where backlog reports from normal_task_submitter
   // are lost or reordered.
@@ -2003,23 +2009,6 @@ Status CoreWorker::Contains(const ObjectID &object_id,
   return Status::OK();
 }
 
-// For any objects that are ErrorType::OBJECT_IN_PLASMA, we need to move them from
-// the ready set into the plasma_object_ids set to wait on them there.
-void MoveReadyPlasmaObjectsToPlasmaSet(
-    std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
-    const absl::flat_hash_set<ObjectID> &memory_object_ids,
-    absl::flat_hash_set<ObjectID> &plasma_object_ids,
-    absl::flat_hash_set<ObjectID> &ready) {
-  for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end(); iter++) {
-    const auto &obj_id = *iter;
-    auto found = memory_store->GetIfExists(obj_id);
-    if (found != nullptr && found->IsInPlasmaError()) {
-      plasma_object_ids.insert(obj_id);
-      ready.erase(obj_id);
-    }
-  }
-}
-
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int num_objects,
                         int64_t timeout_ms,
@@ -2039,7 +2028,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
   if (memory_object_ids.size() != ids.size()) {
@@ -2078,23 +2066,26 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
-  absl::flat_hash_set<ObjectID> ready;
   int64_t start_time = current_time_ms();
+  absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
+  ready.reserve(num_objects);
   RAY_RETURN_NOT_OK(memory_store_->Wait(
       memory_object_ids,
       std::min(static_cast<int>(memory_object_ids.size()), num_objects),
       timeout_ms,
       worker_context_,
-      &ready));
+      &ready,
+      &plasma_object_ids));
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
   }
   if (fetch_local) {
-    MoveReadyPlasmaObjectsToPlasmaSet(
-        memory_store_, memory_object_ids, plasma_object_ids, ready);
-    if (static_cast<int>(ready.size()) < num_objects && !plasma_object_ids.empty()) {
+    // With fetch_local we want to start fetching plasma_object_ids from other nodes'
+    // plasma stores. We make the request to the plasma store even if we have num_objects
+    // ready since we want to at least make the request to start pulling these objects.
+    if (!plasma_object_ids.empty()) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids,
           std::min(static_cast<int>(plasma_object_ids.size()),
@@ -2102,6 +2093,15 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
           timeout_ms,
           worker_context_,
           &ready));
+    }
+  } else {
+    // When we don't need to fetch_local, we don't need to wait for the objects to be
+    // pulled to the local object store, so we can directly add them to the ready set.
+    for (const auto &object_id : plasma_object_ids) {
+      if (ready.size() == static_cast<size_t>(num_objects)) {
+        break;
+      }
+      ready.insert(object_id);
     }
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
@@ -3163,6 +3163,11 @@ void CoreWorker::RunTaskExecutionLoop() {
     signal_checker->RunFnPeriodically(
         [this] {
           /// The overhead of this is only a single digit microsecond.
+          if (worker_context_.GetCurrentActorShouldExit()) {
+            Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
+                 "User requested to exit the actor.",
+                 nullptr);
+          }
           auto status = options_.check_signals();
           if (status.IsIntentionalSystemExit()) {
             Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
@@ -3243,7 +3248,7 @@ Status CoreWorker::ExecuteTask(
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
-  // If the worker is exitted via Exit API, we shouldn't execute
+  // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
   if (IsExiting()) {
     absl::MutexLock lock(&mutex_);
@@ -3425,7 +3430,7 @@ Status CoreWorker::ExecuteTask(
     task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
   }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "Finished executing task, status=" << status;
+      << "Finished executing task, status=" << status.ToString();
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
@@ -3445,7 +3450,7 @@ Status CoreWorker::ExecuteTask(
          absl::StrCat("Worker exits unexpectedly. ", status.message()),
          creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
-    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
+    RAY_LOG(FATAL) << "Unexpected task status type : " << status.ToString();
   }
   return status;
 }
@@ -3477,21 +3482,28 @@ void CoreWorker::AsyncDelObjectRefStream(const ObjectID &generator_id) {
   if (task_manager_->TryDelObjectRefStream(generator_id)) {
     return;
   }
-  deleted_generator_ids_.insert(generator_id);
+
+  {
+    // TryDelObjectRefStream is thread safe so no need to hold the lock above.
+    absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
+    generator_ids_pending_deletion_.insert(generator_id);
+  }
 }
 
-void CoreWorker::TryDeleteObjectRefStreams() {
-  std::vector<ObjectID> out_of_scope_generator_ids;
-  for (auto it = deleted_generator_ids_.begin(); it != deleted_generator_ids_.end();
-       it++) {
-    const auto &generator_id = *it;
+void CoreWorker::TryDelPendingObjectRefStreams() {
+  absl::MutexLock lock(&generator_ids_pending_deletion_mutex_);
+
+  std::vector<ObjectID> deleted;
+  for (const auto &generator_id : generator_ids_pending_deletion_) {
+    RAY_LOG(DEBUG).WithField(generator_id)
+        << "TryDelObjectRefStream from generator_ids_pending_deletion_";
     if (task_manager_->TryDelObjectRefStream(generator_id)) {
-      out_of_scope_generator_ids.push_back(generator_id);
+      deleted.push_back(generator_id);
     }
   }
 
-  for (const auto &generator_id : out_of_scope_generator_ids) {
-    deleted_generator_ids_.erase(generator_id);
+  for (const auto &generator_id : deleted) {
+    generator_ids_pending_deletion_.erase(generator_id);
   }
 }
 
@@ -3633,7 +3645,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
-              << status;
+              << status.ToString();
         }
         waiter->HandleObjectReported(num_objects_consumed);
       });

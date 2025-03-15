@@ -17,8 +17,8 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
-from ray.data._internal.numpy_support import convert_to_numpy, validate_numpy_batch
+from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
+from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
@@ -64,8 +64,6 @@ class PandasRow(TableRow):
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        pd = lazy_import_pandas()
-
         def get_item(keys: List[str]) -> Any:
             col = self._row[keys]
             if len(col) == 0:
@@ -75,14 +73,16 @@ class PandasRow(TableRow):
             if isinstance(items.iloc[0], TensorArrayElement):
                 # Getting an item in a Pandas tensor column may return
                 # a TensorArrayElement, which we have to convert to an ndarray.
-                return pd.Series(item.to_numpy() for item in items)
+                return tuple(item.to_numpy() for item in items)
 
             try:
                 # Try to interpret this as a numpy-type value.
                 # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-                return pd.Series(item.as_py() for item in items)
+                return tuple(item for item in items)
 
-            except (AttributeError, ValueError):
+            except (AttributeError, ValueError) as e:
+                logger.warning(f"Failed to convert {items} to a tuple", exc_info=e)
+
                 # Fallback to the original form.
                 return items
 
@@ -94,7 +94,7 @@ class PandasRow(TableRow):
         if items is None:
             return None
         elif is_single_item:
-            return items.iloc[0]
+            return items[0]
         else:
             return items
 
@@ -113,21 +113,21 @@ class PandasBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
+        from ray.data.extensions.tensor_extension import TensorArray
+
         pandas = lazy_import_pandas()
 
-        pd_columns: Dict[str, Any] = {}
-
-        for col_name, col_vals in columns.items():
-            np_col_vals = convert_to_numpy(col_vals)
-
-            if col_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(np_col_vals):
-                from ray.data.extensions.tensor_extension import TensorArray
-
-                pd_columns[col_name] = TensorArray(np_col_vals)
-            else:
-                pd_columns[col_name] = np_col_vals
-
-        return pandas.DataFrame(pd_columns)
+        return pandas.DataFrame(
+            {
+                column_name: (
+                    TensorArray(convert_to_numpy(column_values))
+                    if len(column_values) > 0
+                    and _should_convert_to_tensor(column_values, column_name)
+                    else column_values
+                )
+                for column_name, column_values in columns.items()
+            }
+        )
 
     @staticmethod
     def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
@@ -286,15 +286,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         # column to the resulting table.
         return pyarrow.Table.from_pandas(self._table, preserve_index=False)
 
-    @staticmethod
-    def numpy_to_block(
-        batch: Union[Dict[str, np.ndarray], Dict[str, list]],
-    ) -> "pandas.DataFrame":
-        validate_numpy_batch(batch)
-
-        block = PandasBlockBuilder._table_from_pydict(batch)
-        return block
-
     def num_rows(self) -> int:
         return self._table.shape[0]
 
@@ -424,7 +415,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         self, agg_fn: Callable[["pandas.Series", bool], U], on: str
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
-        pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
                 "on must be a string or None when aggregating on Pandas blocks, but "
@@ -445,15 +435,15 @@ class PandasBlockAccessor(TableBlockAccessor):
             if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
                 return None
             raise e from None
-        if pd.isnull(val):
-            return None
+
         return val
 
-    def count(self, on: str) -> Optional[U]:
-        return self._apply_agg(lambda col: col.count(), on)
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
+        return self._apply_agg(
+            lambda col: col.count() if ignore_nulls else len(col), on
+        )
 
     def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
-        pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
                 "on must be a string or None when aggregating on Pandas blocks, but "
@@ -464,15 +454,14 @@ class PandasBlockAccessor(TableBlockAccessor):
             return None
 
         col = self._table[on]
+
         if col.isnull().all():
             # Short-circuit on an all-null column, returning None. This is required for
             # sum() since it will otherwise return 0 when summing on an all-null column,
             # which is not what we want.
             return None
-        val = col.sum(skipna=ignore_nulls)
-        if pd.isnull(val):
-            return None
-        return val
+
+        return col.sum(skipna=ignore_nulls)
 
     def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.min(skipna=ignore_nulls), on)

@@ -1159,8 +1159,7 @@ def run_rllib_example_script_experiment(
                     "You are running your script with --num-learners="
                     f"{args.num_learners} and --num-gpus-per-learner="
                     f"{args.num_gpus_per_learner}, but your cluster only has "
-                    f"{num_gpus_available} GPUs! Will run "
-                    f"with {num_gpus_available} CPU Learners instead."
+                    f"{num_gpus_available} GPUs!"
                 )
 
             # All required GPUs are available -> Use them.
