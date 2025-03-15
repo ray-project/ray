@@ -83,6 +83,8 @@ jupytext>1.13.6
 jinja2==3.1.2
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
+nbval==0.11.0
+bash_kernel==0.10.0
 
 # For dataset tests
 polars==0.14.21
