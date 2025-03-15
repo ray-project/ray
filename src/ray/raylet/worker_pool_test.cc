@@ -46,8 +46,8 @@ int POOL_SIZE_SOFT_LIMIT = 3;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID2 = JobID::FromInt(2);
-std::string BAD_RUNTIME_ENV = "bad runtime env";
-const std::string BAD_RUNTIME_ENV_ERROR_MSG = "bad runtime env";
+static const char BAD_RUNTIME_ENV[] = "bad runtime env";
+const char BAD_RUNTIME_ENV_ERROR_MSG[] = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
@@ -691,15 +691,15 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   // Pop two workers and make sure they're one of the workers we created.
   popped_worker = worker_pool_->PopWorkerSync(task_spec);
   ASSERT_NE(popped_worker, nullptr);
-  ASSERT_TRUE(workers.count(popped_worker) > 0);
+  ASSERT_GT(workers.count(popped_worker), 0);
   popped_worker = worker_pool_->PopWorkerSync(task_spec);
   ASSERT_NE(popped_worker, nullptr);
-  ASSERT_TRUE(workers.count(popped_worker) > 0);
+  ASSERT_GT(workers.count(popped_worker), 0);
   // Pop a worker from the empty pool and make sure it isn't one of the workers we
   // created.
   popped_worker = worker_pool_->PopWorkerSync(task_spec);
   ASSERT_NE(popped_worker, nullptr);
-  ASSERT_TRUE(workers.count(popped_worker) == 0);
+  ASSERT_EQ(workers.count(popped_worker), 0);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
@@ -920,7 +920,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
         ASSERT_TRUE(worker_ids.insert(worker->WorkerId()).second);
       } else {
         // For the second round, all workers are existing ones.
-        ASSERT_TRUE(worker_ids.count(worker->WorkerId()) > 0);
+        ASSERT_GT(worker_ids.count(worker->WorkerId()), 0);
       }
     }
   }
@@ -1211,7 +1211,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
       started_restore_processes.push_back(last_restore_process);
     }
     // Register workers with 10% probability at each time.
-    if (rand() % 100 < 10) {
+    unsigned int seed = time(nullptr);
+    if (rand_r(&seed) % 100 < 10) {
       // Push spill worker if there's a process.
       if (started_spill_processes.size() > 0) {
         auto spill_worker = CreateSpillWorker(

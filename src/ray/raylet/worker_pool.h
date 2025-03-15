@@ -26,6 +26,10 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <tuple>
+#include <deque>
+#include <list>
+#include <string>
 
 #include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -268,7 +272,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::function<absl::Time()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
-  virtual ~WorkerPool() override;
+  ~WorkerPool() override;
 
   /// Start the worker pool. Could only be called once.
   void Start();

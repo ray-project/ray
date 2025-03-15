@@ -15,6 +15,11 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <string>
+#include <utility>
+#include <algorithm>
+#include <memory>
+#include <vector>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"

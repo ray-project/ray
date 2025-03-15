@@ -14,6 +14,11 @@
 
 #include "ray/raylet/dependency_manager.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+#include <string>
+
 namespace ray {
 
 namespace raylet {

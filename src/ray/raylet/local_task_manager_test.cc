@@ -19,6 +19,11 @@
 
 #include <memory>
 #include <string>
+#include <list>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <unordered_set>
 
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/id.h"
@@ -190,7 +195,7 @@ class MockObjectManager : public ObjectManagerInterface {
 
 class LocalTaskManagerTest : public ::testing::Test {
  public:
-  LocalTaskManagerTest(double num_cpus = 3.0)
+  explicit LocalTaskManagerTest(double num_cpus = 3.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus, *gcs_client_)),

@@ -18,6 +18,11 @@
 
 #include <boost/container_hash/hash.hpp>
 #include <unordered_map>
+#include <utility>
+#include <string>
+#include <algorithm>
+#include <memory>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
