@@ -68,6 +68,14 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
         "or the batch processing latency is too small, but it should be good "
         "enough for batch size >= 64.",
     )
+    accelerator_name: str = Field(
+        default="GPU",
+        description=(
+            "The primary accelerator category used to run the model (e.g., 'GPU', 'NPU'), "
+            "while `accelerator_type` acts as a more specific identifier within name category. "
+            "For example, 'L20' can be futher spcified as `accelerator_type` for 'GPU' major type."
+        ),
+    )
 
     # Processor stage configurations.
     apply_chat_template: bool = Field(
@@ -183,6 +191,7 @@ def build_vllm_engine_processor(
                 accelerator_type=config.accelerator_type,
                 runtime_env=config.runtime_env,
             ),
+            accelerator_name=config.accelerator_name,
         )
     )
 

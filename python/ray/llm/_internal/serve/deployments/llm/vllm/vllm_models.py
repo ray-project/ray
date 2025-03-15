@@ -51,6 +51,13 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="Configuration for cloud storage mirror. This is for where the weights are downloaded from.",
     )
+    accelerator_name: str = Field(
+        default="GPU",
+        description=(
+            "The primary accelerator category used to run the model (e.g., 'GPU', 'NPU'), "
+            "while `accelerator_type` acts as a more specific identifier within name category. "
+        ),
+    )
     accelerator_type: Optional[GPUType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
@@ -104,6 +111,7 @@ class VLLMEngineConfig(BaseModelExtended):
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
+            accelerator_name=llm_config.accelerator_name,
             accelerator_type=llm_config.accelerator_type,
             engine_kwargs=llm_config.engine_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -134,7 +142,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
-        bundle = {"GPU": 1}
+        bundle = {self.accelerator_name: 1}
         if self.accelerator_type:
             bundle[self.ray_accelerator_type()] = 0.001
         bundles = [bundle for _ in range(self.num_gpu_workers)]
