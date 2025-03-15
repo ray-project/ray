@@ -296,7 +296,7 @@ class ClientCallManager {
     // received a SIGTERM.
     while (true) {
       auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
-                                   gpr_time_from_millis(250, GPR_TIMESPAN));
+                                   gpr_time_from_millis(10000, GPR_TIMESPAN));
       auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
