@@ -17,6 +17,10 @@
 #include <google/protobuf/repeated_field.h>
 
 #include <functional>
+#include <memory>
+#include <queue>
+#include <string>
+#include <vector>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"

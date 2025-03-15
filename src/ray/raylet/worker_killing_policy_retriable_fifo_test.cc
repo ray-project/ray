@@ -14,6 +14,9 @@
 
 #include "ray/raylet/worker_killing_policy_retriable_fifo.h"
 
+#include <memory>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet/test/util.h"
