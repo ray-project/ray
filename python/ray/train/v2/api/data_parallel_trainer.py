@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_bool
+from ray._private.usage import usage_lib
 from ray.air._internal.usage import tag_train_v2_trainer
 from ray.train import (
     BackendConfig,
@@ -89,6 +90,7 @@ class DataParallelTrainer:
         if metadata is not None:
             raise DeprecationWarning(_GET_METADATA_DEPRECATION_MESSAGE)
 
+        usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
 
     def fit(self) -> Result:

@@ -5,7 +5,7 @@ import pytest
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import check_library_usage_telemetry, TelemetryCallsite
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def test_not_used_on_import(reset_usage_lib, callsite: TelemetryCallsite):
 
 
 @pytest.mark.parametrize("callsite", list(TelemetryCallsite))
-def test_used_on_train_fit(reset_usage_lib, callsite: TelemetryCallsite):
+def test_used_on_train__fit(reset_usage_lib, callsite: TelemetryCallsite):
     def _call_train_fit():
         def train_fn():
             pass
@@ -37,11 +37,9 @@ def test_used_on_train_fit(reset_usage_lib, callsite: TelemetryCallsite):
     check_library_usage_telemetry(
         _call_train_fit,
         callsite=callsite,
-        expected_library_usages=[{"train", "tune"}, {"core", "train", "tune"}],
+        expected_library_usages=[{"train"}, {"core", "train"}],
         expected_extra_usage_tags={
-            "air_entrypoint": "Trainer.fit",
-            "air_storage_configuration": "local",
-            "air_trainer": "Custom",
+            "train_trainer": "DataParallelTrainer",
         },
     )
 
