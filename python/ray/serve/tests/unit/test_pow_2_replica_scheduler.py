@@ -1361,6 +1361,36 @@ class TestModelMultiplexing:
             assert done.pop() == m2_tasks[0]
             m2_tasks = m2_tasks[1:]
 
+    async def test_replicas_with_model_id_not_chosen_when_busy(self, pow_2_scheduler):
+        """
+        Setup 3 replicas, one of which has the model ID, the other two do not. Verifies
+        that when the replica with the model ID is busy, the other replicas are chosen.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+        r2 = FakeRunningReplica("r2", model_ids={})
+        r2.set_queue_len_response(0)
+        r3 = FakeRunningReplica("r3", model_ids={})
+        r3.set_queue_len_response(0)
+        s.update_replicas([r1, r2, r3])
+
+        # Sending burst of requests with model_id=m1.
+        tasks = [
+            loop.create_task(
+                s.choose_replica_for_request(fake_pending_request(model_id="m1"))
+            )
+            for _ in range(100)
+        ]
+
+        # Ensure that all tasks are scheduled to r2 and r3 right away, since r1 is busy.
+        done, _ = await asyncio.wait(tasks, timeout=0.01)
+        assert len(done) == 100
+        for task in done:
+            assert task.result() in {r2, r3}
+
 
 @pytest.mark.asyncio
 async def test_get_queue_len_cancelled_on_timeout(pow_2_scheduler):

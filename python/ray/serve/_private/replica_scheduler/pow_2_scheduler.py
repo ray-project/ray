@@ -382,6 +382,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
             )
             tried_fewest_multiplexed_models = False
+            tried_first_multiplexed_models = False
 
             while True:
                 # If no replicas are available, wait until `update_replicas` is called.
@@ -421,7 +422,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             not candidate_replica_ids
                             and request_metadata.multiplexed_model_id
                             not in self._multiplexed_model_id_fallback_match
-                        ):
+                        ) or tried_first_multiplexed_models:
                             # When there is no match for a multiplexed model id,
                             # first try to fall back to replicas with the fewest models.
                             candidate_replica_ids = (
@@ -434,6 +435,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             self._multiplexed_model_id_fallback_match.discard(
                                 request_metadata.multiplexed_model_id
                             )
+                        tried_first_multiplexed_models = True
                     elif not tried_fewest_multiplexed_models:
                         # After the `multiplexed_matching_timeout` is up, first try
                         # routing to replicas that have the fewest models loaded.
