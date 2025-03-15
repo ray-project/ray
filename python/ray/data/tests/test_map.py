@@ -1687,6 +1687,32 @@ def test_map_batches_async_generator(shutdown_only):
     )
 
 
+def test_flat_map_async_generator(shutdown_only):
+    async def fetch_data(id):
+        return {"id": id}
+
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def __call__(self, row):
+            id = row["id"]
+            task1 = asyncio.create_task(fetch_data(id))
+            task2 = asyncio.create_task(fetch_data(id + 1))
+            print(f"yield task1: {id}")
+            yield await task1
+            print(f"sleep: {id}")
+            await asyncio.sleep(id % 5)
+            print(f"yield task2: {id}")
+            yield await task2
+
+    n = 10
+    ds = ray.data.from_items([{"id": i} for i in range(0, n, 2)])
+    ds = ds.flat_map(AsyncActor, concurrency=1, max_concurrency=2)
+    output = ds.take_all()
+    assert sorted(extract_values("id", output)) == list(range(0, n)), output
+
+
 def test_map_batches_async_exception_propagation(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=2)
