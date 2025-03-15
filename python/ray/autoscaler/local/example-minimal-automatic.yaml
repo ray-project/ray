@@ -1,7 +1,7 @@
 # Minimal configuration for an automatically managed on-premise cluster.
 
 # To use, run the script at ray/python/ray/autoscaler/local/coordinator_server.py:
-# $ python coordinator_server.py --ips <list_of_node_ips> --port <PORT>
+# $ python coordinator_server.py --ips <list_of_node_ips> --host <HOST> --port <PORT>
 # Copy the address from the output into the coordinator_address field.
 
 # A unique identifier for the head node and workers of this cluster.
