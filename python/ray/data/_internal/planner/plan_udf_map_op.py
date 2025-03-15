@@ -209,7 +209,7 @@ def plan_udf_map_op(
     fn, init_fn = _parse_op_fn(op)
 
     if isinstance(op, MapBatches):
-        transform_fn = _generate_transform_fn_for_map_batches(fn)
+        transform_fn = _generate_transform_fn_for_map_batches(fn, op._include_task_idx)
         map_transformer = _create_map_transformer_for_map_batches_op(
             transform_fn,
             op._batch_size,
@@ -373,6 +373,7 @@ def _validate_batch_output(batch: Block) -> None:
 
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
+    include_block_batch_idx: bool = False,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
@@ -381,9 +382,9 @@ def _generate_transform_fn_for_map_batches(
     else:
 
         def transform_fn(
-            batches: Iterable[DataBatch], _: TaskContext
+            batches: Iterable[DataBatch], ctx: TaskContext
         ) -> Iterable[DataBatch]:
-            for batch in batches:
+            for batch_id, batch in enumerate(batches):
                 try:
                     if (
                         not isinstance(batch, collections.abc.Mapping)
@@ -395,7 +396,11 @@ def _generate_transform_fn_for_map_batches(
                         # operators output empty blocks with no schema.
                         res = [batch]
                     else:
-                        res = fn(batch)
+                        res = (
+                            fn((ctx.task_idx, batch_id, batch))
+                            if include_block_batch_idx
+                            else fn(batch)
+                        )
                         if not isinstance(res, GeneratorType):
                             res = [res]
                 except ValueError as e:
