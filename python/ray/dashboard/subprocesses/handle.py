@@ -128,7 +128,6 @@ class SubprocessModuleHandle:
                 os.getpid(),
                 self.process_ready_event,
             ),
-            daemon=True,
             name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
