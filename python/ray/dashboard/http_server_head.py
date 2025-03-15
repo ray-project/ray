@@ -7,6 +7,7 @@ import pathlib
 import sys
 import time
 from math import floor
+from typing import List
 
 from packaging.version import Version
 
@@ -17,6 +18,10 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
+from ray.dashboard.head import DashboardHeadModule
+
+from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -229,10 +234,17 @@ class HttpServerDashboardHead:
             return response
         return await handler(request)
 
-    async def run(self, modules):
+    async def run(
+        self,
+        dashboard_head_modules: List[DashboardHeadModule],
+        subprocess_module_handles: List[SubprocessModuleHandle],
+    ):
         # Bind http routes of each module.
-        for c in modules:
-            dashboard_optional_utils.DashboardHeadRouteTable.bind(c)
+        for m in dashboard_head_modules:
+            dashboard_optional_utils.DashboardHeadRouteTable.bind(m)
+
+        for h in subprocess_module_handles:
+            SubprocessRouteTable.bind(h)
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
@@ -246,6 +258,7 @@ class HttpServerDashboardHead:
             ],
         )
         app.add_routes(routes=routes.bound_routes())
+        app.add_routes(routes=SubprocessRouteTable.bound_routes())
 
         self.runner = aiohttp.web.AppRunner(
             app,
