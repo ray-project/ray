@@ -115,10 +115,6 @@ kubectl describe pods {YOUR_UNREADY_WORKER_POD_NAME}
 #   Warning  Unhealthy  78s (x19 over 2m43s)  kubelet            Readiness probe failed: success
 ```
 
-KubeRay creates a RayCluster based on `spec.rayClusterConfig` defined in the RayService YAML for a RayService custom resource.  
-Next, once the head Pod is running and ready, KubeRay submits a request to the head's dashboard port to create the Ray Serve applications defined in `spec.serveConfigV2`.  
-KubeRay deploys these Ray Serve applications as Ray Serve replicas in worker Pods.  
-
 Look at the output of Step 5.1. One worker Pod is running and ready, while the other is running but not ready.  
 Starting from Ray 2.8, a Ray worker Pod that doesn't have any Ray Serve replica won't have a Proxy actor.  
 Starting from KubeRay v1.1.0, KubeRay adds a readiness probe to every worker Pod's Ray container to check if the worker Pod has a Proxy actor or not.  
