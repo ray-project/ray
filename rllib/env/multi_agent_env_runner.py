@@ -670,8 +670,16 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
         if COMPONENT_ENV_TO_MODULE_CONNECTOR in state:
+            if isinstance(state[COMPONENT_ENV_TO_MODULE_CONNECTOR], ray.ObjectRef):
+                state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = ray.get(
+                    state[COMPONENT_ENV_TO_MODULE_CONNECTOR]
+                )
             self._env_to_module.set_state(state[COMPONENT_ENV_TO_MODULE_CONNECTOR])
         if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
+            if isinstance(state[COMPONENT_MODULE_TO_ENV_CONNECTOR], ray.ObjectRef):
+                state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = ray.get(
+                    state[COMPONENT_MODULE_TO_ENV_CONNECTOR]
+                )
             self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
         # Update RLModule state.
