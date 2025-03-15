@@ -1580,10 +1580,9 @@ class Dataset:
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
-        if seed is not None:
-            random.seed(seed)
-
         def random_sample(batch):
+            if seed is not None:
+                random.seed(seed)
             if isinstance(batch, list):
                 return [row for row in batch if random.random() <= fraction]
             if isinstance(batch, pa.Table):
