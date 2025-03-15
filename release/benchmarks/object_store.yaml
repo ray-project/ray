@@ -13,8 +13,8 @@ head_node_type:
 worker_node_types:
     - name: worker_node
       instance_type: m6i.2xlarge
-      min_workers: 49
-      max_workers: 49
+      min_workers: 2
+      max_workers: 2
       use_spot: false
       resources:
         custom_resources:

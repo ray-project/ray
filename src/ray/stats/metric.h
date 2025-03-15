@@ -333,6 +333,8 @@ class Stats {
   /// \param tag_val The tag value. This method will assume we only have one tag for
   /// this metric.
   void Record(double val, std::string tag_val) {
+    return;
+
     RAY_CHECK(tag_keys_.size() == 1);
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
@@ -347,6 +349,8 @@ class Stats {
   /// \param val The value to record
   /// \param tags The tags for this value
   void Record(double val, std::unordered_map<std::string, std::string> tags) {
+    return;
+
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
@@ -363,6 +367,8 @@ class Stats {
   /// \param tags Registered tags and corresponding tag values for this value
   void Record(double val,
               const std::vector<std::pair<opencensus::tags::TagKey, std::string>> &tags) {
+    return;
+
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
