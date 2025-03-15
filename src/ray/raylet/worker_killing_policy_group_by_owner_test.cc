@@ -15,8 +15,8 @@
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 #include <memory>
-#include <utility>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"

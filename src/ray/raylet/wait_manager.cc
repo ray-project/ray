@@ -14,8 +14,8 @@
 
 #include "ray/raylet/wait_manager.h"
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "ray/util/container_util.h"
 

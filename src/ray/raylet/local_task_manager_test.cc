@@ -17,13 +17,13 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <list>
 #include <memory>
 #include <string>
-#include <list>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <unordered_set>
 
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/id.h"

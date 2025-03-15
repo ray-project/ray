@@ -14,6 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
@@ -29,13 +36,6 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-
-#include <string>
-#include <deque>
-#include <list>
-#include <memory>
-#include <vector>
-#include <utility>
 
 namespace ray {
 namespace raylet {
@@ -173,14 +173,13 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
-  const absl::flat_hash_map<SchedulingClass,
-                            std::deque<std::shared_ptr<internal::Work>>> &
-  GetTaskToDispatch() const override {
+  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
+      &GetTaskToDispatch() const override {
     return tasks_to_dispatch_;
   }
 
-  const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>> &
-  GetBackLogTracker() const override {
+  const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
+      &GetBackLogTracker() const override {
     return backlog_tracker_;
   }
 

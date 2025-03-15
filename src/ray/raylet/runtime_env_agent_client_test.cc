@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "ray/raylet/runtime_env_agent_client.h"
 
+#include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -25,7 +26,6 @@
 #include <thread>
 #include <unordered_map>
 #include <utility>
-#include <algorithm>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"

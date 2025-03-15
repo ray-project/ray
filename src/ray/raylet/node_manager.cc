@@ -14,6 +14,7 @@
 
 #include "ray/raylet/node_manager.h"
 
+#include <algorithm>
 #include <cctype>
 #include <csignal>
 #include <cstddef>
@@ -21,10 +22,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <unordered_set>
-#include <algorithm>
 
 #include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
