@@ -28,7 +28,7 @@ kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
 
 Look at the Ray Serve configuration `serveConfigV2` embedded in the RayService YAML. Notice the only deployment in `deployments` of the application named `simple_app`:
-  * `num_replicas`: Controls the number of replicas to run that handle requests to this deployment. Initialize to 1 to ensure the overall number of the ray serve replicas is 1.
+  * `num_replicas`: Controls the number of replicas to run that handle requests to this deployment. Initialize to 1 to ensure the overall number of the Ray Serve replicas is 1.
   * `max_replicas_per_node`: Controls the maximum number of replicas on one single pod.  
 
 See [Ray Serve Documentation](https://docs.ray.io/en/master/serve/configure-serve-deployment.html) for more details.
