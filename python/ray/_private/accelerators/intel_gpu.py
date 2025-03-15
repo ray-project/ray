@@ -98,6 +98,6 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
             return
 
         prefix = ONEAPI_DEVICE_BACKEND_TYPE + ":"
-        os.environ[
-            IntelGPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = prefix + ",".join([str(i) for i in visible_xpu_devices])
+        os.environ[IntelGPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
+            prefix + ",".join([str(i) for i in visible_xpu_devices])
+        )

@@ -161,11 +161,12 @@ def upload_py_modules_if_needed(
 
 
 class PyModulesPlugin(RuntimeEnvPlugin):
-
     name = "py_modules"
 
     def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
+        self,
+        resources_dir: str,
+        gcs_aio_client: "GcsAioClient",  # noqa: F821
     ):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
         self._gcs_aio_client = gcs_aio_client
@@ -199,7 +200,6 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-
         module_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )

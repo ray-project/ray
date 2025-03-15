@@ -1,4 +1,5 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -84,9 +85,7 @@ def _validate_resource_quantity(name, quantity):
             error_message,
         ) = ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
-        ).validate_resource_request_quantity(
-            quantity
-        )
+        ).validate_resource_request_quantity(quantity)
         if not valid:
             return error_message
     return None

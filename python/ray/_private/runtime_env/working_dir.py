@@ -118,7 +118,6 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
 
 
 class WorkingDirPlugin(RuntimeEnvPlugin):
-
     name = "working_dir"
 
     # Note working_dir is not following the priority order of other plugins. Instead
@@ -126,7 +125,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
     priority = 5
 
     def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
+        self,
+        resources_dir: str,
+        gcs_aio_client: "GcsAioClient",  # noqa: F821
     ):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         self._gcs_aio_client = gcs_aio_client

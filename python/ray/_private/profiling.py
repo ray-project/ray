@@ -186,9 +186,9 @@ def chrome_tracing_dump(
                     node_to_index[node_ip_address],
                     component_id,
                 ) not in worker_to_index:  # noqa
-                    worker_to_index[
-                        (node_to_index[node_ip_address], component_id)
-                    ] = worker_idx  # noqa
+                    worker_to_index[(node_to_index[node_ip_address], component_id)] = (
+                        worker_idx  # noqa
+                    )
                     worker_idx += 1
 
                 # Modify the name with the additional user-defined extra data.

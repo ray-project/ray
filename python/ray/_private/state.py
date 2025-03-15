@@ -121,9 +121,9 @@ class GlobalState:
             results = {}
             for i in range(len(actor_table)):
                 actor_table_data = gcs_pb2.ActorTableData.FromString(actor_table[i])
-                results[
-                    binary_to_hex(actor_table_data.actor_id)
-                ] = self._gen_actor_info(actor_table_data)
+                results[binary_to_hex(actor_table_data.actor_id)] = (
+                    self._gen_actor_info(actor_table_data)
+                )
 
             return results
 
