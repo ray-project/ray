@@ -14,9 +14,9 @@
 
 #pragma once
 
+#include <memory>
 #include <unordered_set>
 #include <vector>
-#include <memory>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"

@@ -14,16 +14,15 @@
 
 #include "ray/raylet/local_task_manager.h"
 
-#include <algorithm>
-#include <utility>
-#include <string>
-#include <vector>
-#include <memory>
-#include <limits>
-
 #include <google/protobuf/map.h>
 
+#include <algorithm>
 #include <boost/range/join.hpp>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"

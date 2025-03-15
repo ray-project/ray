@@ -17,10 +17,10 @@
 #include <gtest/gtest_prod.h>
 
 #include <algorithm>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
-#include <memory>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"

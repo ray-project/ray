@@ -14,11 +14,11 @@
 
 #pragma once
 
-#include <vector>
-#include <string>
 #include <memory>
-#include <utility>
+#include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
@@ -41,7 +41,7 @@ class TaskDependencyManagerInterface {
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
-  virtual ~TaskDependencyManagerInterface() {};
+  virtual ~TaskDependencyManagerInterface(){};
 };
 
 /// \class DependencyManager

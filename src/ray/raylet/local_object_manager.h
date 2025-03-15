@@ -18,9 +18,9 @@
 
 #include <functional>
 #include <memory>
-#include <vector>
 #include <queue>
 #include <string>
+#include <vector>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"

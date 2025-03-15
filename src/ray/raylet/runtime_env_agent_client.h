@@ -16,10 +16,10 @@
 
 #include <boost/asio/deadline_timer.hpp>
 #include <csignal>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
-#include <memory>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
