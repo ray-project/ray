@@ -8,7 +8,7 @@ This guide explores a specific scenario in KubeRay's RayService API where a Ray 
 
 A Ray Serve Replica is an instance of a deployment in Ray Serve that processes incoming requests. Each replica runs as a Ray actor and can handle HTTP or Python function calls. Users can scale the number of replicas based on workload requirements, distributing traffic across the available replicas for load balancing and high availability.  
 
-## Example: Serve two simple Ray Serve applications using RayService
+## Example: Serve one simple Ray Serve applications using RayService
 
 ## Step 1: Create a Kubernetes cluster with Kind
 
@@ -22,23 +22,10 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ## Step 3: Install a RayService
 
-::::{tab-set}
-
-:::{tab-item} x86-64 (Intel/Linux)
 ```sh
 curl -O https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml
 kubectl apply -f ray-service.no-ray-serve-replica.yaml
 ```
-:::
-
-:::{tab-item} ARM64 (Apple silicon)
-```sh
-curl -s https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.no-ray-serve-replica.yaml | sed 's/2.41.0/2.41.0-aarch64/g' > ray-service.no-ray-serve-replica.yaml
-kubectl apply -f ray-service.no-ray-serve-replica.yaml
-```
-:::
-
-::::
 
 Look at the Ray Serve configuration `serveConfigV2` embedded in the RayService YAML. Notice the only deployment in `deployments` of the application named `simple_app`:
   * `num_replicas`: Controls the number of replicas to run that handle requests to this deployment. Initialize to 1 to ensure the overall number of the ray serve replicas is 1.
@@ -132,7 +119,7 @@ KubeRay creates a RayCluster based on `spec.rayClusterConfig` defined in the Ray
 Next, once the head Pod is running and ready, KubeRay submits a request to the head's dashboard port to create the Ray Serve applications defined in `spec.serveConfigV2`.  
 KubeRay deploys these Ray Serve applications as Ray Serve replicas in worker Pods.  
 
-Look at the output of Step 4.3. One worker Pod is running and ready, while the other is running but not ready.  
+Look at the output of Step 5.1. One worker Pod is running and ready, while the other is running but not ready.  
 Starting from Ray 2.8, a Ray worker Pod that doesn't have any Ray Serve replica won't have a Proxy actor.  
 Starting from KubeRay v1.1.0, KubeRay adds a readiness probe to every worker Pod's Ray container to check if the worker Pod has a Proxy actor or not.  
 If the worker Pod lacks a Proxy actor, the readiness probe fails, rendering the worker Pod unready, and thus, it doesn't receive any traffic.  
@@ -155,6 +142,9 @@ There's a `ray::ServeReplica::simple_app::BaseService` and a `ray::ProxyActor` r
 
 ## Step 7: Send requests to the Serve applications by the Kubernetes serve service
 
+`rayservice-no-ray-serve-serve-svc` does traffic routing among all the workers which have Ray Serve replicas.
+Although one worker Pod is unready, Ray Serve can still route the traffic to the ready worker Pod with Ray Serve replica running. Therefore, users can still send requests to the application and receive responses from it.
+
 ```sh
 # Step 7.1: Run a curl Pod.
 # If you already have a curl Pod, you can use `kubectl exec -it <curl-pod> -- sh` to access the Pod.
@@ -164,9 +154,6 @@ kubectl run curl --image=radial/busyboxplus:curl -i --tty
 curl -X POST -H 'Content-Type: application/json' rayservice-no-ray-serve-replica-serve-svc:8000/basic
 # [Expected output]: hello world
 ```
-
-* `rayservice-no-ray-serve-serve-svc` does traffic routing among all the workers which have Ray Serve replicas.
-Although one worker Pod is unready, Ray Serve can still route the traffic to the ready worker Pod with Ray Serve replica running.
 
 ## Step 8: In-place update for Ray Serve applications
 
