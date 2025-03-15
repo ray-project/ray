@@ -24,6 +24,7 @@ py_test_run_all_notebooks(
         "horovod_simple.ipynb",  # CI do not have Horovod
         "tune-aim.ipynb",  # CI does not have `aim`
         "bohb_example.ipynb",  # CI does not have bohb requirements
+        "tune_jax.ipynb", # CI does not have jax
    ],
     tags = [
         "exclusive",
