@@ -454,7 +454,7 @@ def concat(
 
     if not blocks:
         # Short-circuit on empty list of blocks.
-        return blocks
+        return pa.table([])
 
     if len(blocks) == 1:
         return blocks[0]
@@ -566,12 +566,20 @@ def concat(
 
 
 def concat_and_sort(
-    blocks: List["pyarrow.Table"], sort_key: "SortKey"
+    blocks: List["pyarrow.Table"],
+    sort_key: "SortKey",
+    *,
+    promote_types: bool = False,
 ) -> "pyarrow.Table":
+    import pyarrow as pa
     import pyarrow.compute as pac
 
-    ret = concat(blocks, promote_types=True)
+    if len(blocks) == 0:
+        return pa.table([])
+
+    ret = concat(blocks, promote_types=promote_types)
     indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
+
     return take_table(ret, indices)
 
 
