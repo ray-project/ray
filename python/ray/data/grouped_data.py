@@ -264,6 +264,7 @@ class GroupedData:
             compute=compute,
             batch_format=batch_format,
             zero_copy_batch=False,
+            include_task_idx=False,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
