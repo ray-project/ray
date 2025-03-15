@@ -20,6 +20,7 @@
 
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "ray/common/status.h"
@@ -50,8 +51,10 @@ class ObjectManagerClient {
     freeobjects_rr_index_ = std::rand() % num_connections_;
     grpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
-      grpc_clients_.emplace_back(
-          new GrpcClient<ObjectManagerService>(address, port, client_call_manager));
+      grpc::ChannelArguments args;
+      args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+      grpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(
+          address, port, client_call_manager, std::move(args)));
     }
   };
 
