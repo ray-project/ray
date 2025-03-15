@@ -1,4 +1,5 @@
 import abc
+import os
 import asyncio
 import aiohttp
 import inspect
@@ -51,14 +52,30 @@ class SubprocessModule(abc.ABC):
     def __init__(
         self,
         config: SubprocessModuleConfig,
+        parent_process_pid: int,
     ):
         """
         Initialize current module when DashboardHead loading modules.
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
+        self._parent_process_pid = parent_process_pid
         # Lazy init
         self._gcs_aio_client = None
+        self._parent_process_death_detection_task = None
+
+    async def _detect_parent_process_death(self):
+        """
+        Detect parent process death by checking if ppid is still the same.
+        """
+        while True:
+            ppid = os.getppid()
+            if ppid != self._parent_process_pid:
+                logger.warning(
+                    f"Parent process {self._parent_process_pid} died because ppid changed to {ppid}. Exiting..."
+                )
+                sys.exit()
+            await asyncio.sleep(1)
 
     @staticmethod
     def is_minimal_module():
@@ -130,6 +147,7 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
+    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
 
@@ -140,7 +158,10 @@ async def run_module_inner(
     )
 
     try:
-        module = cls(config)
+        module = cls(config, parent_process_pid)
+        module._parent_process_death_detection_task = asyncio.create_task(
+            module._detect_parent_process_death()
+        )
         await module.run()
         ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
@@ -153,6 +174,7 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
+    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
     """
@@ -179,6 +201,7 @@ def run_module(
             cls,
             config,
             incarnation,
+            parent_process_pid,
             ready_event,
         )
     )
