@@ -1,8 +1,8 @@
 (kuberay-rayservice-no-ray-serve-replica)=
 
-# RayService Worker No Ray Serve Replica
+# Why are some RayService worker Pods not ready?
 
-This guide explores a specific scenario in KubeRay with Ray where a Ray worker Pod remains in an unready state due to the lack of a Ray Serve replica.  
+This guide explores a specific scenario in KubeRay's RayService API where a Ray worker Pod remains in an unready state due to the absence of a Ray Serve replica.
 
 ## What's a Ray Serve Replica?
 
