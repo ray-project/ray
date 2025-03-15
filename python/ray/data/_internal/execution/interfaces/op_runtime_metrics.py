@@ -374,7 +374,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
-        self._cum_rss_bytes: Optional[int] = None
+        self._cum_max_rss_bytes: Optional[int] = None
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -528,13 +528,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.TASKS,
         map_only=True,
     )
-    def average_memory_usage_per_task(self) -> Optional[float]:
+    def average_max_rss_per_task(self) -> Optional[float]:
         """Average RSS usage of tasks."""
-        if self._cum_rss_bytes is None:
+        if self._cum_max_rss_bytes is None:
             return None
         else:
             assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
-            return self._cum_rss_bytes / self.num_task_outputs_generated
+            return self._cum_max_rss_bytes / self.num_task_outputs_generated
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
@@ -621,11 +621,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             assert meta.num_rows is not None
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
-            if meta.exec_stats.rss_bytes is not None:
-                if self._cum_rss_bytes is None:
-                    self._cum_rss_bytes = meta.exec_stats.rss_bytes
+            if meta.exec_stats.max_rss_bytes is not None:
+                if self._cum_max_rss_bytes is None:
+                    self._cum_max_rss_bytes = meta.exec_stats.max_rss_bytes
                 else:
-                    self._cum_rss_bytes += meta.exec_stats.rss_bytes
+                    self._cum_max_rss_bytes += meta.exec_stats.max_rss_bytes
             else:
                 assert not self._is_map, "Map operators should collect RSS metrics"
 
