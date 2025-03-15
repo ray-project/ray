@@ -253,6 +253,10 @@ class OpState:
                 ref.num_rows() is not None
             ), "RefBundle must have a valid number of rows"
             self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
+        active, restarting, pending = self.op.actor_info_counts()
+        self.op.metrics.num_alive_actors = active
+        self.op.metrics.num_restarting_actors = restarting
+        self.op.metrics.num_pending_actors = pending
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
