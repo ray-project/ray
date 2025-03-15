@@ -308,7 +308,7 @@ class ClientCallManager {
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
         // If the client deadline is exceeded, event is obtained at this block.
-        auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
+        auto tag = static_cast<ClientCallTag *>(got_tag);
         // Refresh the tag.
         got_tag = nullptr;
         tag->GetCall()->SetReturnStatus();
