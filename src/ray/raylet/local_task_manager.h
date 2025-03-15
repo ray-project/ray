@@ -30,6 +30,13 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 
+#include <string>
+#include <deque>
+#include <list>
+#include <memory>
+#include <vector>
+#include <utility>
+
 namespace ray {
 namespace raylet {
 
@@ -87,7 +94,7 @@ class LocalTaskManager : public ILocalTaskManager {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
       std::function<int64_t(void)> get_time_ms =
-          []() { return (int64_t)(absl::GetCurrentTimeNanos() / 1e6); },
+          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
@@ -166,13 +173,14 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
-  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
-      &GetTaskToDispatch() const override {
+  const absl::flat_hash_map<SchedulingClass,
+                            std::deque<std::shared_ptr<internal::Work>>> &
+  GetTaskToDispatch() const override {
     return tasks_to_dispatch_;
   }
 
-  const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>>
-      &GetBackLogTracker() const override {
+  const absl::flat_hash_map<SchedulingClass, absl::flat_hash_map<WorkerID, int64_t>> &
+  GetBackLogTracker() const override {
     return backlog_tracker_;
   }
 
@@ -292,7 +300,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// class. This information is used to place a cap on the number of running
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
-    SchedulingClassInfo(int64_t cap)
+    explicit SchedulingClassInfo(int64_t cap)
         : running_tasks(),
           capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}

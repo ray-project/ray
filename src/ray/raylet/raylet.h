@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 

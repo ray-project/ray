@@ -14,6 +14,13 @@
 
 #include "ray/raylet/local_task_manager.h"
 
+#include <algorithm>
+#include <utility>
+#include <string>
+#include <vector>
+#include <memory>
+#include <limits>
+
 #include <google/protobuf/map.h>
 
 #include <boost/range/join.hpp>

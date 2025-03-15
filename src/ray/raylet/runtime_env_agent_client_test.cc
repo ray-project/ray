@@ -24,6 +24,8 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
+#include <algorithm>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"

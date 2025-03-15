@@ -14,6 +14,11 @@
 
 #include "ray/raylet/raylet.h"
 
+#include <string>
+#include <memory>
+#include <vector>
+#include <utility>
+
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>

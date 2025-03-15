@@ -14,6 +14,12 @@
 
 #pragma once
 
+#include <vector>
+#include <string>
+#include <memory>
+#include <utility>
+#include <unordered_set>
+
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
@@ -35,7 +41,7 @@ class TaskDependencyManagerInterface {
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual bool TaskDependenciesBlocked(const TaskID &task_id) const = 0;
   virtual bool CheckObjectLocal(const ObjectID &object_id) const = 0;
-  virtual ~TaskDependencyManagerInterface(){};
+  virtual ~TaskDependencyManagerInterface() {};
 };
 
 /// \class DependencyManager
@@ -49,7 +55,7 @@ class TaskDependencyManagerInterface {
 class DependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
-  DependencyManager(ObjectManagerInterface &object_manager)
+  explicit DependencyManager(ObjectManagerInterface &object_manager)
       : object_manager_(object_manager) {
     waiting_tasks_counter_.SetOnChangeCallback(
         [this](std::pair<std::string, bool> key) mutable {
@@ -200,7 +206,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// Metadata for an object that is needed by at least one executing worker
   /// and/or one queued task.
   struct ObjectDependencies {
-    ObjectDependencies(const rpc::ObjectReference &ref)
+    explicit ObjectDependencies(const rpc::ObjectReference &ref)
         : owner_address(ref.owner_address()) {}
     /// The tasks that depend on this object, either because the object is a task argument
     /// or because the task called `ray.get` on the object.
