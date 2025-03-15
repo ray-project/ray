@@ -155,6 +155,7 @@ class MapBatches(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
+        include_task_idx: bool = False,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -175,6 +176,7 @@ class MapBatches(AbstractUDFMap):
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
+        self._include_task_idx = include_task_idx
 
     @property
     def can_modify_num_rows(self) -> bool:
