@@ -33,7 +33,7 @@ uint64_t ChunkObjectReader::GetNumChunks() const {
          chunk_size_;
 }
 
-absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
+absl::Cord ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
   // The spilled file stores metadata before data. But the GetChunk needs to
   // return data before metadata. We achieve by first read from data section,
   // then read from metadata section.
@@ -42,16 +42,15 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
       std::min(chunk_size_,
                object_->GetDataSize() + object_->GetMetadataSize() - cur_chunk_offset);
 
-  std::string result;
-  result.reserve(cur_chunk_size);
+  absl::Cord cord;
+  size_t result_offset = 0;
 
   if (cur_chunk_offset < object_->GetDataSize()) {
     // read from data section.
     auto offset = cur_chunk_offset;
-    auto data_size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
-    if (!object_->ReadFromDataSection(offset, data_size, result)) {
-      return absl::optional<std::string>();
-    }
+    auto size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
+    cord.Append(object_->ReadFromDataSection(offset, size));
+    result_offset = size;
   }
 
   if (cur_chunk_offset + cur_chunk_size > object_->GetDataSize()) {
@@ -60,10 +59,14 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
         std::max(cur_chunk_offset, object_->GetDataSize()) - object_->GetDataSize();
     auto size = std::min(cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
                          cur_chunk_size);
-    if (!object_->ReadFromMetadataSection(offset, size, result)) {
-      return absl::optional<std::string>();
+    std::string result;
+    result.reserve(size);
+    if (!object_->ReadFromMetadataSection(offset, size, &result[result_offset])) {
+      RAY_LOG(ERROR) << "Failed to read metadata section for object "
+                     << object_->GetOwnerAddress().worker_id();
     }
+    cord.Append(std::move(result));
   }
-  return absl::optional<std::string>(std::move(result));
+  return cord;
 }
 };  // namespace ray

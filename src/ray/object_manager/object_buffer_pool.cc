@@ -123,7 +123,7 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t data_size,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
-                                  const std::string &data) {
+                                  const absl::Cord &data) {
   std::optional<ObjectBufferPool::ChunkInfo> chunk_info;
   {
     absl::MutexLock lock(&pool_mutex_);
@@ -157,7 +157,9 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
   // The num_inflight_copies is used to ensure that another thread cannot call Release
   // on the object_id, which makes the unguarded copy call safe.
-  std::memcpy(chunk_info->data, data.data(), chunk_info->buffer_length);
+  std::memcpy(chunk_info->data,
+              reinterpret_cast<const uint8_t *>(&(*data.Chars().begin())),
+              chunk_info->buffer_length);
 
   {
     // Ensure the process of object_id Seal and Release is mutex guarded.

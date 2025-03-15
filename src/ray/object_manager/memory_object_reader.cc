@@ -32,14 +32,10 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
-bool MemoryObjectReader::ReadFromDataSection(uint64_t offset,
-                                             uint64_t size,
-                                             std::string &output) const {
-  if (offset + size > GetDataSize()) {
-    return false;
-  }
-  output.append(reinterpret_cast<char *>(object_buffer_.data->Data() + offset), size);
-  return true;
+absl::Cord MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size) const {
+  return absl::MakeCordFromExternal(
+      absl::string_view{reinterpret_cast<char *>(object_buffer_.data->Data()), size},
+      [](absl::string_view) {});
 }
 
 bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
