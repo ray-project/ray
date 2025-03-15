@@ -423,7 +423,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             and request_metadata.multiplexed_model_id
                             not in self._multiplexed_model_id_fallback_match
                         ) or tried_first_multiplexed_models:
-                            # When there is no match for a multiplexed model id,
+                            # When there is no match for a multiplexed model id
+                            # or when the replica(s) with the matching model id is busy,
                             # first try to fall back to replicas with the fewest models.
                             candidate_replica_ids = (
                                 self._get_replica_ids_with_fewest_multiplexed_models()
