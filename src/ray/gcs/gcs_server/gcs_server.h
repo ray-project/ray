@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"

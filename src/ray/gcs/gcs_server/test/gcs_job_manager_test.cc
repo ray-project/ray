@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
 #include <memory>
+#include <string>
 
 // clang-format off
 #include "gtest/gtest.h"

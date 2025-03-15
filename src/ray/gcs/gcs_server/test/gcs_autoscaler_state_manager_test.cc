@@ -14,6 +14,12 @@
 
 // clang-format off
 #include <memory>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <map>
+#include <string>
+#include <limits>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"

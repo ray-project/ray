@@ -14,8 +14,13 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
+#include <algorithm>
 #include <boost/regex.hpp>
+#include <limits>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"

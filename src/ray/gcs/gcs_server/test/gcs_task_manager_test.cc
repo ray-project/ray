@@ -16,6 +16,8 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 

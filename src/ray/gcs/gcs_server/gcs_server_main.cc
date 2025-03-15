@@ -15,6 +15,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <string>
+#include <vector>
 
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"

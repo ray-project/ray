@@ -15,6 +15,8 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -916,8 +918,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
   auto scheduling_done_ns = absl::GetCurrentTimeNanos();
 
   /// Make sure the creation time is correctly recorded.
-  ASSERT_TRUE(placement_group->GetStats().scheduling_latency_us() != 0);
-  ASSERT_TRUE(placement_group->GetStats().end_to_end_creation_latency_us() != 0);
+  ASSERT_NE(placement_group->GetStats().scheduling_latency_us(), 0);
+  ASSERT_NE(placement_group->GetStats().end_to_end_creation_latency_us(), 0);
   // The way to measure latency is a little brittle now. Alternatively, we can mock
   // the absl::GetCurrentNanos() to a callback method and have more accurate test.
   auto scheduling_latency_us =

@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <utility>
 // clang-format off
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -25,7 +28,7 @@
 #include "ray/common/test_util.h"
 // clang-format on
 
-using namespace ::testing;
+using namespace ::testing;  // NOLINT
 
 namespace ray {
 using raylet::NoopLocalTaskManager;
