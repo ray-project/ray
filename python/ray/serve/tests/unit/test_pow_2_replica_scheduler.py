@@ -1386,6 +1386,11 @@ class TestModelMultiplexing:
         ]
 
         # Ensure that all tasks are scheduled to r2 and r3 right away, since r1 is busy.
+        #
+        # The timeout is important in this test, else the request can still wait for the
+        # multiplexed_matching_timeout to expire then to go to other replicas. This
+        # timeout ensures that the request is scheduled to other replicas right away
+        # after first try.
         done, _ = await asyncio.wait(tasks, timeout=0.01)
         assert len(done) == 100
         for task in done:
