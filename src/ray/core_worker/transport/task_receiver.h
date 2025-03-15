@@ -113,17 +113,14 @@ class TaskReceiver {
   /// the repr name could include data only initialized during the creation task.
   void SetActorReprName(const std::string &repr_name);
 
+ protected:
+  /// Cache the concurrency groups of the actor.
+  std::vector<ConcurrencyGroup> concurrency_group_cache_;
+
  private:
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio, int fiber_max_concurrency, bool execute_out_of_order);
-
- protected:
-  /// Cache the concurrency groups of actors.
-  // TODO(ryw): remove the ActorID key since we only ever handle 1 actor.
-  absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
-
- private:
   // Worker context.
   WorkerContext &worker_context_;
   /// The callback function to process a task.

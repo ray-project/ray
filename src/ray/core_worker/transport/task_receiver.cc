@@ -183,8 +183,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
               default_max_concurrency,
               initialize_thread_callback_);
         }
-        concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
-            task_spec.ConcurrencyGroups();
+        concurrency_group_cache_ = task_spec.ConcurrencyGroups();
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.
@@ -238,20 +237,19 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
-      auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
-      RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       if (execute_out_of_order_) {
         it = actor_scheduling_queues_
-                 .emplace(task_spec.CallerWorkerId(),
-                          std::unique_ptr<SchedulingQueue>(
-                              new OutOfOrderActorSchedulingQueue(task_main_io_service_,
-                                                                 *waiter_,
-                                                                 task_event_buffer_,
-                                                                 pool_manager_,
-                                                                 fiber_state_manager_,
-                                                                 is_asyncio_,
-                                                                 fiber_max_concurrency_,
-                                                                 cg_it->second)))
+                 .emplace(
+                     task_spec.CallerWorkerId(),
+                     std::unique_ptr<SchedulingQueue>(
+                         new OutOfOrderActorSchedulingQueue(task_main_io_service_,
+                                                            *waiter_,
+                                                            task_event_buffer_,
+                                                            pool_manager_,
+                                                            fiber_state_manager_,
+                                                            is_asyncio_,
+                                                            fiber_max_concurrency_,
+                                                            concurrency_group_cache_)))
                  .first;
       } else {
         it = actor_scheduling_queues_
@@ -264,7 +262,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                                                        fiber_state_manager_,
                                                        is_asyncio_,
                                                        fiber_max_concurrency_,
-                                                       cg_it->second)))
+                                                       concurrency_group_cache_)))
                  .first;
       }
     }
