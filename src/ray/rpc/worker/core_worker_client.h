@@ -374,6 +374,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                      bool skip_queue,
                      ClientCallback<PushTaskReply> &&callback) override {
+    RAY_LOG(INFO) << "Pushing task to actor " << request->task_spec().caller_id()
+                  << ", seq no " << request->sequence_number();
     if (skip_queue) {
       // Set this value so that the actor does not skip any tasks when
       // processing this request. We could also set it to max_finished_seq_no_,
@@ -420,6 +422,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// sent at once. This prevents the server scheduling queue from being overwhelmed.
   /// See direct_actor.proto for a description of the ordering protocol.
   void SendRequests() {
+    RAY_LOG(INFO) << "[myan] SendRequests";
     absl::MutexLock lock(&mutex_);
     auto this_ptr = this->shared_from_this();
 

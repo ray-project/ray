@@ -158,7 +158,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
 Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
-  RAY_LOG(DEBUG).WithField(task_id) << "Submitting task";
+  RAY_LOG(INFO).WithField(task_id) << "Submitting task";
   RAY_CHECK(task_spec.IsActorTask());
 
   bool task_queued = false;
@@ -190,9 +190,13 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           // the callback may get called in the same call stack.
           auto actor_id = task_spec.ActorId();
           auto task_id = task_spec.TaskId();
+          RAY_LOG(INFO) << "Resolving task dependencies. Task_id=" << task_id
+                        << ", Actor_id=" << actor_id;
           resolver_.ResolveDependencies(
               task_spec, [this, send_pos, actor_id, task_id](Status status) {
                 task_finisher_.MarkDependenciesResolved(task_id);
+                RAY_LOG(INFO) << "Mark dependencies resolved. Task_id=" << task_id
+                              << ", Actor_id=" << actor_id;
                 auto fail_or_retry_task = TaskID::Nil();
                 {
                   absl::MutexLock lock(&mu_);
@@ -511,6 +515,7 @@ void ActorTaskSubmitter::CheckTimeoutTasks() {
 }
 
 void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
+  RAY_LOG(INFO) << "Send pending tasks for actor " << actor_id;
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   auto &client_queue = it->second;
@@ -594,7 +599,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto num_queued = queue.inflight_task_callbacks.size();
-  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
+  RAY_LOG(INFO).WithField(task_id).WithField(actor_id)
       << "Pushing task to actor, actor counter " << actor_counter << " seq no "
       << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
