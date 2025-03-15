@@ -169,11 +169,9 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
 }
 
 absl::Cord SpilledObjectReader::ReadFromDataSection(uint64_t offset,
-                                                    uint64_t size,
-                                                    char *output) const {
+                                                    uint64_t size) const {
   std::ifstream is(file_path_, std::ios::binary);
   absl::Cord cord;
-  uint64_t read_size = 0;
   is.seekg(data_offset_ + offset);
   while (size > 0) {
     auto buffer = cord.GetAppendBuffer(size);
