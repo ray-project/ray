@@ -247,15 +247,6 @@ In Ubuntu, the ARP cache size can be tuned in ``/etc/sysctl.conf`` by increasing
 the value of ``net.ipv4.neigh.default.gc_thresh1`` - ``net.ipv4.neigh.default.gc_thresh3``.
 For more details, please refer to the OS manual.
 
-Tuning Ray Settings
-~~~~~~~~~~~~~~~~~~~
-
-.. note::
-  There is an ongoing `project <https://github.com/ray-project/ray/projects/15>`_ focusing on
-  improving Ray's scalability and stability. Feel free to share your thoughts and use cases.
-
-To run a large cluster, several parameters need to be tuned in Ray.
-
 Benchmark
 ~~~~~~~~~
 
