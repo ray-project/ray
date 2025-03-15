@@ -538,18 +538,13 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   push_request.set_chunk_index(chunk_index);
 
   // read a chunk into push_request and handle errors.
-  auto optional_chunk = chunk_reader->GetChunk(chunk_index);
-  if (!optional_chunk.has_value()) {
-    RAY_LOG(DEBUG) << "Read chunk " << chunk_index << " of object " << object_id
-                   << " failed. It may have been evicted.";
-    on_complete(Status::IOError("Failed to read spilled object"));
-    return;
-  }
-  push_request.set_data(std::move(optional_chunk.value()));
+  auto cord = chunk_reader->GetChunk(chunk_index);
+  push_request.set_data(cord);
+
   if (from_disk) {
-    num_bytes_pushed_from_disk_ += push_request.data().length();
+    num_bytes_pushed_from_disk_ += push_request.data().size();
   } else {
-    num_bytes_pushed_from_plasma_ += push_request.data().length();
+    num_bytes_pushed_from_plasma_ += push_request.data().size();
   }
 
   // record the time cost between send chunk and receive reply
@@ -582,7 +577,7 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
   uint64_t metadata_size = request.metadata_size();
   uint64_t data_size = request.data_size();
   const rpc::Address &owner_address = request.owner_address();
-  const std::string &data = request.data();
+  const absl::Cord &data = request.data();
 
   bool success = ReceiveObjectChunk(
       node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data);
@@ -604,7 +599,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t data_size,
                                        uint64_t metadata_size,
                                        uint64_t chunk_index,
-                                       const std::string &data) {
+                                       const absl::Cord &data) {
   num_bytes_received_total_ += data.size();
   RAY_LOG(DEBUG).WithField(object_id)
       << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
