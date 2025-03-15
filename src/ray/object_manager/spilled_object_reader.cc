@@ -168,11 +168,20 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
   return result;
 }
 
-bool SpilledObjectReader::ReadFromDataSection(uint64_t offset,
-                                              uint64_t size,
-                                              char *output) const {
+absl::Cord SpilledObjectReader::ReadFromDataSection(uint64_t offset,
+                                                    uint64_t size) const {
   std::ifstream is(file_path_, std::ios::binary);
-  return is.seekg(data_offset_ + offset) && is.read(output, size);
+  absl::Cord cord;
+  is.seekg(data_offset_ + offset);
+  while (size > 0) {
+    auto buffer = cord.GetAppendBuffer(size);
+    absl::Span<char> span = buffer.available_up_to(size);
+    is.read(span.data(), span.size());
+    buffer.IncreaseLengthBy(span.size());
+    cord.Append(std::move(buffer));
+    size -= span.size();
+  }
+  return cord;
 }
 
 bool SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,

@@ -40,9 +40,7 @@ class IObjectReader {
   /// \param size number of bytes to copy.
   /// \param output pointer to the memory location to copy to.
   /// \return bool.
-  virtual bool ReadFromDataSection(uint64_t offset,
-                                   uint64_t size,
-                                   char *output) const = 0;
+  virtual absl::Cord ReadFromDataSection(uint64_t offset, uint64_t size) const = 0;
   /// Read from metadata sections into output.
   /// Return false if the object is corrupted or size/offset is invalid.
   ///
