@@ -42,3 +42,10 @@ ignore = [
 
 [tool.ruff.lint.flake8-quotes]
 avoid-escape = false
+
+[tool.ruff.format]
+exclude = [
+    "python/ray/core/src/ray/gcs/",
+    "python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc.py",
+    "doc/external/",
+]
