@@ -1,5 +1,4 @@
-"""Util class to install packages via uv.
-"""
+"""Util class to install packages via uv."""
 
 from typing import Dict, List, Optional
 import os

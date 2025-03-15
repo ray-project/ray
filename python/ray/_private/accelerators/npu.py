@@ -94,6 +94,6 @@ class NPUAcceleratorManager(AcceleratorManager):
         if os.environ.get(NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR):
             return
 
-        os.environ[
-            NPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_npu_devices])
+        os.environ[NPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
+            ",".join([str(i) for i in visible_npu_devices])
+        )

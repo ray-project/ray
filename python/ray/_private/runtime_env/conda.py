@@ -257,7 +257,6 @@ def _get_conda_dict_with_ray_inserted(
 
 
 class CondaPlugin(RuntimeEnvPlugin):
-
     name = "conda"
 
     def __init__(self, resources_dir: str):

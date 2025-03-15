@@ -121,8 +121,7 @@ def store_stats_summary(reply):
     # TODO(ekl) it would be nice if we could provide a full memory usage
     # breakdown by type (e.g., pinned by worker, primary, etc.)
     store_summary += (
-        "Plasma memory usage {} MiB, {} objects, {}% full, {}% "
-        "needed\n".format(
+        "Plasma memory usage {} MiB, {} objects, {}% full, {}% " "needed\n".format(
             int(reply.store_stats.object_store_bytes_used / (1024 * 1024)),
             reply.store_stats.num_local_objects,
             round(
@@ -235,9 +234,9 @@ def free(object_refs: list, local_only: bool = False):
         worker.core_worker.free_objects(object_refs, local_only)
 
 
-def get_local_ongoing_lineage_reconstruction_tasks() -> List[
-    Tuple[common_pb2.LineageReconstructionTask, int]
-]:
+def get_local_ongoing_lineage_reconstruction_tasks() -> (
+    List[Tuple[common_pb2.LineageReconstructionTask, int]]
+):
     """Return the locally submitted ongoing retry tasks
        triggered by lineage reconstruction.
 

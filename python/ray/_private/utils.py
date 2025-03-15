@@ -403,9 +403,9 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     if object_store_memory is not None:
         resources["object_store_memory"] = object_store_memory
     if accelerator_type is not None:
-        resources[
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
-        ] = 0.001
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = (
+            0.001
+        )
 
     return resources
 
@@ -509,9 +509,10 @@ def _get_docker_cpus(
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
     if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
         try:
-            with open(cpu_quota_file_name, "r") as quota_file, open(
-                cpu_period_file_name, "r"
-            ) as period_file:
+            with (
+                open(cpu_quota_file_name, "r") as quota_file,
+                open(cpu_period_file_name, "r") as period_file,
+            ):
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception:
             logger.exception("Unexpected error calculating docker cpu quota.")
@@ -1908,7 +1909,7 @@ def validate_node_labels(labels: Dict[str, str]):
 
 
 def parse_pg_formatted_resources_to_original(
-    pg_formatted_resources: Dict[str, float]
+    pg_formatted_resources: Dict[str, float],
 ) -> Dict[str, float]:
     original_resources = {}
 

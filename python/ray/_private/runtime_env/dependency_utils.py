@@ -43,9 +43,7 @@ with open(r"{ray_version_path}", "wt") as f:
     f.write(ray.__version__)
     f.write(" ")
     f.write(ray.__path__[0])
-                """.format(
-                    ray_version_path=ray_version_path
-                ),
+                """.format(ray_version_path=ray_version_path),
             ]
             if virtualenv_utils._WIN32:
                 env = os.environ.copy()

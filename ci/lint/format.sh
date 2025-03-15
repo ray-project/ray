@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
-# Black + Clang formatter (if installed). This script formats all changed files from the last mergebase.
+# Clang formatter (if installed). This script formats all changed files from the last mergebase.
 # You are encouraged to run this locally before pushing changes for review.
 
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="1.7.0"
 
 check_python_command_exist() {
     VERSION=""
     case "$1" in
-        black)
-            VERSION=$BLACK_VERSION_REQUIRED
-            ;;
         mypy)
             VERSION=$MYPY_VERSION_REQUIRED
             ;;
@@ -44,7 +40,6 @@ check_docstyle() {
 }
 
 # TODO(can): add shellcheck, clang-format, and google-java-format to this check
-check_python_command_exist black
 check_python_command_exist mypy
 
 # this stops git rev-parse from failing if we run this from the .git directory
@@ -53,20 +48,7 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-# NOTE(edoakes): black version differs based on installation method:
-#   Option 1) 'black, 21.12b0 (compiled: no)'
-#   Option 2) 'black, version 21.12b0'
-#   For newer versions (at least 22.10.0), a second line is printed which must be dropped:
-#
-#     black, 22.10.0 (compiled: yes)
 #     Python (CPython) 3.9.13
-BLACK_VERSION_STR=$(black --version)
-if [[ "$BLACK_VERSION_STR" == *"compiled"* ]]
-then
-    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | head -n 1 | awk '{print $2}')
-else
-    BLACK_VERSION=$(echo "$BLACK_VERSION_STR" | head -n 1 | awk '{print $3}')
-fi
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
@@ -77,7 +59,6 @@ tool_version_check() {
     fi
 }
 
-tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
 tool_version_check "mypy" "$MYPY_VERSION" "$MYPY_VERSION_REQUIRED"
 
 if command -v shellcheck >/dev/null; then
@@ -126,18 +107,6 @@ MYPY_FILES=(
     'ray/_private/gcs_utils.py'
 )
 
-
-BLACK_EXCLUDES=(
-    '--force-exclude'
-    'python/ray/cloudpickle/*|'`
-    `'python/build/*|'`
-    `'python/ray/core/src/ray/gcs/*|'`
-    `'python/ray/thirdparty_files/*|'`
-    `'python/ray/_private/thirdparty/*|'`
-    `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
-    `'python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|'`
-    `'doc/external/*'
-)
 
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
@@ -219,10 +188,6 @@ format_files() {
       fi
     done
 
-    if [ 0 -lt "${#python_files[@]}" ]; then
-      black "${python_files[@]}"
-    fi
-
     if command -v shellcheck >/dev/null; then
       if shellcheck --shell=sh --format=diff - < /dev/null; then
         if [ 0 -lt "${#shell_files[@]}" ]; then
@@ -238,9 +203,6 @@ format_files() {
 }
 
 format_all_scripts() {
-    echo "$(date)" "Black...."
-    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-      black "${BLACK_EXCLUDES[@]}"
     echo "$(date)" "MYPY...."
     mypy_on_each "${MYPY_FILES[@]}"
 
@@ -280,17 +242,11 @@ format_all() {
 # for autoformat yet.
 format_changed() {
     # The `if` guard ensures that the list of filenames is not empty, which
-    # could cause the formatter to receive 0 positional arguments, making
-    # Black error.
+    # could cause the formatter to receive 0 positional arguments.
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
     MERGEBASE="$(git merge-base upstream/master HEAD)"
-
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-            black "${BLACK_EXCLUDES[@]}"
-    fi
 
     if command -v clang-format >/dev/null; then
         if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
