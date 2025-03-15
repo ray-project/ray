@@ -9,7 +9,7 @@ import requests
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray.dashboard.utils as dashboard_utils
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)

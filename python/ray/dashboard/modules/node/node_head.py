@@ -14,6 +14,7 @@ import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
+from ray._common.utils import get_or_create_event_loop
 from ray._private.collections_utils import split
 from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
 from ray._private.ray_constants import (
@@ -22,7 +23,6 @@ from ray._private.ray_constants import (
     env_integer,
 )
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
-from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,

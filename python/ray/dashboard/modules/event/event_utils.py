@@ -9,7 +9,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ray._private.utils import get_or_create_event_loop, run_background_task
+from ray._common.utils import get_or_create_event_loop, run_background_task
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.utils import async_loop_forever
 

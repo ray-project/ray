@@ -16,7 +16,7 @@ from packaging import version
 from starlette.types import Receive
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import (
     DeploymentID,

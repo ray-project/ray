@@ -12,9 +12,9 @@ import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import event_pb2, event_pb2_grpc
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,

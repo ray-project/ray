@@ -19,12 +19,11 @@ from ray.exceptions import ActorDiedError, RayChannelError, RayChannelTimeoutErr
 import ray
 import ray._private
 import ray.cluster_utils
-from ray.dag import InputNode, MultiOutputNode
+from ray.dag import DAGContext, InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
-from ray._private.utils import (
+from ray._common.utils import (
     get_or_create_event_loop,
 )
-from ray.dag import DAGContext
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,

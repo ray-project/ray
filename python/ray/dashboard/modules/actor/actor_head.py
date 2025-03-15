@@ -9,8 +9,8 @@ import aiohttp.web
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts

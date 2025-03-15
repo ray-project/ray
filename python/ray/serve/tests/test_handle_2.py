@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
