@@ -428,7 +428,6 @@ TPU = "TPU"
 NPU = "NPU"
 HPU = "HPU"
 
-
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
