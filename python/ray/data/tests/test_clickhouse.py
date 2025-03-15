@@ -1,11 +1,26 @@
-import re
 from unittest import mock
-from unittest.mock import MagicMock
+import re
 
-import pyarrow as pa
 import pytest
-
+import pyarrow as pa
+from unittest.mock import MagicMock, patch
+import ray
+from clickhouse_connect.driver.summary import QuerySummary
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
+from ray.data._internal.datasource.clickhouse_datasink import (
+    ClickHouseDatasink,
+    SinkMode,
+)
+
+
+@pytest.fixture(autouse=True)
+def patch_clickhouse_get_client():
+    with patch("clickhouse_connect.get_client") as mock_factory:
+        mock_instance = MagicMock()
+        mock_instance.insert_arrow.return_value = QuerySummary({"written_rows": 3})
+        mock_factory.return_value = mock_instance
+        yield mock_instance
 
 
 @pytest.fixture
@@ -354,6 +369,278 @@ class TestClickHouseDatasource:
             ds = ClickHouseDatasource(table=table_name, dsn=dsn, filter=None)
         assert "WHERE" not in ds._query
         assert ds._filter is None
+
+
+@pytest.fixture(scope="session")
+def ray_local_mode():
+    ray.init(local_mode=True, num_cpus=1)
+    yield
+    ray.shutdown()
+
+
+@pytest.fixture
+def mock_clickhouse_sink_client():
+    client = MagicMock()
+    client.insert_arrow.return_value = QuerySummary({"written_rows": 3})
+    return client
+
+
+@pytest.fixture(autouse=True)
+def patch_global_get_client(mock_clickhouse_sink_client):
+    with patch(
+        "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+    ):
+        yield
+
+
+@pytest.mark.usefixtures("ray_local_mode")
+class TestClickHouseDatasink:
+    """Tests for TestClickHouseDatasink."""
+
+    @pytest.fixture
+    def datasink(self, mock_clickhouse_sink_client):
+        sink = ClickHouseDatasink(
+            table="default.test_table",
+            dsn="clickhouse+http://user:pass@localhost:8123/default",
+            mode=SinkMode.APPEND,
+            table_settings={"engine": "MergeTree()"},
+        )
+        return sink
+
+    @pytest.mark.parametrize(
+        "mode",
+        [
+            SinkMode.OVERWRITE,
+            SinkMode.APPEND,
+            SinkMode.CREATE,
+        ],
+    )
+    @pytest.mark.parametrize("table_exists", [True, False])
+    def test_on_write_start_modes(
+        self, datasink, mock_clickhouse_sink_client, mode, table_exists
+    ):
+        datasink._mode = mode
+        with patch.object(
+            datasink, "_table_exists", return_value=table_exists
+        ) as mock_tbl_exists, patch.object(
+            datasink, "_get_existing_order_by", return_value="(prev_col)"
+        ) as mock_get_order:
+            if mode == SinkMode.CREATE and table_exists:
+                with pytest.raises(RuntimeError, match="already exists.*CREATE"):
+                    datasink.on_write_start()
+                mock_tbl_exists.assert_called_once()
+                mock_get_order.assert_not_called()
+                mock_clickhouse_sink_client.command.assert_not_called()
+            else:
+                if mode == SinkMode.OVERWRITE:
+                    datasink.on_write_start()
+                    mock_tbl_exists.assert_called_once()
+                    if table_exists:
+                        mock_get_order.assert_called_once()
+                        mock_clickhouse_sink_client.command.assert_called_with(
+                            "DROP TABLE IF EXISTS default.test_table"
+                        )
+                        assert datasink._table_settings["order_by"] == "(prev_col)"
+                    else:
+                        mock_get_order.assert_not_called()
+                        mock_clickhouse_sink_client.command.assert_called_with(
+                            "DROP TABLE IF EXISTS default.test_table"
+                        )
+                elif mode == SinkMode.APPEND:
+                    datasink.on_write_start()
+                    mock_tbl_exists.assert_called_once()
+                    if table_exists:
+                        mock_get_order.assert_called_once()
+                        assert datasink._table_settings["order_by"] == "(prev_col)"
+                        mock_clickhouse_sink_client.command.assert_not_called()
+                    else:
+                        mock_get_order.assert_not_called()
+                        mock_clickhouse_sink_client.command.assert_not_called()
+                elif mode == SinkMode.CREATE:
+                    datasink.on_write_start()
+                    mock_tbl_exists.assert_called_once()
+                    mock_get_order.assert_not_called()
+                    mock_clickhouse_sink_client.command.assert_not_called()
+
+    @pytest.mark.parametrize("mode", [SinkMode.OVERWRITE, SinkMode.APPEND])
+    @pytest.mark.parametrize("table_exists", [True, False])
+    @pytest.mark.parametrize("user_order_by", [None, "user_defined_col", "tuple()"])
+    def test_write_behavior(
+        self,
+        datasink,
+        mock_clickhouse_sink_client,
+        mode,
+        table_exists,
+        user_order_by,
+    ):
+        datasink._mode = mode
+        if user_order_by is not None:
+            datasink._table_settings["order_by"] = user_order_by
+        else:
+            datasink._table_settings.pop("order_by", None)
+
+        with patch.object(datasink, "_table_exists", return_value=table_exists), patch(
+            "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+        ):
+            rb = pa.record_batch([pa.array([1, 2, 3])], names=["col1"])
+            block_data = pa.Table.from_batches([rb])
+            ctx = TaskContext(1)
+            results = datasink.write([block_data], ctx=ctx)
+            assert results == [3]
+            mock_clickhouse_sink_client.insert_arrow.assert_called()
+
+    @pytest.mark.parametrize(
+        "schema, expected_order_by",
+        [
+            (pa.schema([]), "tuple()"),
+            (pa.schema([("ts", pa.timestamp("ns")), ("col2", pa.string())]), "ts"),
+            (pa.schema([("col1", pa.string()), ("val", pa.int64())]), "val"),
+            (pa.schema([("s1", pa.string()), ("s2", pa.large_string())]), "s1"),
+        ],
+    )
+    def test_pick_best_arrow_field_for_order_by(
+        self, datasink, mock_clickhouse_sink_client, schema, expected_order_by
+    ):
+        datasink._mode = SinkMode.OVERWRITE
+        datasink._table_settings.pop("order_by", None)  # ensure it's not set
+        with patch.object(datasink, "_table_exists", return_value=False), patch(
+            "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+        ):
+            empty_table = pa.Table.from_batches([], schema=schema)
+            datasink.write([empty_table], ctx=None)
+            mock_clickhouse_sink_client.insert_arrow.assert_called()
+
+    @pytest.mark.parametrize(
+        "ddl_str, expected_order_by",
+        [
+            (
+                "CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree() ORDER BY col1",
+                "col1",
+            ),
+            ("CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree()", None),
+            (
+                "CREATE TABLE default.test_table (col1 Int32) ORDER BY city ENGINE = MergeTree()",
+                "city",
+            ),
+            (
+                "CREATE TABLE default.test_table (col1 Int32) ENGINE = MergeTree() PARTITION BY toYYYYMMDD(date_col)",
+                None,
+            ),
+        ],
+    )
+    def test_get_existing_order_by(
+        self, datasink, mock_clickhouse_sink_client, ddl_str, expected_order_by
+    ):
+        mock_clickhouse_sink_client.command.return_value = ddl_str
+        result = datasink._get_existing_order_by(mock_clickhouse_sink_client)
+        assert result == expected_order_by
+
+    @pytest.mark.parametrize(
+        "table_settings, schema, expected_engine, expected_order_by_part, expected_clauses",
+        [
+            (
+                {},
+                pa.schema([("col1", pa.int32())]),
+                "MergeTree()",
+                "ORDER BY col1",
+                [],
+            ),
+            (
+                {"engine": "ReplacingMergeTree()"},
+                pa.schema([("col1", pa.int32())]),
+                "ReplacingMergeTree()",
+                "ORDER BY col1",
+                [],
+            ),
+            (
+                {"order_by": "user_col"},
+                pa.schema([("col1", pa.int32())]),
+                "MergeTree()",
+                "ORDER BY user_col",
+                [],
+            ),
+            (
+                {"partition_by": "toYYYYMMDD(ts)"},
+                pa.schema([("ts", pa.timestamp("ns"))]),
+                "MergeTree()",
+                "ORDER BY ts",
+                ["PARTITION BY toYYYYMMDD(ts)"],
+            ),
+            (
+                {"primary_key": "id"},
+                pa.schema([("id", pa.int64()), ("val", pa.string())]),
+                "MergeTree()",
+                "ORDER BY id",
+                ["PRIMARY KEY (id)"],
+            ),
+            (
+                {"settings": "index_granularity=8192"},
+                pa.schema([("id", pa.int64())]),
+                "MergeTree()",
+                "ORDER BY id",
+                ["SETTINGS index_granularity=8192"],
+            ),
+            (
+                {
+                    "engine": "SummingMergeTree()",
+                    "order_by": "col2",
+                    "partition_by": "toYYYYMMDD(ts)",
+                    "primary_key": "id",
+                    "settings": "index_granularity=8192",
+                },
+                pa.schema(
+                    [
+                        ("id", pa.int64()),
+                        ("col2", pa.float64()),
+                        ("ts", pa.timestamp("ns")),
+                    ]
+                ),
+                "SummingMergeTree()",
+                "ORDER BY col2",
+                [
+                    "PARTITION BY toYYYYMMDD(ts)",
+                    "PRIMARY KEY (id)",
+                    "SETTINGS index_granularity=8192",
+                ],
+            ),
+        ],
+    )
+    def test_generate_create_table_sql(
+        self,
+        datasink,
+        mock_clickhouse_sink_client,
+        table_settings,
+        schema,
+        expected_engine,
+        expected_order_by_part,
+        expected_clauses,
+    ):
+        datasink._mode = SinkMode.OVERWRITE
+        datasink._table_settings = table_settings
+        with patch.object(datasink, "_table_exists", return_value=False), patch(
+            "clickhouse_connect.get_client", return_value=mock_clickhouse_sink_client
+        ):
+            arrays = []
+            for field in schema:
+                if pa.types.is_integer(field.type):
+                    arrays.append(pa.array([1, 2, 3]))
+                elif pa.types.is_timestamp(field.type):
+                    arrays.append(pa.array([1, 2, 3], type=pa.timestamp("ns")))
+                else:
+                    arrays.append(pa.array(["a", "b", "c"]))
+            block_data = pa.Table.from_arrays(arrays, names=[f.name for f in schema])
+            datasink.write([block_data], ctx=TaskContext(1))
+            create_sql = None
+            for call_arg in mock_clickhouse_sink_client.command.call_args_list:
+                sql_arg = call_arg[0][0]
+                if "CREATE TABLE" in sql_arg:
+                    create_sql = sql_arg
+                    break
+            assert create_sql is not None, "No CREATE TABLE statement was generated!"
+            assert f"ENGINE = {expected_engine}" in create_sql
+            assert expected_order_by_part in create_sql
+            for clause in expected_clauses:
+                assert clause in create_sql
 
 
 if __name__ == "__main__":
