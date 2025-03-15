@@ -41,6 +41,16 @@ repos:
     hooks:
       - id: ruff
         args: [ --fix, --exit-non-zero-on-fix ]
+      - id: ruff-format
+        files: |
+            (?x)^(
+              bazel/|
+              cpp/|
+              doc/|
+              docker/|
+              java/|
+              python/ray/_private/
+            )
 
   - repo: https://github.com/cpplint/cpplint
     rev: 2.0.0
@@ -70,7 +80,8 @@ repos:
             python/ray/_private/thirdparty/|
             python/ray/serve/tests/test_config_files/syntax_error\.py|
             python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
-            doc/external/
+            doc/external/|
+            python/ray/_private/
           )
         types_or: [python]
 
