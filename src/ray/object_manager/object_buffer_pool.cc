@@ -157,9 +157,11 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
   // The num_inflight_copies is used to ensure that another thread cannot call Release
   // on the object_id, which makes the unguarded copy call safe.
-  std::memcpy(chunk_info->data,
-              reinterpret_cast<const uint8_t *>(&(*data.Chars().begin())),
-              chunk_info->buffer_length);
+  size_t offset = 0;
+  for (absl::string_view cord_chunk : data.Chunks()) {
+    std::memcpy(chunk_info->data + offset, cord_chunk.data(), cord_chunk.size());
+    offset += cord_chunk.size();
+  }
 
   {
     // Ensure the process of object_id Seal and Release is mutex guarded.
