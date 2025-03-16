@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -280,8 +284,8 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::ALIVE);
+  ASSERT_EQ(node_info_list.size(), 1);
+  ASSERT_EQ(node_info_list[0].state(), rpc::GcsNodeInfo::ALIVE);
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_request;
@@ -293,7 +297,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   unregister_node_request.mutable_node_death_info()->CopyFrom(node_death_info);
   ASSERT_TRUE(UnregisterNode(unregister_node_request));
   node_info_list = GetAllNodeInfo();
-  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_EQ(node_info_list.size(), 1);
   ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::DEAD);
   ASSERT_TRUE(node_info_list[0].death_info().reason() ==
               rpc::NodeDeathInfo::EXPECTED_TERMINATION);
@@ -402,7 +406,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   report_worker_failure_request.mutable_worker_failure()->CopyFrom(*worker_failure_data);
   ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
   std::vector<rpc::WorkerTableData> worker_table_data = GetAllWorkerInfo();
-  ASSERT_TRUE(worker_table_data.size() == 1);
+  ASSERT_EQ(worker_table_data.size(), 1);
 
   // Add worker info
   auto worker_data = Mocker::GenWorkerTableData();
@@ -410,7 +414,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   rpc::AddWorkerInfoRequest add_worker_request;
   add_worker_request.mutable_worker_data()->CopyFrom(*worker_data);
   ASSERT_TRUE(AddWorkerInfo(add_worker_request));
-  ASSERT_TRUE(GetAllWorkerInfo().size() == 2);
+  ASSERT_EQ(GetAllWorkerInfo().size(), 2);
 
   // Get worker info
   std::optional<rpc::WorkerTableData> result =
