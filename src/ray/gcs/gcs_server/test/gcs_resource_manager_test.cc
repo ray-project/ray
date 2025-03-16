@@ -14,7 +14,9 @@
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
+#include <limits>
 #include <memory>
+#include <string>
 
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"

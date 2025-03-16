@@ -19,11 +19,14 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/thread.hpp>
 #include <cstdlib>
+#include <memory>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
-using namespace boost;
-using namespace boost::asio;
-using namespace boost::asio::ip;
+using namespace boost;            // NOLINT
+using namespace boost::asio;      // NOLINT
+using namespace boost::asio::ip;  // NOLINT
 
 #include <ray/rpc/grpc_server.h>
 
@@ -47,8 +50,8 @@ int GetFreePort() {
   return port;
 }
 
-using namespace ray;
-using namespace std::literals::chrono_literals;
+using namespace ray;                             // NOLINT
+using namespace std::literals::chrono_literals;  // NOLINT
 
 class GcsHealthCheckManagerTest : public ::testing::Test {
  protected:
