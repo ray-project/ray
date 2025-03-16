@@ -43,7 +43,7 @@ TEST(LoggingUtilTest, RedirectStderr) {
   StreamRedirectionOption opts;
   opts.file_path = test_file_path;
   opts.tee_to_stderr = true;
-  RedirectStderrForOnce(opts);
+  RedirectStderrOncePerProcess(opts);
 
   std::cerr << kLogLine1 << std::flush;
   std::cerr << kLogLine2 << std::flush;

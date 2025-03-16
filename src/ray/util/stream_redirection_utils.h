@@ -27,8 +27,8 @@ namespace ray {
 // 1. This function should be called **at most once** per process; redirected stream
 // will be flushed and synchronized at process termination to guarantee no data loss.
 // 2. This function is _NOT_ thread-safe.
-void RedirectStdoutForOnce(const StreamRedirectionOption &opt);
-void RedirectStderrForOnce(const StreamRedirectionOption &opt);
+void RedirectStdoutOncePerProcess(const StreamRedirectionOption &opt);
+void RedirectStderrOncePerProcess(const StreamRedirectionOption &opt);
 
 // Flush on redirected stream synchronously.
 //

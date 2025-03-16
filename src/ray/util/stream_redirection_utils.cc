@@ -68,10 +68,10 @@ void FlushOnRedirectedStdout(MEMFD_TYPE_NON_UNIQUE stream_handle) {
 
 }  // namespace
 
-void RedirectStdoutForOnce(const StreamRedirectionOption &opt) {
+void RedirectStdoutOncePerProcess(const StreamRedirectionOption &opt) {
   RedirectStream(GetStdoutHandle(), opt);
 }
-void RedirectStderrForOnce(const StreamRedirectionOption &opt) {
+void RedirectStderrOncePerProcess(const StreamRedirectionOption &opt) {
   RedirectStream(GetStderrHandle(), opt);
 }
 
