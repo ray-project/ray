@@ -41,16 +41,13 @@ absl::Cord ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
   const auto cur_chunk_size =
       std::min(chunk_size_,
                object_->GetDataSize() + object_->GetMetadataSize() - cur_chunk_offset);
-
   absl::Cord cord;
-  size_t result_offset = 0;
 
   if (cur_chunk_offset < object_->GetDataSize()) {
     // read from data section.
     auto offset = cur_chunk_offset;
     auto size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
     cord.Append(object_->ReadFromDataSection(offset, size));
-    result_offset = size;
   }
 
   if (cur_chunk_offset + cur_chunk_size > object_->GetDataSize()) {
@@ -60,8 +57,8 @@ absl::Cord ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
     auto size = std::min(cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
                          cur_chunk_size);
     std::string result;
-    result.reserve(size);
-    if (!object_->ReadFromMetadataSection(offset, size, &result[result_offset])) {
+    result.resize(size, '\0');
+    if (!object_->ReadFromMetadataSection(offset, size, result.data())) {
       RAY_LOG(ERROR) << "Failed to read metadata section for object "
                      << object_->GetOwnerAddress().worker_id();
     }
