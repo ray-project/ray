@@ -3355,7 +3355,7 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
   // https://github.com/python/cpython/issues/83086
   int agent_id = 0;
   while (agent_id == 0) {
-    agent_id = rand(); // NOLINT
+    agent_id = rand();  // NOLINT
   };
   std::string agent_id_str = std::to_string(agent_id);
   agent_command_line.push_back("--agent-id");

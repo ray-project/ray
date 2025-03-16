@@ -1211,7 +1211,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
       started_restore_processes.push_back(last_restore_process);
     }
     // Register workers with 10% probability at each time.
-    if (rand() % 100 < 10) { // NOLINT
+    if (rand() % 100 < 10) {  // NOLINT
       // Push spill worker if there's a process.
       if (started_spill_processes.size() > 0) {
         auto spill_worker = CreateSpillWorker(
