@@ -92,9 +92,9 @@ def _take_chunked(
         A new Arrow array containing the selected elements
     """
     if isinstance(idx_chunk, np.ndarray):
-        return col.take(idx_chunk)
+        return pc.take(col, idx_chunk)
     else:
-        return col.take(idx_chunk.slice(0, chunk_size))
+        return pc.take(col, idx_chunk.slice(0, chunk_size))
 
 
 def _process_large_indices(
@@ -214,7 +214,7 @@ def take_table(
         if needs_chunking:
             new_col = _process_large_indices(col, indices, indices_len)
         else:
-            new_col = col.take(indices)
+            new_col = pc.take(col, indices)
 
         new_cols.append(new_col)
 
