@@ -949,3 +949,7 @@ RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 // will be waiting for the required resources to become available achieved mainly by
 // updating the cluster config to add new nodes.
 RAY_CONFIG(bool, enable_infeasible_task_early_exit, false);
+
+// Frequency at which to check all local worker & driver sockets for unexpected
+// disconnects.
+RAY_CONFIG(int64_t, raylet_check_for_unexpected_worker_disconnect_interval_ms, 1000)

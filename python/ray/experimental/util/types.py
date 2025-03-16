@@ -33,3 +33,14 @@ class AllReduceOp(_CollectiveOp):
 @dataclass
 class ReduceScatterOp(_CollectiveOp):
     reduceOp: ReduceOp = ReduceOp.SUM
+
+
+@PublicAPI(stability="alpha")
+class Device(Enum):
+    DEFAULT = "default"
+    CPU = "cpu"
+    GPU = "gpu"
+    CUDA = "cuda"
+
+    def __str__(self):
+        return self.value
