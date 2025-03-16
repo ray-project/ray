@@ -198,22 +198,23 @@ def take_table(
     new_cols = []
 
     for col in table.columns:
-        # Handle extension arrays and large chunked arrays
-        if col.num_chunks > 1:
-            if _is_column_extension_type(col):
-                # .take() will concatenate internally, which currently breaks for
-                # extension arrays.
-                col = combine_chunked_array(col)
-            else:
-                # Check if any chunk's offset would exceed MAX_INT32 after combining
-                chunk_offsets = [chunk.offset for chunk in col.chunks]
-                if any(
-                    offset > MAX_INT32 // col.num_chunks for offset in chunk_offsets
-                ):
-                    col = combine_chunked_array(col)
+        # Handle extension arrays that break with internal concatenation
+        if col.num_chunks > 1 and _is_column_extension_type(col):
+            col = combine_chunked_array(col)
 
-        # Process the indices based on size and potential offset overflow
-        needs_chunking = indices_len > MAX_INT32 or _check_max_offset(indices)
+        # Check if we need chunking due to:
+        # 1. Large indices (> MAX_INT32)
+        # 2. Indices containing large values
+        # 3. Multiple chunks that could overflow when concatenated during take
+        needs_chunking = (
+            indices_len > MAX_INT32
+            or _check_max_offset(indices)
+            or (
+                col.num_chunks > 1
+                and sum(chunk.nbytes for chunk in col.chunks) > MAX_INT32
+            )
+        )
+
         if needs_chunking:
             new_col = _process_large_indices(col, indices, indices_len)
         else:
