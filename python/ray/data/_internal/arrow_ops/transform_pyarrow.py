@@ -14,6 +14,7 @@ from ray.air.util.tensor_extensions.arrow import (
 
 try:
     import pyarrow
+    import pyarrow.compute as pc
 except ImportError:
     pyarrow = None
 
@@ -57,7 +58,108 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
-MAX_INT32 = (2**31) - 1
+# Maximum value for a 32-bit signed integer. This is the limit for Arrow's internal
+# offset arrays, which are used for indexing into arrays and managing string/binary
+# data. Going beyond this limit will cause integer overflow in Arrow operations.
+MAX_INT32: int = (2**31) - 1
+
+# Maximum batch size for processing large Arrow arrays, to ensure safe operations when:
+# 1. Computing offsets (which requires adding to existing offsets)
+# 2. Concatenating arrays (which requires space for both source arrays)
+# 3. Handling string/binary data (which uses offset arrays)
+BATCH_SIZE: int = MAX_INT32 // 2
+
+
+def _take_chunked(
+    col: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
+    idx_chunk: Union[np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+    chunk_size: int,
+) -> "pyarrow.Array":
+    """Helper to take from a column with chunked indices.
+
+    This function handles taking elements from a column using either array-like indices
+    or Arrow arrays/chunked arrays. For Arrow arrays, it applies appropriate slicing
+    to stay within Arrow's 32-bit offset limits.
+
+    Args:
+        col: The source column to take elements from
+        idx_chunk: The indices to use for selection, can be:
+            - numpy.ndarray: Used directly
+            - Arrow Array/ChunkedArray: Sliced to chunk_size
+        chunk_size: Maximum size of chunk to take when using Arrow arrays
+
+    Returns:
+        A new Arrow array containing the selected elements
+    """
+    if isinstance(idx_chunk, np.ndarray):
+        return col.take(idx_chunk)
+    else:
+        return col.take(idx_chunk.slice(0, chunk_size))
+
+
+def _process_large_indices(
+    col: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
+    indices: Union[np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+    total_len: int,
+) -> "pyarrow.ChunkedArray":
+    """Process indices that are too large for a single take operation.
+
+    This function handles taking elements when the number of indices exceeds
+    Arrow's 32-bit offset limit. It processes the indices in batches and
+    returns a chunked array of the results.
+
+    Args:
+        col: The source column to take elements from
+        indices: The complete set of indices to process, can be:
+            - numpy.ndarray: Sliced directly
+            - Arrow Array/ChunkedArray: Sliced using Arrow's slice operation
+        total_len: Total number of indices to process
+
+    Returns:
+        A chunked array containing all selected elements, with each chunk
+        staying within Arrow's 32-bit offset limits
+    """
+    chunks = []
+    remaining = total_len
+    for i in range(0, total_len, BATCH_SIZE):
+        batch_size = min(BATCH_SIZE, remaining)
+        if isinstance(indices, np.ndarray):
+            batch_indices = indices[i : i + batch_size]
+        else:
+            batch_indices = indices.slice(i, batch_size)
+        chunks.append(_take_chunked(col, batch_indices, batch_size))
+        remaining -= batch_size
+    return pyarrow.chunked_array(chunks)
+
+
+def _check_max_offset(
+    indices: Union[np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"]
+) -> bool:
+    """Check if indices would cause offset overflow.
+
+    This function checks if any index value would exceed Arrow's
+    32-bit offset limit (MAX_INT32).
+
+    Args:
+        indices: The indices to check (numpy array, Arrow array, or ChunkedArray)
+
+    Returns:
+        bool: True if any index would cause offset overflow (> MAX_INT32)
+    """
+    if len(indices) == 0:
+        return False
+
+    if isinstance(indices, np.ndarray):
+        return indices.max() > MAX_INT32
+    elif isinstance(indices, pyarrow.Array):
+        return pc.max(indices).as_py() > MAX_INT32 if len(indices) > 0 else False
+    elif isinstance(indices, pyarrow.ChunkedArray):
+        return any(
+            pc.max(chunk).as_py() > MAX_INT32
+            for chunk in indices.chunks
+            if len(chunk) > 0
+        )
+    return False
 
 
 def take_table(
@@ -66,24 +168,60 @@ def take_table(
 ) -> "pyarrow.Table":
     """Select rows from the table.
 
-    This method is an alternative to pyarrow.Table.take(), which breaks for
-    extension arrays. This is exposed as a static method for easier use on
-    intermediate tables, not underlying an ArrowBlockAccessor.
+    This method is an alternative to pyarrow.Table.take(), which handles:
+    1. Extension arrays that break with normal take()
+    2. Large indices that would cause int32 offset overflow
+    3. Chunked arrays efficiently
+
+    This is exposed as a static method for easier use on intermediate tables,
+    not underlying an ArrowBlockAccessor.
+
+    Args:
+        table: The input pyarrow Table
+        indices: Row indices to select, can be:
+            - List[int]: Will be converted to numpy array
+            - numpy.ndarray
+            - pyarrow Array
+            - pyarrow ChunkedArray
+
+    Returns:
+        A new pyarrow Table with the selected rows
     """
     from ray.air.util.transform_pyarrow import _is_column_extension_type
 
+    # Convert indices to numpy array if list
+    if isinstance(indices, list):
+        indices = np.array(indices, dtype=np.int64)
+
+    # After this point, indices is guaranteed to be ndarray/Array/ChunkedArray
+    indices_len = len(indices)
     new_cols = []
+
     for col in table.columns:
-        if _is_column_extension_type(col) and col.num_chunks > 1:
-            # .take() will concatenate internally, which currently breaks for
-            # extension arrays.
-            col = combine_chunked_array(col)
-        elif col.nbytes > MAX_INT32 and col.num_chunks > 1:
-            # .take() breaks when offset > MAX_INT32
-            col = combine_chunked_array(col)
-        new_cols.append(col.take(indices))
-    table = pyarrow.Table.from_arrays(new_cols, schema=table.schema)
-    return table
+        # Handle extension arrays and large chunked arrays
+        if col.num_chunks > 1:
+            if _is_column_extension_type(col):
+                # .take() will concatenate internally, which currently breaks for
+                # extension arrays.
+                col = combine_chunked_array(col)
+            else:
+                # Check if any chunk's offset would exceed MAX_INT32 after combining
+                chunk_offsets = [chunk.offset for chunk in col.chunks]
+                if any(
+                    offset > MAX_INT32 // col.num_chunks for offset in chunk_offsets
+                ):
+                    col = combine_chunked_array(col)
+
+        # Process the indices based on size and potential offset overflow
+        needs_chunking = indices_len > MAX_INT32 or _check_max_offset(indices)
+        if needs_chunking:
+            new_col = _process_large_indices(col, indices, indices_len)
+        else:
+            new_col = col.take(indices)
+
+        new_cols.append(new_col)
+
+    return pyarrow.Table.from_arrays(new_cols, schema=table.schema)
 
 
 def unify_schemas(
