@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "ray/anyscale/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/common/asio/asio_util.h"
