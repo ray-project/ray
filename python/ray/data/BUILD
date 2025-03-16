@@ -275,6 +275,20 @@ py_test(
 )
 
 py_test(
+    name = "test_accumulator",
+    size = "small",
+    srcs = ["tests/test_accumulator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_avro",
     size = "small",
     srcs = ["tests/test_avro.py"],
