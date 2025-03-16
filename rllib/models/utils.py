@@ -225,12 +225,13 @@ def get_filter_config(shape):
         else:
             atari_help = ""
         raise ValueError(
-            "No default configuration for obs shape {}. ".format(shape)
+            "No default CNN configuration for obs shape {}. ".format(shape)
             + atari_help
-            + "You must specify `conv_filters` manually as a model option. "
+            + "You can specify `conv_filters` manually through your "
+            "AlgorithmConfig's model_config. "
             "Default configurations are only available for inputs of the following "
             "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K]. You may "
-            "want to use a custom RLModule or a connector that ."
+            "want to use a custom RLModule or a ConnectorV2 for that."
         )
 
 
