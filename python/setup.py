@@ -366,6 +366,7 @@ if setup_spec.type == SetupType.RAY:
         set(
             [
                 "vllm>=0.7.2",
+                "sglang[all]>=0.4.4.post1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
