@@ -1,5 +1,4 @@
-# python/ray/data/accumulator.py
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 from abc import ABC, abstractmethod
 import ray
 
