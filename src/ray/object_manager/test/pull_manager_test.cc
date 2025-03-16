@@ -14,6 +14,12 @@
 
 #include "ray/object_manager/pull_manager.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/common_protocol.h"
@@ -25,7 +31,7 @@ using ::testing::ElementsAre;
 
 class PullManagerTestWithCapacity {
  public:
-  PullManagerTestWithCapacity(size_t num_available_bytes)
+  explicit PullManagerTestWithCapacity(size_t num_available_bytes)
       : self_node_id_(NodeID::FromRandom()),
         object_is_local_(false),
         num_send_pull_request_calls_(0),
@@ -965,7 +971,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     }
     // Check that OOM was triggered.
     for (size_t i = 0; i < req_ids.size(); i++) {
-      if ((int)i < num_requests_expected) {
+      if (static_cast<int>(i) < num_requests_expected) {
         ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
       } else {
         ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));

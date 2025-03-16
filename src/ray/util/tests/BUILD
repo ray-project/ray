@@ -284,6 +284,7 @@ ray_cc_test(
     srcs = ["spdlog_fd_sink_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/util:compat",
         "//src/ray/util:spdlog_fd_sink",
         "@com_google_googletest//:gtest_main",
     ],

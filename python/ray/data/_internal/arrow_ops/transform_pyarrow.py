@@ -1,10 +1,11 @@
 import logging
-from typing import TYPE_CHECKING, List, Union, Dict
+from typing import TYPE_CHECKING, List, Union, Dict, Optional
 
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.ray_constants import env_integer
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
@@ -23,10 +24,24 @@ MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
 # pyarrow.Table.slice is slow when the table has many chunks
 # so we combine chunks into a single one to make slice faster
 # with the cost of an extra copy.
+#
+# The decision to combine chunks is based on a threshold for the number
+# of chunks, set by `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`. To make
+# this more flexible, we have made this threshold configurable via the
+# `RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS` environment variable.
+#
+# This configurability is important because the size of each chunk can vary
+# greatly depending on the dataset and the operations performed previously.
+# A fixed threshold might not be optimal for all scenarios, as in some cases,
+# a smaller number of large chunks could behave differently from a larger
+# number of smaller chunks. By making this threshold tunable, users have
+# the ability to optimize for their specific case, adjusting based on their
+# chunk sizes and available memory.
 # See https://github.com/ray-project/ray/issues/31108 for more details.
 # TODO(jjyao): remove this once https://github.com/apache/arrow/issues/35126 is resolved
-MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 10
-
+MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = env_integer(
+    "RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS", 10
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +59,7 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
 
 def take_table(
     table: "pyarrow.Table",
-    indices: Union[List[int], "pyarrow.Array", "pyarrow.ChunkedArray"],
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
 ) -> "pyarrow.Table":
     """Select rows from the table.
 
@@ -191,7 +206,7 @@ def unify_schemas(
         schemas_to_unify = schemas
 
     try:
-        if parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
             return pyarrow.unify_schemas(schemas_to_unify)
 
         # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
@@ -406,6 +421,19 @@ def _align_struct_fields(
     return aligned_blocks
 
 
+def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Table":
+    """Shuffles provided Arrow table"""
+
+    if len(block) == 0:
+        return block
+
+    indices = np.arange(block.num_rows)
+    # Shuffle indices
+    np.random.RandomState(seed).shuffle(indices)
+
+    return take_table(block, indices)
+
+
 def concat(
     blocks: List["pyarrow.Table"], *, promote_types: bool = False
 ) -> "pyarrow.Table":
@@ -526,7 +554,7 @@ def concat(
         # to vary b/w blocks
         #
         # NOTE: Type promotions aren't available in Arrow < 14.0
-        if parse_version(_get_pyarrow_version()) < parse_version("14.0.0"):
+        if get_pyarrow_version() < parse_version("14.0.0"):
             table = pyarrow.concat_tables(blocks, promote=True)
         else:
             arrow_promote_types_mode = "permissive" if promote_types else "default"

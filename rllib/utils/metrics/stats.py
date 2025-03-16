@@ -9,11 +9,13 @@ import numpy as np
 from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.util.annotations import DeveloperAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@DeveloperAPI
 class Stats:
     """A container class holding a number of values and executing reductions over them.
 
@@ -64,15 +66,25 @@ class Stats:
         check(stats.peek(), 3)
         stats.push(3)
         check(stats.peek(), 6)
-        # So far, we have stored all values (1, 2, and 3).
-        check(stats.values, [1, 2, 3])
-        # Let's call the `reduce()` method to actually reduce these values
-        # to a single item of value=6:
-        stats = stats.reduce()
-        check(stats.peek(), 6)
+        # For efficiency, we keep the internal values in a reduced state for all Stats
+        # with c'tor options reduce!=mean and infinite window.
         check(stats.values, [6])
 
-        # "min" and "max" work analogous to "sum". But let's try with a `window` now:
+        # "min" or "max" work analogous to "sum".
+        stats = Stats(reduce="min")
+        stats.push(10)
+        check(stats.peek(), 10)
+        stats.push(20)
+        check(stats.peek(), 10)
+        stats.push(5)
+        check(stats.peek(), 5)
+        stats.push(100)
+        check(stats.peek(), 5)
+        # For efficiency, we keep the internal values in a reduced state for all Stats
+        # with c'tor options reduce!=mean and infinite window.
+        check(stats.values, [5])
+
+        # Let's try min/max/sum with a `window` now:
         stats = Stats(reduce="max", window=2)
         stats.push(2)
         check(stats.peek(), 2)
@@ -124,9 +136,9 @@ class Stats:
             time.sleep(1.0)
         assert 2.2 > stats.peek() > 1.8
         # When calling `reduce()`, the internal values list gets cleaned up.
-        check(len(stats.values), 2)  # still both deltas in the values list
+        check(len(stats.values), 1)  # holds the sum of both deltas in the values list
         stats = stats.reduce()
-        check(len(stats.values), 1)  # got reduced to one value (the sum)
+        check(len(stats.values), 1)  # nothing changed (still one sum value)
         assert 2.2 > stats.values[0] > 1.8
     """
 
@@ -247,9 +259,11 @@ class Stats:
                 (`self.values`).
         """
         self.values.append(value)
-        # For inf-windows EMA, always reduce right away, b/c it's cheap and avoids
-        # long lists, which would be expensive to reduce.
-        if self._ema_coeff is not None and self._inf_window:
+        # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
+        # cheap and avoids long lists, which would be expensive to reduce.
+        if self._inf_window and (
+            self._ema_coeff is not None or self._reduce_method != "mean"
+        ):
             self._set_values(self._reduced_values()[1])
 
     def __enter__(self) -> "Stats":
@@ -488,7 +502,7 @@ class Stats:
             # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
             # reverse: [1, 4, 2, 5, 0, 6, 3]
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [1, 4, 2, 5, 0, 6, 3])
+            check(stats.values, [15, 6])  # 6 from `stats1` and 15 from `stats2`
             check(stats.peek(), 21)
 
             # Parallel-merge two "concat" (reduce=None) stats with no window.

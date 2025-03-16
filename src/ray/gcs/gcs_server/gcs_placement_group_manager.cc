@@ -14,7 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"

@@ -35,7 +35,9 @@ def _actor_killed_loop(worker_pid: str, timeout_secs=3) -> bool:
     return dead
 
 
-def _kill_actor_using_dashboard_gcs(webui_url: str, actor_id: str, force_kill=False):
+def _kill_actor_using_dashboard_gcs(
+    webui_url: str, actor_id: str, expected_status_code: int, force_kill=False
+):
     resp = requests.get(
         webui_url + KILL_ACTOR_ENDPOINT,
         params={
@@ -43,9 +45,8 @@ def _kill_actor_using_dashboard_gcs(webui_url: str, actor_id: str, force_kill=Fa
             "force_kill": force_kill,
         },
     )
-    resp.raise_for_status()
+    assert resp.status_code == expected_status_code
     resp_json = resp.json()
-    assert resp_json["result"] is True, "msg" in resp_json
     return resp_json
 
 
@@ -71,8 +72,19 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     worker_pid = ray.get(a.f.remote())  # noqa
     actor_id = a._ray_actor_id.hex()
 
+    OK = 200
+    INTERNAL_ERROR = 500
+
+    # Kill an non-existent actor
+    # TODO(kevin85421): It should return 404 instead of 500.
+    resp = _kill_actor_using_dashboard_gcs(
+        webui_url, "non-existent-actor-id", INTERNAL_ERROR
+    )
+    assert "not found" in resp["msg"]
+
     # Kill the actor
-    _kill_actor_using_dashboard_gcs(webui_url, actor_id, force_kill=False)
+    resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
+    assert "It will exit once running tasks complete" in resp["msg"]
     assert _actor_killed_loop(worker_pid)
 
     # Create an actor and have it loop
@@ -82,11 +94,13 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     a.loop.remote()
 
     # Try to kill the actor, it should not die since a task is running
-    _kill_actor_using_dashboard_gcs(webui_url, actor_id, force_kill=False)
+    resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=False)
+    assert "It will exit once running tasks complete" in resp["msg"]
     assert not _actor_killed_loop(worker_pid, timeout_secs=1)
 
     # Force kill the actor
-    _kill_actor_using_dashboard_gcs(webui_url, actor_id, force_kill=True)
+    resp = _kill_actor_using_dashboard_gcs(webui_url, actor_id, OK, force_kill=True)
+    assert "Force killed actor with id" in resp["msg"]
     assert _actor_killed_loop(worker_pid)
 
 

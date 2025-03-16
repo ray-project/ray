@@ -868,7 +868,7 @@ def test_tpu_logs(tmp_path):
     log_monitor.open_closed_files()
     assert len(log_monitor.open_file_infos) == 1
     file_info = log_monitor.open_file_infos[0]
-    assert file_info.filename == str(tpu_log_dir / tpu_device_log_file)
+    assert Path(file_info.filename) == tpu_log_dir / tpu_device_log_file
 
 
 def test_log_monitor_actor_task_name_and_job_id(tmp_path):
