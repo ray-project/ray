@@ -133,7 +133,8 @@ def _process_large_indices(
 
 
 def _check_max_offset(
-    indices: Union[np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"]
+    indices: Union[np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+    indices_len: int,
 ) -> bool:
     """Check if indices would cause offset overflow.
 
@@ -142,17 +143,18 @@ def _check_max_offset(
 
     Args:
         indices: The indices to check (numpy array, Arrow array, or ChunkedArray)
+        indices_len: Length of indices (pre-computed for efficiency)
 
     Returns:
         bool: True if any index would cause offset overflow (> MAX_INT32)
     """
-    if len(indices) == 0:
+    if indices_len == 0:
         return False
 
     if isinstance(indices, np.ndarray):
         return indices.max() > MAX_INT32
     elif isinstance(indices, pyarrow.Array):
-        return pc.max(indices).as_py() > MAX_INT32 if len(indices) > 0 else False
+        return pc.max(indices).as_py() > MAX_INT32 if indices_len > 0 else False
     elif isinstance(indices, pyarrow.ChunkedArray):
         return any(
             pc.max(chunk).as_py() > MAX_INT32
@@ -203,16 +205,10 @@ def take_table(
             col = combine_chunked_array(col)
 
         # Check if we need chunking due to:
-        # 1. Large indices (> MAX_INT32)
-        # 2. Indices containing large values
-        # 3. Multiple chunks that could overflow when concatenated during take
-        needs_chunking = (
-            indices_len > MAX_INT32
-            or _check_max_offset(indices)
-            or (
-                col.num_chunks > 1
-                and sum(chunk.nbytes for chunk in col.chunks) > MAX_INT32
-            )
+        # 1. Indices containing large values
+        # 2. Multiple chunks that could overflow when concatenated during take
+        needs_chunking = _check_max_offset(indices, indices_len) or (
+            col.num_chunks > 1 and sum(chunk.nbytes for chunk in col.chunks) > MAX_INT32
         )
 
         if needs_chunking:
