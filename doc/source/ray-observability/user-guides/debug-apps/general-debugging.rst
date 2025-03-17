@@ -168,7 +168,7 @@ Ray captures and displays a stack trace when you invoke a task, create an actor,
 To enable call site capture, set the environment variable ``RAY_record_task_actor_creation_sites=true``. When enabled:
 
 — Ray captures a stack trace when creating tasks, actors, or invoking actor methods.
-— The captured stack trace is visible in the Ray Dashboard (under task and actor details), by running the CLI command ``ray list task --detail``, and in state API responses.
+— The captured stack trace is available in the Ray Dashboard (under task and actor details), output of the state CLI command ``ray list task --detail``, and state API responses.
 
 Note that Ray turns off stack trace capture by default due to potential performance impacts. Enable it only when you need it for debugging.
 
