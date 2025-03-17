@@ -1,6 +1,6 @@
 .. _observability-general-debugging:
 
-Common Cluster Issues
+Common Issues
 =======================
 
 Distributed applications offer great power but also increased complexity. 
