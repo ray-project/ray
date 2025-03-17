@@ -2391,7 +2391,7 @@ def read_snowflake(
     sql: str,
     connection_parameters: Dict[str, Any],
     *,
-    parallelism: int = -1,
+    shard_keys: Optional[list[str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2419,7 +2419,6 @@ def read_snowflake(
         connection_parameters: Keyword arguments to pass to
             ``snowflake.connector.connect``. To view supported parameters, read
             https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
-        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2442,7 +2441,8 @@ def read_snowflake(
     return ray.data.read_sql(
         sql,
         connection_factory=snowflake_connection_factory,
-        parallelism=parallelism,
+        shard_keys=shard_keys,
+        shard_hash_fn="hash",
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
