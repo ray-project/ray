@@ -9,7 +9,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
-from ray._private.accelerators.amd_gpu import ROCR_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.amd_gpu import HIP_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
 from ray.data import Dataset
@@ -133,7 +133,7 @@ class BackendExecutor:
             ResourceConfig(
                 ray_constants.GPU,
                 ENABLE_SHARE_HIP_VISIBLE_DEVICES_ENV,
-                ray_constants.HIP_VISIBLE_DEVICES_ENV_VAR,
+                HIP_VISIBLE_DEVICES_ENV_VAR,
             ),
         ]
 
