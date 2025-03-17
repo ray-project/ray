@@ -1385,6 +1385,104 @@ def test_runtime_metrics(ray_start_regular_shared):
         assert isclose(percent, time_s / total_time * 100, rel_tol=0.01)
 
 
+def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
+    """Basic test to ensure per-node metrics are populated."""
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = True
+
+    def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
+        sum_metrics = defaultdict(float)
+        for metrics in per_node_metrics.values():
+            for metric, value in metrics.items():
+                sum_metrics[metric] += value
+        return sum_metrics
+
+    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
+        metrics = ds._plan.stats().extra_metrics
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        assert isinstance(per_node_metrics, dict)
+        assert len(per_node_metrics) >= 1
+
+        for nm in per_node_metrics.values():
+            for f in fields(NodeMetrics):
+                assert f.name in nm
+
+        # basic checks to make sure metrics are populated
+        assert any(nm["num_tasks_finished"] > 0 for nm in per_node_metrics.values())
+        assert any(
+            nm["bytes_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+        assert any(
+            nm["blocks_outputs_of_finished_tasks"] > 0
+            for nm in per_node_metrics.values()
+        )
+
+        net_metrics = _sum_net_metrics(per_node_metrics)
+        assert net_metrics["num_tasks_finished"] == metrics["num_tasks_finished"]
+        assert (
+            net_metrics["bytes_outputs_of_finished_tasks"]
+            == metrics["bytes_outputs_of_finished_tasks"]
+        )
+
+
+@pytest.mark.parametrize("enable_metrics", [True, False])
+def test_per_node_metrics_toggle(
+    ray_start_regular_shared, restore_data_context, enable_metrics
+):
+    ctx = DataContext.get_current()
+    ctx.enable_per_node_metrics = enable_metrics
+
+    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
+        mock_actor_handle = MagicMock()
+        mock_get_actor.return_value = mock_actor_handle
+
+        ray.data.range(10000).map(lambda x: x).materialize()
+
+        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
+        assert len(calls) > 0
+
+        last_args, _ = calls[-1]
+        per_node_metrics = last_args[-1]
+
+        if enable_metrics:
+            assert per_node_metrics is not None
+        else:
+            assert per_node_metrics is None
+
+
+def test_task_duration_stats():
+    """Test that OpTaskDurationStats correctly tracks running statistics using Welford's algorithm."""
+    stats = TaskDurationStats()
+
+    # Test initial state
+    assert stats.count() == 0
+    assert stats.mean() == 0.0
+    assert stats.stddev() == 0.0
+
+    # Add some task durations and verify stats
+    durations = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    for d in durations:
+        stats.add_duration(d)
+
+    # Compare with numpy's implementations
+    assert stats.count() == len(durations)
+    assert pytest.approx(stats.mean()) == np.mean(durations)
+    assert pytest.approx(stats.stddev()) == np.std(
+        durations, ddof=1
+    )  # ddof=1 for sample standard deviation
+
+
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
 
@@ -1722,104 +1820,6 @@ def test_stats_manager(shutdown_only):
     # Check that a new different thread is spawned.
     assert StatsManager._update_thread != prev_thread
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
-
-
-def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
-    """Basic test to ensure per-node metrics are populated."""
-    ctx = DataContext.get_current()
-    ctx.enable_per_node_metrics = True
-
-    def _sum_net_metrics(per_node_metrics: Dict[str, NodeMetrics]) -> Dict[str, float]:
-        sum_metrics = defaultdict(float)
-        for metrics in per_node_metrics.values():
-            for metric, value in metrics.items():
-                sum_metrics[metric] += value
-        return sum_metrics
-
-    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
-        mock_actor_handle = MagicMock()
-        mock_get_actor.return_value = mock_actor_handle
-
-        ds = ray.data.range(20).map_batches(lambda batch: batch).materialize()
-        metrics = ds._plan.stats().extra_metrics
-
-        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
-        assert len(calls) > 0
-
-        last_args, _ = calls[-1]
-        per_node_metrics = last_args[-1]
-
-        assert isinstance(per_node_metrics, dict)
-        assert len(per_node_metrics) >= 1
-
-        for nm in per_node_metrics.values():
-            for f in fields(NodeMetrics):
-                assert f.name in nm
-
-        # basic checks to make sure metrics are populated
-        assert any(nm["num_tasks_finished"] > 0 for nm in per_node_metrics.values())
-        assert any(
-            nm["bytes_outputs_of_finished_tasks"] > 0
-            for nm in per_node_metrics.values()
-        )
-        assert any(
-            nm["blocks_outputs_of_finished_tasks"] > 0
-            for nm in per_node_metrics.values()
-        )
-
-        net_metrics = _sum_net_metrics(per_node_metrics)
-        assert net_metrics["num_tasks_finished"] == metrics["num_tasks_finished"]
-        assert (
-            net_metrics["bytes_outputs_of_finished_tasks"]
-            == metrics["bytes_outputs_of_finished_tasks"]
-        )
-
-
-@pytest.mark.parametrize("enable_metrics", [True, False])
-def test_per_node_metrics_toggle(
-    ray_start_regular_shared, restore_data_context, enable_metrics
-):
-    ctx = DataContext.get_current()
-    ctx.enable_per_node_metrics = enable_metrics
-
-    with patch("ray.data._internal.stats.StatsManager._stats_actor") as mock_get_actor:
-        mock_actor_handle = MagicMock()
-        mock_get_actor.return_value = mock_actor_handle
-
-        ray.data.range(10000).map(lambda x: x).materialize()
-
-        calls = mock_actor_handle.update_execution_metrics.remote.call_args_list
-        assert len(calls) > 0
-
-        last_args, _ = calls[-1]
-        per_node_metrics = last_args[-1]
-
-        if enable_metrics:
-            assert per_node_metrics is not None
-        else:
-            assert per_node_metrics is None
-
-
-def test_task_duration_stats():
-    """Test that OpTaskDurationStats correctly tracks running statistics using Welford's algorithm."""
-    stats = TaskDurationStats()
-
-    # Test initial state
-    assert stats.count() == 0
-    assert stats.mean() == 0.0
-    assert stats.stddev() == 0.0
-
-    # Add some task durations and verify stats
-    durations = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
-    for d in durations:
-        stats.add_duration(d)
-
-    # Compare with numpy's implementations
-    assert stats.count() == len(durations)
-    assert pytest.approx(stats.mean()) == np.mean(durations)
-    assert pytest.approx(stats.stddev()) == np.std(
-        durations, ddof=1
-    )  # ddof=1 for sample standard deviation
 
 
 if __name__ == "__main__":
