@@ -336,6 +336,30 @@ class BatchMapTransformFn(MapTransformFn):
         )
 
 
+class RowToBlockMapTransformFn(MapTransformFn):
+    """A Row-to-Batch MapTransformFn."""
+
+    def __init__(
+        self, transform_fn: MapTransformCallable[Row, Block], is_udf: bool = False
+    ):
+        self._transform_fn = transform_fn
+        super().__init__(
+            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Block,
+            category=MapTransformFnCategory.DataProcess,
+            is_udf=is_udf,
+        )
+
+    def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Block]:
+        yield from self._transform_fn(input, ctx)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, RowToBlockMapTransformFn)
+            and self._transform_fn == other._transform_fn
+        )
+
+
 class BlockMapTransformFn(MapTransformFn):
     """A block-to-block MapTransformFn."""
 
