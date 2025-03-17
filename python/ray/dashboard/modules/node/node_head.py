@@ -14,6 +14,7 @@ import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
+from ray._common.utils import get_or_create_event_loop
 from ray._private.collections_utils import split
 from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
 from ray._private.ray_constants import (
@@ -22,7 +23,6 @@ from ray._private.ray_constants import (
     env_integer,
 )
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
-from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
@@ -57,33 +57,6 @@ def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
-
-
-def node_stats_to_dict(message):
-    decode_keys = {
-        "actorId",
-        "jobId",
-        "taskId",
-        "parentTaskId",
-        "sourceActorId",
-        "callerId",
-        "rayletId",
-        "workerId",
-        "placementGroupId",
-    }
-    core_workers_stats = message.core_workers_stats
-    message.ClearField("core_workers_stats")
-    try:
-        result = dashboard_utils.message_to_dict(message, decode_keys)
-        result["coreWorkersStats"] = [
-            dashboard_utils.message_to_dict(
-                m, decode_keys, always_print_fields_with_no_presence=True
-            )
-            for m in core_workers_stats
-        ]
-        return result
-    finally:
-        message.core_workers_stats.extend(core_workers_stats)
 
 
 class NodeHead(dashboard_utils.DashboardHeadModule):
@@ -422,7 +395,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         f"Error updating node stats of {node_id}.", exc_info=response
                     )
                 else:
-                    new_node_stats[node_id] = node_stats_to_dict(response)
+                    new_node_stats[node_id] = dashboard_utils.node_stats_to_dict(
+                        response
+                    )
 
             return new_node_stats
 

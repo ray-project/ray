@@ -8,6 +8,7 @@ import threading
 import time
 import urllib.parse
 from queue import Empty, Full, Queue
+from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
@@ -27,7 +28,7 @@ import numpy as np
 import pyarrow
 
 import ray
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
@@ -110,11 +111,9 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
             return
 
-        version = _get_pyarrow_version()
+        version = get_pyarrow_version()
         if version is not None:
-            from packaging.version import parse as parse_version
-
-            if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
+            if version < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
                     f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
@@ -1143,8 +1142,8 @@ class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
         super().__init__(handler)
 
     @property
-    def data_context(self):
-        return self.handler.data_context
+    def retryable_errors(self) -> List[str]:
+        return self.handler._retryable_errors
 
     def unwrap(self):
         return self.handler.unwrap()
@@ -1153,13 +1152,15 @@ class RetryingPyFileSystem(pyarrow.fs.PyFileSystem):
     def wrap(
         cls,
         fs: "pyarrow.fs.FileSystem",
-        context: DataContext,
+        retryable_errors: List[str],
         max_attempts: int = 10,
         max_backoff_s: int = 32,
     ):
         if isinstance(fs, RetryingPyFileSystem):
             return fs
-        handler = RetryingPyFileSystemHandler(fs, context, max_attempts, max_backoff_s)
+        handler = RetryingPyFileSystemHandler(
+            fs, retryable_errors, max_attempts, max_backoff_s
+        )
         return cls(handler)
 
     def __reduce__(self):
@@ -1182,7 +1183,7 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
     def __init__(
         self,
         fs: "pyarrow.fs.FileSystem",
-        context: DataContext,
+        retryable_errors: List[str] = tuple(),
         max_attempts: int = 10,
         max_backoff_s: int = 32,
     ):
@@ -1198,20 +1199,16 @@ class RetryingPyFileSystemHandler(pyarrow.fs.FileSystemHandler):
             fs, RetryingPyFileSystem
         ), "Cannot wrap a RetryingPyFileSystem"
         self._fs = fs
-        self._data_context = context
+        self._retryable_errors = retryable_errors
         self._max_attempts = max_attempts
         self._max_backoff_s = max_backoff_s
-
-    @property
-    def data_context(self):
-        return self._data_context
 
     def _retry_operation(self, operation: Callable, description: str):
         """Execute an operation with retries."""
         return call_with_retry(
             operation,
             description=description,
-            match=self._data_context.retried_io_errors,
+            match=self._retryable_errors,
             max_attempts=self._max_attempts,
             max_backoff_s=self._max_backoff_s,
         )

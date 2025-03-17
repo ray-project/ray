@@ -1,17 +1,16 @@
-from dataclasses import fields
 import logging
 import re
 import threading
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
+from dataclasses import fields
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.backpressure_policy import (
@@ -20,6 +19,7 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.backpressure_policy.backpressure_policy import (
     BackpressurePolicy,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import TaskDurationStats
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.stats import (
@@ -51,6 +51,7 @@ def gen_expected_metrics(
             "'obj_store_mem_pending_task_inputs': Z",
             "'average_bytes_inputs_per_task': N",
             "'average_bytes_outputs_per_task': N",
+            "'average_memory_usage_per_task': N",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_task_inputs_processed': N",
@@ -545,6 +546,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
+        "      average_memory_usage_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -659,6 +661,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_pending_task_inputs: Z,\n"
         "      average_bytes_inputs_per_task: N,\n"
         "      average_bytes_outputs_per_task: N,\n"
+        "      average_memory_usage_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -728,6 +731,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_pending_task_inputs: Z,\n"
         "            average_bytes_inputs_per_task: N,\n"
         "            average_bytes_outputs_per_task: N,\n"
+        "            average_memory_usage_per_task: N,\n"
         "            num_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
         "            num_task_inputs_processed: N,\n"
@@ -1097,9 +1101,9 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     )
     assert (
         "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
-            min(block_params["max_rss_bytes"]) / (1024 * 1024),
-            max(block_params["max_rss_bytes"]) / (1024 * 1024),
-            int(np.mean(block_params["max_rss_bytes"]) / (1024 * 1024)),
+            min(block_params["rss_bytes"]) / (1024 * 1024),
+            max(block_params["rss_bytes"]) / (1024 * 1024),
+            int(np.mean(block_params["rss_bytes"]) / (1024 * 1024)),
         )
         == summarized_lines[4]
     )
@@ -1522,8 +1526,8 @@ def test_stats_actor_metrics():
 
     args = update_fn.call_args_list[-1].args
     assert args[0] == f"dataset_{ds._uuid}"
-    assert args[2][0] == "Input0"
-    assert args[2][1] == "ReadRange->MapBatches(<lambda>)1"
+    assert args[2][0] == "Input_0"
+    assert args[2][1] == "ReadRange->MapBatches(<lambda>)_1"
 
     def sleep_three(x):
         import time
@@ -1647,8 +1651,8 @@ def test_stats_actor_datasets(ray_start_cluster):
 
     operators = dataset["operators"]
     assert len(operators) == 2
-    assert "Input0" in operators
-    assert "ReadRange->MapBatches(<lambda>)1" in operators
+    assert "Input_0" in operators
+    assert "ReadRange->MapBatches(<lambda>)_1" in operators
     for value in operators.values():
         assert value["name"] in ["Input", "ReadRange->MapBatches(<lambda>)"]
         assert value["progress"] == 20
