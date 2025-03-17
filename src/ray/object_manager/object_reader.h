@@ -40,7 +40,7 @@ class IObjectReader {
   ///
   /// \param offset offset to the data section to copy from.
   /// \param size number of bytes to copy.
-  /// \param output string to add to.
+  /// \param output string that the data will be appended to.
   /// \return bool.
   virtual bool ReadFromDataSection(uint64_t offset,
                                    uint64_t size,
