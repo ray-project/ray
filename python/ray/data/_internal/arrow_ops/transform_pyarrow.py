@@ -200,20 +200,33 @@ def take_table(
     new_cols = []
 
     for col in table.columns:
-        # Handle extension arrays that break with internal concatenation
-        if col.num_chunks > 1 and _is_column_extension_type(col):
-            col = combine_chunked_array(col)
-
-        # Check if we need chunking due to:
-        # 1. Indices containing large values
-        # 2. Multiple chunks that could overflow when concatenated during take
-        needs_chunking = _check_max_offset(indices, indices_len) or (
-            col.num_chunks > 1 and sum(chunk.nbytes for chunk in col.chunks) > MAX_INT32
-        )
+        needs_chunking = False
+        if _is_column_extension_type(col):
+            # Handle extension arrays (like ArrowTensorArray) specially:
+            # 1. If it has multiple chunks, combine them since extension arrays
+            #    often break with internal concatenation
+            # 2. Only check for index overflow since extension arrays don't use
+            #    Arrow's internal offset arrays
+            if isinstance(col, pyarrow.ChunkedArray) and col.num_chunks > 1:
+                col = combine_chunked_array(col)
+            needs_chunking = _check_max_offset(indices, indices_len)
+        elif isinstance(col, pyarrow.ChunkedArray):
+            # For regular ChunkedArrays, we need chunking in two cases:
+            # 1. If indices would cause offset overflow
+            # 2. If concatenating the chunks would exceed 2GB (Arrow's 32-bit limit)
+            needs_chunking = _check_max_offset(indices, indices_len) or (
+                col.num_chunks > 1
+                and sum(chunk.nbytes for chunk in col.chunks) > MAX_INT32
+            )
+        else:
+            # For regular Arrays, we only need to check index overflow
+            needs_chunking = _check_max_offset(indices, indices_len)
 
         if needs_chunking:
+            # Process indices in batches to stay within Arrow's limits
             new_col = _process_large_indices(col, indices, indices_len)
         else:
+            # Take all indices at once since we're within safe limits
             new_col = pc.take(col, indices)
 
         new_cols.append(new_col)
