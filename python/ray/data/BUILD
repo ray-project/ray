@@ -112,6 +112,14 @@ py_test(
 )
 
 py_test(
+    name = "test_snowflake",
+    size = "small",
+    srcs = ["tests/test_snowflake.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_mongo",
     size = "large",
     srcs = ["tests/test_mongo.py"],
