@@ -14,6 +14,8 @@
 
 #include "ray/gcs/redis_client.h"
 
+#include <memory>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 
