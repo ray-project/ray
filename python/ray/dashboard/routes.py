@@ -174,14 +174,14 @@ def method_route_table_factory():
 
 
 def rest_response(
-    status_code: int,
+    status_code: HTTPStatusCode,
     message: str,
     convert_google_style: bool = True,
     **kwargs,
 ) -> aiohttp.web.Response:
     """
     Args:
-        status_code: int
+        status_code: HTTPStatusCode
             The HTTP status code of the response.
         message: str
             The message of the response.
