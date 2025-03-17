@@ -74,6 +74,9 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            "'num_alive_actors': Z",
+            "'num_restarting_actors': Z",
+            "'num_pending_actors': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_freed': N",
@@ -94,6 +97,9 @@ def gen_expected_metrics(
                 "'task_submission_backpressure_time': "
                 f"{'N' if task_backpressure else 'Z'}"
             ),
+            "'num_alive_actors': Z",
+            "'num_restarting_actors': Z",
+            "'num_pending_actors': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_used': A",
@@ -566,6 +572,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      num_alive_actors: Z,\n"
+        "      num_restarting_actors: Z,\n"
+        "      num_pending_actors: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -681,6 +690,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_failed: Z,\n"
         "      block_generation_time: N,\n"
         "      task_submission_backpressure_time: N,\n"
+        "      num_alive_actors: Z,\n"
+        "      num_restarting_actors: Z,\n"
+        "      num_pending_actors: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -751,6 +763,9 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_failed: Z,\n"
         "            block_generation_time: N,\n"
         "            task_submission_backpressure_time: N,\n"
+        "            num_alive_actors: Z,\n"
+        "            num_restarting_actors: Z,\n"
+        "            num_pending_actors: Z,\n"
         "            obj_store_mem_internal_inqueue_blocks: Z,\n"
         "            obj_store_mem_internal_outqueue_blocks: Z,\n"
         "            obj_store_mem_freed: N,\n"
