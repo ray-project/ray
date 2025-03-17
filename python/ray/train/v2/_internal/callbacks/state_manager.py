@@ -16,6 +16,9 @@ from ray.train.v2._internal.execution.controller.state import (
     SchedulingState,
     TrainControllerState,
 )
+from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
+    ResizeDecision,
+)
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupContext,
@@ -68,8 +71,21 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             return
 
         if isinstance(current_state, SchedulingState):
+            # TODO: This should probably always be set.
+            num_workers_and_resources_per_worker = None
+
+            scaling_decision = current_state.scaling_decision
+            if isinstance(scaling_decision, ResizeDecision):
+                num_workers = scaling_decision.num_workers
+                resources_per_worker = scaling_decision.resources_per_worker
+                num_workers_and_resources_per_worker = (
+                    num_workers,
+                    resources_per_worker,
+                )
+
             self._state_manager.update_train_run_scheduling(
                 run_id=self._run_id,
+                num_workers_and_resources_per_worker=num_workers_and_resources_per_worker,
             )
 
         elif isinstance(current_state, RunningState):
