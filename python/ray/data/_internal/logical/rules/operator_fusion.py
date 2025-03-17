@@ -225,6 +225,14 @@ class OperatorFusionRule(Rule):
         ):
             return False
 
+        if isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator):
+            # HACK
+            if (
+                up_op._block_ref_bundler._min_rows_per_bundle
+                != down_op._block_ref_bundler._min_rows_per_bundle
+            ):
+                return False
+
         # Otherwise, ops are compatible for fusion.
         return True
 

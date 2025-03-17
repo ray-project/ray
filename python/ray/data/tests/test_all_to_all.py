@@ -114,21 +114,23 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared_2_cpus):
 
 
 @pytest.mark.parametrize(
-    "total_rows,target_num_rows_per_block",
+    "total_rows,target_num_rows_per_block,num_input_blocks",
     [
-        (128, 1),
-        (128, 2),
-        (128, 4),
-        (128, 8),
-        (128, 128),
+        (128, 1, 1),
+        (128, 2, 1),
+        (128, 4, 1),
+        (128, 8, 1),
+        (128, 128, 1),
+        (2, 2, 2),
     ],
 )
 def test_repartition_target_num_rows_per_block(
     ray_start_regular_shared_2_cpus,
     total_rows,
     target_num_rows_per_block,
+    num_input_blocks,
 ):
-    ds = ray.data.range(total_rows).repartition(
+    ds = ray.data.range(total_rows, override_num_blocks=num_input_blocks).repartition(
         target_num_rows_per_block=target_num_rows_per_block,
     )
     rows_count = 0
@@ -138,7 +140,7 @@ def test_repartition_target_num_rows_per_block(
             ray.get(ref_bundle.blocks[0][0]),
             ref_bundle.blocks[0][1],
         )
-        assert block_metadata.num_rows <= target_num_rows_per_block
+        assert block_metadata.num_rows == target_num_rows_per_block
         rows_count += block_metadata.num_rows
         block_data = (
             BlockAccessor.for_block(block).to_pandas().to_dict(orient="records")
