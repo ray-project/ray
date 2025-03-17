@@ -1,5 +1,4 @@
 import abc
-import os
 import asyncio
 import aiohttp
 import inspect
@@ -8,6 +7,7 @@ import sys
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
+import psutil
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -69,12 +69,18 @@ class SubprocessModule(abc.ABC):
         Detect parent process death by checking if ppid is still the same.
         """
         while True:
-            ppid = os.getppid()
-            if ppid != self._parent_process_pid:
+            try:
+                parent = psutil.Process(self._parent_process_pid)
+                if not parent.is_running() or parent.status() == psutil.STATUS_ZOMBIE:
+                    logger.warning(
+                        f"Parent process {self._parent_process_pid} died. Exiting..."
+                    )
+                    sys.exit()
+            except psutil.NoSuchProcess:
                 logger.warning(
-                    f"Parent process {self._parent_process_pid} died because ppid changed to {ppid}. Exiting..."
+                    f"Parent process {self._parent_process_pid} does not exist. Exiting..."
                 )
-                sys.exit()
+                sys.exit(1)
             await asyncio.sleep(1)
 
     @staticmethod

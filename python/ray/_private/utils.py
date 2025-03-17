@@ -2089,7 +2089,7 @@ def validate_socket_filepath(filepath: str):
         return
     is_mac = sys.platform.startswith("darwin")
     maxlen = (104 if is_mac else 108) - 1
-    if len(filepath) > maxlen:
+    if len(filepath.encode("utf-8")) > maxlen:
         raise OSError(
             f"validate_socket_filename failed: AF_UNIX path length cannot exceed {maxlen} bytes: {filepath}"
         )
