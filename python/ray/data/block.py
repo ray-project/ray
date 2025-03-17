@@ -183,7 +183,7 @@ class _BlockExecStatsBuilder:
 
         # Record initial RSS.
         self._process = psutil.Process(os.getpid())
-        self._max_rss = int(self._process.memory_info().rss)
+        self._max_rss = int(self._process.memory_full_info().uss)
         self._max_rss_lock = threading.Lock()
 
         # If necessary, start the RSS poll thread.
@@ -210,7 +210,9 @@ class _BlockExecStatsBuilder:
 
         # Record max RSS.
         with self._max_rss_lock:
-            self._max_rss = max(self._max_rss, int(self._process.memory_info().rss))
+            self._max_rss = max(
+                self._max_rss, int(self._process.memory_full_info().uss)
+            )
 
         # Build the stats.
         stats = BlockExecStats()
@@ -226,7 +228,7 @@ class _BlockExecStatsBuilder:
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
         with self._max_rss_lock:
-            self._max_rss = int(self._process.memory_info().rss)
+            self._max_rss = int(self._process.memory_full_info().uss)
 
     def _start_rss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         assert self._poll_interval_s is not None
@@ -235,7 +237,7 @@ class _BlockExecStatsBuilder:
 
         def poll_rss():
             while not stop_event.is_set():
-                rss_bytes = int(self._process.memory_info().rss)
+                rss_bytes = int(self._process.memory_full_info().uss)
                 with self._max_rss_lock:
                     self._max_rss = max(self._max_rss, rss_bytes)
                 stop_event.wait(self._poll_interval_s)
