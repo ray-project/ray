@@ -33,19 +33,20 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
 absl::Cord MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size) const {
+  RAY_CHECK_GT(offset + size, GetDataSize());
   return absl::MakeCordFromExternal(
-      absl::string_view{reinterpret_cast<char *>(object_buffer_.data->Data()), size},
-      [](absl::string_view) {});
+      absl::string_view{reinterpret_cast<char *>(object_buffer_.data->Data() + offset),
+                        size},
+      []() {});
 }
 
-bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
-                                                 uint64_t size,
-                                                 std::string &output) const {
-  if (offset + size > GetMetadataSize()) {
-    return false;
-  }
-  output.append(reinterpret_cast<char *>(object_buffer_.metadata->Data() + offset), size);
-  return true;
+absl::Cord MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
+                                                       uint64_t size) const {
+  RAY_CHECK_GT(offset + size, GetMetadataSize());
+  return absl::MakeCordFromExternal(
+      absl::string_view{
+          reinterpret_cast<char *>(object_buffer_.metadata->Data() + offset), size},
+      []() {});
 }
 
 }  // namespace ray

@@ -184,17 +184,19 @@ absl::Cord SpilledObjectReader::ReadFromDataSection(uint64_t offset,
   return cord;
 }
 
-bool SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
-                                                  uint64_t size,
-                                                  std::string &output) const {
-  std::ifstream file(file_path_, std::ios::binary);
-  file.seekg(metadata_offset_ + offset);
-  std::istreambuf_iterator<char> start(file), end;
-  uint64_t size_idx = 0;
-  for (auto it = start; size_idx < size && it != end; ++it) {
-    output.push_back(*it);
-    ++size_idx;
+absl::Cord SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
+                                                        uint64_t size) const {
+  std::ifstream is(file_path_, std::ios::binary);
+  absl::Cord cord;
+  is.seekg(metadata_offset_ + offset);
+  while (size > 0) {
+    auto buffer = cord.GetAppendBuffer(size);
+    absl::Span<char> span = buffer.available_up_to(size);
+    is.read(span.data(), span.size());
+    buffer.IncreaseLengthBy(span.size());
+    cord.Append(std::move(buffer));
+    size -= span.size();
   }
-  return size_idx == size;
+  return cord;
 }
 }  // namespace ray

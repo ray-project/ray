@@ -50,8 +50,6 @@ class IObjectReader {
   /// \param size number of bytes to copy.
   /// \param output string that the metadata will be appended to.
   /// \return bool.
-  virtual bool ReadFromMetadataSection(uint64_t offset,
-                                       uint64_t size,
-                                       std::string &output) const = 0;
+  virtual absl::Cord ReadFromMetadataSection(uint64_t offset, uint64_t size) const = 0;
 };
 }  // namespace ray
