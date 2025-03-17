@@ -75,7 +75,7 @@ class ObjectBufferPoolTest : public ::testing::Test {
       : chunk_size_(1000),
         mock_plasma_client_(std::make_shared<MockPlasmaClient>()),
         object_buffer_pool_(mock_plasma_client_, chunk_size_),
-        mock_data_(chunk_size_, 'x') {}
+        mock_data_(std::string(chunk_size_, 'x')) {}
 
   void AssertNoLeaks() {
     absl::MutexLock lock(&object_buffer_pool_.pool_mutex_);
@@ -86,7 +86,7 @@ class ObjectBufferPoolTest : public ::testing::Test {
   uint64_t chunk_size_;
   std::shared_ptr<MockPlasmaClient> mock_plasma_client_;
   ObjectBufferPool object_buffer_pool_;
-  std::string mock_data_;
+  absl::Cord mock_data_;
 };
 
 TEST_F(ObjectBufferPoolTest, TestBasic) {

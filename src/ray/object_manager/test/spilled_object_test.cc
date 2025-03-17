@@ -356,10 +356,9 @@ TYPED_TEST(ObjectReaderTest, GetDataAndMetadata) {
         for (size_t size = offset; size <= data.size() - offset; size++) {
           std::string result;
           if (offset + size <= data.size()) {
-            ASSERT_TRUE(reader->ReadFromDataSection(offset, size, result));
+            auto cord = reader->ReadFromDataSection(offset, size);
+            std::string result(cord.char_begin(), cord.char_end());
             ASSERT_EQ(data.substr(offset, size), result);
-          } else {
-            ASSERT_FALSE(reader->ReadFromDataSection(offset, size, result));
           }
         }
       }
@@ -368,10 +367,9 @@ TYPED_TEST(ObjectReaderTest, GetDataAndMetadata) {
         for (size_t size = offset; size <= metadata.size() - offset; size++) {
           std::string result;
           if (offset + size <= metadata.size()) {
-            ASSERT_TRUE(reader->ReadFromMetadataSection(offset, size, result));
+            auto cord = reader->ReadFromMetadataSection(offset, size);
+            std::string result(cord.char_begin(), cord.char_end());
             ASSERT_EQ(metadata.substr(offset, size), result);
-          } else {
-            ASSERT_FALSE(reader->ReadFromMetadataSection(offset, size, result));
           }
         }
       }
@@ -402,12 +400,12 @@ TYPED_TEST(ObjectReaderTest, GetChunk) {
         std::string actual_output_by_chunks;
         for (uint64_t i = 0; i < reader.GetNumChunks(); i++) {
           auto chunk = reader.GetChunk(i);
-          ASSERT_TRUE(chunk.has_value());
-          ASSERT_GE(chunk_size, chunk->size());
+          ASSERT_GE(chunk_size, chunk.size());
           if (i + 1 != reader.GetNumChunks()) {
-            ASSERT_EQ(chunk_size, chunk->size());
+            ASSERT_EQ(chunk_size, chunk.size());
           }
-          actual_output_by_chunks.append(chunk.value());
+          actual_output_by_chunks.append(
+              std::string(chunk.char_begin(), chunk.char_end()));
         }
         ASSERT_EQ(expected_output, actual_output_by_chunks);
       }
