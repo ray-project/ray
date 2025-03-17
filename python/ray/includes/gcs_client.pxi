@@ -421,14 +421,12 @@ cdef class InnerGcsClient:
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Actors().AsyncKillActor(
-                    c_actor_id,
-                    force_kill,
-                    no_restart,
-                    StatusPyCallback(convert_status, assign_and_decrement_fut,  fut),
-                    timeout_ms
-                )
+            self.inner.get().Actors().AsyncKillActor(
+                c_actor_id,
+                force_kill,
+                no_restart,
+                StatusPyCallback(convert_status, assign_and_decrement_fut,  fut),
+                timeout_ms
             )
         return asyncio.wrap_future(fut)
     #############################################################
@@ -739,12 +737,24 @@ cdef convert_get_cluster_status_reply(
         return None, e
 
 cdef convert_status(CRayStatus status) with gil:
-    # -> None
+    # This function is currently only used by `async_kill_actor` to
+    # convert RayStatus to an HTTP status code.
+    #
+    # Returns:
+    #   Tuple[int, Optional[Exception]]:
+    #     - int: HTTP status code.
+    #       (1) 200: Success
+    #       (2) 404: Actor not found
+    #       (3) 500: Other errors
+    #     - Optional[Exception]: Exception raised by RayStatus
     try:
+        if status.IsNotFound():
+            return 404, None
         check_status_timeout_as_rpc_error(status)
-        return None, None
+        return 200, None
     except Exception as e:
-        return None, e
+        return 500, e
+
 cdef convert_optional_str_none_for_not_found(
         CRayStatus status, optional[c_string] c_str) with gil:
     # If status is NotFound, return None.

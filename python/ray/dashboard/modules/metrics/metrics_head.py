@@ -11,13 +11,13 @@ import aiohttp
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import (
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
     SESSION_LATEST,
     env_integer,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,

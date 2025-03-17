@@ -3,19 +3,14 @@ import ray
 import time
 import torch
 from ray.dag import InputNode, MultiOutputNode
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.air._internal import torch_utils
 
 
 @ray.remote(num_cpus=0, num_gpus=1)
 class TorchTensorWorker:
-    def __init__(self):
-        self.device = torch_utils.get_devices()[0]
-
     def send(self, shape, dtype, value: int, send_tensor=True):
         if not send_tensor:
             return 1
-        return torch.ones(shape, dtype=dtype, device=self.device) * value
+        return torch.ones(shape, dtype=dtype, device="cuda") * value
 
     def recv_and_matmul(self, two_d_tensor):
         """
@@ -27,7 +22,6 @@ class TorchTensorWorker:
         # Check that tensor got loaded to the correct device.
         assert two_d_tensor.dim() == 2
         assert two_d_tensor.size(0) == two_d_tensor.size(1)
-        assert two_d_tensor.device == self.device
         torch.matmul(two_d_tensor, two_d_tensor)
         return (two_d_tensor[0][0].item(), two_d_tensor.shape, two_d_tensor.dtype)
 
