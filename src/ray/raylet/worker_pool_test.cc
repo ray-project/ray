@@ -105,7 +105,7 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback) override {
     if (serialized_runtime_env == kBadRuntimeEnv) {
-      callback(false, "", kBadRuntimeEnvErrorMsg);
+      callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
     } else {
       rpc::GetOrCreateRuntimeEnvReply reply;
       auto it = runtime_env_reference.find(serialized_runtime_env);
@@ -517,7 +517,7 @@ static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfo(
 }
 
 static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfoFromString(
-    std::string serialized_runtime_env) {
+    std::string_view serialized_runtime_env) {
   rpc::RuntimeEnvInfo runtime_env_info;
   runtime_env_info.set_serialized_runtime_env(serialized_runtime_env);
   return runtime_env_info;
@@ -1991,7 +1991,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
                       ActorID::Nil(),
                       {"XXX=YYY"},
                       TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString(kBadRuntimeEnv));
+                      ExampleRuntimeEnvInfoFromString(std::string(kBadRuntimeEnv));
   std::string error_msg;
   popped_worker = worker_pool_->PopWorkerSync(
       task_spec_with_bad_runtime_env, true, &status, 0, &error_msg);
