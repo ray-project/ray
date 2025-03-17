@@ -14,9 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -39,7 +43,7 @@ class GcsPublisher {
   /// Initializes GcsPublisher with GCS based publishers.
   /// Publish*() member functions below would be incrementally converted to use the GCS
   /// based publisher, if available.
-  GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
+  explicit GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
       : publisher_(std::move(publisher)) {
     RAY_CHECK(publisher_);
   }
@@ -63,7 +67,7 @@ class GcsPublisher {
                       rpc::ActorTableData message,
                       const StatusCallback &done);
 
-  // TODO (dayshah): Look at possibility of moving all of these rpc messages
+  // TODO(dayshah): Look at possibility of moving all of these rpc messages
 
   Status PublishJob(const JobID &id,
                     const rpc::JobTableData &message,
@@ -99,7 +103,7 @@ class GcsPublisher {
 class GcsSubscriber {
  public:
   /// Initializes GcsSubscriber with GCS based GcsSubscribers.
-  // TODO: Support restarted GCS publisher, at the same or a different address.
+  // TODO(mwtian): Support restarted GCS publisher, at the same or a different address.
   GcsSubscriber(const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
       : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {}
