@@ -23,6 +23,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.cloudpickle as pickle
@@ -4067,12 +4068,13 @@ class Dataset:
         path: str,
         *,
         schema: Optional["pyarrow.Schema"] = None,
-        mode: Literal["create", "append", "overwrite"] = "create",
+        mode: Literal["create", "append", "overwrite", "merge_column"] = "create",
         max_rows_per_file: int = 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
+        transform: Optional[Callable[[pa.RecordBatch], pa.RecordBatch]] = None,
     ) -> None:
         """Write the dataset to a Lance dataset.
 
@@ -4103,6 +4105,7 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
+            transform=transform,
         )
 
         self.write_datasink(

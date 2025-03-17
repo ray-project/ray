@@ -3406,6 +3406,7 @@ def read_lance(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    read_mode: Optional[str] = "row",
 ) -> Dataset:
     """
     Create a :class:`~ray.data.Dataset` from a
@@ -3442,6 +3443,12 @@ def read_lance(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        read_mode: The read mode to use. Currently, two modes are supported: "row" and "fragment".
+            "row" mode reads the data row by row, and "fragment" mode reads the data in fragments.
+            The default mode is "row".
+            For more information, see `LanceDB API doc <
+            For more information, see `LanceDB API doc <URL_ADDRESSancedb.github.io\
+            /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_.    
 
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
@@ -3452,6 +3459,7 @@ def read_lance(
         filter=filter,
         storage_options=storage_options,
         scanner_options=scanner_options,
+        read_mode=read_mode,
     )
 
     return read_datasource(

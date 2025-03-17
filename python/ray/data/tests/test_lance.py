@@ -2,6 +2,7 @@ import os
 
 import lance
 import pyarrow as pa
+import pandas as pd
 import pytest
 from pkg_resources import parse_version
 from pytest_lazyfixture import lazy_fixture
@@ -116,7 +117,7 @@ def test_lance_write(data_path):
 
     ray.data.range(10).map(
         lambda x: {"id": x["id"], "str": f"str-{x['id']}"}
-    ).write_lance(data_path)
+    ).write_lance(data_path, schema=schema)
 
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
@@ -146,6 +147,40 @@ def test_lance_write(data_path):
     ds = lance.dataset(data_path)
     ds.count_rows() == 10
     assert ds.schema == schema
+
+
+def generate_label(batch: pa.RecordBatch) -> pa.RecordBatch:
+    heights = batch.column("height").to_pylist()
+    tags = []
+    for height in heights:
+        tags.append("big" if height > 5 else "small")
+    df = pd.DataFrame({"size_labels": tags})
+
+    return pa.RecordBatch.from_pandas(
+        df, schema=pa.schema([pa.field("size_labels", pa.string())])
+    )
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_op_add_columns(data_path):
+    import random
+
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    num_rows = 1024
+    data = pa.table(
+        {
+            "id": pa.array(range(num_rows)),
+            "height": pa.array([random.randint(0, 10)] * num_rows),
+        }
+    )
+    lance.write_dataset(data, path, max_rows_per_file=1)
+    # begin add columns
+    ds = ray.data.read_lance(path, read_mode="fragment")
+    ds.write_lance(path, transform=generate_label, mode="merge_column")
+    # end add columns
+    ds = ray.data.read_lance(path, read_mode="row")
+    assert ds.count() == num_rows
 
 
 if __name__ == "__main__":

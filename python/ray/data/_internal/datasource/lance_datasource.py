@@ -2,6 +2,8 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import numpy as np
+import pyarrow as pa
+from enum import Enum
 
 from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import BlockMetadata
@@ -13,6 +15,11 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+class ReadMode(Enum):
+    ROW = "row"
+    FRAGMENT = "fragment"
 
 
 class LanceDatasource(Datasource):
@@ -32,6 +39,7 @@ class LanceDatasource(Datasource):
         filter: Optional[str] = None,
         storage_options: Optional[Dict[str, str]] = None,
         scanner_options: Optional[Dict[str, Any]] = None,
+        read_mode: Optional[str] = "row",
     ):
         _check_import(self, module="lance", package="pylance")
 
@@ -55,8 +63,17 @@ class LanceDatasource(Datasource):
             "max_attempts": self.READ_FRAGMENTS_MAX_ATTEMPTS,
             "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
         }
+        self.read_mode = read_mode
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+        if self.read_mode == ReadMode.ROW.value:
+            return self._create_row_based_task(parallelism)
+        elif self.read_mode == ReadMode.FRAGMENT.value:
+            return self._create_fragments_based_task(parallelism)
+        else:
+            raise ValueError(f"Unsupported read mode: {self.read_mode}")
+
+    def _create_row_based_task(self, parallelism: int):
         read_tasks = []
         for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
             if len(fragments) <= 0:
@@ -87,6 +104,32 @@ class LanceDatasource(Datasource):
                     scanner_options,
                     retry_params,
                 ),
+                metadata,
+            )
+            read_tasks.append(read_task)
+
+        return read_tasks
+
+    def _create_fragments_based_task(self, parallelism: int):
+        read_tasks = []
+
+        fragment_all_ids = [f.metadata.id for f in self.lance_ds.get_fragments()]
+
+        for fragment_batch_ids in np.array_split(fragment_all_ids, parallelism):
+            if len(fragment_batch_ids) <= 0:
+                continue
+
+            schema = pa.schema([("fragment_id", pa.int64())])
+            metadata = BlockMetadata(
+                num_rows=len(fragment_batch_ids),
+                schema=schema,
+                input_files=None,
+                size_bytes=None,
+                exec_stats=None,
+            )
+            fragments_task = _create_read_task_fn(fragment_batch_ids)
+            read_task = ReadTask(
+                fragments_task,
                 metadata,
             )
             read_tasks.append(read_task)
@@ -127,3 +170,13 @@ def _read_fragments(
     scanner = lance_ds.scanner(**scanner_options)
     for batch in scanner.to_reader():
         yield pyarrow.Table.from_batches([batch])
+
+
+def _create_read_task_fn(fragment_ids):
+    def _fragment_task() -> Iterator["pyarrow.Table"]:
+        import pyarrow
+
+        for fragment_id in fragment_ids:
+            yield pyarrow.Table.from_pydict({"fragment_id": [fragment_id]})
+
+    return _fragment_task
