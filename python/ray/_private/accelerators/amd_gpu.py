@@ -2,23 +2,10 @@ import os
 import logging
 from typing import Optional, List, Tuple
 
+from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.accelerator import AcceleratorManager
 
 logger = logging.getLogger(__name__)
-
-if "ROCR_VISIBLE_DEVICES" in os.environ:
-    raise RuntimeError("Please use HIP_VISIBLE_DEVICES instead of ROCR_VISIBLE_DEVICES")
-
-if "HIP_VISIBLE_DEVICES" in os.environ:
-    hip_val = os.environ["HIP_VISIBLE_DEVICES"]
-    if cuda_val := os.environ.get("CUDA_VISIBLE_DEVICES", None):
-        logger.warning(
-            "WARNING: CUDA_VISIBLE_DEVICES: {} and HIP_VISIBLE_DEVICES: {} must be equal.".format(
-                cuda_val, hip_val
-            )
-        )
-    else:
-        os.environ["CUDA_VISIBLE_DEVICES"] = hip_val
 
 HIP_VISIBLE_DEVICES_ENV_VAR = "HIP_VISIBLE_DEVICES"
 NOSET_HIP_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES"
@@ -49,6 +36,15 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
+        if "ROCR_VISIBLE_DEVICES" in os.environ:
+            raise RuntimeError(
+                f"Please use {HIP_VISIBLE_DEVICES_ENV_VAR} instead of ROCR_VISIBLE_DEVICES"
+            )
+
+        hip_val = os.environ.get(HIP_VISIBLE_DEVICES_ENV_VAR, None)
+        if cuda_val := os.environ.get(CUDA_VISIBLE_DEVICES_ENV_VAR, None):
+            assert hip_val == cuda_val
+
         amd_visible_devices = os.environ.get(
             AMDGPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
         )
