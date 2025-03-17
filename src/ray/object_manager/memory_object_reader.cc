@@ -33,7 +33,7 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
 absl::Cord MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size) const {
-  RAY_CHECK_GT(offset + size, GetDataSize());
+  RAY_CHECK_LE(offset + size, GetDataSize());
   return absl::MakeCordFromExternal(
       absl::string_view{reinterpret_cast<char *>(object_buffer_.data->Data() + offset),
                         size},
@@ -42,7 +42,7 @@ absl::Cord MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t siz
 
 absl::Cord MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
                                                        uint64_t size) const {
-  RAY_CHECK_GT(offset + size, GetMetadataSize());
+  RAY_CHECK_LE(offset + size, GetMetadataSize());
   return absl::MakeCordFromExternal(
       absl::string_view{
           reinterpret_cast<char *>(object_buffer_.metadata->Data() + offset), size},
