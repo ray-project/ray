@@ -37,6 +37,7 @@ from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
+from ray.rllib.offline.utils import unflatten_dict
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -1049,21 +1050,36 @@ class Learner(Checkpointable):
                     "Learner.update(data_iterators=..) requires `num_iters` kwarg!"
                 )
 
+            def _collate_fn(_batch: Dict[str, numpy.ndarray]) -> MultiAgentBatch:
+                _batch = unflatten_dict(_batch)
+                _batch = MultiAgentBatch(
+                    {
+                        module_id: SampleBatch(module_data)
+                        for module_id, module_data in _batch.items()
+                    },
+                    env_steps=sum(
+                        len(next(iter(module_data))) for module_data in _batch.values()
+                    ),
+                )
+                _batch = self._convert_batch_type(_batch, to_device=False)
+                return self._set_slicing_by_batch_id(_batch, value=True)
+
+            def _finalize_fn(batch: MultiAgentBatch) -> MultiAgentBatch:
+                return self._convert_batch_type(batch, to_device=True, use_stream=True)
+
             if not self.iterator:
-                self.iterator = training_data.data_iterators[0]
+                # A `DataIterator` that can iterate in different ways over the data.
+                self.iterator = MiniBatchRayDataIterator(
+                    iterator=training_data.data_iterators[0],
+                    collate_fn=_collate_fn,
+                    finalize_fn=_finalize_fn,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    **kwargs,
+                )
 
-            def _finalize_fn(_batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
-                # Note, the incoming batch is a dictionary with a numpy array
-                # holding the `MultiAgentBatch`.
-                _batch = self._convert_batch_type(_batch["batch"][0])
-                return {"batch": self._set_slicing_by_batch_id(_batch, value=True)}
-
-            batch_iter = MiniBatchRayDataIterator(
-                iterator=self.iterator,
-                finalize_fn=_finalize_fn,
-                num_iters=num_iters,
-                **kwargs,
-            )
+            batch_iter = self.iterator
+            # TODO (simon): These metrics are wrongly collected.
             # Record the number of batches pulled from the dataset.
             self.metrics.log_value(
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),

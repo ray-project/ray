@@ -1,7 +1,6 @@
 import gymnasium as gym
 import logging
 import numpy as np
-import tree
 import uuid
 
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
@@ -9,7 +8,7 @@ from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec, MultiRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.offline.utils import flatten_dict
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -138,7 +137,7 @@ class OfflinePreLearner:
             )
 
     @OverrideToImplementCustomLogic
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         """Prepares plain data batches for training with `Learner`'s.
 
         Args:
@@ -263,7 +262,7 @@ class OfflinePreLearner:
                 del batch[module_id]
 
         # Flatten the dictionary to increase serialization performance.
-        return self.flatten_dict(batch)
+        return flatten_dict(batch)
 
     @property
     def default_prelearner_buffer_class(self) -> ReplayBuffer:
@@ -625,27 +624,3 @@ class OfflinePreLearner:
                 episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
-
-    @staticmethod
-    def flatten_dict(nested, sep="/", env_steps=0):
-        """
-        Flattens a nested dict into a flat dict with joined keys.
-
-        Note, this is used to return a `Dict[str, numpy.ndarray] from the
-        `__call__` method which is expected by Ray Data.
-
-        Args:
-            nested: A nested dictionary.
-            sep: Separator to use when joining keys.
-
-        Returns:
-            A flat dictionary where each key is a path of keys in the nested dict.
-        """
-        flat = {}
-        # dm_tree.flatten_with_path returns a list of (path, leaf) tuples.
-        for path, leaf in tree.flatten_with_path(nested):
-            # Create a single string key from the path.
-            key = sep.join(str(p) for p in path)
-            flat[key] = leaf
-
-        return flat
