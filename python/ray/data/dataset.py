@@ -4038,6 +4038,12 @@ class Dataset:
             connection_parameters: Keyword arguments to pass to
                 ``snowflake.connector.connect``. To view supported parameters, read
                 https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+            ray_remote_args: Keyword arguments passed to :func:`ray.remote` in the
+                write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """  # noqa: E501
         import snowflake.connector
 
