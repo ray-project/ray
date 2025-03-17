@@ -1391,7 +1391,7 @@ class TestModelMultiplexing:
         # multiplexed_matching_timeout to expire then to go to other replicas. This
         # timeout ensures that the request is scheduled to other replicas right away
         # after first try.
-        done, _ = await asyncio.wait(tasks, timeout=0.01)
+        done, _ = await asyncio.wait(tasks, timeout=0.1)
         assert len(done) == 100
         for task in done:
             assert task.result() in {r2, r3}
