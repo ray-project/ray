@@ -13,6 +13,7 @@ from collections import namedtuple
 from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
+from enum import IntEnum
 
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
@@ -42,6 +43,17 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
+
+
+class HTTPStatusCode(IntEnum):
+    # 2xx Success
+    OK = 200
+
+    # 4xx Client Errors
+    NOT_FOUND = 404
+
+    # 5xx Server Errors
+    INTERNAL_ERROR = 500
 
 
 class FrontendNotFoundError(OSError):

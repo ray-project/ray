@@ -812,8 +812,12 @@ def test_immutable_types():
     assert type(deserialized_immutable_dict) is dict
     assert type(deserialized_immutable_dict["list"]) is list
     assert immutable_dict.mutable() == deserialized_immutable_dict
-    dashboard_optional_utils.rest_response(True, "OK", data=immutable_dict)
-    dashboard_optional_utils.rest_response(True, "OK", **immutable_dict)
+    dashboard_optional_utils.rest_response(
+        dashboard_utils.HTTPStatusCode.OK, "OK", data=immutable_dict
+    )
+    dashboard_optional_utils.rest_response(
+        dashboard_utils.HTTPStatusCode.OK, "OK", **immutable_dict
+    )
 
     # Test copy
     copy_of_immutable = copy.copy(immutable_dict)
