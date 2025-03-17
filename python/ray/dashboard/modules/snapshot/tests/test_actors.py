@@ -50,13 +50,16 @@ def _kill_actor_using_dashboard_gcs(
     return resp_json
 
 
-def test_kill_actor_gcs(ray_start_with_dashboard):
+@pytest.mark.parametrize("enable_concurrency_group", [False, True])
+def test_kill_actor_gcs(ray_start_with_dashboard, enable_concurrency_group):
     # Start the dashboard
     webui_url = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
-    @ray.remote
+    concurrency_groups = {"io": 1} if enable_concurrency_group else None
+
+    @ray.remote(concurrency_groups=concurrency_groups)
     class Actor:
         def f(self):
             ray._private.worker.show_in_dashboard("test")
