@@ -46,8 +46,8 @@ int POOL_SIZE_SOFT_LIMIT = 3;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID2 = JobID::FromInt(2);
-static const char BAD_RUNTIME_ENV[] = "bad runtime env";
-const char BAD_RUNTIME_ENV_ERROR_MSG[] = "bad runtime env";
+constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
+constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
@@ -1211,7 +1211,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaxSpillRestoreWorkersIntegrationTest) {
       started_restore_processes.push_back(last_restore_process);
     }
     // Register workers with 10% probability at each time.
-    if (rand() % 100 < 10) {  // NOLINT
+    if (rand() % 100 < 10) {  // NOLINT(runtime/threadsafe_fn)
       // Push spill worker if there's a process.
       if (started_spill_processes.size() > 0) {
         auto spill_worker = CreateSpillWorker(
