@@ -104,8 +104,8 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback) override {
-    if (serialized_runtime_env == BAD_RUNTIME_ENV) {
-      callback(false, "", BAD_RUNTIME_ENV_ERROR_MSG);
+    if (serialized_runtime_env == kBadRuntimeEnv) {
+      callback(false, "", kBadRuntimeEnvErrorMsg);
     } else {
       rpc::GetOrCreateRuntimeEnvReply reply;
       auto it = runtime_env_reference.find(serialized_runtime_env);
@@ -1991,14 +1991,14 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
                       ActorID::Nil(),
                       {"XXX=YYY"},
                       TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString(BAD_RUNTIME_ENV));
+                      ExampleRuntimeEnvInfoFromString(kBadRuntimeEnv));
   std::string error_msg;
   popped_worker = worker_pool_->PopWorkerSync(
       task_spec_with_bad_runtime_env, true, &status, 0, &error_msg);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
   ASSERT_EQ(popped_worker, nullptr);
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
-  ASSERT_EQ(error_msg, BAD_RUNTIME_ENV_ERROR_MSG);
+  ASSERT_EQ(error_msg, kBadRuntimeEnvErrorMsg);
 
   // Create a task with available runtime env.
   const auto task_spec_with_runtime_env =
