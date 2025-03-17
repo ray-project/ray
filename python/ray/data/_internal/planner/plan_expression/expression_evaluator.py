@@ -4,7 +4,7 @@ import logging
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
-
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 class ExpressionEvaluator:
     @staticmethod
-    def get_filters(expression: str) -> ds.Expression:
+    def get_filters(
+        expression: str, field_changes: Dict[str, str] = None
+    ) -> ds.Expression:
         """Parse and evaluate the expression to generate a filter condition.
 
         Args:
@@ -30,7 +32,7 @@ class ExpressionEvaluator:
         """
         try:
             tree = ast.parse(expression, mode="eval")
-            return _ConvertToArrowExpressionVisitor().visit(tree.body)
+            return _ConvertToArrowExpressionVisitor(field_changes).visit(tree.body)
         except SyntaxError as e:
             raise ValueError(f"Invalid syntax in the expression: {expression}") from e
         except Exception as e:
@@ -39,6 +41,10 @@ class ExpressionEvaluator:
 
 
 class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
+    def __init__(self, field_changes: Dict[str, str]):
+        self.field_changes = field_changes or {}
+        super().__init__()
+
     def visit_Compare(self, node: ast.Compare) -> ds.Expression:
         """Handle comparison operations (e.g., a == b, a < b, a in b).
 
@@ -123,7 +129,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         """
         # Directly use the field name as a string (even if it contains periods)
         field_name = node.id
-        return pc.field(field_name)
+        return pc.field(self.field_changes.get(field_name, field_name))
 
     def visit_Attribute(self, node: ast.Attribute) -> object:
         """Handle attribute access (e.g., np.nan).
@@ -132,7 +138,7 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
             node: The AST node representing an attribute access.
 
         Returns:
-            object: The attribute value.
+            The attribute wrapped as a pa.dataset.Expression.
 
         Raises:
             ValueError: If the attribute is unsupported.
@@ -141,12 +147,14 @@ class _ConvertToArrowExpressionVisitor(ast.NodeVisitor):
         if isinstance(node.value, ast.Attribute):
             # If the value is an attribute, recursively resolve it
             left_expr = self.visit(node.value)
-            return pc.field(f"{left_expr}.{node.attr}")
+            field_name = f"{left_expr}.{node.attr}"
+            return pc.field(self.field_changes.get(field_name, field_name))
 
         elif isinstance(node.value, ast.Name):
             # If the value is a name (e.g., "foo"), we can directly return the field
             left_name = node.value.id  # The base name, e.g., "foo"
-            return pc.field(f"{left_name}.{node.attr}")
+            field_name = f"{left_name}.{node.attr}"
+            return pc.field(self.field_changes.get(field_name, field_name))
 
         raise ValueError(f"Unsupported attribute: {node.attr}")
 

@@ -9,6 +9,7 @@ from ray.anyscale.data._internal.logical.operators.read_files_operator import Re
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.map_operator import Filter
 from ray.data._internal.logical.operators.n_ary_operator import Union
+from typing import List
 
 if TYPE_CHECKING:
     import pyarrow.dataset as pd
@@ -41,7 +42,7 @@ class PredicatePushdown(Rule):
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         dag_copy = make_copy_of_dag(plan.dag)
         plan = LogicalPlan(dag_copy, plan.context)
-        plan = self._process_operator(plan.dag, None, None, plan)
+        plan = self._process_operator(plan.dag, None, None, None, plan)
         return plan
 
     def _process_operator(
@@ -49,6 +50,7 @@ class PredicatePushdown(Rule):
         op: LogicalOperator,
         prev_filter: Optional[Filter] = None,
         filter_expr_to_pushdown: Optional["pd.Expression"] = None,
+        filter_expr_strs_to_pushdown: Optional[List[str]] = None,
         plan: Optional[LogicalPlan] = None,
     ) -> LogicalPlan:
         """Process a sub-DAG rooted at the given operator to push down predicates.
@@ -69,32 +71,39 @@ class PredicatePushdown(Rule):
                 if op.is_expression_based():
                     prev_filter = op
                     filter_expr_to_pushdown = op._filter_expr
+                    filter_expr_strs_to_pushdown = op._filter_expr_strs
             elif not op.is_expression_based():
                 # Filter Op pushdown supported for only filter expressions
                 # so we reset the filter pushdown here
                 prev_filter = None
                 filter_expr_to_pushdown = None
+                filter_expr_strs_to_pushdown = None
             else:
                 # Opportunity to combine filter expressions
                 filter_expr_to_pushdown &= op._filter_expr
                 plan = remove_op(prev_filter, plan)
                 prev_filter = op
                 prev_filter._filter_expr = filter_expr_to_pushdown
+                prev_filter._filter_expr_strs.extend(filter_expr_strs_to_pushdown)
         elif isinstance(op, ReadFiles) and prev_filter:
-            assert filter_expr_to_pushdown is not None
+            assert filter_expr_strs_to_pushdown is not None
+
             readfiles = op
-            if readfiles.filter_expr is not None:
-                filter_expr_to_pushdown &= readfiles.filter_expr
-            readfiles.filter_expr = filter_expr_to_pushdown
+            readfiles.pushdown_filter(filter_expr_strs_to_pushdown)
             plan = remove_op(prev_filter, plan)
             prev_filter = None
-            filter_expr_to_pushdown = None
+            filter_expr_strs_to_pushdown = None
+
         elif isinstance(op, Union) and prev_filter:
             # For union operations, we need to process each branch independently
             # So we duplicate the filter expression for each branch
             for input_dep in op.input_dependencies:
                 # Create a new Filter operator for each branch
-                branch_filter = Filter(input_dep, filter_expr=filter_expr_to_pushdown)
+                branch_filter = Filter(
+                    input_dep,
+                    filter_expr=filter_expr_to_pushdown,
+                    filter_expr_strs=filter_expr_strs_to_pushdown,
+                )
                 add_op_between(
                     branch_filter,
                     upstream_op=input_dep,
@@ -102,7 +111,11 @@ class PredicatePushdown(Rule):
                 )
                 # Process the branch with the new filter
                 plan = self._process_operator(
-                    branch_filter, None, filter_expr_to_pushdown, plan
+                    branch_filter,
+                    None,
+                    filter_expr_to_pushdown,
+                    filter_expr_strs_to_pushdown,
+                    plan,
                 )
             # Remove the original filter after processing all branches
             plan = remove_op(prev_filter, plan)
@@ -111,9 +124,14 @@ class PredicatePushdown(Rule):
         else:
             prev_filter = None
             filter_expr_to_pushdown = None
+            filter_expr_strs_to_pushdown = None
         # DFS traversal of the DAG
         for input_dep in op.input_dependencies:
             plan = self._process_operator(
-                input_dep, prev_filter, filter_expr_to_pushdown, plan
+                input_dep,
+                prev_filter,
+                filter_expr_to_pushdown,
+                filter_expr_strs_to_pushdown,
+                plan,
             )
         return plan

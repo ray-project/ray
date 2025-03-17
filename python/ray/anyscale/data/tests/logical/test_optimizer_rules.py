@@ -580,7 +580,6 @@ def test_pushdown_divergent_branches(ray_start_regular_shared):
     # Execute ds without projection pushdown
     result = ds.take(1)[0]
     result_keys = list(result.keys())
-    print(result)
     assert all(
         key in result_keys
         for key in [
@@ -607,6 +606,128 @@ def match_transform_fns(
 def match_ds_result(ds: Dataset, expected_output: List[int]) -> bool:
     output = [item["id"] for item in ds.take_all()]
     return output == expected_output
+
+
+def test_pushdown_rename_filter(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a)."""
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+    )
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(expr="sepal.length > 2.0")
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"a": "sepal.length"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    assert read_op.filter_expr.equals(
+        pc.greater(pc.field("sepal.length"), pc.scalar(2.0))
+    )
+
+
+def test_pushdown_rename_filter_rename(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a).rename(a -> b)."""
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+        .rename_columns({"a": "b"})
+    )
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(expr="sepal.length > 2.0")
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"b": "sepal.length"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    assert read_op.filter_expr.equals(
+        pc.greater(pc.field("sepal.length"), pc.scalar(2.0))
+    )
+
+
+def test_pushdown_rename_filter_rename_filter(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b)."""
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+        .rename_columns({"a": "b"})
+        .filter(expr="b < 5.0")
+    )
+
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(
+        expr="sepal.length > 2.0 and sepal.length < 5.0"
+    )
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"b": "sepal.length"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    expected_filter_expr = pc.greater(
+        pc.field("sepal.length"), pc.scalar(2.0)
+    ) & pc.less(pc.field("sepal.length"), pc.scalar(5.0))
+    assert read_op.filter_expr.equals(expected_filter_expr)
+
+
+def test_pushdown_rename_filter_rename_filter_rename(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b).rename("sepal.width" -> a).
+    Here column a is referred multiple times in rename
+    """
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+        .rename_columns({"a": "b"})
+        .filter(expr="b < 5.0")
+        .rename_columns({"sepal.width": "a"})
+    )
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(
+        expr="sepal.length > 2.0 and sepal.length < 5.0"
+    )
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"b": "sepal.length", "a": "sepal.width"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+    expected_filter_expr = pc.greater(
+        pc.field("sepal.length"), pc.scalar(2.0)
+    ) & pc.less(pc.field("sepal.length"), pc.scalar(5.0))
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    assert read_op.filter_expr.equals(expected_filter_expr)
 
 
 def test_map_batches_transformer_fusion(ray_start_regular_shared):
