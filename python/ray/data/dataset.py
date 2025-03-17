@@ -1373,9 +1373,9 @@ class Dataset:
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`.
 
-        When `target_num_rows_per_block` is set, it repartitions :class:`Dataset`
-        to honor target number of rows per :ref:`blocks <dataset_concept>`. Note
-        that the system will internally figure out the number of rows per
+        When `target_num_rows_per_block` is set, it only repartitions :class:`Dataset`
+        :ref:`blocks <dataset_concept>` that are larger than `target_num_rows_per_block`.
+        Note that the system will internally figure out the number of rows per
         :ref:`blocks <dataset_concept>` for optimal execution, based on the
         `target_num_rows_per_block`.
 
