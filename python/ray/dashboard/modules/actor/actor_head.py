@@ -264,7 +264,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     async def get_all_actors(self, req) -> aiohttp.web.Response:
         actors = await DataOrganizer.get_actor_infos()
         return dashboard_optional_utils.rest_response(
-            success=True,
+            status_code=dashboard_utils.HTTPStatusCode.OK,
             message="All actors fetched.",
             actors=actors,
             # False to avoid converting Ray resource name to google style.
@@ -279,7 +279,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         actor_id = req.match_info.get("actor_id")
         actors = await DataOrganizer.get_actor_infos(actor_ids=[actor_id])
         return dashboard_optional_utils.rest_response(
-            success=True, message="Actor details fetched.", detail=actors[actor_id]
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="Actor details fetched.",
+            detail=actors[actor_id],
         )
 
     async def run(self, server):
