@@ -75,7 +75,7 @@ In this case, you might receive a mixture of True and False. If ``check_file()``
 Placement Groups aren't composable
 -----------------------------------
 
-**Issue:** If you call a task within a Placement Group that uses Ray Tasks, the system might fail to allocate resources properly, causing the operation to hang.
+**Issue:** If you schedule a new task from the tasks or actors running within a Placement Group, the system might fail to allocate resources properly, causing the operation to hang.
 
 **Example:** Imagine you are using Ray Tune (which creates Placement Groups) and want to apply it to an objective function that in turn uses Ray Tasks. For example:
 
