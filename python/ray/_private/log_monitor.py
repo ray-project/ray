@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import sys
 import time
 import traceback
 from typing import Callable, List, Optional, Set
@@ -549,13 +550,20 @@ if __name__ == "__main__":
         f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
     )
     args = parser.parse_args()
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
+
     setup_component_logger(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
-        log_dir=args.logs_dir,
+        log_dir=args.log_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
     )
 
     node_ip = services.get_cached_node_ip_address(args.session_dir)
