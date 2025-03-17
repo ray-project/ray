@@ -73,12 +73,11 @@ def test_kill_actor_gcs(ray_start_with_dashboard):
     actor_id = a._ray_actor_id.hex()
 
     OK = 200
-    INTERNAL_ERROR = 500
+    NOT_FOUND = 404
 
     # Kill an non-existent actor
-    # TODO(kevin85421): It should return 404 instead of 500.
     resp = _kill_actor_using_dashboard_gcs(
-        webui_url, "non-existent-actor-id", INTERNAL_ERROR
+        webui_url, "non-existent-actor-id", NOT_FOUND
     )
     assert "not found" in resp["msg"]
 
