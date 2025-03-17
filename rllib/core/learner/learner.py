@@ -1055,7 +1055,8 @@ class Learner(Checkpointable):
                         for module_id, module_data in _batch.items()
                     },
                     env_steps=sum(
-                        len(next(iter(module_data))) for module_data in _batch.values()
+                        len(next(iter(module_data.values())))
+                        for module_data in _batch.values()
                     ),
                 )
                 _batch = self._convert_batch_type(_batch, to_device=False)

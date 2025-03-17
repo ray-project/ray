@@ -9,6 +9,8 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+from ray.rllib.offline.utils import unflatten_dict
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -226,10 +228,7 @@ class OfflineData:
                     # If no iterator should be returned, or if we want to return a single
                     # batch iterator, we instantiate the batch iterator once, here.
                     self.batch_iterators = self.data.iter_batches(
-                        # This is important. The batch size is now 1, because the data
-                        # is already run through the `OfflinePreLearner` and a single
-                        # instance is a single `MultiAgentBatch` of size `num_samples`.
-                        batch_size=1,
+                        batch_size=num_samples,
                         **self.iter_batches_kwargs,
                     )
                     self.batch_iterators = iter(self.batch_iterators)
@@ -240,7 +239,17 @@ class OfflineData:
         else:
             # Return a single batch from the iterator.
             try:
-                return next(self.batch_iterators)["batch"][0]
+                batch = unflatten_dict(next(self.batch_iterators))
+                return MultiAgentBatch(
+                    {
+                        module_id: SampleBatch(module_data)
+                        for module_id, module_data in batch.items()
+                    },
+                    env_steps=sum(
+                        len(next(iter(module_data.values())))
+                        for module_data in batch.values()
+                    ),
+                )
             except StopIteration:
                 # If the batch iterator is exhausted, reinitiate a new one.
                 logger.debug(
