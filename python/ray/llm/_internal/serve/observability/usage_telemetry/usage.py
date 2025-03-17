@@ -11,42 +11,41 @@ from ray._private.usage.usage_lib import record_extra_usage_tag
 
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.deployments.llm.multiplex.utils import get_lora_model_ids
-from ray.llm._internal.serve.configs.base import BaseModelExtended
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.configs.server_models import LLMConfig
 
-RAYLLM_TELEMETRY_NAMESPACE = "rayllm_telemetry"
-RAYLLM_TELEMETRY_ACTOR_NAME = "rayllm_telemetry"
+LLM_SERVE_TELEMETRY_NAMESPACE = "llm_serve_telemetry"
+LLM_SERVE_TELEMETRY_ACTOR_NAME = "llm_serve_telemetry"
 
 logger = get_logger(__name__)
 
 
 class TelemetryTags(str, Enum):
-    """Telemetry tags for RayLLM."""
+    """Telemetry tags for LLM SERVE."""
 
-    RAYLLM_VERSION = "RAYLLM_VERSION"
-    RAYLLM_COMMIT = "RAYLLM_COMMIT"
-    RAYLLM_SERVE_MULTIPLE_MODELS = "RAYLLM_SERVE_MULTIPLE_MODELS"
-    RAYLLM_SERVE_MULTIPLE_APPS = "RAYLLM_SERVE_MULTIPLE_APPS"
-    RAYLLM_JSON_MODE_MODELS = "RAYLLM_JSON_MODE_MODELS"
-    RAYLLM_JSON_MODE_NUM_REPLICAS = "RAYLLM_JSON_MODE_NUM_REPLICAS"
-    RAYLLM_LORA_BASE_MODELS = "RAYLLM_LORA_BASE_MODELS"
-    RAYLLM_INITIAL_NUM_LORA_ADAPTERS = "RAYLLM_INITIAL_NUM_LORA_ADAPTERS"
-    RAYLLM_AUTOSCALING_ENABLED_MODELS = "RAYLLM_AUTOSCALING_ENABLED_MODELS"
-    RAYLLM_AUTOSCALING_MIN_REPLICAS = "RAYLLM_AUTOSCALING_MIN_REPLICAS"
-    RAYLLM_AUTOSCALING_MAX_REPLICAS = "RAYLLM_AUTOSCALING_MAX_REPLICAS"
-    RAYLLM_TENSOR_PARALLEL_DEGREE = "RAYLLM_TENSOR_PARALLEL_DEGREE"
-    RAYLLM_NUM_REPLICAS = "RAYLLM_NUM_REPLICAS"
-    RAYLLM_MODELS = "RAYLLM_MODELS"
-    RAYLLM_GPU_TYPE = "RAYLLM_GPU_TYPE"
-    RAYLLM_NUM_GPUS = "RAYLLM_NUM_GPUS"
+    LLM_SERVE_SERVE_MULTIPLE_MODELS = "LLM_SERVE_SERVE_MULTIPLE_MODELS"
+    LLM_SERVE_SERVE_MULTIPLE_APPS = "LLM_SERVE_SERVE_MULTIPLE_APPS"
+    LLM_SERVE_JSON_MODE_MODELS = "LLM_SERVE_JSON_MODE_MODELS"
+    LLM_SERVE_JSON_MODE_NUM_REPLICAS = "LLM_SERVE_JSON_MODE_NUM_REPLICAS"
+    LLM_SERVE_LORA_BASE_MODELS = "LLM_SERVE_LORA_BASE_MODELS"
+    LLM_SERVE_INITIAL_NUM_LORA_ADAPTERS = "LLM_SERVE_INITIAL_NUM_LORA_ADAPTERS"
+    LLM_SERVE_AUTOSCALING_ENABLED_MODELS = "LLM_SERVE_AUTOSCALING_ENABLED_MODELS"
+    LLM_SERVE_AUTOSCALING_MIN_REPLICAS = "LLM_SERVE_AUTOSCALING_MIN_REPLICAS"
+    LLM_SERVE_AUTOSCALING_MAX_REPLICAS = "LLM_SERVE_AUTOSCALING_MAX_REPLICAS"
+    LLM_SERVE_TENSOR_PARALLEL_DEGREE = "LLM_SERVE_TENSOR_PARALLEL_DEGREE"
+    LLM_SERVE_NUM_REPLICAS = "LLM_SERVE_NUM_REPLICAS"
+    LLM_SERVE_MODELS = "LLM_SERVE_MODELS"
+    LLM_SERVE_GPU_TYPE = "LLM_SERVE_GPU_TYPE"
+    LLM_SERVE_NUM_GPUS = "LLM_SERVE_NUM_GPUS"
 
 
 class TelemetryModel(BaseModelExtended):
-    """Telemetry model for RayLLM."""
+    """Telemetry model for LLM Serve."""
 
-    model_id: str
+    model_architecture: str
     num_replicas: int
     use_json_mode: bool
     use_lora: bool
@@ -60,8 +59,8 @@ class TelemetryModel(BaseModelExtended):
 
 
 @ray.remote(
-    name=RAYLLM_TELEMETRY_ACTOR_NAME,
-    namespace=RAYLLM_TELEMETRY_NAMESPACE,
+    name=LLM_SERVE_TELEMETRY_ACTOR_NAME,
+    namespace=LLM_SERVE_TELEMETRY_NAMESPACE,
     num_cpus=0,
     lifetime="detached",
 )
@@ -82,7 +81,7 @@ class TelemetryAgent:
         self.models = []
 
     def _multiple_models(self) -> str:
-        unique_models = {model.model_id for model in self.models}
+        unique_models = {model.model_architecture for model in self.models}
         return "1" if len(unique_models) > 1 else "0"
 
     @staticmethod
@@ -101,7 +100,7 @@ class TelemetryAgent:
 
     def _json_mode_models(self) -> str:
         return ",".join(
-            [model.model_id for model in self.models if model.use_json_mode]
+            [model.model_architecture for model in self.models if model.use_json_mode]
         )
 
     def _json_mode_num_deployments(self) -> str:
@@ -110,7 +109,9 @@ class TelemetryAgent:
         )
 
     def _lora_base_nodes(self) -> str:
-        return ",".join([model.model_id for model in self.models if model.use_lora])
+        return ",".join(
+            [model.model_architecture for model in self.models if model.use_lora]
+        )
 
     def _lora_initial_num_adaptors(self) -> str:
         return ",".join(
@@ -123,7 +124,7 @@ class TelemetryAgent:
 
     def _autoscaling_enabled_models(self) -> str:
         return ",".join(
-            [model.model_id for model in self.models if model.use_autoscaling]
+            [model.model_architecture for model in self.models if model.use_autoscaling]
         )
 
     def _autoscaling_min_replicas(self) -> str:
@@ -136,8 +137,8 @@ class TelemetryAgent:
             [str(model.max_replicas) for model in self.models if model.use_autoscaling]
         )
 
-    def _model_ids(self) -> str:
-        return ",".join([model.model_id for model in self.models])
+    def _model_architectures(self) -> str:
+        return ",".join([model.model_architecture for model in self.models])
 
     def _tensor_parallel_degree(self) -> str:
         return ",".join([str(model.tensor_parallel_degree) for model in self.models])
@@ -153,22 +154,20 @@ class TelemetryAgent:
 
     def generate_report(self) -> Dict[str, str]:
         return {
-            TelemetryTags.RAYLLM_VERSION: ray.__version__,
-            TelemetryTags.RAYLLM_COMMIT: ray.__commit__,
-            TelemetryTags.RAYLLM_SERVE_MULTIPLE_MODELS: self._multiple_models(),
-            TelemetryTags.RAYLLM_SERVE_MULTIPLE_APPS: self._multiple_apps(),
-            TelemetryTags.RAYLLM_JSON_MODE_MODELS: self._json_mode_models(),
-            TelemetryTags.RAYLLM_JSON_MODE_NUM_REPLICAS: self._json_mode_num_deployments(),
-            TelemetryTags.RAYLLM_LORA_BASE_MODELS: self._lora_base_nodes(),
-            TelemetryTags.RAYLLM_INITIAL_NUM_LORA_ADAPTERS: self._lora_initial_num_adaptors(),
-            TelemetryTags.RAYLLM_AUTOSCALING_ENABLED_MODELS: self._autoscaling_enabled_models(),
-            TelemetryTags.RAYLLM_AUTOSCALING_MIN_REPLICAS: self._autoscaling_min_replicas(),
-            TelemetryTags.RAYLLM_AUTOSCALING_MAX_REPLICAS: self._autoscaling_max_replicas(),
-            TelemetryTags.RAYLLM_MODELS: self._model_ids(),
-            TelemetryTags.RAYLLM_TENSOR_PARALLEL_DEGREE: self._tensor_parallel_degree(),
-            TelemetryTags.RAYLLM_NUM_REPLICAS: self._num_replicas(),
-            TelemetryTags.RAYLLM_GPU_TYPE: self._gpu_type(),
-            TelemetryTags.RAYLLM_NUM_GPUS: self._num_gpus(),
+            TelemetryTags.LLM_SERVE_SERVE_MULTIPLE_MODELS: self._multiple_models(),
+            TelemetryTags.LLM_SERVE_SERVE_MULTIPLE_APPS: self._multiple_apps(),
+            TelemetryTags.LLM_SERVE_JSON_MODE_MODELS: self._json_mode_models(),
+            TelemetryTags.LLM_SERVE_JSON_MODE_NUM_REPLICAS: self._json_mode_num_deployments(),
+            TelemetryTags.LLM_SERVE_LORA_BASE_MODELS: self._lora_base_nodes(),
+            TelemetryTags.LLM_SERVE_INITIAL_NUM_LORA_ADAPTERS: self._lora_initial_num_adaptors(),
+            TelemetryTags.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: self._autoscaling_enabled_models(),
+            TelemetryTags.LLM_SERVE_AUTOSCALING_MIN_REPLICAS: self._autoscaling_min_replicas(),
+            TelemetryTags.LLM_SERVE_AUTOSCALING_MAX_REPLICAS: self._autoscaling_max_replicas(),
+            TelemetryTags.LLM_SERVE_MODELS: self._model_architectures(),
+            TelemetryTags.LLM_SERVE_TENSOR_PARALLEL_DEGREE: self._tensor_parallel_degree(),
+            TelemetryTags.LLM_SERVE_NUM_REPLICAS: self._num_replicas(),
+            TelemetryTags.LLM_SERVE_GPU_TYPE: self._gpu_type(),
+            TelemetryTags.LLM_SERVE_NUM_GPUS: self._num_gpus(),
         }
 
     def record(self, model: Optional[TelemetryModel] = None) -> None:
@@ -190,10 +189,18 @@ def _get_or_create_telemetry_agent() -> TelemetryAgent:
     """Helper to get or create the telemetry agent."""
     try:
         telemetry_agent = ray.get_actor(
-            RAYLLM_TELEMETRY_ACTOR_NAME, namespace=RAYLLM_TELEMETRY_NAMESPACE
+            LLM_SERVE_TELEMETRY_ACTOR_NAME, namespace=LLM_SERVE_TELEMETRY_NAMESPACE
         )
     except ValueError:
-        telemetry_agent = TelemetryAgent.remote()
+        from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+        telemetry_agent = TelemetryAgent.options(
+            # Ensure the actor is created on the head node.
+            resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+            # Ensure the actor is not scheduled with the existing placement group.
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None),
+        ).remote()
 
     return telemetry_agent
 
@@ -235,19 +242,21 @@ def push_telemetry_report_for_all_models(
         use_autoscaling = model.deployment_config.get("autoscaling_config") is not None
         num_replicas, min_replicas, max_replicas = 1, 1, 1
         if use_autoscaling:
-            from ray.llm._internal.serve.configs.server_models import AutoscalingConfig
+            from ray.serve.config import AutoscalingConfig
 
             autoscaling_config = AutoscalingConfig(
                 **model.deployment_config["autoscaling_config"]
             )
-            num_replicas = autoscaling_config.initial_replicas
+            num_replicas = (
+                autoscaling_config.initial_replicas or autoscaling_config.min_replicas
+            )
             min_replicas = autoscaling_config.min_replicas
             max_replicas = autoscaling_config.max_replicas
 
         engine_config = model.get_engine_config()
 
         telemetry_model = TelemetryModel(
-            model_id=model.model_id,
+            model_architecture=model.model_architecture,
             num_replicas=num_replicas,
             use_json_mode=True,
             use_lora=use_lora,
@@ -256,7 +265,7 @@ def push_telemetry_report_for_all_models(
             min_replicas=min_replicas,
             max_replicas=max_replicas,
             tensor_parallel_degree=engine_config.tensor_parallel_degree,
-            gpu_type=engine_config.accelerator_type,
+            gpu_type=model.accelerator_type or DEFAULT_GPU_TYPE,
             num_gpus=engine_config.num_gpu_workers,
         )
         _push_telemetry_report(telemetry_model)

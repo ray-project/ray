@@ -6,7 +6,7 @@ from packaging.version import parse as parse_version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -16,8 +16,7 @@ from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 MIN_PYARROW_VERSION_FOR_HUDI = parse_version("11.0.0")
-_VER = _get_pyarrow_version()
-PYARROW_VERSION = parse_version(_VER) if _VER else None
+PYARROW_VERSION = get_pyarrow_version()
 PYARROW_VERSION_MEETS_REQUIREMENT = (
     PYARROW_VERSION and PYARROW_VERSION >= MIN_PYARROW_VERSION_FOR_HUDI
 )

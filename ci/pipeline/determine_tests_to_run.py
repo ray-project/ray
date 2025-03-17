@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 
 import argparse
+import fnmatch
 import os
-import re
 import subprocess
 import sys
-from typing import List, Set
+from typing import List, Optional, Set, Tuple
 from pprint import pformat
+
+
+_ALL_TAGS = set(
+    """
+    lint python cpp core_cpp java workflow accelerated_dag dashboard
+    data serve ml tune train llm rllib rllib_gpu rllib_directly
+    linux_wheels macos_wheels docker doc python_dependencies tools
+    release_tests compiled_python
+    """.split()
+)
 
 
 def _list_changed_files(commit_range):
@@ -49,20 +59,133 @@ def _get_commit_range():
     )
 
 
-_ALL_TAGS = set(
+class TagRule:
+    def __init__(
+        self,
+        tags: List[str],
+        dirs: Optional[List[str]] = None,
+        files: Optional[List[str]] = None,
+        patterns: Optional[List[str]] = None,
+    ):
+        self.tags = set(tags)
+        self.dirs = dirs or []
+        self.patterns = patterns or []
+        self.files = files or []
+
+    def match(self, changed_file: str) -> bool:
+        for dir_name in self.dirs:
+            if changed_file == dir_name or changed_file.startswith(dir_name + "/"):
+                return True
+        for file in self.files:
+            if changed_file == file:
+                return True
+        for pattern in self.patterns:
+            if fnmatch.fnmatch(changed_file, pattern):
+                return True
+        return False
+
+    def match_tags(self, changed_file: str) -> Tuple[Set[str], bool]:
+        if self.match(changed_file):
+            return self.tags, True
+        return set(), False
+
+
+def _parse_rules(rule_content: str) -> List[TagRule]:
     """
-    lint python cpp core_cpp java workflow accelerated_dag dashboard
-    data serve ml tune train llm rllib rllib_gpu rllib_directly
-    linux_wheels macos_wheels docker doc python_dependencies tools
-    release_tests compiled_python
-    """.split()
-)
+    Parse the rule config content into a list ot TagRule's.
+
+    The rule content is a string with the following format:
+
+    ```
+    # Comment content, after '#', will be ignored.
+    # Empty lines will be ignored too.
+
+    dir/  # Directory to match
+    file  # File to match
+    dir/*.py  # Pattern to match, using fnmatch, matches dir/a.py dir/dir/b.py or dir/.py
+    @ tag1 tag2 tag3 # Tags to emit for a rule. A rule without tags is a skipping rule.
+
+    ;  # Semicolon to separate rules
+    ```
+
+    Rules are evaluated in order, and the first matched rule will be used.
+    """
+    rules: List[TagRule] = []
+
+    tags: Set[str] = set()
+    dirs: List[str] = []
+    files: List[str] = []
+    patterns: List[str] = []
+
+    lines = rule_content.splitlines()
+    lineno = 0
+    for line in lines:
+        lineno += 1
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue  # Skip empty lines and comments.
+
+        comment_index = line.find("#")  # Find the first '#' to remove comments.
+        if comment_index != -1:
+            line = line[:comment_index].strip()  # Remove comments.
+
+        if line.startswith("@"):  # tags.
+            # Strip the leading '@' and split into tags.
+            tags.update(line[1:].split())
+        elif line.startswith(";"):  # End of a rule.
+            if line != ";":
+                raise ValueError(f"Unexpected tokens after semicolon on line {lineno}.")
+            rules.append(TagRule(tags, dirs, files, patterns))
+            tags, dirs, files, patterns = set(), [], [], []
+        else:
+            if line.find("*") != -1:  # Patterns.
+                patterns.append(line)
+            elif line.endswith("/"):  # Directories.
+                dirs.append(line[:-1])
+            else:  # Files.
+                files.append(line)
+
+    # Append the last rule if not empty.
+    if tags or dirs or files or patterns:
+        rules.append(TagRule(tags, dirs, files, patterns))
+
+    return rules
+
+
+class TagRuleSet:
+    def __init__(self, content: Optional[str] = None):
+        if content is not None:
+            self.rules = _parse_rules(content)
+        else:
+            self.rules = []
+
+    def add_rules(self, content: str):
+        self.rules.extend(_parse_rules(content))
+
+    def match_tags(self, changed_file: str) -> Tuple[Set[str], bool]:
+        for rule in self.rules:
+            match_tags, matched = rule.match_tags(changed_file)
+            if matched:
+                return match_tags, True
+        return set(), False
+
 
 if __name__ == "__main__":
     assert os.environ.get("BUILDKITE")
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "configs", nargs="+", help="Config files that define the rules."
+    )
     args = parser.parse_args()
+
+    if len(args.configs) == 0:
+        raise ValueError("No config files provided.")
+
+    rules = TagRuleSet()
+    for config in args.configs:
+        with open(config) as f:
+            rules.add_rules(f.read())
 
     tags: Set[str] = set()
 
@@ -77,197 +200,21 @@ if __name__ == "__main__":
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
-        skip_prefix_list = [
-            "doc/",
-            "examples/",
-            "dev/",
-            "kubernetes/",
-            "site/",
-        ]
-
         for changed_file in files:
-            if changed_file.startswith("python/ray/air"):
-                _emit("ml train tune data linux_wheels macos_wheels")
-            elif (
-                changed_file.startswith("python/ray/llm")
-                or changed_file == ".buildkite/llm.rayci.yml"
-                or changed_file == "ci/docker/llm.build.Dockerfile"
-            ):
-                _emit("llm")
-            elif (
-                changed_file.startswith("python/ray/data")
-                or changed_file == ".buildkite/data.rayci.yml"
-                or changed_file == "ci/docker/data.build.Dockerfile"
-                or changed_file == "ci/docker/data.build.wanda.yaml"
-                or changed_file == "ci/docker/datan.build.wanda.yaml"
-                or changed_file == "ci/docker/data9.build.wanda.yaml"
-                or changed_file == "ci/docker/datal.build.wanda.yaml"
-            ):
-                _emit("data ml train linux_wheels macos_wheels")
-            elif changed_file.startswith("python/ray/workflow"):
-                _emit("workflow linux_wheels macos_wheels")
-            elif changed_file.startswith("python/ray/tune"):
-                _emit("ml train tune linux_wheels macos_wheels")
-            elif changed_file.startswith("python/ray/train"):
-                _emit("ml train linux_wheels macos_wheels")
-            elif (
-                changed_file == ".buildkite/ml.rayci.yml"
-                or changed_file == ".buildkite/pipeline.test.yml"
-                or changed_file == "ci/docker/ml.build.Dockerfile"
-                or changed_file == ".buildkite/pipeline.gpu.yml"
-                or changed_file == ".buildkite/pipeline.gpu_large.yml"
-                or changed_file == "ci/docker/ml.build.wanda.yaml"
-                or changed_file == "ci/ray_ci/ml.tests.yml"
-                or changed_file == "ci/docker/min.build.Dockerfile"
-                or changed_file == "ci/docker/min.build.wanda.yaml"
-            ):
-                _emit("ml train tune")
-            elif (
-                re.match("^(python/ray/)?rllib/", changed_file)
-                or changed_file == "ray_ci/rllib.tests.yml"
-                or changed_file == ".buildkite/rllib.rayci.yml"
-            ):
-                _emit("rllib rllib_gpu rllib_directly linux_wheels macos_wheels")
-            elif (
-                changed_file.startswith("python/ray/serve")
-                or changed_file == ".buildkite/serve.rayci.yml"
-                or changed_file == "ci/docker/serve.build.Dockerfile"
-            ):
-                _emit("serve linux_wheels macos_wheels java")
-            elif changed_file.startswith("python/ray/dashboard"):
-                _emit("dashboard linux_wheels macos_wheels")
-            elif changed_file.startswith("python/"):
-                _emit("ml tune train serve workflow data")
+            match_tags, matched = rules.match_tags(changed_file)
+            if matched:
+                tags.update(match_tags)
+                continue
 
-                # Python changes might impact cross language stack in Java.
-                # Java also depends on Python CLI to manage processes.
-                _emit("python dashboard linux_wheels macos_wheels java")
-                if (
-                    changed_file.startswith("python/setup.py")
-                    or re.match(r".*requirements.*\.txt", changed_file)
-                    or changed_file == "python/requirements_compiled.txt"
-                ):
-                    _emit("python_dependencies")
+            print(
+                "Unhandled source code change: {changed_file}".format(
+                    changed_file=changed_file
+                ),
+                file=sys.stderr,
+            )
 
-                # Some accelerated DAG tests require GPUs so we only run them
-                # if Ray DAGs or experimental.channels were affected.
-                if changed_file.startswith("python/ray/dag") or changed_file.startswith(
-                    "python/ray/experimental/channel"
-                ):
-                    _emit("accelerated_dag")
-
-            elif changed_file == ".buildkite/core.rayci.yml":
-                _emit("python core_cpp")
-            elif changed_file == ".buildkite/serverless.rayci.yml":
-                _emit("python")
-            elif (
-                changed_file.startswith("java/")
-                or changed_file == ".buildkite/others.rayci.yml"
-            ):
-                _emit("java")
-            elif (
-                changed_file.startswith("cpp/")
-                or changed_file == ".buildkite/pipeline.build_cpp.yml"
-            ):
-                _emit("cpp")
-            elif (
-                changed_file.startswith("docker/")
-                or changed_file == ".buildkite/pipeline.build_release.yml"
-            ):
-                _emit("docker linux_wheels")
-            elif changed_file == ".readthedocs.yaml":
-                _emit("doc")
-            elif changed_file.startswith("doc/"):
-                if (
-                    changed_file.endswith(".py")
-                    or changed_file.endswith(".ipynb")
-                    or changed_file.endswith("BUILD")
-                    or changed_file.endswith(".rst")
-                ):
-                    _emit("doc")
-                # Else, this affects only a rst file or so. In that case,
-                # we pass, as the flag RAY_CI_DOC_AFFECTED is only
-                # used to indicate that tests/examples should be run
-                # (documentation will be built always)
-            elif (
-                changed_file == "ci/docker/doctest.build.Dockerfile"
-                or changed_file == "ci/docker/doctest.build.wanda.yaml"
-            ):
-                # common doctest always run without coverage
-                pass
-            elif changed_file.startswith("release/") or changed_file.startswith(
-                ".buildkite/release"
-            ):
-                if changed_file.startswith("release/ray_release"):
-                    # Release test unit tests are ALWAYS RUN, so pass
-                    pass
-                elif not changed_file.endswith(".yaml") and not changed_file.endswith(
-                    ".md"
-                ):
-                    # Do not run on config changes
-                    _emit("release_tests")
-            elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
-                # nothing is run but linting in these cases
-                pass
-            elif (
-                changed_file.startswith("ci/lint")
-                or changed_file == ".buildkite/lint.rayci.yml"
-            ):
-                # Linter will always be run
-                _emit("tools")
-            elif (
-                changed_file == ".buildkite/macos.rayci.yml"
-                or changed_file == ".buildkite/pipeline.macos.yml"
-                or changed_file == "ci/ray_ci/macos/macos_ci.sh"
-                or changed_file == "ci/ray_ci/macos/macos_ci_build.sh"
-            ):
-                _emit("macos_wheels")
-            elif (
-                changed_file.startswith("ci/pipeline")
-                or changed_file.startswith("ci/build")
-                or changed_file.startswith("ci/ray_ci")
-                or changed_file == ".buildkite/_forge.rayci.yml"
-                or changed_file == ".buildkite/_forge.aarch64.rayci.yml"
-                or changed_file == "ci/docker/forge.wanda.yaml"
-                or changed_file == "ci/docker/forge.aarch64.wanda.yaml"
-                or changed_file == ".buildkite/pipeline.build.yml"
-                or changed_file == ".buildkite/hooks/post-command"
-            ):
-                # These scripts are always run as part of the build process
-                _emit("tools")
-            elif (
-                changed_file == ".buildkite/base.rayci.yml"
-                or changed_file == ".buildkite/build.rayci.yml"
-                or changed_file == ".buildkite/pipeline.arm64.yml"
-                or changed_file == "ci/docker/manylinux.Dockerfile"
-                or changed_file == "ci/docker/manylinux.wanda.yaml"
-                or changed_file == "ci/docker/manylinux.aarch64.wanda.yaml"
-                or changed_file == "ci/docker/ray.cpu.base.wanda.yaml"
-                or changed_file == "ci/docker/ray.cpu.base.aarch64.wanda.yaml"
-                or changed_file == "ci/docker/ray.cuda.base.wanda.yaml"
-                or changed_file == "ci/docker/ray.cuda.base.aarch64.wanda.yaml"
-                or changed_file == "ci/docker/windows.build.Dockerfile"
-                or changed_file == "ci/docker/windows.build.wanda.yaml"
-            ):
-                _emit("docker linux_wheels tools")
-            elif changed_file.startswith("ci/run") or changed_file == "ci/ci.sh":
-                _emit("tools")
-            elif changed_file.startswith("src/"):
-                _emit("ml tune train serve core_cpp cpp")
-                _emit("java python linux_wheels macos_wheels")
-                _emit("dashboard release_tests accelerated_dag")
-            elif changed_file.startswith(".github/"):
-                pass
-            else:
-                print(
-                    "Unhandled source code change: {changed_file}".format(
-                        changed_file=changed_file
-                    ),
-                    file=sys.stderr,
-                )
-
-                _emit("ml tune train data serve core_cpp cpp java python doc")
-                _emit("linux_wheels macos_wheels dashboard tools release_tests")
+            _emit("ml tune train data serve core_cpp cpp java python doc")
+            _emit("linux_wheels macos_wheels dashboard tools release_tests")
     else:
         _emit("ml tune train rllib rllib_directly serve")
         _emit("cpp core_cpp java python doc linux_wheels macos_wheels docker")

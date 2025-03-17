@@ -138,12 +138,6 @@ astor==0.8.1 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   depyf
-async-timeout==5.0.1 \
-    --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
-    --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   -r python/requirements/llm/llm-requirements.txt
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -247,19 +241,6 @@ blake3==1.0.4 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   vllm
-boto3==1.26.76 \
-    --hash=sha256:30c7d967ed1c6b5a05643e42cae9d4d36c3f1cb6782637ddc7007a104cfd9027 \
-    --hash=sha256:b4c2969b7677762914394b8273cc1905dfe5b71f250741c1a575487ae357e729
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   -r python/requirements/llm/llm-requirements.txt
-botocore==1.29.76 \
-    --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
-    --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   boto3
-    #   s3transfer
 cachetools==5.3.2 \
     --hash=sha256:086ee420196f7b2ab9ca2db2520aca326318b68fe5ba8bc4d49cca91add450f2 \
     --hash=sha256:861f35a13a451f94e301ce2bec7cac63e881232ccce7ed67fab9b5df4d3beaa1
@@ -1077,13 +1058,6 @@ jiter==0.8.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   openai
-jmespath==1.0.1 \
-    --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
-    --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   boto3
-    #   botocore
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
     --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
@@ -1096,6 +1070,7 @@ jsonschema==4.23.0 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   -r python/requirements.txt
+    #   -r python/requirements/llm/llm-requirements.txt
     #   mistral-common
     #   outlines
     #   outlines-core
@@ -1502,6 +1477,27 @@ networkx==3.2.1 \
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   scikit-image
     #   torch
+ninja==1.11.1.3 \
+    --hash=sha256:04d48d14ea7ba11951c156599ab526bdda575450797ff57c6fdf99b2554d09c7 \
+    --hash=sha256:114ed5c61c8474df6a69ab89097a20749b769e2c219a452cb2fadc49b0d581b0 \
+    --hash=sha256:17978ad611d8ead578d83637f5ae80c2261b033db0b493a7ce94f88623f29e1b \
+    --hash=sha256:1ad2112c2b0159ed7c4ae3731595191b1546ba62316fc40808edecd0306fefa3 \
+    --hash=sha256:2883ea46b3c5079074f56820f9989c6261fcc6fd873d914ee49010ecf283c3b2 \
+    --hash=sha256:28aea3c1c280cba95b8608d50797169f3a34280e3e9a6379b6e340f0c9eaeeb0 \
+    --hash=sha256:2b4879ea3f1169f3d855182c57dcc84d1b5048628c8b7be0d702b81882a37237 \
+    --hash=sha256:53409151da081f3c198bb0bfc220a7f4e821e022c5b7d29719adda892ddb31bb \
+    --hash=sha256:56ada5d33b8741d298836644042faddebc83ee669782d661e21563034beb5aba \
+    --hash=sha256:7fa2247fce98f683bc712562d82b22b8a0a5c000738a13147ca2d1b68c122298 \
+    --hash=sha256:8c4bdb9fd2d0c06501ae15abfd23407660e95659e384acd36e013b6dd7d8a8e4 \
+    --hash=sha256:a27e78ca71316c8654965ee94b286a98c83877bfebe2607db96897bbfe458af0 \
+    --hash=sha256:a38c6c6c8032bed68b70c3b065d944c35e9f903342875d3a3218c1607987077c \
+    --hash=sha256:a4a3b71490557e18c010cbb26bd1ea9a0c32ee67e8f105e9731515b6e0af792e \
+    --hash=sha256:b6966f83064a88a51693073eea3decd47e08c3965241e09578ef7aa3a7738329 \
+    --hash=sha256:bc3ebc8b2e47716149f3541742b5cd8e0b08f51013b825c05baca3e34854370d \
+    --hash=sha256:edfa0d2e9d7ead1635b03e40a32ad56cc8f56798b6e2e9848d8300b174897076
+    # via
+    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 numpy==1.26.4 \
     --hash=sha256:03a8c78d01d9781b28a6989f6fa1bb2c4f2d51201cf99d3dd875df6fbd96b23b \
     --hash=sha256:08beddf13648eb95f8d867350f6a018a4be2e5ad54c8d8caed89ebca558b2818 \
@@ -2173,7 +2169,6 @@ python-dateutil==2.8.2 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   botocore
     #   pandas
 python-dotenv==1.0.1 \
     --hash=sha256:e324ee90a023d808f1959c46bcbc04446a10ced277783dc6ee09987c37ec10ca \
@@ -2584,12 +2579,6 @@ rsa==4.7.2 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   google-auth
-s3transfer==0.6.2 \
-    --hash=sha256:b014be3a8a2aab98cfe1abc7229cc5a9a0cf05eb9c1f2b86b230fd8df3f78084 \
-    --hash=sha256:cab66d3380cca3e70939ef2255d01cd8aece6a4907a9528740f668c4b0611861
-    # via
-    #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   boto3
 safetensors==0.5.2 \
     --hash=sha256:03c937100f38c9ff4c1507abea9928a6a9b02c9c1c9c3609ed4fb2bf413d4975 \
     --hash=sha256:1506e4c2eda1431099cebe9abf6c76853e95d0b7a95addceaa74c6019c65d8cf \
@@ -2909,6 +2898,7 @@ typer==0.12.3 \
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
     #   -r python/requirements.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 typing-extensions==4.12.2 \
     --hash=sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d \
     --hash=sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8
@@ -2931,7 +2921,6 @@ urllib3==1.26.19 \
     --hash=sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429
     # via
     #   -c python/requirements_compiled_rayllm_test_py311_cu121.txt
-    #   botocore
     #   requests
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \

@@ -10,6 +10,8 @@ from functools import partial
 from pydantic import BaseModel, Field, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
 
+import numpy as np
+
 import ray
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
@@ -50,6 +52,8 @@ class vLLMEngineRequest(BaseModel):
     prompt_token_ids: Optional[List[int]]
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
+    # LoRA request.
+    lora_request: Optional[Any] = None
 
     class Config:
         validate_assignment = True
@@ -79,10 +83,14 @@ class vLLMOutputData(BaseModel):
     def from_vllm_engine_output(cls, output: Any) -> "vLLMOutputData":
         """Create a vLLMOutputData from a vLLM engine output."""
 
+        prompt_token_ids = output.prompt_token_ids
+        if isinstance(prompt_token_ids, np.ndarray):
+            prompt_token_ids = prompt_token_ids.tolist()
+
         data = cls(
             prompt=output.prompt,
-            prompt_token_ids=output.prompt_token_ids,
-            num_input_tokens=len(output.prompt_token_ids),
+            prompt_token_ids=prompt_token_ids,
+            num_input_tokens=len(prompt_token_ids),
         )
 
         if isinstance(output, vllm.outputs.RequestOutput):
@@ -116,7 +124,6 @@ class vLLMEngineWrapper:
 
     def __init__(
         self,
-        *args,
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
         **kwargs,
@@ -124,6 +131,12 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
+        self.model = kwargs.get("model", None)
+        assert self.model is not None
+
+        # LoRA related.
+        self.lora_lock = asyncio.Lock()
+        self.lora_name_to_request = {}
 
         # Convert the task type back to a string to pass to the engine.
         kwargs["task"] = self.task_type.value
@@ -142,14 +155,14 @@ class vLLMEngineWrapper:
 
         # Initialize the vLLM engine.
         engine_args = vllm.AsyncEngineArgs(
-            *args,
             **kwargs,
             disable_log_requests=True,
         )
         self.engine = vllm.AsyncLLMEngine.from_engine_args(engine_args)
 
         # Determine the generate function based on vLLM v0 or v1.
-        if vllm.envs.VLLM_USE_V1:
+        self.vllm_use_v1 = vllm.envs.VLLM_USE_V1
+        if self.vllm_use_v1:
             self._generate_async = self.generate_async_v1
         else:
             self._generate_async = self.generate_async_v0
@@ -162,7 +175,28 @@ class vLLMEngineWrapper:
         else:
             self.semaphore = asyncio.NullContext()
 
-    def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
+    def _maybe_convert_ndarray_to_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert all ndarray to list in the params. This is because Ray Data
+        by default converts all lists to ndarrays when passing data around, but
+        vLLM expects lists.
+
+        Args:
+            params: The parameters to convert.
+
+        Returns:
+            The converted parameters.
+        """
+        if isinstance(params, dict):
+            return {
+                k: self._maybe_convert_ndarray_to_list(v) for k, v in params.items()
+            }
+        elif isinstance(params, list):
+            return [self._maybe_convert_ndarray_to_list(v) for v in params]
+        elif isinstance(params, np.ndarray):
+            return params.tolist()
+        return params
+
+    async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         """Prepare the inputs for LLM inference.
 
         Args:
@@ -174,7 +208,7 @@ class vLLMEngineWrapper:
         prompt = row.pop("prompt")
 
         if "tokenized_prompt" in row:
-            tokenized_prompt = row.pop("tokenized_prompt")
+            tokenized_prompt = row.pop("tokenized_prompt").tolist()
         else:
             tokenized_prompt = None
 
@@ -183,8 +217,45 @@ class vLLMEngineWrapper:
         else:
             image = []
 
+        # If the model name is given and is different from the model
+        # set in the config, then this is a LoRA.
+        lora_request = None
+        if "model" in row and row["model"] != self.model:
+            if self.vllm_use_v1:
+                raise ValueError("LoRA is only supported with vLLM v0")
+
+            lora_name = row["model"]
+            if lora_name not in self.lora_name_to_request:
+                async with self.lora_lock:
+                    if lora_name not in self.lora_name_to_request:
+                        # Load a new LoRA adapter if it is not loaded yet.
+                        lora_request = vllm.lora.request.LoRARequest(
+                            lora_name=lora_name,
+                            # LoRA ID starts from 1.
+                            lora_int_id=len(self.lora_name_to_request) + 1,
+                            lora_path=lora_name,
+                        )
+                        self.lora_name_to_request[lora_name] = lora_request
+            lora_request = self.lora_name_to_request[lora_name]
+
+        # Prepare sampling parameters.
         if self.task_type == vLLMTaskType.GENERATE:
-            params = vllm.SamplingParams(**row.pop("sampling_params"))
+            sampling_params = row.pop("sampling_params")
+            if "guided_decoding" in sampling_params:
+                if self.vllm_use_v1:
+                    raise ValueError("Guided decoding is only supported with vLLM v0")
+
+                guided_decoding = vllm.sampling_params.GuidedDecodingParams(
+                    **self._maybe_convert_ndarray_to_list(
+                        sampling_params.pop("guided_decoding")
+                    )
+                )
+            else:
+                guided_decoding = None
+            params = vllm.SamplingParams(
+                **sampling_params,
+                guided_decoding=guided_decoding,
+            )
         elif self.task_type == vLLMTaskType.EMBED:
             params = vllm.PoolingParams()
         else:
@@ -197,6 +268,7 @@ class vLLMEngineWrapper:
             prompt_token_ids=tokenized_prompt,
             images=image,
             params=params,
+            lora_request=lora_request,
         )
         self.request_id += 1
         return request
@@ -212,7 +284,7 @@ class vLLMEngineWrapper:
         Returns:
             A tuple of index in batch, request output and bypassed custom fields.
         """
-        request = self._prepare_llm_request(row)
+        request = await self._prepare_llm_request(row)
 
         async with self.semaphore:
             output = await self._generate_async(request)
@@ -251,6 +323,7 @@ class vLLMEngineWrapper:
             request_id=str(request.request_id),
             prompt=llm_prompt,
             params=request.params,
+            lora_request=request.lora_request,
         )
         # Consume the stream until the request is finished.
         async for request_output in stream:

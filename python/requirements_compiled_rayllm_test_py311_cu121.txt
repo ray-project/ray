@@ -130,6 +130,10 @@ airportsdata==20241001 \
     --hash=sha256:67d71cf2c5378cc17ff66b62b1e11aa2444043949c894543ac8fd8dafce192fd \
     --hash=sha256:fa0bd143b4f4be3557cb892fa0612ef210fd91a92bd720b4d8221de576a4fa00
     # via outlines
+alabaster==0.7.16 \
+    --hash=sha256:75a8b99c28a5dad50dd7f8ccdd447a121ddb3892da9e53d1ca5cca3106d58d65 \
+    --hash=sha256:b46733c07dce03ae4e150330b975c75737fa60f0a7c591b6c8bf4928a28e2c92
+    # via sphinx
 annotated-types==0.6.0 \
     --hash=sha256:0641064de18ba7a25dee8f96403ebc39113d0cb953a01429249d5c7564666a43 \
     --hash=sha256:563339e807e53ffd9c267e99fc6d9ea23eb8443c08f112651963e24e22f84a5d
@@ -195,10 +199,6 @@ asttokens==2.4.1 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   stack-data
-async-timeout==5.0.1 \
-    --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
-    --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
-    # via -r python/requirements/llm/llm-requirements.txt
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -213,6 +213,7 @@ babel==2.13.1 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   jupyterlab-server
+    #   sphinx
 backcall==0.2.0 \
     --hash=sha256:5cbdbf27be5e7cfadb448baf0aa95508f91f2bbc6c6437cd9cd06e2a4c215e1e \
     --hash=sha256:fbbce6a29f263178a1f7915c1940bde0ec2b2a967566fe1c65c1dfb7422bd255
@@ -330,7 +331,6 @@ boto3==1.26.76 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   -r python/requirements/cloud-requirements.txt
-    #   -r python/requirements/llm/llm-requirements.txt
 botocore==1.29.76 \
     --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
     --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
@@ -707,6 +707,10 @@ dm-tree==0.1.8 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   -r python/requirements.txt
+docutils==0.19 \
+    --hash=sha256:33995a6753c30b7f577febfc2c50411fec6aac7f7ffeb7c4cfe5991072dcf9e6 \
+    --hash=sha256:5e1de4d849fee02c63b040a4a3fd567f4ab104defd8a5511fbbc24a8a017efbc
+    # via sphinx
 einops==0.8.1 \
     --hash=sha256:919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737 \
     --hash=sha256:de5d960a7a761225532e0f1959e5315ebeafc0cd43394732f103ca44b9837e84
@@ -1235,6 +1239,10 @@ imageio==2.34.2 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   scikit-image
+imagesize==1.4.1 \
+    --hash=sha256:0d8d18d08f840c19d0ee7ca1fd82490fdc3729b7ac93f49870406ddde8ef8d8b \
+    --hash=sha256:69150444affb9cb0d5cc5a92b3676f0b2fb7cd9ae39e947a5e11a36b4497cd4a
+    # via sphinx
 importlib-metadata==8.6.1 \
     --hash=sha256:02a89390c1e15fdfdc0d7c6b25cb3e62650d0494005c97d6f148bf5b9787525e \
     --hash=sha256:310b41d755445d74569f993ccfc22838295d9fe005425094fad953d7f15c8580
@@ -1305,6 +1313,7 @@ jinja2==3.1.2 \
     #   nbconvert
     #   notebook
     #   outlines
+    #   sphinx
     #   torch
 jiter==0.8.2 \
     --hash=sha256:025337859077b41548bdcbabe38698bcd93cfe10b06ff66617a48ff92c9aec60 \
@@ -1421,6 +1430,7 @@ jsonschema==4.23.0 \
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/llm/llm-requirements.txt
     #   jupyter-events
     #   jupyterlab-server
     #   mistral-common
@@ -1516,6 +1526,10 @@ jupyterlab-widgets==3.0.11 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   ipywidgets
+jupytext==1.16.7 \
+    --hash=sha256:912f9d9af7bd3f15470105e5c5dddf1669b2d8c17f0c55772687fc5a4a73fe69 \
+    --hash=sha256:fc4e97f0890e22062c4ef10313c7ca960b07b3767246a1fef7585888cc2afe5d
+    # via -r python/requirements/llm/llm-test-requirements.txt
 lark==1.2.2 \
     --hash=sha256:c2276486b02f0f1b90be155f2c8ba4a8e194d42775786db622faccd652d8e80c \
     --hash=sha256:ca807d0162cd16cef15a8feecb862d7319e7a09bdb13aef927968e45040fed80
@@ -1680,6 +1694,8 @@ markdown-it-py==2.2.0 \
     --hash=sha256:7c9a5e412688bc771c67432cbfebcdd686c93ce6484913dccf06cb5a0bea35a1
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
+    #   jupytext
+    #   mdit-py-plugins
     #   rich
 markupsafe==2.1.3 \
     --hash=sha256:05fb21170423db021895e1ea1e1f3ab3adb85d1c2333cbc2310f2a26bc77272e \
@@ -1753,6 +1769,10 @@ matplotlib-inline==0.1.6 \
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   ipykernel
     #   ipython
+mdit-py-plugins==0.4.2 \
+    --hash=sha256:0c673c3f889399a33b95e88d2f0d111b4447bdfea7f237dab2d488f459835636 \
+    --hash=sha256:5f2cd1fdb606ddf152d37ec30e46101a60512bc0e5fa1a7002c36647b09e26b5
+    # via jupytext
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
@@ -2035,6 +2055,7 @@ nbformat==5.9.2 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   jupyter-server
+    #   jupytext
     #   nbclassic
     #   nbclient
     #   nbconvert
@@ -2057,6 +2078,25 @@ networkx==3.2.1 \
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   scikit-image
     #   torch
+ninja==1.11.1.3 \
+    --hash=sha256:04d48d14ea7ba11951c156599ab526bdda575450797ff57c6fdf99b2554d09c7 \
+    --hash=sha256:114ed5c61c8474df6a69ab89097a20749b769e2c219a452cb2fadc49b0d581b0 \
+    --hash=sha256:17978ad611d8ead578d83637f5ae80c2261b033db0b493a7ce94f88623f29e1b \
+    --hash=sha256:1ad2112c2b0159ed7c4ae3731595191b1546ba62316fc40808edecd0306fefa3 \
+    --hash=sha256:2883ea46b3c5079074f56820f9989c6261fcc6fd873d914ee49010ecf283c3b2 \
+    --hash=sha256:28aea3c1c280cba95b8608d50797169f3a34280e3e9a6379b6e340f0c9eaeeb0 \
+    --hash=sha256:2b4879ea3f1169f3d855182c57dcc84d1b5048628c8b7be0d702b81882a37237 \
+    --hash=sha256:53409151da081f3c198bb0bfc220a7f4e821e022c5b7d29719adda892ddb31bb \
+    --hash=sha256:56ada5d33b8741d298836644042faddebc83ee669782d661e21563034beb5aba \
+    --hash=sha256:7fa2247fce98f683bc712562d82b22b8a0a5c000738a13147ca2d1b68c122298 \
+    --hash=sha256:8c4bdb9fd2d0c06501ae15abfd23407660e95659e384acd36e013b6dd7d8a8e4 \
+    --hash=sha256:a27e78ca71316c8654965ee94b286a98c83877bfebe2607db96897bbfe458af0 \
+    --hash=sha256:a38c6c6c8032bed68b70c3b065d944c35e9f903342875d3a3218c1607987077c \
+    --hash=sha256:a4a3b71490557e18c010cbb26bd1ea9a0c32ee67e8f105e9731515b6e0af792e \
+    --hash=sha256:b6966f83064a88a51693073eea3decd47e08c3965241e09578ef7aa3a7738329 \
+    --hash=sha256:bc3ebc8b2e47716149f3541742b5cd8e0b08f51013b825c05baca3e34854370d \
+    --hash=sha256:edfa0d2e9d7ead1635b03e40a32ad56cc8f56798b6e2e9848d8300b174897076
+    # via -r python/requirements/llm/llm-requirements.txt
 notebook==6.5.7 \
     --hash=sha256:04eb9011dfac634fbd4442adaf0a8c27cd26beef831fe1d19faf930c327768e4 \
     --hash=sha256:a6afa9a4ff4d149a0771ff8b8c881a7a73b3835f9add0606696d6e9d98ac1cd0
@@ -2304,12 +2344,14 @@ packaging==23.0 \
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   jupytext
     #   lazy-loader
     #   lm-format-enforcer
     #   nbconvert
     #   pytest
     #   ray
     #   scikit-image
+    #   sphinx
     #   tensorboardx
     #   transformers
 pandas==1.5.3 ; python_version < "3.12" \
@@ -2799,6 +2841,7 @@ pygments==2.18.0 \
     #   ipython
     #   nbconvert
     #   rich
+    #   sphinx
 pynvml==12.0.0 \
     --hash=sha256:299ce2451a6a17e6822d6faee750103e25b415f06f59abb8db65d30f794166f5 \
     --hash=sha256:fdff84b62a27dbe98e08e1a647eb77342bef1aebe0878bcd15e99a83fcbecb9e
@@ -2923,6 +2966,7 @@ pyyaml==6.0.1 \
     #   gguf
     #   huggingface-hub
     #   jupyter-events
+    #   jupytext
     #   lm-format-enforcer
     #   ray
     #   transformers
@@ -3145,6 +3189,7 @@ requests==2.31.0 \
     #   mistral-common
     #   outlines
     #   ray
+    #   sphinx
     #   tiktoken
     #   transformers
     #   vllm
@@ -3469,12 +3514,44 @@ sniffio==1.3.1 \
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   anyio
     #   openai
+snowballstemmer==2.2.0 \
+    --hash=sha256:09b16deb8547d3412ad7b590689584cd0fe25ec8db3be37788be3810cbf19cb1 \
+    --hash=sha256:c8e1716e83cc398ae16824e5572ae04e0d9fc2c6b985fb0f900f5f0c96ecba1a
+    # via sphinx
 soupsieve==2.5 \
     --hash=sha256:5663d5a7b3bfaeee0bc4372e7fc48f9cff4940b3eec54a6451cc5299f1097690 \
     --hash=sha256:eaa337ff55a1579b6549dc679565eac1e3d000563bcb1c8ab0d0fefbc0c2cdc7
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   beautifulsoup4
+sphinx==6.2.1 \
+    --hash=sha256:6d56a34697bb749ffa0152feafc4b19836c755d90a7c59b72bc7dfd371b9cc6b \
+    --hash=sha256:97787ff1fa3256a3eef9eda523a63dbf299f7b47e053cfcf684a1c2a8380c912
+    # via -r python/requirements/llm/llm-test-requirements.txt
+sphinxcontrib-applehelp==2.0.0 \
+    --hash=sha256:2f29ef331735ce958efa4734873f084941970894c6090408b079c61b2e1c06d1 \
+    --hash=sha256:4cd3f0ec4ac5dd9c17ec65e9ab272c9b867ea77425228e68ecf08d6b28ddbdb5
+    # via sphinx
+sphinxcontrib-devhelp==2.0.0 \
+    --hash=sha256:411f5d96d445d1d73bb5d52133377b4248ec79db5c793ce7dbe59e074b4dd1ad \
+    --hash=sha256:aefb8b83854e4b0998877524d1029fd3e6879210422ee3780459e28a1f03a8a2
+    # via sphinx
+sphinxcontrib-htmlhelp==2.1.0 \
+    --hash=sha256:166759820b47002d22914d64a075ce08f4c46818e17cfc9470a9786b759b19f8 \
+    --hash=sha256:c9e2916ace8aad64cc13a0d233ee22317f2b9025b9cf3295249fa985cc7082e9
+    # via sphinx
+sphinxcontrib-jsmath==1.0.1 \
+    --hash=sha256:2ec2eaebfb78f3f2078e73666b1415417a116cc848b72e5172e596c871103178 \
+    --hash=sha256:a9925e4a4587247ed2191a22df5f6970656cb8ca2bd6284309578f2153e0c4b8
+    # via sphinx
+sphinxcontrib-qthelp==2.0.0 \
+    --hash=sha256:4fe7d0ac8fc171045be623aba3e2a8f613f8682731f9153bb2e40ece16b9bbab \
+    --hash=sha256:b18a828cdba941ccd6ee8445dbe72ffa3ef8cbe7505d8cd1fa0d42d3f2d5f3eb
+    # via sphinx
+sphinxcontrib-serializinghtml==2.0.0 \
+    --hash=sha256:6e2cb0eef194e10c27ec0023bfeb25badbbb5868244cf5bc5bdc04e4464bf331 \
+    --hash=sha256:e9d912827f872c029017a53f0ef2180b327c3f7fd23c87229f7a8e8b70031d4d
+    # via sphinx
 spinners==0.0.24 \
     --hash=sha256:1eb6aeb4781d72ab42ed8a01dcf20f3002bf50740d7154d12fb8c9769bf9e27f \
     --hash=sha256:2fa30d0b72c9650ad12bbe031c9943b8d441e41b4f5602b0ec977a19f3290e98
@@ -3732,6 +3809,7 @@ typer==0.12.3 \
     # via
     #   -c python/requirements_compiled_ray_test_py311_cu121.txt
     #   -r python/requirements.txt
+    #   -r python/requirements/llm/llm-requirements.txt
 types-python-dateutil==2.9.0.20240316 \
     --hash=sha256:5d2f2e240b86905e40944dd787db6da9263f0deabef1076ddaed797351ec0202 \
     --hash=sha256:6b8cb66d960771ce5ff974e9dd45e38facb81718cc1e208b10b1baccbfdbee3b

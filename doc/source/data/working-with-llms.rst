@@ -40,7 +40,7 @@ Upon execution, the Processor object instantiates replicas of the vLLM engine (u
     import numpy as np
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
             "enable_chunked_prefill": True,
             "max_num_batched_tokens": 4096,
@@ -82,7 +82,7 @@ Some models may require a Hugging Face token to be specified. You can specify th
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         runtime_env={"env_vars": {"HF_TOKEN": "your_huggingface_token"}},
         concurrency=1,
         batch_size=64,
@@ -100,7 +100,7 @@ Use the `vLLMEngineProcessorConfig` to configure the vLLM engine.
     from ray.data.llm import vLLMEngineProcessorConfig
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={"max_model_len": 20000},
         concurrency=1,
         batch_size=64,
@@ -111,7 +111,7 @@ For handling larger models, specify model parallelism.
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={
             "max_model_len": 16384,
             "tensor_parallel_size": 2,
@@ -132,8 +132,23 @@ To optimize model loading, you can configure the `load_format` to `runai_streame
 .. testcode::
 
     config = vLLMEngineProcessorConfig(
-        model="unsloth/Llama-3.1-8B-Instruct",
+        model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs={"load_format": "runai_streamer"},
+        concurrency=1,
+        batch_size=64,
+    )
+
+To do multi-LoRA batch inference, you need to set LoRA related parameters in `engine_kwargs`. See :doc:`the vLLM with LoRA example</llm/examples/batch/vllm-with-lora>` for details.
+
+.. testcode::
+
+    config = vLLMEngineProcessorConfig(
+        model_source="unsloth/Llama-3.1-8B-Instruct",
+        engine_kwargs={
+            enable_lora=True,
+            max_lora_rank=32,
+            max_loras=1,
+        },
         concurrency=1,
         batch_size=64,
     )
@@ -179,3 +194,20 @@ You can also make calls to deployed models that have an OpenAI compatible API en
 
     ds = processor(ds)
     print(ds.take_all())
+
+Usage Data Collection
+--------------------------
+
+Data for the following features and attributes is collected to improve Ray Data LLM:
+
+- config name used for building the llm processor
+- number of concurrent users for data parallelism
+- batch size of requests
+- model architecture used for building vLLMEngineProcessor
+- task type used for building vLLMEngineProcessor
+- engine arguments used for building vLLMEngineProcessor
+- tensor parallel size and pipeline parallel size used
+- GPU type used and number of GPUs used
+
+If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
+to turn it off.

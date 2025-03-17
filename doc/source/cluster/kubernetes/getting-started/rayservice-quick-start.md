@@ -87,7 +87,7 @@ kubectl get services
 # rayservice-sample-serve-svc                   ClusterIP   10.96.212.79   <none>        8000/TCP                                        77s
 ```
 
-When the Ray Serve applications are healthy and ready, KubeRay creates a head service and a Ray Serve service for the RayService custom resource. For example, `rayservice-sample-head-svc` and `rayservice-sample-serve-svc` in Step 4.4.
+When the Ray Serve applications are healthy and ready, KubeRay creates a head service and a Ray Serve service for the RayService custom resource. For example, `rayservice-sample-head-svc` and `rayservice-sample-serve-svc` in Step 4.5.
 
 ## Step 5: Verify the status of the Serve applications
 

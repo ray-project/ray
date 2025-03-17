@@ -14,10 +14,11 @@ from ray._private.state_api_test_utils import (
     get_state_api_manager,
     verify_tasks_running_or_terminated,
     verify_failed_task,
+    _is_actor_task_running,
 )
 from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
+    async_wait_for_condition,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
@@ -28,6 +29,7 @@ from ray.util.state import (
     list_jobs,
     list_tasks,
 )
+import psutil
 
 _SYSTEM_CONFIG = {
     "task_events_report_interval_ms": 100,
@@ -1017,7 +1019,7 @@ ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
         # Run the script
         run_string_as_driver(script.format(task_name=i))
 
-        await async_wait_for_condition_async_predicate(
+        await async_wait_for_condition(
             verify_tasks, task_name=f"f.{i}", retry_interval_ms=500
         )
 
@@ -1109,6 +1111,195 @@ def test_task_events_gc_default_policy(shutdown_only):
     [error_task.remote() for _ in range(5)]
 
     wait_for_condition(verify_tasks, expected_tasks_cnt={"error_task": 5})
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="setproctitle has different definitions of `title` on different OSes",
+)
+class TestIsActorTaskRunning:
+    def test_main_thread_short_comm(self, ray_start_regular):
+        """
+        Test that the main thread's comm is not truncated.
+        """
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check")
+                assert psutil.Process(pid).name() == "ray::A.check"
+                assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
+
+    def test_main_thread_long_comm(self, ray_start_regular):
+        """
+        In this case, the process comm should be truncated because of the
+        name is more than 15 characters ("ray::Actor.check_long_comm"). Hence,
+        `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+
+        @ray.remote
+        class Actor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check_long_comm")
+                assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
+                assert psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+                return pid
+
+        a = Actor.remote()
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
+
+    def test_main_thread_options_name_short_comm(self, ray_start_regular):
+        """
+        The task name is passed in as `options.name`.
+        """
+        task_name = "hello"
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == f"ray::{task_name}"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_main_thread_options_name_long_comm(self, ray_start_regular):
+        """
+        The task name is passed in as `options.name`, and it's longer than 15
+        characters. `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+        task_name = "very_long_task_name_1234567890"
+
+        @ray.remote
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == f"ray::{task_name}"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_short_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+        """
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check")
+                assert psutil.Process(pid).name() == "ray::A"
+                assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check"))
+
+    def test_default_thread_long_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+
+        In this example, because `ray::VeryLongCommActor` is longer than 15
+        characters, `psutil.Process.name()` will return `cmdline()[0]` instead.
+        """
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class VeryLongCommActor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, "check_long_comm")
+                assert (
+                    psutil.Process(pid).name()
+                    == "ray::VeryLongCommActor.check_long_comm"
+                )
+                assert (
+                    psutil.Process(pid).cmdline()[0]
+                    == "ray::VeryLongCommActor.check_long_comm"
+                )
+                return pid
+
+        a = VeryLongCommActor.remote()
+        pid = ray.get(a.check_long_comm.remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, "check_long_comm"))
+
+    def test_default_thread_options_name_short_comm(self, ray_start_regular):
+        """
+        `check` is not running in the main thread, so `/proc/pid/comm` will
+        not be updated but `/proc/pid/cmdline` will still be updated.
+        """
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class A:
+            def check(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == "ray::A"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = A.remote()
+        pid = ray.get(a.check.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_options_name_long_comm(self, ray_start_regular):
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class Actor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                assert psutil.Process(pid).name() == "ray::Actor"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = Actor.remote()
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
+
+    def test_default_thread_options_name_long_comm_2(self, ray_start_regular):
+        """
+        `/proc/PID/comm` is truncated to 15 characters, so the process title
+        is "ray::VeryLongCo". `psutil.Process.name()` doesn't return `cmdline()[0]`
+        because `cmdline()[0]` doesn't start with "ray::VeryLongCo". This is the
+        implementation detail of `psutil`.
+        """
+        task_name = "hello"
+
+        @ray.remote(concurrency_groups={"io": 1})
+        class VeryLongCommActor:
+            def check_long_comm(self):
+                pid = os.getpid()
+                assert _is_actor_task_running(pid, task_name)
+                # The first 15 characters of "ray::VeryLongCommActor"
+                assert psutil.Process(pid).name() == "ray::VeryLongCo"
+                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                return pid
+
+        a = VeryLongCommActor.remote()
+        pid = ray.get(a.check_long_comm.options(name=task_name).remote())
+        wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
 
 if __name__ == "__main__":

@@ -159,11 +159,11 @@ class WorkerPoolInterface {
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
-  /// Get registerd worker process by id or nullptr if not found.
+  /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
       const WorkerID &worker_id) const = 0;
 
-  /// Get registerd driver process by id or nullptr if not found.
+  /// Get registered driver process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredDriver(
       const WorkerID &worker_id) const = 0;
 
@@ -555,7 +555,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
-  /// Gloabl startup token variable. Incremented once assigned
+  /// Global startup token variable. Incremented once assigned
   /// to a worker process and is added to
   /// state.worker_processes.
   StartupToken worker_startup_token_counter_;

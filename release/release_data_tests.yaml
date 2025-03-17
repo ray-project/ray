@@ -27,12 +27,22 @@
       s3://ray-benchmark-data-internal/imagenet/parquet --format parquet
       --iter-bundles
 
+  variations:
+  - __suffix__: fixed_size_compute
+    cluster:
+      cluster_compute: fixed_size_cpu_compute.yaml
+
 - name: read_images
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+
+  variations:
+  - __suffix__: fixed_size_compute
+    cluster:
+      cluster_compute: fixed_size_cpu_compute.yaml
 
 - name: read_tfrecords
   run:
@@ -46,6 +56,11 @@
   run:
     timeout: 5400
     script: python read_from_uris_benchmark.py
+
+  variations:
+    - __suffix__: fixed_size_compute
+      cluster:
+        cluster_compute: fixed_size_cpu_compute.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   frequency: manual
@@ -69,6 +84,11 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
+
+  variations:
+    - __suffix__: fixed_size_compute
+      cluster:
+        cluster_compute: fixed_size_cpu_compute.yaml
 
 ###################
 # Aggregation tests
@@ -115,16 +135,17 @@
     timeout: 3600
 
   variations:
-    - __suffix__: few_groups
+    - __suffix__: few_groups__sort_shuffle_pull_based
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --aggregate
-          --group-by column08 column13 column14
-    - __suffix__: many_groups
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column08 column13 column14
+          --shuffle-strategy sort_shuffle_pull_based
+
+    - __suffix__: many_groups__sort_shuffle_pull_based
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --aggregate
-          --group-by column02 column14
+          python groupby_benchmark.py --sf 10 --aggregate --group-by column02 column14
+          --shuffle-strategy sort_shuffle_pull_based
 
 - name: map_groups
 
@@ -135,16 +156,17 @@
     timeout: 3600
 
   variations:
-    - __suffix__: few_groups
+    - __suffix__: few_groups__sort_shuffle_pull_based
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --map-groups
-          --group-by column08 column13 column14
-    - __suffix__: many_groups
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column08 column13 column14
+          --shuffle-strategy sort_shuffle_pull_based
+
+    - __suffix__: many_groups__sort_shuffle_pull_based
       run:
         script: >
-          python groupby_benchmark.py --sf 10 --map-groups
-          --group-by column02 column14
+          python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
+          --shuffle-strategy sort_shuffle_pull_based
 
 #######################
 # Streaming split tests
@@ -356,6 +378,11 @@
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
+  variations:
+    - __suffix__: fixed_size_compute
+      cluster:
+        cluster_compute: fixed_size_gpu_compute.yaml
+
 - name: batch_inference_from_metadata
   # This benchmark errors because of the issues described in PLAN-383.
   frequency: manual
@@ -423,22 +450,3 @@
   run:
     timeout: 5400
     script: python tpch_q1.py --sf 100
-
-##############
-# LLM
-##############
-
-- name: llm_hello
-  frequency: manual
-  python: "3.11"
-  group: llm
-  working_dir: llm_tests
-
-  cluster:
-    byod:
-      type: llm-cu124
-    cluster_compute: llm_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python llm_hello_world.py

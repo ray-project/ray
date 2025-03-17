@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "COPTS", "ray_cc_test", "ray_cc_library")
+load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
     name = "array_test",
@@ -10,7 +10,6 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
 
 ray_cc_test(
     name = "function_traits_test",
@@ -25,8 +24,8 @@ ray_cc_test(
 
 ray_cc_test(
     name = "thread_checker_test",
-    srcs = ["thread_checker_test.cc"],
     size = "small",
+    srcs = ["thread_checker_test.cc"],
     tags = ["team:core"],
     deps = [
         "//src/ray/util:thread_checker",
@@ -38,8 +37,8 @@ ray_cc_test(
     name = "container_util_test",
     size = "small",
     srcs = ["container_util_test.cc"],
-    tags = ["team:core"],
     linkstatic = True,
+    tags = ["team:core"],
     deps = [
         "//src/ray/util",
         "//src/ray/util:container_util",
@@ -188,23 +187,22 @@ ray_cc_test(
     ],
 )
 
-
 ray_cc_test(
     name = "proto_schema_backward_compatibility_test",
     size = "small",
     srcs = ["proto_schema_backward_compatibility_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
-        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 
 ray_cc_test(
     name = "size_literals_test",
-    srcs = ["size_literals_test.cc"],
     size = "small",
+    srcs = ["size_literals_test.cc"],
     tags = ["team:core"],
     deps = [
         "//src/ray/util:size_literals",
@@ -214,51 +212,45 @@ ray_cc_test(
 
 ray_cc_test(
     name = "shared_lru_test",
+    size = "small",
     srcs = ["shared_lru_test.cc"],
+    tags = ["team:core"],
     deps = [
         "//src/ray/util:shared_lru",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
 
 ray_cc_test(
     name = "scoped_env_setter_test",
+    size = "small",
     srcs = ["scoped_env_setter_test.cc"],
+    tags = ["team:core"],
     deps = [
         "//src/ray/util:scoped_env_setter",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
 
 ray_cc_test(
     name = "pipe_logger_test",
+    size = "small",
     srcs = ["pipe_logger_test.cc"],
+    tags = ["team:core"],
     deps = [
-        "//src/ray/util:temporary_directory",
         "//src/ray/common/test:testing",
         "//src/ray/util",
         "//src/ray/util:pipe_logger",
         "//src/ray/util:scoped_env_setter",
+        "//src/ray/util:temporary_directory",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
 
 ray_cc_test(
     name = "stream_redirection_utils_test",
-    srcs = ["stream_redirection_utils_test.cc"],
-    deps = [
-        "//src/ray/common/test:testing",
-        "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
-        "@com_google_googletest//:gtest_main",
-    ],
     size = "small",
+    srcs = ["stream_redirection_utils_test.cc"],
     tags = [
         "team:core",
         # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
@@ -266,19 +258,19 @@ ray_cc_test(
         # properly. Disable the complete test suite here since it always contains exactly one test
         # case.
         "no_tsan",
+    ],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:stream_redirection_utils",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 ray_cc_test(
     name = "stream_redirection_exit_test",
-    srcs = ["stream_redirection_exit_test.cc"],
-    deps = [
-        "//src/ray/common/test:testing",
-        "//src/ray/util",
-        "//src/ray/util:stream_redirection_utils",
-        "@com_google_googletest//:gtest_main",
-    ],
     size = "small",
+    srcs = ["stream_redirection_exit_test.cc"],
     tags = [
         "team:core",
         # TSAN fails to understand synchroization logic, from the stacktrace, it shows we flush
@@ -287,61 +279,111 @@ ray_cc_test(
         # case.
         "no_tsan",
     ],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:stream_redirection_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 ray_cc_test(
     name = "cmd_line_utils_test",
+    size = "small",
     srcs = ["cmd_line_utils_test.cc"],
+    tags = ["team:core"],
     deps = [
         "//src/ray/util:cmd_line_utils",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
 
 ray_cc_test(
     name = "spdlog_fd_sink_test",
+    size = "small",
     srcs = ["spdlog_fd_sink_test.cc"],
+    tags = ["team:core"],
     deps = [
+        "//src/ray/util:compat",
         "//src/ray/util:spdlog_fd_sink",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
 
 ray_cc_test(
     name = "spdlog_newliner_sink_test",
+    size = "small",
     srcs = ["spdlog_newliner_sink_test.cc"],
+    tags = ["team:core"],
     deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util:filesystem",
         "//src/ray/util:spdlog_fd_sink",
         "//src/ray/util:spdlog_newliner_sink",
+        "//src/ray/util:temporary_directory",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
 
 ray_cc_test(
     name = "temporary_directory_test",
+    size = "small",
     srcs = ["temporary_directory_test.cc"],
+    tags = ["team:core"],
     deps = [
         "//src/ray/util:temporary_directory",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
-    tags = ["team:core"],
 )
 
 ray_cc_test(
     name = "compat_test",
+    size = "small",
     srcs = ["compat_test.cc"],
+    tags = ["team:core"],
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
-    size = "small",
+)
+
+ray_cc_test(
+    name = "process_cleanup_test",
+    srcs = ["process_cleanup_test.cc"],
     tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:process_cleaner",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "scoped_dup2_wrapper_test",
+    size = "small",
+    srcs = ["scoped_dup2_wrapper_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common/test:testing",
+        "//src/ray/util:compat",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:scoped_dup2_wrapper",
+        "//src/ray/util:temporary_directory",
+        "@boost//:iostreams",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "invoke_once_token_test",
+    size = "small",
+    srcs = ["invoke_once_token_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:invoke_once_token",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

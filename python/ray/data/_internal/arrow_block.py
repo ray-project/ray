@@ -15,14 +15,14 @@ from typing import (
 
 import numpy as np
 
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.numpy_support import convert_to_numpy
+from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
@@ -130,14 +130,12 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
-        pa_cols: Dict[str, pyarrow.Array] = dict()
-
-        for col_name, col_vals in columns.items():
-            np_col_vals = convert_to_numpy(col_vals)
-
-            pa_cols[col_name] = convert_to_pyarrow_array(np_col_vals, col_name)
-
-        return pyarrow_table_from_pydict(pa_cols)
+        return pyarrow_table_from_pydict(
+            {
+                column_name: convert_to_pyarrow_array(column_values, column_name)
+                for column_name, column_values in columns.items()
+            }
+        )
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
@@ -191,9 +189,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         element = row[col_name][0]
         # TODO(Clark): Reduce this to np.asarray(element) once we only support Arrow
         # 9.0.0+.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
+        pyarrow_version = get_pyarrow_version()
         if pyarrow_version is None or pyarrow_version >= parse_version("8.0.0"):
             assert isinstance(element, pyarrow.ExtensionScalar)
             if pyarrow_version is None or pyarrow_version >= parse_version("9.0.0"):
@@ -218,14 +214,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
-        num_rows = self.num_rows()
-        if num_rows == 0:
-            return pyarrow.table([])
-        random = np.random.RandomState(random_seed)
-        shuffled_indices = np.arange(num_rows)
-        # Shuffle all rows in-place
-        random.shuffle(shuffled_indices)
-        return self.take(pyarrow.array(shuffled_indices))
+        return shuffle(self._table, random_seed)
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema

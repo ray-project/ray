@@ -737,7 +737,7 @@ through the APIs because they are already garbage collected.
 API Reference
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- For the CLI Reference, see :ref:`State CLI Refernece <state-api-cli-ref>`.
+- For the CLI Reference, see :ref:`State CLI Reference <state-api-cli-ref>`.
 - For the SDK Reference, see :ref:`State API Reference <state-api-ref>`.
 - For the Log CLI Reference, see :ref:`Log CLI Reference <ray-logs-api-cli-ref>`.
 

@@ -495,6 +495,12 @@ class Node:
             self._session_dir, self._ray_params.runtime_env_dir_name
         )
         try_to_create_directory(self._runtime_env_dir)
+        # Create a symlink to the libtpu tpu_logs directory if it exists.
+        user_temp_dir = ray._private.utils.get_user_temp_dir()
+        tpu_log_dir = f"{user_temp_dir}/tpu_logs"
+        if os.path.isdir(tpu_log_dir):
+            tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
+            try_to_symlink(tpu_logs_symlink, tpu_log_dir)
 
     def _get_node_labels(self):
         def merge_labels(env_override_labels, params_labels):
@@ -582,7 +588,6 @@ class Node:
                     else object_store_memory
                 ),
                 resources,
-                self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
 
@@ -850,6 +855,7 @@ class Node:
             )
         return redirect_output
 
+    # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
     def get_log_file_names(
         self,
         name: str,
@@ -986,7 +992,7 @@ class Node:
         is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
-                result = f"tcp://{self._localhost}" f":{self._get_unused_port()}"
+                result = f"tcp://{self._localhost}:{self._get_unused_port()}"
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -1198,8 +1204,8 @@ class Node:
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             log_dir=self._logs_dir,
-            ray_log_filepath=stdout_log_fname,
-            ray_err_log_filepath=stderr_log_fname,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             session_name=self.session_name,
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
@@ -1271,8 +1277,8 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            ray_log_filepath=stdout_log_fname,
-            ray_err_log_filepath=stderr_log_fname,
+            stdout_filepath=stdout_log_fname,
+            stderr_filepath=stderr_log_fname,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,
@@ -1287,10 +1293,6 @@ class Node:
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
-
-    def start_worker(self):
-        """Start a worker process."""
-        raise NotImplementedError
 
     def start_monitor(self):
         """Start the monitor.

@@ -1,23 +1,40 @@
 (gentle-intro)=
 
 # Getting Started
-Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task.
-* Scale ML workloads: [Ray Libraries Quickstart](#libraries-quickstart)
-* Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
-* Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
-* Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
 
+Ray is an open source unified framework for scaling AI and Python applications. It provides a simple, universal API for building distributed applications that can scale from a laptop to a cluster.
+
+## What's Ray?
+
+Ray simplifies distributed computing by providing:
+- **Scalable compute primitives**: Tasks and actors for painless parallel programming
+- **Specialized AI libraries**: Tools for common ML workloads like data processing, model training, hyperparameter tuning, and model serving
+- **Unified resource management**: Seamless scaling from laptop to cloud with automatic resource handling
+
+## Choose Your Path
+
+Select the guide that matches your needs:
+* **Scale ML workloads**: [Ray Libraries Quickstart](#libraries-quickstart)
+* **Scale general Python applications**: [Ray Core Quickstart](#ray-core-quickstart)
+* **Deploy to the cloud**: [Ray Clusters Quickstart](#ray-cluster-quickstart)
+* **Debug and monitor applications**: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
+
+```{image} ../images/map-of-ray.svg
+:align: center
+:alt: Ray Framework Architecture
+```
 
 (libraries-quickstart)=
 ## Ray AI Libraries Quickstart
 
-Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
+Use individual libraries for ML workloads. Each library specializes in a specific part of the ML workflow, from data processing to model serving. Click on the dropdowns for your workload below.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Scale offline inference and training ingest with [Ray Data](data_quickstart) --
-a data processing library designed for ML.
+[Ray Data](data_quickstart) provides distributed data processing optimized for machine learning and AI workloads. It efficiently streams data through data pipelines.
+
+Here's an example on how to scale offline inference and training ingest with Ray Data.
 
 ````{note}
 To run this example, install Ray Data:
@@ -70,8 +87,7 @@ Learn more about Ray Data
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
 :animate: fade-in-slide-down
 
-Ray Train abstracts away the complexity of setting up a distributed training
-system.
+**Ray Train** makes distributed model training simple. It abstracts away the complexity of setting up distributed training across popular frameworks like PyTorch and TensorFlow.
 
 `````{tab-set}
 
@@ -233,9 +249,9 @@ Learn more about Ray Train
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
 
-[Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
-With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
-Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+[Ray Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
+It automatically finds the best hyperparameters for your models with efficient distributed search algorithms.
+With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code, supporting any deep learning framework including PyTorch, TensorFlow, and Keras.
 
 ````{note}
 To run this example, install Ray Tune:
@@ -253,7 +269,7 @@ This example runs a small grid search with an iterative training function.
 :start-after: __quick_start_begin__
 ```
 
-If TensorBoard is installed, automatically visualize all trial results:
+If TensorBoard is installed (`pip install tensorboard`), you can automatically visualize all trial results:
 
 ```bash
 tensorboard --logdir ~/ray_results
@@ -273,7 +289,7 @@ Learn more about Ray Tune
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Serve: Scalable Model Serving
 :animate: fade-in-slide-down
 
-[Ray Serve](../serve/index) is a scalable model-serving library built on Ray.
+[Ray Serve](../serve/index) provides scalable and programmable serving for ML models and business logic. Deploy models from any framework with production-ready performance.
 
 ````{note}
 To run this example, install Ray Serve and scikit-learn:
@@ -291,7 +307,7 @@ This example runs serves a scikit-learn gradient boosting classifier.
 :end-before: __serve_example_end__
 ```
 
-As a result you will see `{"result": "versicolor"}`.
+The response shows `{"result": "versicolor"}`.
 
 ```{button-ref}  ../serve/index
 :color: primary
@@ -307,8 +323,7 @@ Learn more about Ray Serve
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> RLlib: Industry-Grade Reinforcement Learning
 :animate: fade-in-slide-down
 
-[RLlib](../rllib/index.rst) is an industry-grade library for reinforcement learning (RL) built on top of Ray.
-RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
+[RLlib](../rllib/index.rst) is a reinforcement learning (RL) library that offers high performance implementations of popular RL algorithms and supports various training environments. RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 ````{note}
 To run this example, install `rllib` and either `tensorflow` or `pytorch`:
@@ -316,6 +331,8 @@ To run this example, install `rllib` and either `tensorflow` or `pytorch`:
 ```bash
 pip install -U "ray[rllib]" tensorflow  # or torch
 ```
+You may also need CMake installed on your system.
+
 ````
 
 ```{literalinclude} ../rllib/doc_code/rllib_on_ray_readme.py
@@ -337,12 +354,15 @@ Learn more about Ray RLlib
 ## Ray Core Quickstart
 
 <a href="https://www.anyscale.com/ray-on-anyscale?utm_source=ray_docs&utm_medium=docs&utm_campaign=ray-core-quickstart&redirectTo=/v2/template-preview/workspace-intro">
-    <img src="../_static/img/run-quickstart-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
+    <img src="../_static/img/run-on-anyscale.svg" alt="try-anyscale-quickstart-ray-quickstart">
 </a>
 <br></br>
 
-Turn functions and classes easily into Ray tasks and actors,
-for Python and Java, with simple primitives for building and running distributed applications.
+Ray Core provides simple primitives for building and running distributed applications. It enables you to turn regular Python or Java functions and classes into distributed stateless tasks and stateful actors with just a few lines of code.
+
+The examples below show you how to:
+1. Convert Python functions to Ray tasks for parallel execution
+2. Convert Python classes to Ray actors for distributed stateful computation
 
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
@@ -405,11 +425,11 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
         // Invoke the `square` method 4 times remotely as Ray tasks.
-        // The tasks will run in parallel in the background.
+        // The tasks run in parallel in the background.
         for (int i = 0; i < 4; i++) {
             objectRefList.add(Ray.task(RayDemo::square, i).remote());
         }
@@ -440,7 +460,7 @@ Learn more about Ray Core
 :animate: fade-in-slide-down
 
 Ray provides actors to allow you to parallelize an instance of a class in Python or Java.
-When you instantiate a class that is a Ray actor, Ray will start a remote instance
+When you instantiate a class that is a Ray actor, Ray starts a remote instance
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
@@ -511,17 +531,17 @@ public class RayDemo {
     }
 
     public static void main(String[] args) {
-        // Intialize Ray runtime.
+        // Initialize Ray runtime.
         Ray.init();
         List<ActorHandle<Counter>> counters = new ArrayList<>();
         // Create 4 actors from the `Counter` class.
-        // They will run in remote worker processes.
+        // These run in remote worker processes.
         for (int i = 0; i < 4; i++) {
             counters.add(Ray.actor(Counter::new).remote());
         }
 
         // Invoke the `increment` method on each actor.
-        // This will send an actor task to each remote actor.
+        // This sends an actor task to each remote actor.
         for (ActorHandle<Counter> counter : counters) {
             counter.task(Counter::increment).remote();
         }
@@ -639,7 +659,7 @@ Try Ray on Anyscale
 
 ## Debugging and Monitoring Quickstart
 
-Use built-in observability tools to monitor and debug Ray applications and clusters.
+Use built-in observability tools to monitor and debug Ray applications and clusters. These tools help you understand your application's performance and identify bottlenecks.
 
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
@@ -658,7 +678,7 @@ To get started with the dashboard, install the default installation as follows:
 pip install -U "ray[default]"
 ```
 ````
-Access the dashboard through the default URL, http://localhost:8265.
+The dashboard automatically becomes available when running Ray scripts. Access the dashboard through the default URL, http://localhost:8265.
 
 ```{button-ref}  observability-getting-started
 :color: primary
@@ -710,7 +730,7 @@ actors = [Actor.remote() for _ in range(2)]
 ray.get(tasks)
 ```
 
-See the summarized statistics of Ray tasks using ``ray summary tasks``.
+See the summarized statistics of Ray tasks using ``ray summary tasks`` in a terminal.
 
 ```{code-block} bash
 ray summary tasks
@@ -744,14 +764,13 @@ Learn more about Ray State APIs
 
 ## Learn More
 
-Here are some talks, papers, and press coverage involving Ray and its libraries.
-Please raise an issue if any of the below links are broken, or if you'd like to add your own talk!
+Ray has a rich ecosystem of resources to help you learn more about distributed computing and AI scaling.
 
 ### Blog and Press
 
 - [Modern Parallel and Distributed Python: A Quick Tutorial on Ray](https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8)
 - [Why Every Python Developer Will Love Ray](https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/)
-- [Ray: A Distributed System for AI (BAIR)](http://bair.berkeley.edu/blog/2018/01/09/ray/)
+- [Ray: A Distributed System for AI (Berkeley Artificial Intelligence Research, BAIR)](http://bair.berkeley.edu/blog/2018/01/09/ray/)
 - [10x Faster Parallel Python Without Python Multiprocessing](https://towardsdatascience.com/10x-faster-parallel-python-without-python-multiprocessing-e5017c93cce1)
 - [Implementing A Parameter Server in 15 Lines of Python with Ray](https://ray-project.github.io/2018/07/15/parameter-server-in-fifteen-lines.html)
 - [Ray Distributed AI Framework Curriculum](https://rise.cs.berkeley.edu/blog/ray-intel-curriculum/)
@@ -763,10 +782,10 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 - [Scaling Multi Agent Reinforcement Learning](http://bair.berkeley.edu/blog/2018/12/12/rllib/)
 - [Functional RL with Keras and Tensorflow Eager](https://bair.berkeley.edu/blog/2019/10/14/functional-rl/)
 - [How to Speed up Pandas by 4x with one line of code](https://www.kdnuggets.com/2019/11/speed-up-pandas-4x.html)
-- [Quick Tip -- Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
+- [Quick Tip—Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
 - [Ray Blog](https://medium.com/distributed-computing-with-ray)
 
-### Talks (Videos)
+### Videos
 
 - [Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Data \| PyData 2021](https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000) [(slides)](https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing)
 - [Programming at any Scale with Ray \| SF Python Meetup Sept 2019](https://www.youtube.com/watch?v=LfpHyIXBhlE)
@@ -788,11 +807,13 @@ Please raise an issue if any of the below links are broken, or if you'd like to 
 
 ### Papers
 
--   [Ray 2.0 Architecture whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
--   [Ray 1.0 Architecture whitepaper (old)](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
+-   [Ray 2.0 Architecture white paper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
+-   [Ray 1.0 Architecture white paper (old)](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
 -   [Exoshuffle: large-scale data shuffle in Ray](https://arxiv.org/abs/2203.05072)
 -   [RLlib paper](https://arxiv.org/abs/1712.09381)
 -   [RLlib flow paper](https://arxiv.org/abs/2011.12719)
 -   [Tune paper](https://arxiv.org/abs/1807.05118)
 -   [Ray paper (old)](https://arxiv.org/abs/1712.05889)
 -   [Ray HotOS paper (old)](https://arxiv.org/abs/1703.03924)
+
+If you encounter technical issues, post on the [Ray discussion forum](https://discuss.ray.io/). For general questions, announcements, and community discussions, join the [Ray community on Slack](https://www.ray.io/join-slack).

@@ -96,10 +96,10 @@ steps:
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: data tests"
-    if: build.branch != "master"
     tags:
       - data
       - rllib
+      - disabled  # Tests of this tag do not exist any more.
     instance_type: large
     commands:
       # learning tests pytorch

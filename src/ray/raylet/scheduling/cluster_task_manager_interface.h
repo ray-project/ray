@@ -57,6 +57,19 @@ class ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
+  /// Attempt to cancel all queued tasks that match the resource shapes.
+  /// This function is intended to be used to cancel the infeasible tasks. To make it a
+  /// more general function, please modify the signature by adding parameters including
+  /// the failure type and the failure message.
+  ///
+  /// \param target_resource_shapes: The resource shapes to cancel.
+  ///
+  /// \return True if any task was successfully removed. This function will return false
+  /// if the task is already running. This shouldn't happen in noremal cases because the
+  /// infeasible tasks shouldn't be able to run due to resource constraints.
+  virtual bool CancelTasksWithResourceShapes(
+      const std::vector<ResourceSet> target_resource_shapes) = 0;
+
   /// Attempt to cancel all queued tasks that match the predicate.
   ///
   /// \param predicate: A function that returns true if a task needs to be cancelled.
@@ -68,7 +81,7 @@ class ClusterTaskManagerInterface {
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 
-  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  /// Queue task and schedule. This happens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param grant_or_reject: True if we we should either grant or reject the request

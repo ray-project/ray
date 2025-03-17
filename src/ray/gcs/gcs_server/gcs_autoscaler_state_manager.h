@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -217,7 +222,10 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
-  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestGetPerNodeInfeasibleResourceRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_NoInfeasibleRequests);
+  FRIEND_TEST(GcsAutoscalerStateManagerTest,
+              TestGetPerNodeInfeasibleResourceRequests_WithInfeasibleRequests);
 };
 
 }  // namespace gcs

@@ -784,6 +784,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
                 return self._gcs_aio_client
 
         job_head = MockJobHead()
+        job_head._gcs_aio_client = _FakeGcsClient()
 
         async def add_agent(agent):
             node_id = agent[0]

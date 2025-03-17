@@ -20,7 +20,6 @@ import sys
 import tempfile
 import threading
 import time
-from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
 import warnings
 from inspect import signature
 from pathlib import Path
@@ -51,6 +50,10 @@ from ray.core.generated.runtime_env_common_pb2 import (
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
 
+
+INT32_MAX = (2**31) - 1
+
+
 pwd = None
 if sys.platform != "win32":
     import pwd
@@ -67,7 +70,6 @@ win32_job = None
 win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
-_PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
@@ -1174,40 +1176,6 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str, *, reload_module: bool = False):
-    """Given a full import path to a module attr, return the imported attr.
-
-    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
-    if ":" in full_path:
-        if full_path.count(":") > 1:
-            raise ValueError(
-                f'Got invalid import path "{full_path}". An '
-                "import path may have at most one colon."
-            )
-        module_name, attr_name = full_path.split(":")
-    else:
-        last_period_idx = full_path.rfind(".")
-        module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
-
-    module = importlib.import_module(module_name)
-    if reload_module:
-        importlib.reload(module)
-    return getattr(module, attr_name)
-
-
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
@@ -1763,90 +1731,6 @@ def get_entrypoint_name():
         return prefix + list2cmdline(curr.cmdline())
     except Exception:
         return "unknown"
-
-
-def _add_url_query_params(url: str, params: Dict[str, str]) -> str:
-    """Add params to the provided url as query parameters.
-
-    If url already contains query parameters, they will be merged with params, with the
-    existing query parameters overriding any in params with the same parameter name.
-
-    Args:
-        url: The URL to add query parameters to.
-        params: The query parameters to add.
-
-    Returns:
-        URL with params added as query parameters.
-    """
-    # Unquote URL first so we don't lose existing args.
-    url = unquote(url)
-    # Parse URL.
-    parsed_url = urlparse(url)
-    # Merge URL query string arguments dict with new params.
-    base_params = params
-    params = dict(parse_qsl(parsed_url.query))
-    base_params.update(params)
-    # bool and dict values should be converted to json-friendly values.
-    base_params.update(
-        {
-            k: json.dumps(v)
-            for k, v in base_params.items()
-            if isinstance(v, (bool, dict))
-        }
-    )
-
-    # Convert URL arguments to proper query string.
-    encoded_params = urlencode(base_params, doseq=True)
-    # Replace query string in parsed URL with updated query string.
-    parsed_url = parsed_url._replace(query=encoded_params)
-    # Convert back to URL.
-    return urlunparse(parsed_url)
-
-
-def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
-    """If the provided URI is an S3 URL, add allow_bucket_creation=true as a query
-    parameter. For pyarrow >= 9.0.0, this is required in order to allow
-    ``S3FileSystem.create_dir()`` to create S3 buckets.
-
-    If the provided URI is not an S3 URL or if pyarrow < 9.0.0 is installed, we return
-    the URI unchanged.
-
-    Args:
-        uri: The URI that we'll add the query parameter to, if it's an S3 URL.
-
-    Returns:
-        A URI with the added allow_bucket_creation=true query parameter, if the provided
-        URI is an S3 URL; uri will be returned unchanged otherwise.
-    """
-    from packaging.version import parse as parse_version
-
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
-    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-        # This bucket creation query parameter is not required for pyarrow < 9.0.0.
-        return uri
-    parsed_uri = urlparse(uri)
-    if parsed_uri.scheme == "s3":
-        uri = _add_url_query_params(uri, {"allow_bucket_creation": True})
-    return uri
-
-
-def _get_pyarrow_version() -> Optional[str]:
-    """Get the version of the installed pyarrow package, returned as a tuple of ints.
-    Returns None if the package is not found.
-    """
-    global _PYARROW_VERSION
-    if _PYARROW_VERSION is None:
-        try:
-            import pyarrow
-        except ModuleNotFoundError:
-            # pyarrow not installed, short-circuit.
-            pass
-        else:
-            if hasattr(pyarrow, "__version__"):
-                _PYARROW_VERSION = pyarrow.__version__
-    return _PYARROW_VERSION
 
 
 class DeferSigint(contextlib.AbstractContextManager):

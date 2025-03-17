@@ -74,14 +74,8 @@ DEFINE_string(native_library_path,
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
-DEFINE_string(
-    ray_log_filepath,
-    "",
-    "The filename to dump raylet log on stdout, which is written via `RAY_LOG`.");
-DEFINE_string(
-    ray_err_log_filepath,
-    "",
-    "The filename to dump raylet error log on stderr, which is written via `RAY_LOG`.");
+DEFINE_string(stdout_filepath, "", "The filepath to dump raylet stdout.");
+DEFINE_string(stderr_filepath, "", "The filepath to dump raylet stderr.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
@@ -136,9 +130,9 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  if (!FLAGS_ray_log_filepath.empty()) {
+  if (!FLAGS_stdout_filepath.empty()) {
     ray::StreamRedirectionOption stdout_redirection_options;
-    stdout_redirection_options.file_path = FLAGS_ray_log_filepath;
+    stdout_redirection_options.file_path = FLAGS_stdout_filepath;
     stdout_redirection_options.rotation_max_size =
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stdout_redirection_options.rotation_max_file_count =
@@ -146,9 +140,9 @@ int main(int argc, char *argv[]) {
     ray::RedirectStdout(stdout_redirection_options);
   }
 
-  if (!FLAGS_ray_err_log_filepath.empty()) {
+  if (!FLAGS_stderr_filepath.empty()) {
     ray::StreamRedirectionOption stderr_redirection_options;
-    stderr_redirection_options.file_path = FLAGS_ray_err_log_filepath;
+    stderr_redirection_options.file_path = FLAGS_stderr_filepath;
     stderr_redirection_options.rotation_max_size =
         ray::RayLog::GetRayLogRotationMaxBytesOrDefault();
     stderr_redirection_options.rotation_max_file_count =
@@ -163,15 +157,14 @@ int main(int argc, char *argv[]) {
 
   // For compatibility, by default GCS server dumps logging into a single file with no
   // rotation.
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      /*app_name=*/argv[0],
-      ray::RayLogLevel::INFO,
-      /*ray_log_filepath=*/"",
-      /*ray_err_log_filepath=*/"",
-      /*log_rotation_max_size=*/std::numeric_limits<size_t>::max(),
-      /*log_rotation_file_num=*/1);
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog,
+                                         /*app_name=*/argv[0],
+                                         ray::RayLogLevel::INFO,
+                                         /*log_filepath=*/"",
+                                         /*err_log_filepath=*/"",
+                                         /*log_rotation_max_size=*/0,
+                                         /*log_rotation_file_num=*/1);
 
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();

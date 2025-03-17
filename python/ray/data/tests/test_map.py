@@ -25,6 +25,7 @@ from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
+from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
@@ -109,7 +110,9 @@ def test_callable_classes(shutdown_only):
 
     # map
     actor_reuse = ds.map(StatefulFn, concurrency=1).take()
-    assert sorted(extract_values("id", actor_reuse)) == list(range(10)), actor_reuse
+    assert sorted(extract_values("id", actor_reuse)) == [
+        [v] for v in list(range(10))
+    ], actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -591,6 +594,15 @@ def test_rename_columns(ray_start_regular_shared, names, expected_schema):
     renamed_schema_names = renamed_ds.schema().names
 
     assert sorted(renamed_schema_names) == sorted(expected_schema)
+
+
+def test_default_batch_size_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(
+        DeprecationWarning,
+        match="Passing 'default' to `map_batches` is deprecated and won't be "
+        "supported after September 2025. Use `batch_size=None` instead.",
+    ):
+        ray.data.range(1).map_batches(lambda x: x, batch_size="default")
 
 
 @pytest.mark.parametrize(
@@ -1735,6 +1747,59 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     # Because all tasks are submitted almost simultaneously,
     # the output order may be different compared to the original input.
     assert len(output) == len(expected_output), (len(output), len(expected_output))
+
+
+def test_map_op_backpressure_configured_properly():
+    """This test asserts that configuration of the MapOperator generator's back-pressure is
+    propagated appropriately to the Ray Core
+    """
+
+    total = 5
+
+    def _map_raising(r):
+        if isinstance(r["item"], Exception):
+            raise r["item"]
+
+        return r
+
+    # Reset this to make sure test is invariant of default value changes
+    DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 2
+
+    # To simulate incremental iteration we are
+    #   - Aggressively applying back-pressure (allowing no more than a single block
+    #       to be in the queue)
+    #   - Restrict Map Operator concurrency to run no more than 1 task at a time
+    #
+    # At the end of the pipeline we fetch only first 4 elements (instead of 5) to prevent the last 1
+    # from executing (1 is going to be a buffered block)
+    df = ray.data.from_items(
+        list(range(5)) + [ValueError("failed!")], override_num_blocks=6
+    )
+
+    # NOTE: Default back-pressure configuration allows 2 blocks in the
+    #       generator's buffer, hence default execution will fail as we'd
+    #       try map all 6 elements
+    with pytest.raises(RayTaskError) as exc_info:
+        df.map(_map_raising).materialize()
+
+    assert str(ValueError("failed")) in str(exc_info.value)
+
+    # Reducing number of blocks in the generator buffer, will prevent this pipeline
+    # from throwing
+    vals = (
+        df.map(
+            _map_raising,
+            concurrency=1,
+            ray_remote_args_fn=lambda: {
+                "_generator_backpressure_num_objects": 2,  # 1 for block, 1 for metadata
+            },
+        )
+        .limit(total - 1)
+        .take_batch()["item"]
+        .tolist()
+    )
+
+    assert list(range(5))[:-1] == vals
 
 
 if __name__ == "__main__":

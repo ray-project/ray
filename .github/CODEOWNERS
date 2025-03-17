@@ -20,7 +20,7 @@
 /src/ray/protobuf/gcs_service.proto @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @ray-project/ray-core @hongchaodeng
+/python/ray/autoscaler/ @ray-project/ray-core
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
@@ -73,8 +73,8 @@
 /doc/source/data/ @ray-project/ray-data
 
 # Ray workflows.
-/python/ray/workflow/ @stephanie-wang
-/doc/source/workflows/ @stephanie-wang @maxpumperla @ray-project/ray-docs
+/python/ray/workflow/ @ray-project/ray-core
+/doc/source/workflows/ @ray-project/ray-core @ray-project/ray-docs
 
 # RLlib.
 /rllib/ @sven1977 @simonsays1980
@@ -106,8 +106,8 @@
 /src/ray/ray_exported_symbols.lds @aslonnie
 
 # Ray usage stats
-/python/ray/_private/usage/ @richardliaw @rkooo567 @jjyao
-/python/ray/dashboard/modules/usage_stats/ @richardliaw @rkooo567 @jjyao
+/python/ray/_private/usage/ @edoakes @richardliaw @jjyao
+/python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw @jjyao
 
 
 # ==== Build and CI ====
@@ -125,6 +125,6 @@
 
 /release/ray_release @ray-project/ray-ci
 
-/.github/ISSUE_TEMPLATE/ @anyscalesam @aslonnie
+/.github/ISSUE_TEMPLATE/ @aslonnie
 
 /.github/workflows/ @ray-project/ray-ci
