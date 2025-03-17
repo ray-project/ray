@@ -217,7 +217,7 @@ def get_filter_config(shape):
     elif len(shape) in [2, 3] and (shape[:2] == [10, 10] or shape[1:] == [10, 10]):
         return filters_10x10
     else:
-        if shape == [210, 160, 3]:
+        if list(shape) == [210, 160, 3]:
             atari_help = (
                 "This is the default atari obs shape. You may want to look at one of "
                 "RLlib's Atari examples for an example of how to wrap an Atari env. "
