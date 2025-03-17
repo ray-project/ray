@@ -17,8 +17,9 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._common.utils import import_attr
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import get_random_alphanumeric_string, import_attr
+from ray._private.utils import get_random_alphanumeric_string
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
