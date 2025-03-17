@@ -79,7 +79,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           << "1. Updating the ray cluster to include nodes with all required resources "
           << "in order to let the tasks be scheduled. 2. To prevent the tasks from "
           << "hanging, you can consider enabling the infeasible task early exit feature "
-          << "by setting the 'enable_infeasible_task_early_exit' system config to 'true'."
+          << "by setting the 'RAY_enable_infeasible_task_early_exit' env var to 'true'."
           << "In a future release of Ray, we are planning to enable infeasible task "
              "early exit by default.";
     }
