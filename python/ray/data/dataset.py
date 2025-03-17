@@ -4005,6 +4005,59 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @ConsumptionAPI
+    def write_snowflake(
+        self,
+        table: str,
+        connection_parameters: str,
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ):
+        """Write this ``Dataset`` to a Snowflake table.
+
+        Examples:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                connection_parameters = dict(
+                    user=...,
+                    account="ABCDEFG-ABC12345",
+                    password=...,
+                    database="SNOWFLAKE_SAMPLE_DATA",
+                    schema="TPCDS_SF100TCL"
+                )
+                ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+                ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
+
+        Args:
+            table: The name of the table to write to.
+            connection_parameters: Keyword arguments to pass to
+                ``snowflake.connector.connect``. To view supported parameters, read
+                https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+        """  # noqa: E501
+        import snowflake.connector
+
+        def snowflake_connection_factory():
+            return snowflake.connector.connect(**connection_parameters)
+
+        # Get column names from the dataset schema
+        column_names = self.schema().names
+
+        # Generate the SQL insert statement
+        columns_str = ", ".join(f'"{col}"' for col in column_names)
+        placeholders = ", ".join(["%s"] * len(column_names))
+        sql = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders})"
+        self.write_sql(
+            sql,
+            connection_factory=snowflake_connection_factory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
     def write_mongo(
