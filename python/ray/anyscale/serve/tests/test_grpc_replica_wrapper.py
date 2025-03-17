@@ -7,8 +7,8 @@ import pytest
 
 import ray
 from ray import cloudpickle
+from ray._common.utils import get_or_create_event_loop
 from ray._private.test_utils import SignalActor
-from ray._private.utils import get_or_create_event_loop
 from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
     AnyscaleRunningReplica,
 )

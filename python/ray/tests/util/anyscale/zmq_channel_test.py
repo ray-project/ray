@@ -1,10 +1,12 @@
-from ray.util.anyscale.zmq_channel import RouterChannel
-import pytest
-import ray.cluster_utils
+import os
 import sys
 import time
-import os
-from ray._private.utils import get_or_create_event_loop
+
+import pytest
+
+import ray.cluster_utils
+from ray._common.utils import get_or_create_event_loop
+from ray.util.anyscale.zmq_channel import RouterChannel
 
 
 pytestmark = [
