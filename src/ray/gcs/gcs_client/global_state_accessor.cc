@@ -14,7 +14,13 @@
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
 
