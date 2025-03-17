@@ -46,8 +46,8 @@ int POOL_SIZE_SOFT_LIMIT = 3;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID2 = JobID::FromInt(2);
-constexpr std::string_view kBadRuntimeEnv = "bad runtime env";
-constexpr std::string_view kBadRuntimeEnvErrorMsg = "bad runtime env";
+constexpr std::string_view BadRuntimeEnv = "bad runtime env";
+constexpr std::string_view BadRuntimeEnvErrorMsg = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
