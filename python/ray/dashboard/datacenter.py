@@ -2,8 +2,10 @@ import logging
 from typing import List, Optional
 
 import ray.dashboard.consts as dashboard_consts
-from ray._private.utils import (
+from ray._common.utils import (
     get_or_create_event_loop,
+)
+from ray._private.utils import (
     parse_pg_formatted_resources_to_original,
 )
 from ray.dashboard.utils import (
