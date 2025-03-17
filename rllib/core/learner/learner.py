@@ -19,7 +19,6 @@ from typing import (
 )
 
 import ray
-from ray.data.iterator import DataIterator
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -270,9 +269,7 @@ class Learner(Checkpointable):
 
         # In case of offline learning and multiple learners, each learner receives a
         # repeatable iterator that iterates over a split of the streamed data.
-        self.iterator: DataIterator = None
-        self._batched_iterable = None
-        self._epoch_iterator = None
+        self.iterator: MiniBatchRayDataIterator = None
 
     # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
     #  all Learner workers and then immediately builds them any ways? Unless there is
@@ -1068,7 +1065,7 @@ class Learner(Checkpointable):
                 return self._convert_batch_type(batch, to_device=True, use_stream=True)
 
             if not self.iterator:
-                # A `DataIterator` that can iterate in different ways over the data.
+                # This iterator holds a `ray.data.DataIterator` and manages it state.
                 self.iterator = MiniBatchRayDataIterator(
                     iterator=training_data.data_iterators[0],
                     collate_fn=_collate_fn,
@@ -1079,19 +1076,6 @@ class Learner(Checkpointable):
                 )
 
             batch_iter = self.iterator
-            # TODO (simon): These metrics are wrongly collected.
-            # Record the number of batches pulled from the dataset.
-            self.metrics.log_value(
-                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
-                num_iters,
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-            self.metrics.log_value(
-                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
-                num_iters,
-                reduce="sum",
-            )
         else:
             batch = self._make_batch_if_necessary(training_data=training_data)
             assert batch is not None
@@ -1128,7 +1112,7 @@ class Learner(Checkpointable):
             )
 
         # Perform the actual looping through the minibatches or the given data iterator.
-        for tensor_minibatch in batch_iter:
+        for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
             unknown_module_ids = set(tensor_minibatch.policy_batches.keys()) - set(
@@ -1157,6 +1141,19 @@ class Learner(Checkpointable):
 
             self._set_slicing_by_batch_id(tensor_minibatch, value=False)
 
+        if self.iterator:
+            # Record the number of batches pulled from the dataset.
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
+                iteration + 1,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
+                iteration + 1,
+                reduce="sum",
+            )
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
         # Note: We do this only once for the last of the minibatch updates, b/c the
