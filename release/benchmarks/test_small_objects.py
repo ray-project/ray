@@ -10,6 +10,7 @@ def test_small_objects():
     @ray.remote(num_cpus=1)
     class Actor:
         def send(self, _, actor_idx):
+            // this size is chosen because it's >100kb so big enough to be stored in plasma
             numpy_arr = np.ones((20, 1024))
             return pickle.dumps((numpy_arr, actor_idx))
 
