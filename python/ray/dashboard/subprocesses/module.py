@@ -59,7 +59,7 @@ class SubprocessModule(abc.ABC):
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
-        self._parent_process_pid = parent_process_pid
+        self._parent_process = psutil.Process(parent_process_pid)
         # Lazy init
         self._gcs_aio_client = None
         self._parent_process_death_detection_task = None
@@ -70,15 +70,17 @@ class SubprocessModule(abc.ABC):
         """
         while True:
             try:
-                parent = psutil.Process(self._parent_process_pid)
-                if not parent.is_running() or parent.status() == psutil.STATUS_ZOMBIE:
+                if (
+                    not self._parent_process.is_running()
+                    or self._parent_process.status() == psutil.STATUS_ZOMBIE
+                ):
                     logger.warning(
-                        f"Parent process {self._parent_process_pid} died. Exiting..."
+                        f"Parent process {self._parent_process.pid} died. Exiting..."
                     )
                     sys.exit()
             except psutil.NoSuchProcess:
                 logger.warning(
-                    f"Parent process {self._parent_process_pid} does not exist. Exiting..."
+                    f"Parent process {self._parent_process.pid} does not exist. Exiting..."
                 )
                 sys.exit(1)
             await asyncio.sleep(1)
