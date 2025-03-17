@@ -26,11 +26,11 @@ import ray._private.protobuf_compat
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray.experimental.internal_kv as internal_kv
+from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.utils import (
     binary_to_hex,
     check_dashboard_dependencies_installed,
-    get_or_create_event_loop,
     split_address,
 )
 from ray._raylet import GcsClient
