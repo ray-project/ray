@@ -655,6 +655,7 @@ class vLLMEngineStage(StatefulStage):
                 _ray_scheduling_strategy_fn,
                 num_workers,
                 accelerator_type,
+                resources_per_worker,
             )
             num_mp_workers = 0
 

@@ -109,7 +109,7 @@ class VLLMEngineConfig(BaseModelExtended):
             model_id=llm_config.model_id,
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
-            accelerator_name=llm_config.resources_per_worker,
+            resources_per_worker=llm_config.resources_per_worker,
             accelerator_type=llm_config.accelerator_type,
             engine_kwargs=llm_config.engine_kwargs,
             runtime_env=llm_config.runtime_env,
