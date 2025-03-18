@@ -88,7 +88,7 @@ class GroupManager(object):
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         elif backend == types.Backend.HCCL:
-            logger.debug("Creating NCCL group: '{}'...".format(group_name))
+            logger.debug("Creating HCCL group: '{}'...".format(group_name))
             g = HCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name

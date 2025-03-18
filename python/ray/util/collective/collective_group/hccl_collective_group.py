@@ -6,7 +6,7 @@ from typing import List, Optional
 import logging
 
 import torch
-import torch_npu
+import torch_npu  # noqa F401
 import ray
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.const import get_store_name
@@ -208,6 +208,7 @@ class HCCLGroup(BaseGroup):
                     comm,
                     npuStream_t(stream.npu_stream),
                 )
+                stream.synchronize()
             logger.debug(f"HcclAllGather execute result: {exec_result}")
 
         output_flattened = [
@@ -708,7 +709,7 @@ def get_tensor_ptr(tensor):
             )
         return tensor.data_ptr()
     raise ValueError(
-        f"Unsupported tensor type. Got: {type(tensor)}. Only torhc.Tensor "
+        f"Unsupported tensor type. Got: {type(tensor)}. Only torch.Tensor "
         "supported for NPU so far."
     )
 
