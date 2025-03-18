@@ -3387,11 +3387,11 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_compute: small_objects.yaml
+    cluster_compute: object_store/small_objects.yaml
 
   run:
     timeout: 3600
-    script: python test_small_objects.py
+    script: python object_store/test_small_objects.py
     wait_for_nodes:
       num_nodes: 5
 
