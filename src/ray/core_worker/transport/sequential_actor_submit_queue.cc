@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
 
+#include <vector>
+#include <map>
+#include <utility>
+
 namespace ray {
 namespace core {
 SequentialActorSubmitQueue::SequentialActorSubmitQueue(ActorID actor_id)

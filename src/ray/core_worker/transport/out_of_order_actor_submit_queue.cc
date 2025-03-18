@@ -14,6 +14,10 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 
+#include <vector>
+#include <utility>
+#include <map>
+
 namespace ray {
 namespace core {
 

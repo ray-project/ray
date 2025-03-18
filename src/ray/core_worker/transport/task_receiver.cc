@@ -14,13 +14,15 @@
 
 #include "ray/core_worker/transport/task_receiver.h"
 
+#include <memory>
+#include <string>
 #include <thread>
+#include <vector>
+#include <utility>
 
 #include "ray/common/task/task.h"
-#include "ray/gcs/pb_util.h"
 
 using ray::rpc::ActorTableData;
-using namespace ray::gcs;
 
 namespace ray {
 namespace core {
