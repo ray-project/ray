@@ -64,14 +64,14 @@ class SubprocessModule(abc.ABC):
 
     async def _detect_parent_process_death(self):
         """
-        Detect parent process liveness. If parent process dies, exit the subprocess.
+        Detect parent process liveness. Only returns when parent process is dead.
         """
         while True:
             if not self._parent_process.is_alive():
                 logger.warning(
                     f"Parent process {self._parent_process.pid} died. Exiting..."
                 )
-                sys.exit()
+                return
             await asyncio.sleep(1)
 
     @staticmethod
@@ -157,6 +157,9 @@ async def run_module_inner(
         module = cls(config)
         module._parent_process_death_detection_task = asyncio.create_task(
             module._detect_parent_process_death()
+        )
+        module._parent_process_death_detection_task.add_done_callback(
+            lambda _: sys.exit()
         )
         await module.run()
         ready_event.set()
