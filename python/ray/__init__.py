@@ -1,11 +1,11 @@
 # isort: skip_file
-from ray._private import log  # isort: skip # noqa: F401
+from ray._private.ray_logger import setup_ray_logger  # isort: skip # noqa: F401
 import logging
 import os
 import sys
 from typing import TYPE_CHECKING
 
-log.generate_logging_config()
+setup_ray_logger()
 logger = logging.getLogger(__name__)
 
 
@@ -300,5 +300,6 @@ else:
 
 del os
 del logging
+del setup_ray_logger
 del sys
 del TYPE_CHECKING

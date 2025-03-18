@@ -17,7 +17,66 @@ from ray._private.ray_constants import (
     RAY_DEDUP_LOGS_ALLOW_REGEX,
     RAY_DEDUP_LOGS_SKIP_REGEX,
 )
+from ray._private.ray_logging.constants import INTERNAL_TIMESTAMP_LOG_KEY
+from ray._private.ray_logging.handlers import PlainRayHandler
 from ray.util.debug import log_once
+
+
+def _setup_log_record_factory():
+    """Setup log record factory to add _ray_timestamp_ns to LogRecord."""
+    old_factory = logging.getLogRecordFactory()
+
+    def record_factory(*args, **kwargs):
+        record = old_factory(*args, **kwargs)
+        # Python logging module starts to use `time.time_ns()` to generate `created`
+        # from Python 3.13 to avoid the precision loss caused by the float type.
+        # Here, we generate the `created` for the LogRecord to support older Python
+        # versions.
+        ct = time.time_ns()
+        record.created = ct / 1e9
+
+        record.__dict__[INTERNAL_TIMESTAMP_LOG_KEY] = ct
+
+        return record
+
+    logging.setLogRecordFactory(record_factory)
+
+
+_RAY_LOGGER_INITIALIZED = False
+_RAY_LOGGER_INITIALIZED_LOCK = threading.Lock()
+
+
+def _setup_ray_logger():
+    plain_formatter = logging.Formatter(
+        "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+    )
+
+    default_handler = PlainRayHandler()
+    default_handler.setFormatter(plain_formatter)
+
+    ray_logger = logging.getLogger("ray")
+    ray_logger.setLevel(logging.INFO)
+    ray_logger.addHandler(default_handler)
+    ray_logger.propagate = False
+
+    # Special handling for ray.rllib: only warning-level messages passed through
+    # See https://github.com/ray-project/ray/pull/31858 for related PR
+    rllib_logger = logging.getLogger("ray.rllib")
+    rllib_logger.setLevel(logging.WARN)
+
+    # Set up the LogRecord factory.
+    _setup_log_record_factory()
+
+
+def setup_ray_logger():
+    """Configure the root Ray logger once per process."""
+    with _RAY_LOGGER_INITIALIZED_LOCK:
+        global _RAY_LOGGER_INITIALIZED
+        if _RAY_LOGGER_INITIALIZED:
+            return
+
+        _setup_ray_logger()
+        _RAY_LOGGER_INITIALIZED = True
 
 
 def setup_logger(
