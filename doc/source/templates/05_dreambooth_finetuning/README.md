@@ -91,7 +91,7 @@ Click on the Jupyter icon on the workspace page and open the notebook. *Note: Th
 
 #### Option 1: Build a new cluster environment on Anyscale
 
-The requirements are listed in `dreambooth/requirements.txt`. Feel free to modify this to include more requirements, then follow [this guide](https://docs.anyscale.com/configure/dependency-management/cluster-environments#creating-a-cluster-environment?utm_source=ray_docs&utm_medium=docs&utm_campaign=dreambooth_finetuning) to use the `anyscale` CLI to create a new cluster environment. The requirements should be pasted into the cluster environment yaml.
+The `dreambooth/requirements.txt` file lists the requirements. Feel free to modify this file to include more requirements, then follow [this guide](https://docs.anyscale.com/configure/dependency-management/cluster-environments#creating-a-cluster-environment?utm_source=ray_docs&utm_medium=docs&utm_campaign=dreambooth_finetuning) to create a new cluster environment with the `anyscale` CLI . Paste the requirements into the cluster environment YAML.
 
 Finally, update the workspace's cluster environment to this environment after it's done building.
 
