@@ -29,14 +29,16 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     const GcsPlacementGroupManager &gcs_placement_group_manager,
     rpc::NodeManagerClientPool &raylet_client_pool,
     InternalKVInterface &kv,
-    instrumented_io_context &io_context)
+    instrumented_io_context &io_context,
+    GcsPublisher *gcs_publisher)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
       raylet_client_pool_(raylet_client_pool),
       kv_(kv),
-      io_context_(io_context) {}
+      io_context_(io_context),
+      gcs_publisher_(gcs_publisher) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -69,19 +71,25 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     if (enable_infeasible_task_early_exit) {
       this->CancelInfeasibleRequests();
     } else if (has_new_infeasible_requests) {
-      RAY_LOG(WARNING)
-          << "There are tasks with infeasible resource requests and won't "
-          << "be scheduled. See "
-          << "https://docs.ray.io/en/latest/ray-core/scheduling/"
-             "index.html#ray-scheduling-resources "
-          << "for more details. Please consider taking the following actions to solve "
-             "the issue: "
-          << "1. Updating the ray cluster to include nodes with all required resources "
-          << "in order to let the tasks be scheduled. 2. To prevent the tasks from "
-          << "hanging, you can consider enabling the infeasible task early exit feature "
-          << "by setting the 'RAY_enable_infeasible_task_early_exit' env var to 'true'."
-          << "In a future release of Ray, we are planning to enable infeasible task "
-             "early exit by default.";
+      // publish error message
+      std::string error_type = "infeasible_resource_requests";
+      std::string error_message =
+          "There are tasks with infeasible resource requests and won't "
+          "be scheduled. See "
+          "https://docs.ray.io/en/latest/ray-core/scheduling/"
+          "index.html#ray-scheduling-resources "
+          "for more details. Please consider taking the following actions to solve "
+          "the issue: "
+          "1. Updating the ray cluster to include nodes with all required resources "
+          "in order to let the tasks be scheduled. 2. To prevent the tasks from "
+          "hanging, you can consider enabling the infeasible task early exit feature "
+          "by setting the 'RAY_enable_infeasible_task_early_exit' env var to 'true'."
+          "In a future release of Ray, we are planning to enable infeasible task "
+          "early exit by default.";
+      RAY_LOG(WARNING) << error_message;
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          error_type, error_message, absl::FromUnixMillis(current_time_ms()));
+      RAY_CHECK_OK(gcs_publisher_->PublishError(session_name_, *error_data_ptr, nullptr));
     }
   };
 
