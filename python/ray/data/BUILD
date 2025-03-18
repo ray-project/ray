@@ -21,12 +21,6 @@ doctest(
     tags = ["team:data"],
 )
 
-# --------------------------------------------------------------------
-# Tests from the python/ray/data/tests directory.
-# Covers all tests starting with `test_`.
-# Please keep these sorted alphabetically.
-# --------------------------------------------------------------------
-
 py_library(
     name = "conftest",
     srcs = ["tests/conftest.py"],
