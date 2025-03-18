@@ -1,32 +1,8 @@
 import logging
 import threading
-from typing import Union
 import time
 
 INTERNAL_TIMESTAMP_LOG_KEY = "_ray_timestamp_ns"
-
-
-def _print_loggers():
-    """Print a formatted list of loggers and their handlers for debugging."""
-    loggers = {logging.root.name: logging.root}
-    loggers.update(dict(sorted(logging.root.manager.loggerDict.items())))
-    for name, logger in loggers.items():
-        if isinstance(logger, logging.Logger):
-            print(f"  {name}: disabled={logger.disabled}, propagate={logger.propagate}")
-            for handler in logger.handlers:
-                print(f"    {handler}")
-
-
-def clear_logger(logger: Union[str, logging.Logger]):
-    """Reset a logger, clearing its handlers and enabling propagation.
-
-    Args:
-        logger: Logger to be cleared
-    """
-    if isinstance(logger, str):
-        logger = logging.getLogger(logger)
-    logger.propagate = True
-    logger.handlers.clear()
 
 
 class PlainRayHandler(logging.StreamHandler):

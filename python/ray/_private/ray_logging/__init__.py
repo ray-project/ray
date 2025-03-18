@@ -74,7 +74,10 @@ def setup_component_logger(
     Returns:
         the created or modified logger.
     """
-    ray._private.log.clear_logger("ray")
+    # Reset the state of the Ray logger.
+    ray_logger = logging.getLogger("ray")
+    ray_logger.propagate = True
+    ray_logger.handlers.clear()
 
     logger = logging.getLogger(logger_name)
     if isinstance(logging_level, str):
