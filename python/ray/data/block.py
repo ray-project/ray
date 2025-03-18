@@ -160,8 +160,8 @@ class _BlockExecStatsBuilder:
     """
 
     def __init__(self):
-        self.start_time = time.perf_counter()
-        self.start_cpu = time.process_time()
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
 
     def build(self) -> "BlockExecStats":
         # Record end times.
