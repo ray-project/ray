@@ -7,7 +7,6 @@ import sys
 from dataclasses import dataclass
 import setproctitle
 import multiprocessing
-import psutil
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -52,14 +51,13 @@ class SubprocessModule(abc.ABC):
     def __init__(
         self,
         config: SubprocessModuleConfig,
-        parent_process_pid: int,
     ):
         """
         Initialize current module when DashboardHead loading modules.
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
-        self._parent_process = psutil.Process(parent_process_pid)
+        self._parent_process = multiprocessing.parent_process()
         # Lazy init
         self._gcs_aio_client = None
         self._parent_process_death_detection_task = None
@@ -69,20 +67,11 @@ class SubprocessModule(abc.ABC):
         Detect parent process death by checking if ppid is still the same.
         """
         while True:
-            try:
-                if (
-                    not self._parent_process.is_running()
-                    or self._parent_process.status() == psutil.STATUS_ZOMBIE
-                ):
-                    logger.warning(
-                        f"Parent process {self._parent_process.pid} died. Exiting..."
-                    )
-                    sys.exit()
-            except psutil.NoSuchProcess:
+            if not self._parent_process.is_alive():
                 logger.warning(
-                    f"Parent process {self._parent_process.pid} does not exist. Exiting..."
+                    f"Parent process {self._parent_process.pid} died. Exiting..."
                 )
-                sys.exit(1)
+                sys.exit()
             await asyncio.sleep(1)
 
     @staticmethod
@@ -155,7 +144,6 @@ async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
 
@@ -166,7 +154,7 @@ async def run_module_inner(
     )
 
     try:
-        module = cls(config, parent_process_pid)
+        module = cls(config)
         module._parent_process_death_detection_task = asyncio.create_task(
             module._detect_parent_process_death()
         )
@@ -182,7 +170,6 @@ def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
     incarnation: int,
-    parent_process_pid: int,
     ready_event: multiprocessing.Event,
 ):
     """
@@ -209,7 +196,6 @@ def run_module(
             cls,
             config,
             incarnation,
-            parent_process_pid,
             ready_event,
         )
     )
