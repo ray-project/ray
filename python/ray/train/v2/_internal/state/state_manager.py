@@ -3,9 +3,11 @@ import time
 from collections import defaultdict
 from typing import Dict, List, Optional
 
-from click import Tuple
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.context import DistributedContext
+from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
+    ResizeDecision,
+)
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, Worker
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
@@ -60,14 +62,11 @@ class TrainStateManager:
     def update_train_run_scheduling(
         self,
         run_id: str,
-        num_workers_and_resources_per_worker: Optional[
-            Tuple[int, Dict[str, float]]
-        ] = None,
+        resize_decision: Optional[ResizeDecision] = None,
     ) -> None:
-        if num_workers_and_resources_per_worker is not None:
-            num_workers, resources_per_worker = num_workers_and_resources_per_worker
+        if resize_decision is not None:
             status_detail = _get_scheduling_status_detail(
-                num_workers, resources_per_worker
+                resize_decision.num_workers, resize_decision.resources_per_worker
             )
         else:
             status_detail = None

@@ -71,21 +71,15 @@ class StateManagerCallback(ControllerCallback, WorkerGroupCallback):
             return
 
         if isinstance(current_state, SchedulingState):
-            # TODO: This should probably always be set.
-            num_workers_and_resources_per_worker = None
-
-            scaling_decision = current_state.scaling_decision
-            if isinstance(scaling_decision, ResizeDecision):
-                num_workers = scaling_decision.num_workers
-                resources_per_worker = scaling_decision.resources_per_worker
-                num_workers_and_resources_per_worker = (
-                    num_workers,
-                    resources_per_worker,
-                )
+            # TODO: This should probably always be ResizeDecision.
+            if isinstance(current_state.scaling_decision, ResizeDecision):
+                resize_decision = current_state.scaling_decision
+            else:
+                resize_decision = None
 
             self._state_manager.update_train_run_scheduling(
                 run_id=self._run_id,
-                num_workers_and_resources_per_worker=num_workers_and_resources_per_worker,
+                resize_decision=resize_decision,
             )
 
         elif isinstance(current_state, RunningState):
