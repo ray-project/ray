@@ -183,5 +183,3 @@ class Benchmark:
 
         print(f"Finished benchmark, metrics exported to '{test_output_json}':")
         print(json.dumps(self.result, indent=4))
-
-        assert False, "Force failure"

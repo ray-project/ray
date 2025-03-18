@@ -1127,9 +1127,9 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     )
     assert (
         "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
-            min(block_params["rss_bytes"]) / (1024 * 1024),
-            max(block_params["rss_bytes"]) / (1024 * 1024),
-            int(np.mean(block_params["rss_bytes"]) / (1024 * 1024)),
+            min(block_params["uss_bytes"]) / (1024 * 1024),
+            max(block_params["uss_bytes"]) / (1024 * 1024),
+            int(np.mean(block_params["uss_bytes"]) / (1024 * 1024)),
         )
         == summarized_lines[4]
     )
