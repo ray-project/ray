@@ -9,7 +9,7 @@ import traceback
 from typing import Any
 
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
-from ray.dashboard.utils import CustomEncoder, to_google_style
+from ray.dashboard.utils import CustomEncoder, HTTPStatusCode, to_google_style
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,8 @@ def method_route_table_factory():
                     except Exception:
                         logger.exception("Handle %s %s failed.", method, path)
                         return rest_response(
-                            success=False, message=traceback.format_exc()
+                            status_code=HTTPStatusCode.INTERNAL_ERROR,
+                            message=traceback.format_exc(),
                         )
 
                 cls._bind_map[method][path] = bind_info
@@ -173,8 +174,23 @@ def method_route_table_factory():
 
 
 def rest_response(
-    success, message, convert_google_style=True, **kwargs
+    status_code: HTTPStatusCode,
+    message: str,
+    convert_google_style: bool = True,
+    **kwargs,
 ) -> aiohttp.web.Response:
+    """
+    Args:
+        status_code: HTTPStatusCode
+            The HTTP status code of the response.
+        message: str
+            The message of the response.
+        convert_google_style: bool
+            Whether to convert the response to google style.
+
+    Returns:
+        aiohttp.web.Response
+    """
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
     # cross-origin access
@@ -182,6 +198,8 @@ def rest_response(
         headers = {"Access-Control-Allow-Origin": "*"}
     else:
         headers = {}
+
+    success = status_code == HTTPStatusCode.OK
     return aiohttp.web.json_response(
         {
             "result": success,
@@ -190,5 +208,5 @@ def rest_response(
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
-        status=200 if success else 500,
+        status=status_code,
     )

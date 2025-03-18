@@ -11,7 +11,7 @@ from enum import Enum, auto
 from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.generated.serve_pb2 import DeploymentTargetInfo
 from ray.serve.generated.serve_pb2 import EndpointInfo as EndpointInfoProto

@@ -10,6 +10,7 @@ from ray.rllib.connectors.learner import (
     GeneralAdvantageEstimation,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
@@ -462,23 +463,28 @@ class MARWIL(Algorithm):
         #  the user that sth. is not right, although it is as
         #  we do not step the env.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            return_iterator = (
+                self.config.dataset_num_iters_per_learner > 1
+                if self.config.dataset_num_iters_per_learner
+                else True
+            )
             # Sampling from offline data.
             batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 # Return an iterator, if a `Learner` should update
                 # multiple times per RLlib iteration.
-                return_iterator=self.config.dataset_num_iters_per_learner > 1
-                if self.config.dataset_num_iters_per_learner
-                else True,
+                return_iterator=return_iterator,
             )
+            if return_iterator:
+                training_data = TrainingData(data_iterators=batch_or_iterator)
+            else:
+                training_data = TrainingData(batch=batch_or_iterator)
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
-            # TODO (simon, sven): Check, if we should execute directly s.th. like
-            #  `LearnerGroup.update_from_iterator()`.
-            learner_results = self.learner_group._update(
-                batch=batch_or_iterator,
+            learner_results = self.learner_group.update(
+                training_data=training_data,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
                 **self.offline_data.iter_batches_kwargs,

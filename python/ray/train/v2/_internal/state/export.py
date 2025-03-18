@@ -11,7 +11,7 @@ from ray.train.v2._internal.state.schema import (
     ActorStatus,
 )
 
-TRAIN_SCHEMA_VERSION = 0
+TRAIN_SCHEMA_VERSION = 1
 
 # Status mapping dictionaries
 _ACTOR_STATUS_MAP = {
@@ -62,6 +62,7 @@ def _to_proto_worker(worker: TrainWorker) -> ProtoTrainRunAttempt.TrainWorker:
         gpu_ids=worker.gpu_ids,
         status=status,
         resources=_to_proto_resources(worker.resources.resources),
+        log_file_path=worker.log_file_path,
     )
 
 
@@ -95,6 +96,7 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         status_detail=run.status_detail,
         start_time_ns=run.start_time_ns,
         end_time_ns=run.end_time_ns,
+        controller_log_file_path=run.controller_log_file_path,
     )
 
     return proto_run

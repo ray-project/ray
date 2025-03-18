@@ -88,6 +88,25 @@ Some models may require a Hugging Face token to be specified. You can specify th
         batch_size=64,
     )
 
+If your model is hosted on AWS S3, you can specify the S3 path in the `model_source` argument, and specify `load_format="runai_streamer"` in the `engine_kwargs` argument.
+
+.. note::
+    Install vLLM with runai dependencies: `pip install -U "vllm[runai]==0.7.2"`
+
+.. testcode::
+
+    config = vLLMEngineProcessorConfig(
+        model_source="s3://your-bucket/your-model/",  # Make sure adding the trailing slash!
+        engine_kwargs={"load_format": "runai_streamer"},
+        runtime_env={"env_vars": {
+            "AWS_ACCESS_KEY_ID": "your_access_key_id",
+            "AWS_SECRET_ACCESS_KEY": "your_secret_access_key",
+            "AWS_REGION": "your_region",
+        }},
+        concurrency=1,
+        batch_size=64,
+    )
+
 .. _vllm_llm:
 
 Configure vLLM for LLM inference
@@ -194,3 +213,20 @@ You can also make calls to deployed models that have an OpenAI compatible API en
 
     ds = processor(ds)
     print(ds.take_all())
+
+Usage Data Collection
+--------------------------
+
+Data for the following features and attributes is collected to improve Ray Data LLM:
+
+- config name used for building the llm processor
+- number of concurrent users for data parallelism
+- batch size of requests
+- model architecture used for building vLLMEngineProcessor
+- task type used for building vLLMEngineProcessor
+- engine arguments used for building vLLMEngineProcessor
+- tensor parallel size and pipeline parallel size used
+- GPU type used and number of GPUs used
+
+If you would like to opt-out from usage data collection, you can follow :ref:`Ray usage stats <ref-usage-stats>`
+to turn it off.
