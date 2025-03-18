@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 
+from ray._private.ray_logging.constants import INTERNAL_TIMESTAMP_LOG_KEY
 from ray._private.ray_logging.handlers import PlainRayHandler
 
 
