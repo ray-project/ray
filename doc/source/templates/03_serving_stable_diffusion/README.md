@@ -67,7 +67,7 @@ You can call the service programmatically (see the instruction from top right co
 
 #### Option 1: Build a new cluster environment on Anyscale
 
-You'll find a `cluster_env.yaml` file in the working directory of the template. Feel free to modify this to include more requirements, then follow [this guide](https://docs.anyscale.com/configure/dependency-management/cluster-environments#creating-a-cluster-environment?utm_source=ray_docs&utm_medium=docs&utm_campaign=stable_diffusion) use the `anyscale` CLI to create a new cluster environment.
+Find a `cluster_env.yaml` file in the working directory of the template. Feel free to modify this YAML to include more requirements, then follow [this guide](https://docs.anyscale.com/configure/dependency-management/cluster-environments#creating-a-cluster-environment?utm_source=ray_docs&utm_medium=docs&utm_campaign=stable_diffusion) to create a new cluster environment with the `anyscale` CLI .
 
 Finally, update your workspace's cluster environment to this new one after it's done building.
 
