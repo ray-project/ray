@@ -323,6 +323,16 @@ class MapOperator(OneToOneOperator, ABC):
             new_remote_args = self._ray_remote_args_fn()
             for k, v in new_remote_args.items():
                 ray_remote_args[k] = v
+
+        if "memory" not in ray_remote_args:
+            # Typically, this configuration won't make a difference because
+            # `average_bytes_per_output` is usually ~128 MiB and each core usually has
+            # 4 GiB of memory. However, if `num_cpus` is small (e.g., 0.01) or
+            # `target_max_block_size` is large (e.g., 1GB), then tasks can OOM even
+            # if it just uses enough memory to produce an output block. By setting
+            # `memory` to the average output size, we can mitigate this case.
+            ray_remote_args["memory"] = self.metrics.average_bytes_per_output
+
         # For tasks with small args, we will use SPREAD by default to optimize for
         # compute load-balancing. For tasks with large args, we will use DEFAULT to
         # allow the Ray locality scheduler a chance to optimize task placement.
@@ -340,10 +350,12 @@ class MapOperator(OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+
         # This should take precedence over previously set scheduling strategy, as it
         # implements actor-based locality overrides.
         if self._ray_remote_args_factory_actor_locality:
             return self._ray_remote_args_factory_actor_locality(ray_remote_args)
+
         return ray_remote_args
 
     @abstractmethod
