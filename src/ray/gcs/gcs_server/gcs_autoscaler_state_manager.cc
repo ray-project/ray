@@ -77,7 +77,6 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
       this->CancelInfeasibleRequests();
     } else if (has_new_infeasible_requests) {
       // publish error message
-      std::string error_type = "infeasible_resource_requests";
       std::string error_message =
           "There are tasks with infeasible resource requests and won't "
           "be scheduled. See "
@@ -92,9 +91,14 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           "In a future release of Ray, we are planning to enable infeasible task "
           "early exit by default.";
       RAY_LOG(WARNING) << error_message;
-      auto error_data_ptr = gcs::CreateErrorTableData(
-          error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-      RAY_CHECK_OK(gcs_publisher_->PublishError(session_name_, *error_data_ptr, nullptr));
+
+      if (gcs_publisher_ != nullptr) {
+        std::string error_type = "infeasible_resource_requests";
+        auto error_data_ptr = gcs::CreateErrorTableData(
+            error_type, error_message, absl::FromUnixMillis(current_time_ms()));
+        RAY_CHECK_OK(
+            gcs_publisher_->PublishError(session_name_, *error_data_ptr, nullptr));
+      }
     }
   };
 
