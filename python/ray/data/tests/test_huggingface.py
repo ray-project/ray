@@ -85,9 +85,13 @@ def test_from_huggingface_dynamic_generated(ray_start_regular_shared):
         streaming=True,
     )
     ds = ray.data.from_huggingface(hfds)
-    with pytest.raises(pyarrow.lib.ArrowInvalid):
-        # Should not raise ModuleNotFoundError
+    try:
         ds.take(1)
+    except ModuleNotFoundError:
+        pytest.fail("Should not raise ModuleNotFoundError")
+    except pyarrow.lib.ArrowInvalid:
+        # Raises ArrowInvalid because of the underlying dataset
+        pass
 
 
 if __name__ == "__main__":
