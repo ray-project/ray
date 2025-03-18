@@ -48,6 +48,7 @@ from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import (
     PhysicalOptimizer,
+    get_execution_plan,
     get_logical_rules,
     get_physical_rules,
     register_logical_rule,
@@ -1805,6 +1806,37 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
             BuildOutputBlocksMapTransformFn,
         ],
     )
+
+
+def test_logical_optimization_e2e(ray_start_regular_shared):
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds = ds.randomize_block_order()
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.randomize_block_order()
+    assert set(extract_values("id", ds.take_all())) == set(range(10))
+
+    # Expected execution plan:
+    expected_execution_plan = (
+        "InputDataBuffer[Input] -> "
+        "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] -> "
+        "AllToAllOperator[RandomizeBlockOrder]"
+    )
+    assert str(get_execution_plan(ds._plan._logical_plan).dag) == str(
+        expected_execution_plan
+    )
+
+    # check that randomize_block_order is pushed to the end
+    name = "ReadRange->MapBatches(<lambda>)"
+    assert name in ds.stats()
+
+    # check that Operator 2 is the randomize_block_order operator
+    assert "Operator 2 RandomizeBlockOrder:" in ds.stats()
+
+    # check that randomize_block_order is correctly deduped
+    deduped_third_op = "Operator 3 RandomizeBlockOrder:"
+    assert deduped_third_op not in ds.stats()
+
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
 def test_insert_logical_optimization_rules():
