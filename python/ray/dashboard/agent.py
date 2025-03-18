@@ -13,6 +13,7 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
@@ -77,7 +78,6 @@ class DashboardAgent:
         # Used by the agent and sub-modules.
         self.gcs_aio_client = GcsAioClient(
             address=self.gcs_address,
-            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
             cluster_id=self.cluster_id_hex,
         )
 
@@ -423,7 +423,7 @@ if __name__ == "__main__":
 
         # Initialize event loop, see Dashboard init code for caveat
         # w.r.t grpc server init in the DashboardAgent initializer.
-        loop = ray._private.utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
 
         # Setup stdout/stderr redirect files
         out_filepath, err_filepath = get_capture_filepaths(args.log_dir)

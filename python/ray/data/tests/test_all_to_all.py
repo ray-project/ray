@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from packaging.version import parse as parse_version
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     combine_chunks,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
@@ -129,7 +129,6 @@ def test_repartition_target_num_rows_per_block(
     target_num_rows_per_block,
 ):
     ds = ray.data.range(total_rows).repartition(
-        num_blocks=None,
         target_num_rows_per_block=target_num_rows_per_block,
     )
     rows_count = 0
@@ -163,13 +162,13 @@ def test_repartition_target_num_rows_per_block(
             4,
             10,
             False,
-            "Either `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
+            "Only one of `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
         ),
         (
             None,
             None,
             False,
-            "Either `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
+            "Either `num_blocks` or `target_num_rows_per_block` must be set",
         ),
         (
             None,
@@ -1124,10 +1123,7 @@ def test_groupby_arrow_multi_agg(
 ):
     using_pyarrow = ds_format == "pyarrow"
 
-    if (
-        using_pyarrow
-        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
-    ):
+    if using_pyarrow and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
         pytest.skip(
             "Pyarrow < 14.0 doesn't support type promotions (hence fails "
             "promoting from int64 to double)"
@@ -1226,10 +1222,7 @@ def test_groupby_multi_agg_with_nans(
 ):
     using_pyarrow = ds_format == "pyarrow"
 
-    if (
-        using_pyarrow
-        and parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION
-    ):
+    if using_pyarrow and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
         pytest.skip(
             "Pyarrow < 14.0 doesn't support type promotions (hence fails "
             "promoting from int64 to double)"
@@ -1620,9 +1613,7 @@ def test_groupby_map_groups_extra_args(
     assert sorted([x["value"] for x in ds.take()]) == [6, 8, 10, 12]
 
 
-_NEED_UNWRAP_ARROW_SCALAR = parse_version(_get_pyarrow_version()) <= parse_version(
-    "9.0.0"
-)
+_NEED_UNWRAP_ARROW_SCALAR = get_pyarrow_version() <= parse_version("9.0.0")
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -1790,8 +1781,16 @@ def test_random_block_order(ray_start_regular_shared_2_cpus, restore_data_contex
 
 
 def test_random_shuffle(shutdown_only, configure_shuffle_method):
+    # Assert random 2 distinct random-shuffle pipelines yield different orders
     r1 = ray.data.range(100).random_shuffle().take(999)
     r2 = ray.data.range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    # Assert same random-shuffle pipeline yielding 2 different orders,
+    # when executed
+    ds = ray.data.range(100).random_shuffle()
+    r1 = ds.take(999)
+    r2 = ds.take(999)
     assert r1 != r2, (r1, r2)
 
     r1 = ray.data.range(100, override_num_blocks=1).random_shuffle().take(999)

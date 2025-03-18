@@ -14,6 +14,13 @@
 
 #pragma once
 
+#include <deque>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/ray_object.h"
@@ -87,7 +94,7 @@ class LocalTaskManager : public ILocalTaskManager {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
       std::function<int64_t(void)> get_time_ms =
-          []() { return (int64_t)(absl::GetCurrentTimeNanos() / 1e6); },
+          []() { return static_cast<int64_t>(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
@@ -292,7 +299,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// class. This information is used to place a cap on the number of running
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
-    SchedulingClassInfo(int64_t cap)
+    explicit SchedulingClassInfo(int64_t cap)
         : running_tasks(),
           capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}

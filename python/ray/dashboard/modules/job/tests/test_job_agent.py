@@ -13,11 +13,12 @@ import requests
 import yaml
 
 import ray
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
+    async_wait_for_condition,
     chdir,
     format_web_url,
     get_current_unused_port,
@@ -25,7 +26,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
@@ -643,7 +643,7 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
 
             return True
 
-        await async_wait_for_condition_async_predicate(verify, retry_interval_ms=2000)
+        await async_wait_for_condition(verify, retry_interval_ms=2000)
     finally:
         subprocess.check_output("ray stop --force", shell=True)
 

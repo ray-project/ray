@@ -117,6 +117,13 @@ class WorkerContext {
 
   bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Set a flag to indicate that the current actor should exit, it'll be checked
+  /// periodically and the actor will exit if the flag is set.
+  void SetCurrentActorShouldExit() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Get the flag to indicate that the current actor should exit.
+  bool GetCurrentActorShouldExit() const ABSL_LOCKS_EXCLUDED(mutex_);
+
   bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   uint64_t GetNextTaskIndex();
@@ -145,6 +152,7 @@ class WorkerContext {
   ActorID current_actor_id_ ABSL_GUARDED_BY(mutex_);
   int current_actor_max_concurrency_ ABSL_GUARDED_BY(mutex_) = 1;
   bool current_actor_is_asyncio_ ABSL_GUARDED_BY(mutex_) = false;
+  bool current_actor_should_exit_ ABSL_GUARDED_BY(mutex_) = false;
   bool is_detached_actor_ ABSL_GUARDED_BY(mutex_) = false;
   // The placement group id that the current actor belongs to.
   PlacementGroupID current_actor_placement_group_id_ ABSL_GUARDED_BY(mutex_);

@@ -1,8 +1,9 @@
 import collections
 import logging
 import os
+import threading
 import time
-from dataclasses import dataclass, asdict, fields
+from dataclasses import asdict, dataclass, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -11,7 +12,6 @@ from typing import (
     Dict,
     Iterator,
     List,
-    Literal,
     Optional,
     Protocol,
     Tuple,
@@ -22,7 +22,6 @@ from typing import (
 import numpy as np
 
 import ray
-from ray import DynamicObjectRefGenerator
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
@@ -30,11 +29,6 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 import psutil
-
-try:
-    import resource
-except ImportError:
-    resource = None
 
 if TYPE_CHECKING:
     import pandas
@@ -58,6 +52,9 @@ AggType = TypeVar("AggType")
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
+# Represents a single column of the ``Block``
+BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +71,7 @@ DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
 
 # User-facing data column type. This is the data type for data that is supplied to and
 # returned from column UDFs.
-DataBatchColumn = Union[
-    "pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", np.ndarray
-]
+DataBatchColumn = Union[BlockColumn, np.ndarray]
 
 
 # A class type that implements __call__.
@@ -103,11 +98,6 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-# TODO(ekl/chengsu): replace this with just
-# `DynamicObjectRefGenerator` once block splitting
-# is on by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
-
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
 DEFAULT_BATCH_FORMAT = "numpy"
 
@@ -121,15 +111,6 @@ def _apply_batch_format(given_batch_format: Optional[str]) -> str:
             f" {VALID_BATCH_FORMATS})."
         )
     return given_batch_format
-
-
-def _apply_batch_size(
-    given_batch_size: Optional[Union[int, Literal["default"]]]
-) -> Optional[int]:
-    if given_batch_size == "default":
-        return ray.data.context.DEFAULT_BATCH_SIZE
-    else:
-        return given_batch_size
 
 
 @DeveloperAPI
@@ -154,9 +135,9 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        # Max memory usage. May be an overestimate since we do not
-        # differentiate from previous tasks on the same worker.
-        self.max_rss_bytes: int = 0
+        # An estimate of the maximum amount of physical memory that the process was
+        # using while computing this block.
+        self.max_uss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -175,36 +156,98 @@ class BlockExecStats:
 
 
 class _BlockExecStatsBuilder:
-    """Helper class for building block stats.
+    """Helper context manager for building block stats.
 
     When this class is created, we record the start time. When build() is
     called, the time delta is saved as part of the stats.
     """
 
-    def __init__(self):
-        self.start_time = time.perf_counter()
-        self.start_cpu = time.process_time()
+    def __init__(self, poll_interval_s: Optional[float] = None):
+        """
+
+        Args:
+            poll_interval_s: The interval to poll the USS of the process. If `None`,
+                this class won't poll the USS.
+        """
+        self._poll_interval_s = poll_interval_s
+
+        # Record start times.
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
+
+        # Record initial USS.
+        self._process = psutil.Process(os.getpid())
+        self._max_uss = self._estimate_uss()
+        self._max_uss_lock = threading.Lock()
+
+        self._uss_poll_thread = None
+        self._stop_uss_poll_event = None
+
+    def __enter__(self):
+        if self._poll_interval_s is not None:
+            (
+                self._uss_poll_thread,
+                self._stop_uss_poll_event,
+            ) = self._start_uss_poll_thread()
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._uss_poll_thread is not None:
+            self._stop_uss_poll_thread()
 
     def build(self) -> "BlockExecStats":
-        self.end_time = time.perf_counter()
-        self.end_cpu = time.process_time()
+        # Record end times.
+        end_time = time.perf_counter()
+        end_cpu = time.process_time()
 
+        # Record max USS.
+        with self._max_uss_lock:
+            self._max_uss = max(self._max_uss, self._estimate_uss())
+
+        # Build the stats.
         stats = BlockExecStats()
-        stats.start_time_s = self.start_time
-        stats.end_time_s = self.end_time
-        stats.wall_time_s = self.end_time - self.start_time
-        stats.cpu_time_s = self.end_cpu - self.start_cpu
-        if resource is None:
-            # NOTE(swang): resource package is not supported on Windows. This
-            # is only the memory usage at the end of the task, not the peak
-            # memory.
-            process = psutil.Process(os.getpid())
-            stats.max_rss_bytes = int(process.memory_info().rss)
-        else:
-            stats.max_rss_bytes = int(
-                resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
-            )
+        stats.start_time_s = self._start_time
+        stats.end_time_s = end_time
+        stats.wall_time_s = end_time - self._start_time
+        stats.cpu_time_s = end_cpu - self._start_cpu
+        stats.max_uss_bytes = self._max_uss
+
         return stats
+
+    def reset(self):
+        self._start_time = time.perf_counter()
+        self._start_cpu = time.process_time()
+        with self._max_uss_lock:
+            self._max_uss = self._estimate_uss()
+
+    def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
+        assert self._poll_interval_s is not None
+
+        stop_event = threading.Event()
+
+        def poll_uss():
+            while not stop_event.is_set():
+                with self._max_uss_lock:
+                    self._max_uss = max(self._max_uss, self._estimate_uss())
+                stop_event.wait(self._poll_interval_s)
+
+        thread = threading.Thread(target=poll_uss, daemon=True)
+        thread.start()
+
+        return thread, stop_event
+
+    def _stop_uss_poll_thread(self):
+        if self._stop_uss_poll_event is not None:
+            self._stop_uss_poll_event.set()
+            self._uss_poll_thread.join()
+
+    def _estimate_uss(self) -> int:
+        memory_info = self._process.memory_info()
+        # Estimate the USS (the amount of memory that'd be free if we killed the
+        # process right now) as the difference between the RSS (total physical memory)
+        # and amount of shared physical memory.
+        return memory_info.rss - memory_info.shared
 
 
 @DeveloperAPI
@@ -274,7 +317,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def slice(self, start: int, end: int, copy: bool) -> Block:
+    def slice(self, start: int, end: int, copy: bool = False) -> Block:
         """Return a slice of this block.
 
         Args:
@@ -438,9 +481,9 @@ class BlockAccessor:
     @classmethod
     def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
         """Create a Pandas block from user-facing data formats."""
-        from ray.data._internal.pandas_block import PandasBlockAccessor
+        from ray.data._internal.pandas_block import PandasBlockBuilder
 
-        return PandasBlockAccessor.numpy_to_block(batch)
+        return PandasBlockBuilder._table_from_pydict(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
@@ -561,7 +604,9 @@ class BlockAccessor:
             entries are 0 and ``len(array)`` respectively.
         """
 
-        if keys:
+        if self.num_rows() == 0:
+            return np.array([], dtype=np.int32)
+        elif keys:
             # Convert key columns to Numpy (to perform vectorized
             # ops on them)
             projected_block = self.to_numpy(keys)
@@ -570,6 +615,71 @@ class BlockAccessor:
 
         # If no keys are specified, whole block is considered a single group
         return np.array([0, self.num_rows()])
+
+
+@DeveloperAPI(stability="beta")
+class BlockColumnAccessor:
+    """Provides vendor-neutral interface to apply common operations
+    to block's (Pandas/Arrow) columns"""
+
+    def __init__(self, col: BlockColumn):
+        self._column = col
+
+    def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a count of the distinct values in the column"""
+        raise NotImplementedError()
+
+    def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a sum of the values in the column"""
+        return NotImplementedError()
+
+    def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a min of the values in the column"""
+        raise NotImplementedError()
+
+    def max(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a max of the values in the column"""
+        raise NotImplementedError()
+
+    def mean(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a mean of the values in the column"""
+        raise NotImplementedError()
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        *,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+        as_py: bool = True,
+    ) -> Optional[U]:
+        """Returns a sum of diffs (from mean) squared for the column"""
+        raise NotImplementedError()
+
+    def to_pylist(self):
+        """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    @staticmethod
+    def for_column(col: BlockColumn) -> "BlockColumnAccessor":
+        """Create a column accessor for the given column"""
+        _check_pyarrow_version()
+
+        import pandas as pd
+        import pyarrow as pa
+
+        if isinstance(col, pa.Array) or isinstance(col, pa.ChunkedArray):
+            from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
+
+            return ArrowBlockColumnAccessor(col)
+        elif isinstance(col, pd.Series):
+            from ray.data._internal.pandas_block import PandasBlockColumnAccessor
+
+            return PandasBlockColumnAccessor(col)
+        else:
+            raise TypeError(
+                f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
+                f"(got {type(col)})"
+            )
 
 
 def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:

@@ -18,7 +18,6 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.numpy_support import is_array_like
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import MiB, keys_equal, NULL_SENTINEL, is_nan
@@ -29,6 +28,8 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     KeyType,
+    BlockColumnAccessor,
+    U,
 )
 
 if TYPE_CHECKING:
@@ -92,9 +93,8 @@ class TableBlockBuilder(BlockBuilder):
             self._column_names = item_column_names
 
         for key, value in item.items():
-            if is_array_like(value) and not isinstance(value, np.ndarray):
-                value = np.array(value)
             self._columns[key].append(value)
+
         self._num_rows += 1
         self._compact_if_needed()
         self._uncompacted_size.add(item)
@@ -191,6 +191,7 @@ class TableBlockAccessor(BlockAccessor):
         # Always promote Arrow blocks to pandas for consistency, since
         # we lazily convert pandas->Arrow internally for efficiency.
         default = self.to_pandas()
+
         return default
 
     def column_names(self) -> List[str]:
@@ -273,6 +274,53 @@ class TableBlockAccessor(BlockAccessor):
             return self._empty_table()
         k = min(n_samples, self.num_rows())
         return self._sample(k, sort_key)
+
+    def count(self, on: str, ignore_nulls: bool = False) -> Optional[U]:
+        accessor = BlockColumnAccessor.for_column(self._table[on])
+        return accessor.count(ignore_nulls=ignore_nulls)
+
+    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        self._validate_column(on)
+
+        accessor = BlockColumnAccessor.for_column(self._table[on])
+        return accessor.sum(ignore_nulls=ignore_nulls)
+
+    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        self._validate_column(on)
+
+        accessor = BlockColumnAccessor.for_column(self._table[on])
+        return accessor.min(ignore_nulls=ignore_nulls)
+
+    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        self._validate_column(on)
+
+        accessor = BlockColumnAccessor.for_column(self._table[on])
+        return accessor.max(ignore_nulls=ignore_nulls)
+
+    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
+        self._validate_column(on)
+
+        accessor = BlockColumnAccessor.for_column(self._table[on])
+        return accessor.mean(ignore_nulls=ignore_nulls)
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        on: str,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+    ) -> Optional[U]:
+        self._validate_column(on)
+
+        accessor = BlockColumnAccessor.for_column(self._table[on])
+        return accessor.sum_of_squared_diffs_from_mean(ignore_nulls=ignore_nulls)
+
+    def _validate_column(self, col: str):
+        if col is None:
+            raise ValueError(f"Provided `on` value has to be non-null (got '{col}')")
+        elif col not in self.column_names():
+            raise ValueError(
+                f"Referencing column '{col}' not present in the schema: {self.schema()}"
+            )
 
     def _aggregate(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Applies provided aggregations to groups of rows with the same key.
