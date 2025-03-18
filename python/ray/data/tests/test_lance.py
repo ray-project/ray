@@ -8,7 +8,7 @@ from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
 
@@ -35,9 +35,7 @@ from ray.data.datasource.path_util import _unwrap_protocol
 )
 def test_lance_read_basic(fs, data_path, batch_size):
     # NOTE: Lance only works with PyArrow 12 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
         return
 
@@ -95,9 +93,7 @@ def test_lance_read_basic(fs, data_path, batch_size):
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_read_many_files(data_path):
     # NOTE: Lance only works with PyArrow 12 or above.
-    pyarrow_version = _get_pyarrow_version()
-    if pyarrow_version is not None:
-        pyarrow_version = parse_version(pyarrow_version)
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
         return
 

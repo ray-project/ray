@@ -35,6 +35,7 @@ class MetricsGroup(Enum):
     TASKS = "tasks"
     OBJECT_STORE_MEMORY = "object_store_memory"
     MISC = "misc"
+    ACTORS = "actors"
 
 
 @dataclass(frozen=True)
@@ -322,6 +323,23 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         default=0,
         description="Time spent in task submission backpressure.",
         metrics_group=MetricsGroup.TASKS,
+    )
+
+    # === Actor-related metrics ===
+    num_alive_actors: int = metric_field(
+        default=0,
+        description="Number of alive actors.",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    num_restarting_actors: int = metric_field(
+        default=0,
+        description="Number of restarting actors.",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    num_pending_actors: int = metric_field(
+        default=0,
+        description="Number of pending actors.",
+        metrics_group=MetricsGroup.ACTORS,
     )
 
     # === Object store memory metrics ===

@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 

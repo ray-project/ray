@@ -17,10 +17,8 @@ Ray Workflows: Durable Ray Task Graphs
 
 .. warning::
 
-  Ray Workflows is available as **alpha** in Ray 2.0+. Expect rough corners and
-  for its APIs and storage format to change. Please file feature requests and
-  bug reports on GitHub Issues or join the discussion on the
-  `Ray Slack <https://www.ray.io/join-slack>`__.
+  The experimental Ray Workflows library has been deprecated and will be removed in a
+  future version of Ray.
 
 Ray Workflows implements high-performance, *durable* application workflows using
 Ray tasks as the underlying execution engine. It enables task-based Ray jobs
