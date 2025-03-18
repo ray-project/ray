@@ -1991,7 +1991,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
                       ActorID::Nil(),
                       {"XXX=YYY"},
                       TaskID::FromRandom(JobID::Nil()),
-                      ExampleRuntimeEnvInfoFromString(std::string(kBadRuntimeEnv));
+                      ExampleRuntimeEnvInfoFromString(std::string(kBadRuntimeEnv)));
   std::string error_msg;
   popped_worker = worker_pool_->PopWorkerSync(
       task_spec_with_bad_runtime_env, true, &status, 0, &error_msg);
