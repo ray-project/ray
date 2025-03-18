@@ -218,6 +218,9 @@ class StatefulStageUDF:
                     f"{self.__class__.__name__}. Input keys: {input_keys}"
                 )
 
+    async def udf(self, rows: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
+        raise NotImplementedError("StageUDF must implement the udf method")
+
 
 class StatefulStage(BaseModel):
     """
