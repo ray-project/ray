@@ -317,6 +317,11 @@ for container environment variables.
 
 ### 4. Set the `rayStartParams` and the resource limits for the Ray container
 
+```{admonition} Resource limits are optional starting from Ray 2.41.0
+Starting from Ray 2.41.0, the Ray Autoscaler can read resource specifications from `rayStartParams`, resource limits, or resource requests of the Ray container. At least one of these fields must be specified.
+In earlier versions, only `rayStartParams` or resource limits were supported, and resource requests were not recognized.
+```
+
 The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
 The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
 Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
