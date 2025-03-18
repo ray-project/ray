@@ -292,7 +292,7 @@ class DashboardHead:
         handles = []
         subprocess_cls_list = dashboard_utils.get_all_modules(SubprocessModule)
 
-        loop = ray._private.utils.get_or_create_event_loop()
+        loop = ray._common.utils.get_or_create_event_loop()
         config = SubprocessModuleConfig(
             cluster_id_hex=self.cluster_id_hex,
             gcs_address=self.gcs_address,
