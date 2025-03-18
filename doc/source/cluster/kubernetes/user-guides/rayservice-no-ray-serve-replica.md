@@ -67,7 +67,25 @@ headGroupSpec:
 ## Step 4: Why 1 worker Pod isn't ready?
 
 ```sh
-# Step 4.1: List all Ray Pods in the `default` namespace.
+# Step 4.1: Wait until the RayService is ready to serve requests.
+kubectl describe rayservices.ray.io rayservice-no-ray-serve-replica
+
+# [Example output]
+#  Conditions:
+#    Last Transition Time:  2025-03-18T14:14:43Z
+#    Message:               Number of serve endpoints is greater than 0
+#    Observed Generation:   1
+#    Reason:                NonZeroServeEndpoints
+#    Status:                True
+#    Type:                  Ready
+#    Last Transition Time:  2025-03-18T14:12:03Z
+#    Message:               Active Ray cluster exists and no pending Ray cluster
+#    Observed Generation:   1
+#    Reason:                NoPendingCluster
+#    Status:                False
+#    Type:                  UpgradeInProgress
+
+# Step 4.2: List all Ray Pods in the `default` namespace.
 kubectl get pods -l=ray.io/is-ray-node=yes
 
 # [Example output]
@@ -76,7 +94,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 # rayservice-no-ray-serve-replica-raycluster-dnm28-s-worker-46t7l   1/1     Running   0          2m21s
 # rayservice-no-ray-serve-replica-raycluster-dnm28-s-worker-77rzk   0/1     Running   0          2m20s
 
-# Step 4.2: Check unready worker pod events
+# Step 4.3: Check unready worker pod events
 kubectl describe pods {YOUR_UNREADY_WORKER_POD_NAME}
 
 # [Example output]
@@ -93,7 +111,7 @@ kubectl describe pods {YOUR_UNREADY_WORKER_POD_NAME}
 #   Warning  Unhealthy  78s (x19 over 2m43s)  kubelet            Readiness probe failed: success
 ```
 
-Look at the output of Step 4.1. One worker Pod is running and ready, while the other is running but not ready.  
+Look at the output of Step 4.2. One worker Pod is running and ready, while the other is running but not ready.  
 Starting from Ray 2.8, a Ray worker Pod that doesn't have any Ray Serve replica won't have a Proxy actor.  
 Starting from KubeRay v1.1.0, KubeRay adds a readiness probe to every worker Pod's Ray container to check if the worker Pod has a Proxy actor or not.  
 If the worker Pod lacks a Proxy actor, the readiness probe fails, rendering the worker Pod unready, and thus, it doesn't receive any traffic.  
