@@ -1,14 +1,15 @@
 import logging
 
+
 def _in_worker_process() -> bool:
     import ray
 
     return (
         hasattr(ray, "_private")
         and hasattr(ray._private, "worker")
-        and ray._private.worker.global_worker.mode
-        == ray._private.worker.WORKER_MODE
+        and ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE
     )
+
 
 class PlainRayHandler(logging.StreamHandler):
     """A plain log handler.
