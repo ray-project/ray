@@ -61,6 +61,7 @@ def test_linux_privileged_container() -> None:
             privileged_container=True,
         )
         assert container.privileged_container
+        assert "--privileged" in container.get_run_command_extra_args
 
 
 def test_get_container() -> None:

@@ -166,6 +166,7 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "asan-clang",
             "ubsan",
             "tsan-clang",
+            "cgroup",
             # java build types
             "java",
             # do not build ray

@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import sys
@@ -10,6 +11,8 @@ _DOCKER_CAP_ADD = [
     "SYS_ADMIN",
     "NET_ADMIN",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 class LinuxContainer(Container):
@@ -80,10 +83,14 @@ class LinuxContainer(Container):
                 "--mount",
                 f"type={self.tmp_filesystem},destination=/tmp",
             ]
+        logging.info(
+            f"irabbani: getting command line args for docker {self.privileged_container}"
+        )
         if self.privileged_container:
             extra_args += ["--privileged"]
-        for cap in _DOCKER_CAP_ADD:
-            extra_args += ["--cap-add", cap]
+        else:
+            for cap in _DOCKER_CAP_ADD:
+                extra_args += ["--cap-add", cap]
         if gpu_ids:
             extra_args += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
         extra_args += [
@@ -91,7 +98,7 @@ class LinuxContainer(Container):
             "/rayci",
             "--shm-size=2.5gb",
         ]
-
+        logger.info(f"irabbani: {extra_args}")
         return extra_args
 
     def get_artifact_mount(self) -> Tuple[str, str]:
