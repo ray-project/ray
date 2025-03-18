@@ -280,9 +280,7 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                     # Read row group and convert to pandas
                     table = parquet_file.read_row_group(row_group)
                     df = table.to_pandas()
-
-                    if len(df) > 0:  # Only yield if we got data
-                        yield df
+                    yield df
 
                 except Exception as e:
                     logger.error(
@@ -445,7 +443,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
         num_cpus = os.cpu_count() or 1
         self.num_torch_workers = max(1, num_cpus // num_gpus // 2)  # At least 1 worker
         logger.info(
-            f"[TorchDataLoaderFactory] Using {self.num_torch_workers} torch workers per GPU (Total CPUs: {num_cpus}, Total GPUs: {num_gpus})"
+            f"[DataLoader] Workers: {self.num_torch_workers} per GPU "
+            f"(CPUs: {num_cpus}, GPUs: {num_gpus})"
         )
 
         # Calculate per-worker row limit based on benchmark config workers
@@ -455,12 +454,11 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
             limit_total_rows // total_workers if limit_total_rows is not None else None
         )
         logger.info(
-            f"[TorchDataLoaderFactory] Total workers = {total_workers} ({self.num_ray_workers} Ray workers × {self.num_torch_workers} torch workers per Ray worker)"
+            f"[DataLoader] Total workers: {total_workers} "
+            f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch)"
         )
         if limit_total_rows is not None:
-            logger.info(
-                f"[TorchDataLoaderFactory] Rows per worker: {self.limit_rows_per_worker}"
-            )
+            logger.info(f"[DataLoader] Rows per worker: {self.limit_rows_per_worker}")
 
     def _parse_s3_url(self, s3_url: str) -> Tuple[str, str]:
         """Parse an S3 URL into bucket and key."""
@@ -564,17 +562,17 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
             file_urls=self._get_file_urls(self.train_url),
             random_transforms=True,
             batch_size=dataloader_config.train_batch_size,
-            limit_rows_per_worker=self.limit_rows_per_worker,
         )
 
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=dataloader_config.train_batch_size,
             num_workers=self.num_torch_workers,
-            pin_memory=True,
-            persistent_workers=True,
+            pin_memory=False,
+            persistent_workers=False,
             multiprocessing_context="spawn",  # Explicitly set spawn context
-            prefetch_factor=dataloader_config.prefetch_batches,
+            # TODO: Adding prefetch factor causes the dataloader to OOM
+            # prefetch_factor=dataloader_config.prefetch_batches,
             collate_fn=self.collate_fn,
             drop_last=True,
         )
@@ -597,10 +595,11 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
             dataset,
             batch_size=dataloader_config.validation_batch_size,
             num_workers=self.num_torch_workers,
-            pin_memory=True,
-            persistent_workers=True,
+            pin_memory=False,
+            persistent_workers=False,
             multiprocessing_context="spawn",  # Explicitly set spawn context
-            prefetch_factor=dataloader_config.prefetch_batches,
+            # TODO: Adding prefetch factor causes the dataloader to OOM
+            # prefetch_factor=dataloader_config.prefetch_batches,
             collate_fn=self.collate_fn,
             drop_last=False,  # Don't drop incomplete batches during validation
         )
