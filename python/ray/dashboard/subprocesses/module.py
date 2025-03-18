@@ -64,7 +64,7 @@ class SubprocessModule(abc.ABC):
 
     async def _detect_parent_process_death(self):
         """
-        Detect parent process death by checking if ppid is still the same.
+        Detect parent process liveness. If parent process dies, exit the subprocess.
         """
         while True:
             if not self._parent_process.is_alive():
