@@ -1644,6 +1644,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 ray_node_id=node.ray_node_id,
                 cause=TerminationRequest.Cause.IDLE,
                 instance_type=node.node_type,
+                instance_status=node.im_instance.status,
                 idle_duration_ms=node.idle_duration_ms,
                 details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
                 f"timeout={idle_timeout_s} secs",
