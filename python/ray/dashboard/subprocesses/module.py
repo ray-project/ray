@@ -113,7 +113,7 @@ class SubprocessModule(abc.ABC):
                 )
             )
         app.add_routes(routes)
-        runner = aiohttp.web.AppRunner(app)
+        runner = aiohttp.web.AppRunner(app, access_log=None)
         await runner.setup()
 
         socket_path = get_socket_path(self._config.socket_dir, self.__class__.__name__)
