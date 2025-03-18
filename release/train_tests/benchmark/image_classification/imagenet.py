@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 import torchvision
 from torchvision.transforms.functional import pil_to_tensor
+import torch
 
 
 def _get_sysnet_mapping():

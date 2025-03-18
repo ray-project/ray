@@ -30,6 +30,10 @@ class TrainLoopRunner:
         model = factory.get_model()
         self.model = ray.train.torch.prepare_model(model)
 
+        # Ensure model is on the correct device
+        device = ray.train.torch.get_device()
+        self.model = self.model.to(device)
+
         self.loss_fn = factory.get_loss_fn()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
@@ -145,6 +149,12 @@ class TrainLoopRunner:
             return None
 
     def train_step(self, input_batch, labels):
+        device = next(self.model.parameters()).device  # Get model's device
+
+        # Move input and labels to the same device as the model
+        input_batch = input_batch.to(device)
+        labels = labels.to(device)
+
         self.model.train()
         out = self.model(input_batch)
         loss = self.loss_fn(out, labels)
@@ -207,6 +217,12 @@ class TrainLoopRunner:
         return {"validation/loss": total_loss.item() / num_rows}
 
     def validate_step(self, input_batch, labels):
+        device = next(self.model.parameters()).device  # Ensure we get model's device
+
+        # Move input and labels to the same device as the model
+        input_batch = input_batch.to(device)
+        labels = labels.to(device)
+
         with torch.no_grad():
             out = self.model(input_batch)
             loss = self.loss_fn(out, labels)
@@ -223,12 +239,22 @@ class TrainLoopRunner:
         )
 
     def load_checkpoint(self, local_dir: str):
-        self.model.load_state_dict(
-            torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
+        device = ray.train.torch.get_device()
+
+        # Load state dicts
+        model_state = torch.load(
+            os.path.join(local_dir, "model.pt"), map_location="cpu"
         )
-        self.optimizer.load_state_dict(
-            torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
+        optimizer_state = torch.load(
+            os.path.join(local_dir, "optimizer.pt"), map_location="cpu"
         )
+
+        # Load model state and move to device
+        self.model.load_state_dict(model_state)
+        self.model = self.model.to(device)
+
+        # Load optimizer state
+        self.optimizer.load_state_dict(optimizer_state)
 
         train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
         self._train_epoch_idx = train_state["epoch"]

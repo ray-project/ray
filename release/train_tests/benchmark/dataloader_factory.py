@@ -17,6 +17,7 @@ from torch.utils.data import IterableDataset
 
 import ray.data
 import ray.train
+from ray.train import torch as ray_train_torch
 from ray.data import Dataset
 
 from config import BenchmarkConfig, DataLoaderConfig, RayDataConfig
@@ -211,7 +212,7 @@ class S3ParquetReader(S3Reader):
             )
 
 
-class S3ParquetImageIterableDataset(IterableDataset):
+class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
     """An iterable dataset that loads images from S3-stored Parquet files."""
 
     LOG_FREQUENCY = 1000  # Log every 1000 rows
@@ -232,28 +233,28 @@ class S3ParquetImageIterableDataset(IterableDataset):
             limit_rows_per_worker: Maximum number of rows to process per worker (None for all rows)
                                  The caller should divide the total desired limit by num_workers
         """
+        S3Reader.__init__(self)  # Initialize the S3Reader parent class
         self.file_urls = file_urls
         self.batch_size = batch_size
         self.limit_rows_per_worker = limit_rows_per_worker
-        self.parquet_reader = S3ParquetReader()
         self.random_transforms = random_transforms
 
     def _read_parquet_file(self, file_url: str) -> Iterator[pd.DataFrame]:
-        """Read a Parquet file from S3 one row group at a time.
-
-        Args:
-            file_url: S3 URL of the Parquet file
-
-        Returns:
-            Iterator[pd.DataFrame]: Iterator yielding DataFrames for each row group
-        """
+        """Read a Parquet file from S3 one row group at a time."""
         try:
             print(f"[S3ParquetImageIterableDataset] Getting row groups for {file_url}")
+
+            # Create S3 client inline
+            import boto3
+
+            s3_client = boto3.client("s3", region_name=AWS_REGION)
 
             # Get parquet file metadata
             import pyarrow.parquet as pq
 
-            parquet_data = self.parquet_reader.read_file(file_url)
+            bucket, key = self._parse_s3_url(file_url)
+            response = s3_client.get_object(Bucket=bucket, Key=key)
+            parquet_data = response["Body"].read()
             parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
             num_row_groups = parquet_file.num_row_groups
 
@@ -290,7 +291,7 @@ class S3ParquetImageIterableDataset(IterableDataset):
             )
             raise
 
-    def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    def __iter__(self) -> Iterator[Dict[str, Any]]:
         try:
             worker_info = torch.utils.data.get_worker_info()
             worker_id = worker_info.id if worker_info else 0
@@ -342,8 +343,6 @@ class S3ParquetImageIterableDataset(IterableDataset):
 
                         try:
                             processed = preprocess_fn(row)
-                            image = torch.from_numpy(processed["image"])
-                            label = torch.tensor(processed["label"], dtype=torch.long)
                             rows_processed += 1
 
                             if rows_processed % self.LOG_FREQUENCY == 0:
@@ -359,7 +358,7 @@ class S3ParquetImageIterableDataset(IterableDataset):
                                 )
                                 last_log_time = current_time
 
-                            yield image, label
+                            yield processed
                         except Exception as e:
                             print(
                                 f"[S3ParquetImageIterableDataset] Worker {worker_id}: Error processing row: {str(e)}"
@@ -415,7 +414,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
         super().__init__(benchmark_config)
         self.train_url = train_url
         self.val_url = val_url
-        self.parquet_reader = S3ParquetReader()
 
         # Calculate number of torch workers based on CPUs per GPU
         num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
@@ -439,17 +437,21 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
                 f"[TorchDataLoaderFactory] Rows per worker: {self.limit_rows_per_worker}"
             )
 
+    def _parse_s3_url(self, s3_url: str) -> Tuple[str, str]:
+        """Parse an S3 URL into bucket and key."""
+        if s3_url.startswith("s3://"):
+            s3_parts = s3_url.replace("s3://", "").split("/", 1)
+            return s3_parts[0], s3_parts[1]
+        else:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+
     def _get_file_urls(self, url: str) -> List[str]:
-        """Get all file URLs from the given S3 URL.
-
-        Args:
-            url: S3 URL to get files from
-
-        Returns:
-            List[str]: List of all file URLs found
-        """
+        """Get all file URLs from the given S3 URL."""
         try:
-            urls = self.parquet_reader.list_files(url)
+            # Create S3 client inline
+            import boto3
+
+            s3_client = boto3.client("s3", region_name=AWS_REGION)
 
             # Get Ray worker info
             worker_rank = ray.train.get_context().get_world_rank()
@@ -457,28 +459,71 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
                 f"[TorchDataLoaderFactory] Ray worker {worker_rank}/{self.num_ray_workers} listing files"
             )
 
+            # List files
+            bucket, prefix = self._parse_s3_url(url)
+            file_urls = []
+            response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+            if "Contents" in response:
+                for file in response["Contents"]:
+                    file_urls.append(f"s3://{bucket}/{file['Key']}")
+
             # Sort URLs to ensure consistent ordering across workers
-            urls.sort()
+            file_urls.sort()
 
             # Calculate chunk size to ensure even distribution
-            chunk_size = len(urls) // self.num_ray_workers
-            remainder = len(urls) % self.num_ray_workers
+            chunk_size = len(file_urls) // self.num_ray_workers
+            remainder = len(file_urls) % self.num_ray_workers
 
             # Calculate start and end indices for this worker
             start_idx = worker_rank * chunk_size + min(worker_rank, remainder)
             end_idx = start_idx + chunk_size + (1 if worker_rank < remainder else 0)
 
             # Get this worker's files
-            worker_urls = urls[start_idx:end_idx]
+            worker_urls = file_urls[start_idx:end_idx]
 
             print(
-                f"[TorchDataLoaderFactory] Ray worker {worker_rank} got {len(worker_urls)}/{len(urls)} files (indices {start_idx}:{end_idx})"
+                f"[TorchDataLoaderFactory] Ray worker {worker_rank} got {len(worker_urls)}/{len(file_urls)} files (indices {start_idx}:{end_idx})"
             )
             return worker_urls
 
         except Exception as e:
             print(f"[TorchDataLoaderFactory] Error listing files from {url}: {str(e)}")
             raise
+
+    def collate_fn(self, batch):
+        """Collate function that converts numpy arrays to PyTorch tensors and moves them to the correct device.
+
+        Args:
+            batch: List of dictionaries containing numpy arrays for 'image' and 'label'
+
+        Returns:
+            Tuple of (images, labels) tensors on the correct device
+        """
+        import numpy as np
+
+        # Convert list of dicts to dict of numpy arrays
+        ndarrays = {
+            "image": np.stack([item["image"] for item in batch]),
+            "label": np.array(
+                [item["label"] for item in batch], dtype=np.int64
+            ),  # Ensure labels are int64
+        }
+
+        # Get device from Ray's training context
+        try:
+            device = ray_train_torch.get_device()
+        except AttributeError:
+            # Fallback to CUDA if Ray's device is not available
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Convert to tensors and move to device
+        images = torch.as_tensor(ndarrays["image"], dtype=torch.float32).to(
+            device=device
+        )
+        labels = torch.as_tensor(ndarrays["label"], dtype=torch.int64).to(device=device)
+
+        return images, labels
 
     def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         print(
@@ -500,7 +545,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
             pin_memory=True,
             persistent_workers=True,
             multiprocessing_context="spawn",  # Explicitly set spawn context
-            # prefetch_factor=dataloader_config.prefetch_batches,
+            prefetch_factor=dataloader_config.prefetch_batches,
+            collate_fn=self.collate_fn,
             drop_last=True,
         )
         return iter(dataloader)
@@ -525,7 +571,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
             pin_memory=True,
             persistent_workers=True,
             multiprocessing_context="spawn",  # Explicitly set spawn context
-            # prefetch_factor=dataloader_config.prefetch_batches,
+            prefetch_factor=dataloader_config.prefetch_batches,
+            collate_fn=self.collate_fn,
             drop_last=True,
         )
         return iter(dataloader)
