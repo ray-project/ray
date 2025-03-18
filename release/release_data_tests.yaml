@@ -13,7 +13,7 @@
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
-    cluster_compute: autoscaling_cpu_compute.yaml
+    cluster_compute: fixed_size_cpu_compute.yaml
 
 ###############
 # Reading tests
@@ -336,7 +336,7 @@
           python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600
           --max-to-kill 2
 
-- name: sort
+- name: sortt
   working_dir: nightly_tests
   stable: False
 
