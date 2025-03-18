@@ -7,7 +7,7 @@ from ray.tests.conftest_docker import *  # noqa
 from ray.tests.conftest_docker import NESTED_IMAGE_NAME, run_in_container
 
 # NOTE(zcin): The actual test code are in python scripts under
-# python/ray/tests/runtime_env_image_uri. The scripts are copied over to
+# python/ray/serve/tests/runtime_env_image_uri. The scripts are copied over to
 # the docker container that's started by the `podman_docker_cluster`
 # fixture, so that the tests can be run by invoking the test scripts
 # using `python test.py` from within the pytests in this file
