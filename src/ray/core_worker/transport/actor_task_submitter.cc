@@ -17,8 +17,8 @@
 #include <deque>
 #include <memory>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "ray/gcs/pb_util.h"
 

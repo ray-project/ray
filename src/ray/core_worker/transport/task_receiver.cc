@@ -17,8 +17,8 @@
 #include <memory>
 #include <string>
 #include <thread>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "ray/common/task/task.h"
 

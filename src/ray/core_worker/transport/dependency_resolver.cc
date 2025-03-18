@@ -14,9 +14,9 @@
 
 #include "ray/core_worker/transport/dependency_resolver.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
-#include <memory>
 
 namespace ray {
 namespace core {

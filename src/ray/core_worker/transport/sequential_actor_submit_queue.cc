@@ -14,9 +14,9 @@
 
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
 
-#include <vector>
 #include <map>
 #include <utility>
+#include <vector>
 
 namespace ray {
 namespace core {
