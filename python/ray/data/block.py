@@ -185,7 +185,6 @@ class _BlockExecStatsBuilder:
         self._max_uss = self._estimate_uss()
         self._max_uss_lock = threading.Lock()
 
-        # If necessary, start the USS poll thread.
         self._uss_poll_thread = None
         self._stop_uss_poll_event = None
 
