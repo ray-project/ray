@@ -388,7 +388,7 @@ class _HcclGroup(Communicator):
         return "hccl"
 
 
-def get_unique_id() -> str:
+def get_hccl_unique_id() -> str:
     """
     Generate a unique HCCL ID.
 

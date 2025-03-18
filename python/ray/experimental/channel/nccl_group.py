@@ -6,7 +6,6 @@ import ray
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
-from ray.experimental.channel.utils import get_default_torch_device
 
 if TYPE_CHECKING:
     import torch
@@ -314,7 +313,7 @@ class _NcclGroup(Communicator):
         return "nccl"
 
 
-def get_unique_id() -> str:
+def get_nccl_unique_id() -> str:
     from cupy.cuda import nccl
 
     return nccl.get_unique_id()

@@ -642,7 +642,7 @@ def _do_init_communicator(
     use_communication_streams,
     custom_communicator: Optional[Communicator] = None,
 ):
-    from ray.air._internal.device_manager import get_torch_device_manager_by_context
+    from ray.experimental.channel import utils
 
     if not custom_communicator:
         assert _do_check_has_acclerator(
@@ -655,14 +655,12 @@ def _do_init_communicator(
         ctx.communicators[group_id] = custom_communicator
     else:
         # default to NcclGroup
-        ctx.communicators[
-            group_id
-        ] = get_torch_device_manager_by_context().get_communicator(
+        ctx.communicators[group_id] = utils.get_acclerator_communicator(
             world_size,
             comm_id,
             rank,
             actor_handles,
-            get_torch_device_manager_by_context().get_current_stream(),
+            utils.get_current_acclerator_stream(),
             use_communication_streams,
         )
 
@@ -678,13 +676,15 @@ def _do_destroy_communicator(self, group_id):
 
 
 def _do_check_has_acclerator(self) -> bool:
-    return bool(ray.get_gpu_ids()) or bool("NPU" in ray.cluster_resources())
+    from ray.experimental.channel import utils
+
+    return utils.is_acclerator_communicator_available()
 
 
 def _do_get_unique_communication_id(self) -> bool:
-    from ray.air._internal.device_manager import get_torch_device_manager_by_context
+    from ray.experimental.channel import utils
 
-    return get_torch_device_manager_by_context().get_communication_id()
+    return utils.get_acclerator_unique_id()
 
 
 def _get_ranks(

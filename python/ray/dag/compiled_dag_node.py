@@ -367,20 +367,20 @@ def _device_context_manager():
     if not ChannelContext.get_current().torch_available:
         return nullcontext()
 
-    from ray.air._internal.device_manager import get_torch_device_manager_by_context
+    from ray.experimental.channel import utils
 
     device = ChannelContext.get_current().torch_device
 
     if (
-        device.type in ["cuda", "npu"]
-        and get_torch_device_manager_by_context().is_available()
+        utils.is_acclerator_communicator_available(device) is not None
+        and utils.acclerator_is_available()
     ):
         # In the case of mocked NCCL, we may get a device with type "cuda"
         # but CUDA is not available. We return nullcontext() in that case,
         # otherwise torch raises a runtime error if the cuda device context
         # manager is used.
         # TODO(rui): consider better mocking NCCL to support device context.
-        return get_torch_device_manager_by_context().get_device_context(device)
+        return utils.get_acclerator_context(device)
     return nullcontext()
 
 

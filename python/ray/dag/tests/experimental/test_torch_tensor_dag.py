@@ -28,7 +28,7 @@ from ray._private.test_utils import (
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental.util.types import ReduceOp
-from ray.air._internal.device_manager import get_torch_device_manager_by_context
+from ray.experimental.channel import utils
 
 logger = logging.getLogger(__name__)
 
@@ -431,7 +431,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
                 self._comm_id,
                 rank,
                 self._actor_handles,
-                get_torch_device_manager_by_context().get_current_stream(),
+                utils.get_current_acclerator_stream(),
             )
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
@@ -603,11 +603,11 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
         @property
         def recv_stream(self):
-            return get_torch_device_manager_by_context().get_current_stream()
+            return utils.get_current_acclerator_stream()
 
         @property
         def send_stream(self):
-            return get_torch_device_manager_by_context().get_current_stream()
+            return utils.get_current_acclerator_stream()
 
         def destroy(self) -> None:
             pass
@@ -730,11 +730,11 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
 
         @property
         def recv_stream(self):
-            return get_torch_device_manager_by_context().get_current_stream()
+            return utils.get_current_acclerator_stream()
 
         @property
         def send_stream(self):
-            return get_torch_device_manager_by_context().get_current_stream()
+            return utils.get_current_acclerator_stream()
 
         def destroy(self) -> None:
             pass
@@ -870,11 +870,11 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
 
         @property
         def recv_stream(self):
-            return get_torch_device_manager_by_context().get_current_stream()
+            return utils.get_current_acclerator_stream()
 
         @property
         def send_stream(self):
-            return get_torch_device_manager_by_context().get_current_stream()
+            return utils.get_current_acclerator_stream()
 
         def destroy(self) -> None:
             pass
@@ -1360,7 +1360,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
                 self._comm_id,
                 rank,
                 self._actor_handles,
-                get_torch_device_manager_by_context().get_current_stream(),
+                utils.get_current_acclerator_stream(),
             )
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:

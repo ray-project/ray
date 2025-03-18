@@ -116,7 +116,7 @@ class _SerializationContext:
         # CPU and another from CPU to shared memory. Ideally we should elide
         # the first copy and memcpy directly from GPU to the shared memory
         # buffer.
-        if tensor_device_type in ["cuda", "npu"]:
+        if tensor_device_type != "cpu":
             tensor = tensor.to("cpu")
 
         # Numpy does not have an equivalent dtype for all torch dtypes, so

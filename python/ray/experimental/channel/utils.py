@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 
@@ -107,10 +107,112 @@ def get_default_torch_device(*, allow_cpu: bool) -> "torch.device":
     import torch
 
     accelerator_ids = ray.get_runtime_context().get_accelerator_ids()
-    if not accelerator_ids.get("GPU", []):
+    if accelerator_ids.get("GPU", []):
+        return torch.device("cuda:0")
+    elif accelerator_ids.get("NPU", []):
+        return torch.device("npu:0")
+    else:
         if allow_cpu:
             return torch.device("cpu")
         else:
-            raise RuntimeError("No CUDA device available.")
+            raise RuntimeError("No acclerator available.")
 
-    return torch.device("cuda:0")
+
+DEVICE_RUNTIME_FUNCTIONS = {}
+
+
+def fill_device_runtime_functions():
+    if len(DEVICE_RUNTIME_FUNCTIONS) == 0:
+        device = get_default_torch_device(allow_cpu=True)
+        if device.type == "cuda":
+            import torch
+            from ray.experimental.channel.nccl_group import (
+                _NcclGroup,
+                get_nccl_unique_id,
+            )
+
+            DEVICE_RUNTIME_FUNCTIONS.update(
+                {
+                    "is_available": torch.cuda.is_available,
+                    "current_stream": torch.cuda.current_stream,
+                    "create_event": torch.cuda.Event,
+                    "get_unique_id": get_nccl_unique_id,
+                    "get_communicator": _NcclGroup,
+                }
+            )
+        elif device.type == "npu":
+            import torch
+            import torch_npu  # noqa: F401
+            from ray.experimental.channel.hccl_group import (
+                _HcclGroup,
+                get_hccl_unique_id,
+            )
+
+            DEVICE_RUNTIME_FUNCTIONS.update(
+                {
+                    "is_available": torch.npu.is_available,
+                    "current_stream": torch.npu.current_stream,
+                    "create_event": torch.npu.Event,
+                    "get_unique_id": get_hccl_unique_id,
+                    "get_communicator": _HcclGroup,
+                }
+            )
+        elif device.type == "cpu":
+            from ray.experimental.channel.cpu_communicator import get_cpu_unique_id
+
+            DEVICE_RUNTIME_FUNCTIONS.update(
+                {
+                    "get_unique_id": get_cpu_unique_id,
+                }
+            )
+
+
+def is_acclerator_communicator_available(
+    device: Optional[Union["torch.device", str]] = None
+):
+    if device is None:
+        device = get_default_torch_device(allow_cpu=False)
+    if device in ["cuda", "npu"]:
+        return True
+    if device.type in ["cuda", "npu"]:
+        return True
+    return False
+
+
+def acclerator_is_available():
+    fill_device_runtime_functions()
+    if "is_available" in DEVICE_RUNTIME_FUNCTIONS:
+        return DEVICE_RUNTIME_FUNCTIONS["is_available"]()
+    return False
+
+
+def get_current_acclerator_stream():
+    fill_device_runtime_functions()
+    return DEVICE_RUNTIME_FUNCTIONS["current_stream"]()
+
+
+def create_acclerator_event():
+    fill_device_runtime_functions()
+    return DEVICE_RUNTIME_FUNCTIONS["create_event"]()
+
+
+def get_acclerator_context(device):
+    if device.type == "cuda":
+        import torch
+
+        return torch.cuda.device(device)
+    elif device.type == "npu":
+        import torch
+        import torch_npu  # noqa: F401
+
+        return torch.npu.device(device)
+
+
+def get_acclerator_unique_id():
+    fill_device_runtime_functions()
+    return DEVICE_RUNTIME_FUNCTIONS["get_unique_id"]()
+
+
+def get_acclerator_communicator(*args, **kwargs):
+    fill_device_runtime_functions()
+    return DEVICE_RUNTIME_FUNCTIONS["get_communicator"](*args, **kwargs)

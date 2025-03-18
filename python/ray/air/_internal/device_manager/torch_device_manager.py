@@ -1,10 +1,7 @@
 from abc import ABC
-from typing import List, Union, Optional, Any, TYPE_CHECKING
+from typing import List, Union
 
 import torch
-
-if TYPE_CHECKING:
-    import ray
 
 
 class TorchDeviceManager(ABC):
@@ -40,28 +37,4 @@ class TorchDeviceManager(ABC):
 
     def get_current_stream(self):
         """Get current stream on accelerators like torch.cuda.current_stream"""
-        ...
-
-    def create_event(self):
-        """Create a event"""
-        ...
-
-    def get_device_context(self, device: torch.device):
-        """Get a device context of device"""
-        ...
-
-    def get_communicator(
-        self,
-        world_size: int,
-        comm_id: int,
-        rank: Optional[int],
-        actor_handles: List["ray.actor.ActorHandle"],
-        torch_stream: Optional[Any],
-        use_communication_streams: bool = False,
-    ) -> "ray.experimental.channel.communicator.Communicator":
-        """Get a communicator"""
-        ...
-
-    def get_communication_id(self):
-        """Get a communicator unique id"""
         ...

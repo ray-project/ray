@@ -187,7 +187,7 @@ class CPUCommunicator(Communicator):
         raise NotImplementedError
 
 
-def get_unique_id():
+def get_cpu_unique_id():
     """
     Generate a unique identifier.
 
