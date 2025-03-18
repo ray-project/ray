@@ -379,7 +379,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
   variations:
-    - __suffix__: regular
+    - __suffix__: autoscaling_compute
     - __suffix__: fixed_size_compute
       cluster:
         cluster_compute: fixed_size_gpu_compute.yaml
