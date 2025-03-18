@@ -291,11 +291,6 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
         --cache-test-results --parallelism-per-worker 2
 
-  - label: "irabbani ci"
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type cgroup --privileged-container --only-tags irabbani
-
   - label: ":ray: core: cpp asan tests"
     tags: core_cpp
     instance_type: medium
