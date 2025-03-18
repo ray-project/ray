@@ -25,6 +25,7 @@
 #include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/collective_group_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
@@ -1338,7 +1339,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
             const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
                 nullptr);
 
+  void RegisterActorCollectiveGroup(
+      const std::unordered_map<ActorID, int> &actor_id_to_rank);
+
  private:
+  std::unique_ptr<CollectiveGroupManager> collective_group_manager_;
+
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
 

@@ -5056,6 +5056,11 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       worker::TaskStatusEvent::TaskStateUpdate(is_debugger_paused)));
 }
 
+void CoreWorker::RegisterActorCollectiveGroup(
+    const std::unordered_map<ActorID, int> &actor_id_to_rank) {
+  collective_group_manager_ = std::make_unique<CollectiveGroupManager>(actor_id_to_rank);
+}
+
 ClusterSizeBasedLeaseRequestRateLimiter::ClusterSizeBasedLeaseRequestRateLimiter(
     size_t min_concurrent_lease_limit)
     : min_concurrent_lease_cap_(min_concurrent_lease_limit), num_alive_nodes_(0) {}

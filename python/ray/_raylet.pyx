@@ -3044,6 +3044,13 @@ cdef class CoreWorker:
         self._task_id_to_future = {}
         self.event_loop_executor = None
 
+    def register_actor_nccl_group(self, actor_ids):
+        cdef:
+            unordered_map[CActorID, int] c_actor_id_to_rank
+        for rank, actor_id in enumerate(actor_ids):
+            c_actor_id_to_rank[(<ActorID>actor_id).native()] = rank
+        CCoreWorkerProcess.GetCoreWorker().RegisterActorCollectiveGroup(c_actor_id_to_rank)
+
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
         # shutdown. So we can't call

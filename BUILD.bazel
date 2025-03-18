@@ -1175,6 +1175,7 @@ ray_cc_library(
         "src/ray/core_worker/transport/sequential_actor_submit_queue.h",
         "src/ray/core_worker/transport/task_receiver.h",
         "src/ray/core_worker/transport/thread_pool.h",
+        "src/ray/core_worker/collective_group_manager.h",
     ],
     deps = [
         ":gcs",
