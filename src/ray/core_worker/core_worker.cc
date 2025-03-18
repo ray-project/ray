@@ -3860,6 +3860,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
           if (IsExiting()) {
             RAY_LOG(INFO) << "Queued task " << func_name
                           << " won't be executed because the worker already exited.";
+            send_reply_callback(Status::Invalid("Worker has exited."), nullptr, nullptr);
             return;
           }
           task_receiver_->HandleTask(request, reply, send_reply_callback);
@@ -3876,6 +3877,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
           if (IsExiting()) {
             RAY_LOG(INFO) << "Queued task " << func_name
                           << " won't be executed because the worker already exited.";
+            send_reply_callback(Status::Invalid("Worker has exited."), nullptr, nullptr);
             return;
           }
           task_receiver_->RunNormalTasksFromQueue();
