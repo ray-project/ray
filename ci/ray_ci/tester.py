@@ -145,13 +145,6 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help="Name of the build used to run tests",
 )
 @click.option(
-    "--privileged-container",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help="Run the test in a privileged Docker container",
-)
-@click.option(
     "--build-type",
     type=click.Choice(
         [
@@ -195,6 +188,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     "--tmp-filesystem",
     type=str,
     help=("Filesystem to use for /tmp"),
+)
+@click.option(
+    "--privileged-container",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Run the test in a privileged Docker container",
 )
 def main(
     targets: List[str],
