@@ -83,7 +83,7 @@ class LinuxContainer(Container):
                 "--mount",
                 f"type={self.tmp_filesystem},destination=/tmp",
             ]
-        logging.info(
+        logger.info(
             f"irabbani: getting command line args for docker {self.privileged_container}"
         )
         if self.privileged_container:
