@@ -98,7 +98,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
     def __init__(self, benchmark_config: BenchmarkConfig):
         train_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         val_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
-        super().__init__(benchmark_config, train_urls, val_urls)
+        super().__init__(benchmark_config, train_urls, val_urls, limit_total_rows=50000)
 
 
 class ImageClassificationFactory(BenchmarkFactory):

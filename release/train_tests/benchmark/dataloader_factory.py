@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, Tuple, List, Optional, Callable, Union
 import time
 import multiprocessing
+import logging
 
 import torch
 import torchvision
@@ -25,15 +26,17 @@ from image_classification.imagenet import (
     get_preprocess_map_fn,
 )
 
+logger = logging.getLogger(__name__)
+
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 if torch.cuda.is_available():
     try:
         multiprocessing.set_start_method("spawn", force=True)
-        print(
+        logger.info(
             "[DataLoader] Set multiprocessing start method to 'spawn' for CUDA compatibility"
         )
     except RuntimeError:
-        print("[DataLoader] Multiprocessing start method already set")
+        logger.info("[DataLoader] Multiprocessing start method already set")
 
 # AWS configuration
 AWS_REGION = "us-west-2"
@@ -242,7 +245,9 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
     def _read_parquet_file(self, file_url: str) -> Iterator[pd.DataFrame]:
         """Read a Parquet file from S3 one row group at a time."""
         try:
-            print(f"[S3ParquetImageIterableDataset] Getting row groups for {file_url}")
+            logger.info(
+                f"[S3ParquetImageIterableDataset] Getting row groups for {file_url}"
+            )
 
             # Create S3 client inline
             import boto3
@@ -258,7 +263,7 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
             parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
             num_row_groups = parquet_file.num_row_groups
 
-            print(
+            logger.info(
                 f"[S3ParquetImageIterableDataset] Found {num_row_groups} row groups in {file_url}"
             )
 
@@ -268,7 +273,7 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                     row_group_metadata = parquet_file.metadata.row_group(row_group)
                     num_rows = row_group_metadata.num_rows
 
-                    print(
+                    logger.info(
                         f"[S3ParquetImageIterableDataset] Reading row group {row_group}/{num_row_groups} ({num_rows} rows) from {file_url}"
                     )
 
@@ -280,13 +285,13 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                         yield df
 
                 except Exception as e:
-                    print(
+                    logger.error(
                         f"[S3ParquetImageIterableDataset] Error processing row group {row_group} from {file_url}: {str(e)}"
                     )
                     continue
 
         except Exception as e:
-            print(
+            logger.error(
                 f"[S3ParquetImageIterableDataset] Error reading file {file_url}: {str(e)}"
             )
             raise
@@ -297,8 +302,13 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
             worker_id = worker_info.id if worker_info else 0
             num_workers = worker_info.num_workers if worker_info else 1
 
-            print(
+            logger.info(
                 f"[S3ParquetImageIterableDataset] Worker {worker_id}/{num_workers} starting"
+            )
+            logger.info(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                f"random_transforms={self.random_transforms}, "
+                f"limit_rows_per_worker={self.limit_rows_per_worker}"
             )
             rows_processed = 0  # Local to this worker
             last_log_time = time.time()
@@ -308,8 +318,9 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                     decode_image=True, random_transforms=self.random_transforms
                 )
             except Exception as e:
-                print(
-                    f"[S3ParquetImageIterableDataset] Worker {worker_id}: Error creating preprocess_fn: {str(e)}"
+                logger.error(
+                    f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                    f"Error creating preprocess_fn: {str(e)}"
                 )
                 raise
 
@@ -325,19 +336,29 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                 )
                 files_to_read = self.file_urls[start_idx:end_idx]
 
-            print(
-                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Processing {len(files_to_read)} files"
+            logger.info(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                f"Processing {len(files_to_read)} files: {files_to_read}"
             )
 
             for file_url in files_to_read:
+                logger.info(
+                    f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                    f"Starting to read {file_url}"
+                )
                 for df in self._read_parquet_file(file_url):
+                    logger.info(
+                        f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                        f"Got DataFrame with {len(df)} rows"
+                    )
                     for _, row in df.iterrows():
                         if (
                             self.limit_rows_per_worker is not None
                             and rows_processed >= self.limit_rows_per_worker
                         ):
-                            print(
-                                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Reached row limit {self.limit_rows_per_worker}"
+                            logger.info(
+                                f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                                f"Reached row limit {self.limit_rows_per_worker}"
                             )
                             return
 
@@ -353,24 +374,28 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                                     if elapsed_time > 0
                                     else 0
                                 )
-                                print(
-                                    f"[S3ParquetImageIterableDataset] Worker {worker_id}: Processed {rows_processed} rows ({rows_per_second:.2f} rows/sec)"
+                                logger.info(
+                                    f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                                    f"Processed {rows_processed} rows ({rows_per_second:.2f} rows/sec)"
                                 )
                                 last_log_time = current_time
 
                             yield processed
                         except Exception as e:
-                            print(
-                                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Error processing row: {str(e)}"
+                            logger.error(
+                                f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                                f"Error processing row: {str(e)}"
                             )
                             continue
 
-            print(
-                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Finished processing {rows_processed} rows"
+            logger.info(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id}: "
+                f"Finished processing {rows_processed} rows"
             )
         except Exception as e:
-            print(
-                f"[S3ParquetImageIterableDataset] Worker {worker_id if 'worker_id' in locals() else 'Unknown'}: Fatal error: {str(e)}"
+            logger.error(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id if 'worker_id' in locals() else 'Unknown'}: "
+                f"Fatal error: {str(e)}"
             )
             raise
 
@@ -419,7 +444,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
         num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
         num_cpus = os.cpu_count() or 1
         self.num_torch_workers = max(1, num_cpus // num_gpus // 2)  # At least 1 worker
-        print(
+        logger.info(
             f"[TorchDataLoaderFactory] Using {self.num_torch_workers} torch workers per GPU (Total CPUs: {num_cpus}, Total GPUs: {num_gpus})"
         )
 
@@ -429,11 +454,11 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
         self.limit_rows_per_worker = (
             limit_total_rows // total_workers if limit_total_rows is not None else None
         )
-        print(
+        logger.info(
             f"[TorchDataLoaderFactory] Total workers = {total_workers} ({self.num_ray_workers} Ray workers × {self.num_torch_workers} torch workers per Ray worker)"
         )
         if limit_total_rows is not None:
-            print(
+            logger.info(
                 f"[TorchDataLoaderFactory] Rows per worker: {self.limit_rows_per_worker}"
             )
 
@@ -455,7 +480,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
 
             # Get Ray worker info
             worker_rank = ray.train.get_context().get_world_rank()
-            print(
+            logger.info(
                 f"[TorchDataLoaderFactory] Ray worker {worker_rank}/{self.num_ray_workers} listing files"
             )
 
@@ -482,16 +507,20 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
             # Get this worker's files
             worker_urls = file_urls[start_idx:end_idx]
 
-            print(
+            logger.info(
                 f"[TorchDataLoaderFactory] Ray worker {worker_rank} got {len(worker_urls)}/{len(file_urls)} files (indices {start_idx}:{end_idx})"
             )
             return worker_urls
 
         except Exception as e:
-            print(f"[TorchDataLoaderFactory] Error listing files from {url}: {str(e)}")
+            logger.error(
+                f"[TorchDataLoaderFactory] Error listing files from {url}: {str(e)}"
+            )
             raise
 
-    def collate_fn(self, batch):
+    def collate_fn(
+        self, batch: List[Dict[str, Any]]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Collate function that converts numpy arrays to PyTorch tensors and moves them to the correct device.
 
         Args:
@@ -526,7 +555,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
         return images, labels
 
     def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-        print(
+        logger.info(
             f"[TorchDataLoaderFactory] Creating train dataloader on Ray worker {ray.train.get_context().get_world_rank()}"
         )
         dataloader_config = self.get_dataloader_config()
@@ -552,16 +581,16 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
         return iter(dataloader)
 
     def get_val_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-        print(
-            f"[TorchDataLoaderFactory] Creating validation dataloader on Ray worker {ray.train.get_context().get_world_rank()}"
+        logger.info(
+            f"[TorchDataLoaderFactory] Creating validation dataloader on Ray worker "
+            f"{ray.train.get_context().get_world_rank()}"
         )
         dataloader_config = self.get_dataloader_config()
 
         dataset = S3ParquetImageIterableDataset(
             file_urls=self._get_file_urls(self.val_url),
-            random_transforms=False,
+            random_transforms=False,  # No random transforms for validation
             batch_size=dataloader_config.validation_batch_size,
-            limit_rows_per_worker=self.limit_rows_per_worker,
         )
 
         dataloader = torch.utils.data.DataLoader(
@@ -573,13 +602,13 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
             multiprocessing_context="spawn",  # Explicitly set spawn context
             prefetch_factor=dataloader_config.prefetch_batches,
             collate_fn=self.collate_fn,
-            drop_last=True,
+            drop_last=False,  # Don't drop incomplete batches during validation
         )
         return iter(dataloader)
 
 
 class RayDataLoaderFactory(BaseDataLoaderFactory):
-    def __init__(self, benchmark_config: BenchmarkConfig):
+    def __init__(self, benchmark_config: BenchmarkConfig) -> None:
         super().__init__(benchmark_config)
         self._ray_ds_iterators = {}
 
@@ -601,7 +630,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         pass
 
     @abstractmethod
-    def collate_fn(self) -> Dict[str, Dataset]:
+    def collate_fn(self, batch: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get the collate function for the dataloader.
 
         Returns:

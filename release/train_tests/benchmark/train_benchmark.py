@@ -5,7 +5,7 @@ import os
 import pprint
 import time
 import tempfile
-from typing import Dict
+from typing import Dict, Iterator, Tuple, Optional
 
 import ray.train
 from ray._private.test_utils import safe_write_to_results_json
@@ -35,6 +35,8 @@ class TrainLoopRunner:
         self.model = self.model.to(device)
 
         self.loss_fn = factory.get_loss_fn()
+        self.loss_fn = self.loss_fn.to(device)
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
         # Training progress state.
@@ -49,6 +51,11 @@ class TrainLoopRunner:
             self.restore_from_checkpoint(checkpoint)
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Restoring from checkpoint: {checkpoint} for worker "
+                f"{ray.train.get_context().get_world_rank()}"
+            )
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
         ) as temp_checkpoint_dir:
@@ -64,9 +71,9 @@ class TrainLoopRunner:
             self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
-
-        print(
-            f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} epochs for worker {ray.train.get_context().get_world_rank()}"
+        logger.info(
+            f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} "
+            f"epochs for worker {ray.train.get_context().get_world_rank()}"
         )
         starting_epoch = self._train_epoch_idx
 
@@ -142,10 +149,23 @@ class TrainLoopRunner:
             == 0
         )
 
-    def get_next_batch(self, dataloader):
+    def get_next_batch(
+        self, dataloader: Iterator[Tuple[torch.Tensor, torch.Tensor]]
+    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+        """Get the next batch from the dataloader, handling any errors that occur.
+
+        Args:
+            dataloader: The dataloader to get the next batch from
+
+        Returns:
+            Optional[Tuple[torch.Tensor, torch.Tensor]]: The next batch, or None if there are no more batches
+        """
         try:
             return next(dataloader)
         except StopIteration:
+            return None
+        except Exception as e:
+            logger.error(f"[DataLoader] Error getting next batch: {str(e)}")
             return None
 
     def train_step(self, input_batch, labels):
@@ -163,6 +183,11 @@ class TrainLoopRunner:
         self.optimizer.zero_grad()
 
     def validate_and_checkpoint(self):
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Validation] Starting validation and checkpointing @ epoch="
+                f"{self._train_epoch_idx}, batch={self._train_batch_idx}"
+            )
         with self._metrics["validation/epoch"].timer():
             validation_metrics = self.validate()
 
@@ -192,29 +217,36 @@ class TrainLoopRunner:
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
-        with self._metrics["validation/iter_first_batch"].timer():
-            batch = self.get_next_batch(val_dataloader)
-
-        while batch:
-            input_batch, labels = batch
-
-            with self._metrics["validation/step"].timer():
-                if not self.benchmark_config.skip_validation_step:
-                    total_loss += self.validate_step(input_batch, labels)
-
-            num_rows += len(labels)
-            self._metrics["validation/rows_processed"].add(len(labels))
-
-            with self._metrics["validation/iter_batch"].timer():
+        try:
+            with self._metrics["validation/iter_first_batch"].timer():
                 batch = self.get_next_batch(val_dataloader)
 
-        if num_rows == 0:
-            logger.warning("[Validation] No rows were processed during validation")
+            while batch:
+                input_batch, labels = batch
+
+                with self._metrics["validation/step"].timer():
+                    if not self.benchmark_config.skip_validation_step:
+                        total_loss += self.validate_step(input_batch, labels)
+
+                num_rows += len(labels)
+                self._metrics["validation/rows_processed"].add(len(labels))
+
+                with self._metrics["validation/iter_batch"].timer():
+                    batch = self.get_next_batch(val_dataloader)
+
+            if num_rows == 0:
+                logger.warning("[Validation] No rows were processed during validation")
+                return {
+                    "validation/loss": float("inf")
+                }  # Return infinity to indicate invalid validation
+
+            return {"validation/loss": total_loss.item() / num_rows}
+
+        except Exception as e:
+            logger.error(f"[Validation] Error during validation: {str(e)}")
             return {
                 "validation/loss": float("inf")
             }  # Return infinity to indicate invalid validation
-
-        return {"validation/loss": total_loss.item() / num_rows}
 
     def validate_step(self, input_batch, labels):
         device = next(self.model.parameters()).device  # Ensure we get model's device
@@ -229,9 +261,19 @@ class TrainLoopRunner:
         return loss
 
     def report_checkpoint(self, metrics, checkpoint):
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Reporting checkpoint @ epoch={self._train_epoch_idx}, "
+                f"batch={self._train_batch_idx}"
+            )
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )
+
+        # Only rank 0 should report the checkpoint, but all workers need to participate in the report call
+        if ray.train.get_context().get_world_rank() != 0:
+            checkpoint = None  # Other ranks should not report checkpoints
+
         ray.train.report(
             metrics,
             checkpoint=checkpoint,
@@ -239,6 +281,11 @@ class TrainLoopRunner:
         )
 
     def load_checkpoint(self, local_dir: str):
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Loading checkpoint from {local_dir} for worker "
+                f"{ray.train.get_context().get_world_rank()}"
+            )
         device = ray.train.torch.get_device()
 
         # Load state dicts
@@ -274,6 +321,11 @@ class TrainLoopRunner:
             )
 
     def save_checkpoint(self, local_dir: str):
+        if ray.train.get_context().get_world_rank() == 0:
+            logger.info(
+                f"[Checkpoint] Saving checkpoint to {local_dir} @ epoch="
+                f"{self._train_epoch_idx}, batch={self._train_batch_idx}"
+            )
         train_state = {
             "epoch": self._train_epoch_idx,
             "batch_idx": self._train_batch_idx,
