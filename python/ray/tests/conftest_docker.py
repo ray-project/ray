@@ -189,8 +189,8 @@ def run_in_container(cmds: List[List[str]], container_id: str):
     return outputs
 
 
-IMAGE_NAME = "rayproject/ray:runtime_env_container"
-NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_container_nested"
+IMAGE_NAME = "rayproject/ray:runtime_env_image_uri"
+NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_image_uri_nested"
 
 
 @pytest.fixture(scope="session")
@@ -233,7 +233,7 @@ def podman_docker_cluster():
         container_id,
     )
 
-    # Add custom file to new image tagged `runtime_env_container_nested`,
+    # Add custom file to new image tagged `runtime_env_image_uri_nested`,
     # which can be read by Ray actors / Serve deployments to verify the
     # container runtime env plugin. Also add serve application that will
     # be imported by the telemetry test.

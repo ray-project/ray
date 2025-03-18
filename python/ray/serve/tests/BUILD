@@ -504,3 +504,20 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
+
+# Tests using the `image_uri` field in `runtime_env`
+# to run Serve applications in an independent container.
+py_test(
+    name = "test_runtime_env_image_uri",
+    size = "medium",
+    srcs = ["test_runtime_env_image_uri.py"],
+    tags = [
+        "container",
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
