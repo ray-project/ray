@@ -330,6 +330,11 @@ class MapOperator(OneToOneOperator, ABC):
             # `target_max_block_size` is large (e.g., 1GB), then tasks can OOM even
             # if it just uses enough memory to produce an output block. By setting
             # `memory` to the average output size, we can mitigate this case.
+            #
+            # We set it to 1 target block size out of assumption that *at least* 1 copy of 
+            # data (to process heap) will be made during processing.
+            # Please note that, Ray's "memory" resource is exclusive of the Object Store
+            # memory allocated on the node (ie its total allocatable value is Total memory - Object Store memory)
             ray_remote_args["memory"] = self.metrics.average_bytes_per_output
 
         # For tasks with small args, we will use SPREAD by default to optimize for
