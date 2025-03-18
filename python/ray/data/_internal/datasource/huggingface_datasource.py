@@ -122,7 +122,9 @@ class HuggingFaceDatasource(Datasource):
         # Note: we pass `self` here instead of `self._dataset` because
         # we need to trigger the try-import logic at the top of file
         # to avoid import error of dataset_modules.
-        for batch in self._dataset.with_format("arrow").iter(batch_size=self._batch_size):
+        for batch in self._dataset.with_format("arrow").iter(
+            batch_size=self._batch_size
+        ):
             # HuggingFace IterableDatasets do not fully support methods like
             # `set_format`, `with_format`, and `formatted_as`, so the dataset
             # can return whatever is the default configured batch type, even if
@@ -147,7 +149,6 @@ class HuggingFaceDatasource(Datasource):
             # Ensure that we return the default block type.
             block = BlockAccessor.for_block(batch).to_default()
             yield block
-
 
     def get_read_tasks(
         self,
