@@ -5,18 +5,14 @@ load("//bazel:python.bzl", "doctest", "py_test_module_list")
 # Runs tests against docstrings on all source files.
 # We use a custom conftest, see tests/doctest_conftest.py
 # -------------------------------------------------------
-copy_file(
-    name = "data_doctest_conftest",
-    src = "tests/doctest_conftest.py",
-    out = "data_doctest_conftest.py",
-    # Used by the doctest builds in `doc/source/`.
-    visibility = ["//visibility:public"],
+
+exports_files(
+  ["tests/doctest_pytest_plugin.py"],
 )
 
 doctest(
     size = "large",
-    size = "large",
-    conftest_file = "//python/ray/data:data_doctest_conftest",
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     files = glob(
         ["**/*.py"],
         exclude = glob([

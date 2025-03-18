@@ -516,7 +516,7 @@ doctest(
             "source/data/transforming-data.rst",
         ],
     ),
-    conftest_file = "//python/ray/data:data_doctest_conftest",
+    pytest_plugin_file = "//python/ray/data:tests/doctest_conftest.py",
     tags = ["team:data"],
 )
 
@@ -526,7 +526,7 @@ doctest(
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst",
     ],
-    conftest_file = "//python/ray/data:data_doctest_conftest",
+    pytest_plugin_file = "//python/ray/data:tests/doctest_conftest.py",
     tags = ["team:data"],
     gpu = True,
 )
