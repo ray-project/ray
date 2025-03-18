@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef SRC_RAY_RAYLET_TEST_UTIL_H_
-#define SRC_RAY_RAYLET_TEST_UTIL_H_
-#endif  // SRC_RAY_RAYLET_TEST_UTIL_H_
+#pragma once
 
 #include <memory>
 #include <string>
