@@ -12,7 +12,11 @@ from base64 import b64decode
 from collections import namedtuple
 from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, List, Any, TYPE_CHECKING
+from enum import IntEnum
+
+if TYPE_CHECKING:
+    from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
 import aiosignal  # noqa: F401
 from frozenlist import FrozenList  # noqa: F401
@@ -23,11 +27,11 @@ import ray._private.protobuf_compat
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray.experimental.internal_kv as internal_kv
+from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.utils import (
     binary_to_hex,
     check_dashboard_dependencies_installed,
-    get_or_create_event_loop,
     split_address,
 )
 from ray._raylet import GcsClient
@@ -39,6 +43,17 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
+
+
+class HTTPStatusCode(IntEnum):
+    # 2xx Success
+    OK = 200
+
+    # 4xx Client Errors
+    NOT_FOUND = 404
+
+    # 5xx Server Errors
+    INTERNAL_ERROR = 500
 
 
 class FrontendNotFoundError(OSError):
@@ -166,7 +181,6 @@ class DashboardHeadModule(abc.ABC):
         if self._gcs_client is None:
             self._gcs_client = GcsClient(
                 address=self._config.gcs_address,
-                nums_reconnect_retry=0,
                 cluster_id=self._config.cluster_id_hex,
             )
         return self._gcs_client
@@ -176,7 +190,6 @@ class DashboardHeadModule(abc.ABC):
         if self._gcs_aio_client is None:
             self._gcs_aio_client = GcsAioClient(
                 address=self._config.gcs_address,
-                nums_reconnect_retry=0,
                 cluster_id=self._config.cluster_id_hex,
             )
             if not internal_kv._internal_kv_initialized():
@@ -356,6 +369,29 @@ def address_tuple(address):
         return address
     ip, port = address.split(":")
     return ip, int(port)
+
+
+def node_stats_to_dict(
+    message: "GetNodeStatsReply",
+) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+    decode_keys = {
+        "actorId",
+        "jobId",
+        "taskId",
+        "parentTaskId",
+        "sourceActorId",
+        "callerId",
+        "rayletId",
+        "workerId",
+        "placementGroupId",
+    }
+    core_workers_stats = message.core_workers_stats
+    result = message_to_dict(message, decode_keys)
+    result["coreWorkersStats"] = [
+        message_to_dict(m, decode_keys, always_print_fields_with_no_presence=True)
+        for m in core_workers_stats
+    ]
+    return result
 
 
 class CustomEncoder(json.JSONEncoder):
@@ -809,7 +845,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     """
 
     address = services.canonicalize_bootstrap_address_or_die(address)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    gcs_client = GcsClient(address=address)
 
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(

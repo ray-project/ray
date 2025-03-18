@@ -3,7 +3,7 @@ import posixpath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
-from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
+from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import (
@@ -66,7 +66,7 @@ class _FileDatasink(Datasink[None]):
         self.unresolved_path = path
         paths, self.filesystem = _resolve_paths_and_filesystem(path, filesystem)
         self.filesystem = RetryingPyFileSystem.wrap(
-            self.filesystem, context=self._data_context
+            self.filesystem, retryable_errors=self._data_context.retried_io_errors
         )
         assert len(paths) == 1, len(paths)
         self.path = paths[0]
@@ -111,7 +111,7 @@ class _FileDatasink(Datasink[None]):
             if self.filesystem.get_file_info(dest).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
-                tmp = _add_creatable_buckets_param_if_s3_uri(dest)
+                tmp = add_creatable_buckets_param_if_s3_uri(dest)
                 self.filesystem.create_dir(tmp, recursive=True)
                 return True
 

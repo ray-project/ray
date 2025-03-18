@@ -34,7 +34,7 @@ def get_local_state_client():
         hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
     )
 
-    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
+    gcs_aio_client = gcs_utils.GcsAioClient(address=hostname)
     client = StateDataSourceClient(gcs_channel, gcs_aio_client)
 
     return client

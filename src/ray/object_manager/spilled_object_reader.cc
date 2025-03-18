@@ -170,15 +170,29 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
 
 bool SpilledObjectReader::ReadFromDataSection(uint64_t offset,
                                               uint64_t size,
-                                              char *output) const {
-  std::ifstream is(file_path_, std::ios::binary);
-  return is.seekg(data_offset_ + offset) && is.read(output, size);
+                                              std::string &output) const {
+  std::ifstream file(file_path_, std::ios::binary);
+  file.seekg(data_offset_ + offset);
+  std::istreambuf_iterator<char> start(file), end;
+  uint64_t size_idx = 0;
+  for (auto it = start; size_idx < size && it != end; ++it) {
+    output.push_back(*it);
+    ++size_idx;
+  }
+  return size_idx == size;
 }
 
 bool SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
                                                   uint64_t size,
-                                                  char *output) const {
-  std::ifstream is(file_path_, std::ios::binary);
-  return is.seekg(metadata_offset_ + offset) && is.read(output, size);
+                                                  std::string &output) const {
+  std::ifstream file(file_path_, std::ios::binary);
+  file.seekg(metadata_offset_ + offset);
+  std::istreambuf_iterator<char> start(file), end;
+  uint64_t size_idx = 0;
+  for (auto it = start; size_idx < size && it != end; ++it) {
+    output.push_back(*it);
+    ++size_idx;
+  }
+  return size_idx == size;
 }
 }  // namespace ray
