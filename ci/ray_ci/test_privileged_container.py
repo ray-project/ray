@@ -1,4 +1,7 @@
 import os
+import pytest
+import sys
+
 
 from pathlib import Path
 
@@ -40,3 +43,7 @@ def test_cgroupv2_controllers_enabled():
             assert (
                 expected_ctrl in enabled_ctrls
             ), f"Expected {expected_ctrl} to be enabled for cgroups2, but it is not"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
