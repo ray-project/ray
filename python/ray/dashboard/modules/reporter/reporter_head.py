@@ -78,7 +78,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
         return dashboard_optional_utils.rest_response(
-            success=True, message="", **self.cluster_metadata
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="",
+            **self.cluster_metadata,
         )
 
     @routes.get("/api/cluster_status")
@@ -120,7 +122,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         if not return_formatted_output:
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Got cluster status.",
                 autoscaling_status=legacy_status.decode() if legacy_status else None,
                 autoscaling_error=error.decode() if error else None,
@@ -128,7 +130,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             )
         else:
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Got formatted cluster status.",
                 cluster_status=debug_status(
                     formatted_status_string, error, address=self.gcs_address

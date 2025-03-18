@@ -489,12 +489,11 @@ Status SendDeleteReply(const std::shared_ptr<Client> &client,
                        const std::vector<PlasmaError> &errors) {
   RAY_DCHECK(object_ids.size() == errors.size());
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = fb::CreatePlasmaDeleteReply(
-      fbb,
-      static_cast<int32_t>(object_ids.size()),
-      ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
-      fbb.CreateVector(MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
-                       object_ids.size()));
+  auto message =
+      fb::CreatePlasmaDeleteReply(fbb,
+                                  static_cast<int32_t>(object_ids.size()),
+                                  ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
+                                  fbb.CreateVector(errors.data(), errors.size()));
   return PlasmaSend(client, MessageType::PlasmaDeleteReply, &fbb, message);
 }
 
