@@ -78,7 +78,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     } else if (has_new_infeasible_requests) {
       // publish error message
       std::string error_message =
-          "There are tasks with infeasible resource requests and won't "
+          "There are tasks with infeasible resource requests that cannot "
           "be scheduled. See "
           "https://docs.ray.io/en/latest/ray-core/scheduling/"
           "index.html#ray-scheduling-resources "
