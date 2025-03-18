@@ -3291,6 +3291,6 @@ genrule(
 
 sh_test(
     name = "irabbani_sh_test",
-    tags = ["team:irabbani"],
+    tags = ["team:core", "irabbani"],
     srcs = ["irabbani_shell_test.sh"]
 )

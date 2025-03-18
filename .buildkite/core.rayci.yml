@@ -294,7 +294,7 @@ steps:
   - label: "irabbani ci"
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... irabbani --build-type cgroup --privileged-container
+      - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type cgroup --privileged-container --only-tags irabbani
 
   - label: ":ray: core: cpp asan tests"
     tags: core_cpp
