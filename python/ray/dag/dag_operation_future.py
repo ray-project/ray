@@ -107,13 +107,13 @@ class GPUFuture(DAGOperationFuture[Any]):
             stream: The torch stream to record the event on, this event is waited
                 on when the future is resolved. If None, the current stream is used.
         """
-        from ray.experimental.channel import utils
+        from ray.experimental.channel.utils import AccleratorRuntime
 
         if stream is None:
-            stream = utils.get_current_acclerator_stream()
+            stream = AccleratorRuntime.get().current_stream()
 
         self._buf = buf
-        self._event = utils.create_acclerator_event()
+        self._event = AccleratorRuntime.get().create_event()
         self._event.record(stream)
         self._fut_id = fut_id
         self._waited: bool = False
@@ -126,9 +126,9 @@ class GPUFuture(DAGOperationFuture[Any]):
         Wait for the future on the current CUDA stream and return the result from
         the GPU operation. This operation does not block CPU.
         """
-        from ray.experimental.channel import utils
+        from ray.experimental.channel.utils import AccleratorRuntime
 
-        current_stream = utils.get_current_acclerator_stream()
+        current_stream = AccleratorRuntime.get().current_stream()
         if not self._waited:
             self._waited = True
             current_stream.wait_event(self._event)

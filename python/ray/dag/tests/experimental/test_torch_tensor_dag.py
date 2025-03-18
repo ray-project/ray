@@ -28,7 +28,7 @@ from ray._private.test_utils import (
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental.util.types import ReduceOp
-from ray.experimental.channel import utils
+from ray.experimental.channel.utils import AccleratorRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -431,7 +431,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
                 self._comm_id,
                 rank,
                 self._actor_handles,
-                utils.get_current_acclerator_stream(),
+                AccleratorRuntime.get().current_stream(),
             )
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:
@@ -603,11 +603,11 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
         @property
         def recv_stream(self):
-            return utils.get_current_acclerator_stream()
+            return AccleratorRuntime.get().current_stream()
 
         @property
         def send_stream(self):
-            return utils.get_current_acclerator_stream()
+            return AccleratorRuntime.get().current_stream()
 
         def destroy(self) -> None:
             pass
@@ -730,11 +730,11 @@ def test_torch_tensor_default_comm(ray_start_regular, transports):
 
         @property
         def recv_stream(self):
-            return utils.get_current_acclerator_stream()
+            return AccleratorRuntime.get().current_stream()
 
         @property
         def send_stream(self):
-            return utils.get_current_acclerator_stream()
+            return AccleratorRuntime.get().current_stream()
 
         def destroy(self) -> None:
             pass
@@ -870,11 +870,11 @@ def test_torch_tensor_invalid_custom_comm(ray_start_regular):
 
         @property
         def recv_stream(self):
-            return utils.get_current_acclerator_stream()
+            return AccleratorRuntime.get().current_stream()
 
         @property
         def send_stream(self):
-            return utils.get_current_acclerator_stream()
+            return AccleratorRuntime.get().current_stream()
 
         def destroy(self) -> None:
             pass
@@ -1360,7 +1360,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
                 self._comm_id,
                 rank,
                 self._actor_handles,
-                utils.get_current_acclerator_stream(),
+                AccleratorRuntime.get().current_stream(),
             )
 
         def get_rank(self, actor: ray.actor.ActorHandle) -> int:

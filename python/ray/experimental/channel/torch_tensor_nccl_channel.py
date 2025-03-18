@@ -642,7 +642,7 @@ def _do_init_communicator(
     use_communication_streams,
     custom_communicator: Optional[Communicator] = None,
 ):
-    from ray.experimental.channel import utils
+    from ray.experimental.channel.utils import AccleratorRuntime
 
     if not custom_communicator:
         assert _do_check_has_acclerator(
@@ -655,12 +655,12 @@ def _do_init_communicator(
         ctx.communicators[group_id] = custom_communicator
     else:
         # default to NcclGroup
-        ctx.communicators[group_id] = utils.get_acclerator_communicator(
+        ctx.communicators[group_id] = AccleratorRuntime.get().get_communicator(
             world_size,
             comm_id,
             rank,
             actor_handles,
-            utils.get_current_acclerator_stream(),
+            AccleratorRuntime.get().current_stream(),
             use_communication_streams,
         )
 
@@ -676,15 +676,15 @@ def _do_destroy_communicator(self, group_id):
 
 
 def _do_check_has_acclerator(self) -> bool:
-    from ray.experimental.channel import utils
+    from ray.experimental.channel.utils import AccleratorRuntime
 
-    return utils.is_acclerator_communicator_available()
+    return AccleratorRuntime.is_acclerator_communicator_available()
 
 
 def _do_get_unique_communication_id(self) -> bool:
-    from ray.experimental.channel import utils
+    from ray.experimental.channel.utils import AccleratorRuntime
 
-    return utils.get_acclerator_unique_id()
+    return AccleratorRuntime.get().get_unique_id()
 
 
 def _get_ranks(
