@@ -435,6 +435,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
+        expected_input_keys: List[str],
         model: str,
         engine_kwargs: Dict[str, Any],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
@@ -446,6 +447,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
+            expected_input_keys: The expected input keys of the stage.
             model: The model to use for the vLLM engine.
             engine_kwargs: The kwargs to pass to the vLLM engine.
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
@@ -454,7 +456,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
                 to hold subfolders each for a different lora checkpoint.
         """
-        super().__init__(data_column)
+        super().__init__(data_column, expected_input_keys)
         self.model = model
 
         # Setup vLLM engine kwargs.
@@ -558,15 +560,6 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             time_taken,
         )
 
-    @property
-    def expected_input_keys(self) -> List[str]:
-        """The expected input keys."""
-
-        ret = ["prompt"]
-        if self.task_type == vLLMTaskType.GENERATE:
-            ret.append("sampling_params")
-        return ret
-
     def __del__(self):
         if hasattr(self, "llm"):
             # Kill the engine processes.
@@ -655,3 +648,26 @@ class vLLMEngineStage(StatefulStage):
         map_batches_kwargs["num_gpus"] = num_gpus
         map_batches_kwargs.update(ray_remote_args)
         return values
+
+    def get_required_input_keys(self) -> Dict[str, str]:
+        """The required input keys of the stage and their descriptions."""
+        ret = {"prompt": "The text prompt (str)."}
+        task_type = self.fn_constructor_kwargs.get("task_type", vLLMTaskType.GENERATE)
+        if task_type == vLLMTaskType.GENERATE:
+            ret["sampling_params"] = (
+                "The sampling parameters. See "
+                "https://docs.vllm.ai/en/latest/api/inference_params.html#sampling-parameters "
+                "for details."
+            )
+        return ret
+
+    def get_optional_input_keys(self) -> Dict[str, str]:
+        """The optional input keys of the stage and their descriptions."""
+        return {
+            "tokenized_prompt": "The tokenized prompt. If provided, the prompt will not be "
+            "tokenized by the vLLM engine.",
+            "images": "The images to generate text from. If provided, the prompt will be "
+            "a multimodal prompt.",
+            "model": "The model to use for this request. If the model is different from the "
+            "model set in the stage, then this is a LoRA request.",
+        }
