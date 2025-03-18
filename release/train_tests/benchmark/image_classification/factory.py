@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Type, List, Iterator, Tuple
 import logging
 
 import torch
@@ -7,9 +7,13 @@ import torchvision
 import ray
 import ray.data
 
-from config import DataloaderType
+from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
-from dataloader_factory import RayDataLoaderFactory, BaseDataLoaderFactory
+from dataloader_factory import (
+    RayDataLoaderFactory,
+    BaseDataLoaderFactory,
+    TorchDataLoaderFactory,
+)
 from image_classification.imagenet import (
     get_preprocess_map_fn,
     IMAGENET_PARQUET_SPLIT_S3_DIRS,
@@ -88,11 +92,21 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         return batch["image"], batch["label"]
 
 
+class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
+    """Factory for creating PyTorch DataLoaders for image classification tasks."""
+
+    def __init__(self, benchmark_config: BenchmarkConfig):
+        train_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
+        val_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
+        super().__init__(benchmark_config, train_urls, val_urls)
+
+
 class ImageClassificationFactory(BenchmarkFactory):
     def get_dataloader_factory(self) -> BaseDataLoaderFactory:
         data_factory_cls = {
             DataloaderType.MOCK: ImageClassificationMockDataLoaderFactory,
             DataloaderType.RAY_DATA: ImageClassificationRayDataLoaderFactory,
+            DataloaderType.TORCH: ImageClassificationTorchDataLoaderFactory,
         }[self.benchmark_config.dataloader_type]
 
         return data_factory_cls(self.benchmark_config)

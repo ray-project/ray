@@ -1,13 +1,379 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, Tuple
+from typing import Any, Dict, Iterator, Tuple, List, Optional, Callable, Union
+import time
+import multiprocessing
 
 import torch
+import torchvision
+import boto3
+import pandas as pd
+from botocore.exceptions import NoCredentialsError
+import io
+import os
+import s3fs
+from PIL import Image
+from torchvision.transforms.functional import pil_to_tensor, resize
+from torch.utils.data import IterableDataset
 
 import ray.data
 import ray.train
 from ray.data import Dataset
 
 from config import BenchmarkConfig, DataLoaderConfig, RayDataConfig
+from image_classification.imagenet import (
+    get_preprocess_map_fn,
+)
+
+# Set multiprocessing start method to 'spawn' for CUDA compatibility
+if torch.cuda.is_available():
+    try:
+        multiprocessing.set_start_method("spawn", force=True)
+        print(
+            "[DataLoader] Set multiprocessing start method to 'spawn' for CUDA compatibility"
+        )
+    except RuntimeError:
+        print("[DataLoader] Multiprocessing start method already set")
+
+# AWS configuration
+AWS_REGION = "us-west-2"
+
+
+class S3Reader:
+    """Base class for reading files from S3."""
+
+    class S3Error(Exception):
+        """Base exception for S3-related errors."""
+
+        pass
+
+    class S3CredentialsError(S3Error):
+        """Raised when AWS credentials are not found or invalid."""
+
+        pass
+
+    class S3FileError(S3Error):
+        """Raised when there's an error reading a file from S3."""
+
+        pass
+
+    def __init__(self):
+        """Initialize the S3Reader."""
+        self._s3_client = None
+
+    @property
+    def s3_client(self):
+        """Lazy initialization of S3 client to avoid serialization issues."""
+        if self._s3_client is None:
+            self._s3_client = boto3.client("s3", region_name=AWS_REGION)
+        return self._s3_client
+
+    def _parse_s3_url(self, s3_url: str) -> Tuple[str, str]:
+        """Parse an S3 URL into bucket and key.
+
+        Args:
+            s3_url: The S3 URL to parse
+
+        Returns:
+            Tuple[str, str]: The bucket and key
+
+        Raises:
+            ValueError: If the S3 URL is invalid
+        """
+        if s3_url.startswith("s3://"):
+            s3_parts = s3_url.replace("s3://", "").split("/", 1)
+            return s3_parts[0], s3_parts[1]
+        else:
+            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+
+    def read_file(self, s3_url: str) -> bytes:
+        """Download a file from S3 and return its contents as bytes.
+
+        Args:
+            s3_url: The S3 URL of the file
+
+        Returns:
+            bytes: The file contents
+
+        Raises:
+            S3CredentialsError: If AWS credentials are not found
+            S3FileError: If there's an error reading the file
+            ValueError: If the S3 URL is invalid
+        """
+        try:
+            bucket, key = self._parse_s3_url(s3_url)
+            response = self.s3_client.get_object(Bucket=bucket, Key=key)
+            return response["Body"].read()
+        except NoCredentialsError:
+            raise self.S3CredentialsError(
+                "AWS credentials not found. Ensure you have configured them."
+            )
+        except Exception as e:
+            raise self.S3FileError(f"Error reading file from {s3_url}: {str(e)}")
+
+    def list_files(self, s3_url: str) -> List[str]:
+        """List all files in the S3 bucket with a specific prefix.
+
+        Args:
+            s3_url: The S3 URL to list files from
+
+        Returns:
+            List[str]: List of S3 URLs for all files found
+
+        Raises:
+            S3CredentialsError: If AWS credentials are not found
+            S3FileError: If there's an error listing files
+            ValueError: If the S3 URL is invalid
+        """
+        try:
+            bucket, prefix = self._parse_s3_url(s3_url)
+            file_urls = []
+            response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+            if "Contents" in response:
+                for file in response["Contents"]:
+                    file_urls.append(f"s3://{bucket}/{file['Key']}")
+
+            return file_urls
+        except NoCredentialsError:
+            raise self.S3CredentialsError(
+                "AWS credentials not found. Ensure you have configured them."
+            )
+        except Exception as e:
+            raise self.S3FileError(f"Error listing files from {s3_url}: {str(e)}")
+
+
+class S3ParquetReader(S3Reader):
+    """A class to handle reading Parquet files from S3."""
+
+    class S3ParquetError(S3Reader.S3FileError):
+        """Raised when there's an error reading a Parquet file from S3."""
+
+        pass
+
+    def read_parquet(
+        self, s3_url: str, row_group: Optional[int] = None
+    ) -> pd.DataFrame:
+        """Download Parquet file from S3 and return as Pandas DataFrame.
+
+        Args:
+            s3_url: The S3 URL of the Parquet file
+            row_group: Specific row group to read (None reads all groups)
+
+        Returns:
+            pd.DataFrame: The loaded Parquet file as a DataFrame
+
+        Raises:
+            S3CredentialsError: If AWS credentials are not found
+            S3ParquetError: If there's an error reading the Parquet file
+            ValueError: If the S3 URL is invalid
+        """
+        try:
+            import pyarrow.parquet as pq
+
+            parquet_data = self.read_file(s3_url)
+            parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
+
+            if row_group is not None:
+                # Read specific row group using PyArrow
+                table = parquet_file.read_row_group(row_group)
+            else:
+                # Read all row groups
+                table = parquet_file.read()
+
+            # Convert PyArrow table to pandas DataFrame
+            return table.to_pandas()
+
+        except self.S3FileError as e:
+            raise self.S3ParquetError(str(e))
+        except Exception as e:
+            raise self.S3ParquetError(
+                f"Error loading Parquet file from {s3_url}: {str(e)}"
+            )
+
+    def get_num_row_groups(self, s3_url: str) -> int:
+        """Get the number of row groups in a Parquet file.
+
+        Args:
+            s3_url: The S3 URL of the Parquet file
+
+        Returns:
+            int: Number of row groups in the file
+        """
+        try:
+            import pyarrow.parquet as pq
+
+            parquet_data = self.read_file(s3_url)
+            parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
+            return parquet_file.num_row_groups
+        except Exception as e:
+            raise self.S3ParquetError(
+                f"Error getting row groups from {s3_url}: {str(e)}"
+            )
+
+
+class S3ParquetImageIterableDataset(IterableDataset):
+    """An iterable dataset that loads images from S3-stored Parquet files."""
+
+    LOG_FREQUENCY = 1000  # Log every 1000 rows
+
+    def __init__(
+        self,
+        file_urls: List[str],
+        random_transforms: bool = True,
+        batch_size: int = 32,
+        limit_rows_per_worker: Optional[int] = None,
+    ):
+        """Initialize the dataset.
+
+        Args:
+            file_urls: List of S3 URLs to load
+            random_transforms: Whether to use random transforms for training
+            batch_size: Batch size for data loading
+            limit_rows_per_worker: Maximum number of rows to process per worker (None for all rows)
+                                 The caller should divide the total desired limit by num_workers
+        """
+        self.file_urls = file_urls
+        self.batch_size = batch_size
+        self.limit_rows_per_worker = limit_rows_per_worker
+        self.parquet_reader = S3ParquetReader()
+        self.random_transforms = random_transforms
+
+    def _read_parquet_file(self, file_url: str) -> Iterator[pd.DataFrame]:
+        """Read a Parquet file from S3 one row group at a time.
+
+        Args:
+            file_url: S3 URL of the Parquet file
+
+        Returns:
+            Iterator[pd.DataFrame]: Iterator yielding DataFrames for each row group
+        """
+        try:
+            print(f"[S3ParquetImageIterableDataset] Getting row groups for {file_url}")
+
+            # Get parquet file metadata
+            import pyarrow.parquet as pq
+
+            parquet_data = self.parquet_reader.read_file(file_url)
+            parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
+            num_row_groups = parquet_file.num_row_groups
+
+            print(
+                f"[S3ParquetImageIterableDataset] Found {num_row_groups} row groups in {file_url}"
+            )
+
+            for row_group in range(num_row_groups):
+                try:
+                    # Get row group metadata
+                    row_group_metadata = parquet_file.metadata.row_group(row_group)
+                    num_rows = row_group_metadata.num_rows
+
+                    print(
+                        f"[S3ParquetImageIterableDataset] Reading row group {row_group}/{num_row_groups} ({num_rows} rows) from {file_url}"
+                    )
+
+                    # Read row group and convert to pandas
+                    table = parquet_file.read_row_group(row_group)
+                    df = table.to_pandas()
+
+                    if len(df) > 0:  # Only yield if we got data
+                        yield df
+
+                except Exception as e:
+                    print(
+                        f"[S3ParquetImageIterableDataset] Error processing row group {row_group} from {file_url}: {str(e)}"
+                    )
+                    continue
+
+        except Exception as e:
+            print(
+                f"[S3ParquetImageIterableDataset] Error reading file {file_url}: {str(e)}"
+            )
+            raise
+
+    def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        try:
+            worker_info = torch.utils.data.get_worker_info()
+            worker_id = worker_info.id if worker_info else 0
+            num_workers = worker_info.num_workers if worker_info else 1
+
+            print(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id}/{num_workers} starting"
+            )
+            rows_processed = 0  # Local to this worker
+            last_log_time = time.time()
+
+            try:
+                preprocess_fn = get_preprocess_map_fn(
+                    decode_image=True, random_transforms=self.random_transforms
+                )
+            except Exception as e:
+                print(
+                    f"[S3ParquetImageIterableDataset] Worker {worker_id}: Error creating preprocess_fn: {str(e)}"
+                )
+                raise
+
+            if worker_info is None:
+                files_to_read = self.file_urls
+            else:
+                per_worker = max(1, len(self.file_urls) // num_workers)
+                start_idx = worker_id * per_worker
+                end_idx = (
+                    start_idx + per_worker
+                    if worker_id < num_workers - 1
+                    else len(self.file_urls)
+                )
+                files_to_read = self.file_urls[start_idx:end_idx]
+
+            print(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Processing {len(files_to_read)} files"
+            )
+
+            for file_url in files_to_read:
+                for df in self._read_parquet_file(file_url):
+                    for _, row in df.iterrows():
+                        if (
+                            self.limit_rows_per_worker is not None
+                            and rows_processed >= self.limit_rows_per_worker
+                        ):
+                            print(
+                                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Reached row limit {self.limit_rows_per_worker}"
+                            )
+                            return
+
+                        try:
+                            processed = preprocess_fn(row)
+                            image = torch.from_numpy(processed["image"])
+                            label = torch.tensor(processed["label"], dtype=torch.long)
+                            rows_processed += 1
+
+                            if rows_processed % self.LOG_FREQUENCY == 0:
+                                current_time = time.time()
+                                elapsed_time = current_time - last_log_time
+                                rows_per_second = (
+                                    self.LOG_FREQUENCY / elapsed_time
+                                    if elapsed_time > 0
+                                    else 0
+                                )
+                                print(
+                                    f"[S3ParquetImageIterableDataset] Worker {worker_id}: Processed {rows_processed} rows ({rows_per_second:.2f} rows/sec)"
+                                )
+                                last_log_time = current_time
+
+                            yield image, label
+                        except Exception as e:
+                            print(
+                                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Error processing row: {str(e)}"
+                            )
+                            continue
+
+            print(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id}: Finished processing {rows_processed} rows"
+            )
+        except Exception as e:
+            print(
+                f"[S3ParquetImageIterableDataset] Worker {worker_id if 'worker_id' in locals() else 'Unknown'}: Fatal error: {str(e)}"
+            )
+            raise
 
 
 class BaseDataLoaderFactory(ABC):
@@ -34,6 +400,135 @@ class BaseDataLoaderFactory(ABC):
     def get_ray_datasets(self) -> Dict[str, Dataset]:
         """Get Ray datasets if this loader type uses Ray Data."""
         return {}
+
+
+class TorchDataLoaderFactory(BaseDataLoaderFactory):
+    """Factory for creating PyTorch DataLoaders that read from S3 parquet files."""
+
+    def __init__(
+        self,
+        benchmark_config: BenchmarkConfig,
+        train_url: str,
+        val_url: str,
+        limit_total_rows: Optional[int] = None,
+    ):
+        super().__init__(benchmark_config)
+        self.train_url = train_url
+        self.val_url = val_url
+        self.parquet_reader = S3ParquetReader()
+
+        # Calculate number of torch workers based on CPUs per GPU
+        num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
+        num_cpus = os.cpu_count() or 1
+        self.num_torch_workers = max(1, num_cpus // num_gpus // 2)  # At least 1 worker
+        print(
+            f"[TorchDataLoaderFactory] Using {self.num_torch_workers} torch workers per GPU (Total CPUs: {num_cpus}, Total GPUs: {num_gpus})"
+        )
+
+        # Calculate per-worker row limit based on benchmark config workers
+        self.num_ray_workers = benchmark_config.num_workers
+        total_workers = self.num_ray_workers * self.num_torch_workers
+        self.limit_rows_per_worker = (
+            limit_total_rows // total_workers if limit_total_rows is not None else None
+        )
+        print(
+            f"[TorchDataLoaderFactory] Total workers = {total_workers} ({self.num_ray_workers} Ray workers × {self.num_torch_workers} torch workers per Ray worker)"
+        )
+        if limit_total_rows is not None:
+            print(
+                f"[TorchDataLoaderFactory] Rows per worker: {self.limit_rows_per_worker}"
+            )
+
+    def _get_file_urls(self, url: str) -> List[str]:
+        """Get all file URLs from the given S3 URL.
+
+        Args:
+            url: S3 URL to get files from
+
+        Returns:
+            List[str]: List of all file URLs found
+        """
+        try:
+            urls = self.parquet_reader.list_files(url)
+
+            # Get Ray worker info
+            worker_rank = ray.train.get_context().get_world_rank()
+            print(
+                f"[TorchDataLoaderFactory] Ray worker {worker_rank}/{self.num_ray_workers} listing files"
+            )
+
+            # Sort URLs to ensure consistent ordering across workers
+            urls.sort()
+
+            # Calculate chunk size to ensure even distribution
+            chunk_size = len(urls) // self.num_ray_workers
+            remainder = len(urls) % self.num_ray_workers
+
+            # Calculate start and end indices for this worker
+            start_idx = worker_rank * chunk_size + min(worker_rank, remainder)
+            end_idx = start_idx + chunk_size + (1 if worker_rank < remainder else 0)
+
+            # Get this worker's files
+            worker_urls = urls[start_idx:end_idx]
+
+            print(
+                f"[TorchDataLoaderFactory] Ray worker {worker_rank} got {len(worker_urls)}/{len(urls)} files (indices {start_idx}:{end_idx})"
+            )
+            return worker_urls
+
+        except Exception as e:
+            print(f"[TorchDataLoaderFactory] Error listing files from {url}: {str(e)}")
+            raise
+
+    def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        print(
+            f"[TorchDataLoaderFactory] Creating train dataloader on Ray worker {ray.train.get_context().get_world_rank()}"
+        )
+        dataloader_config = self.get_dataloader_config()
+
+        dataset = S3ParquetImageIterableDataset(
+            file_urls=self._get_file_urls(self.train_url),
+            random_transforms=True,
+            batch_size=dataloader_config.train_batch_size,
+            limit_rows_per_worker=self.limit_rows_per_worker,
+        )
+
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=dataloader_config.train_batch_size,
+            num_workers=self.num_torch_workers,
+            pin_memory=True,
+            persistent_workers=True,
+            multiprocessing_context="spawn",  # Explicitly set spawn context
+            # prefetch_factor=dataloader_config.prefetch_batches,
+            drop_last=True,
+        )
+        return iter(dataloader)
+
+    def get_val_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        print(
+            f"[TorchDataLoaderFactory] Creating validation dataloader on Ray worker {ray.train.get_context().get_world_rank()}"
+        )
+        dataloader_config = self.get_dataloader_config()
+
+        dataset = S3ParquetImageIterableDataset(
+            file_urls=self._get_file_urls(self.val_url),
+            random_transforms=False,
+            batch_size=dataloader_config.validation_batch_size,
+            limit_rows_per_worker=self.limit_rows_per_worker,
+        )
+
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=dataloader_config.validation_batch_size,
+            num_workers=self.num_torch_workers,
+            pin_memory=True,
+            persistent_workers=True,
+            multiprocessing_context="spawn",  # Explicitly set spawn context
+            # prefetch_factor=dataloader_config.prefetch_batches,
+            drop_last=True,
+        )
+        return iter(dataloader)
 
 
 class RayDataLoaderFactory(BaseDataLoaderFactory):
@@ -81,6 +576,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     else None
                 ),
                 collate_fn=self.collate_fn,
+                prefetch_batches=dataloader_config.prefetch_batches,
             )
         )
 
@@ -91,6 +587,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             ds_iterator.iter_torch_batches(
                 batch_size=dataloader_config.validation_batch_size,
                 collate_fn=self.collate_fn,
+                prefetch_batches=dataloader_config.prefetch_batches,
             )
         )
 

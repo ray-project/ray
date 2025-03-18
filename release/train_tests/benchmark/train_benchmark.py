@@ -60,6 +60,10 @@ class TrainLoopRunner:
             self._metrics["checkpoint/load"].add(load_time)
 
     def run(self):
+
+        print(
+            f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} epochs for worker {ray.train.get_context().get_world_rank()}"
+        )
         starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
@@ -193,6 +197,12 @@ class TrainLoopRunner:
 
             with self._metrics["validation/iter_batch"].timer():
                 batch = self.get_next_batch(val_dataloader)
+
+        if num_rows == 0:
+            logger.warning("[Validation] No rows were processed during validation")
+            return {
+                "validation/loss": float("inf")
+            }  # Return infinity to indicate invalid validation
 
         return {"validation/loss": total_loss.item() / num_rows}
 

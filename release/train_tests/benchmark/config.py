@@ -7,11 +7,13 @@ from pydantic import BaseModel, Field
 class DataloaderType(enum.Enum):
     RAY_DATA = "ray_data"
     MOCK = "mock"
+    TORCH = "torch"
 
 
 class DataLoaderConfig(BaseModel):
     train_batch_size: int = 32
     validation_batch_size: int = 256
+    prefetch_batches: int = 4
 
 
 class RayDataConfig(DataLoaderConfig):
