@@ -545,6 +545,7 @@ class BlockAccessor:
         return np.array([0, self.num_rows()])
 
 
+@DeveloperAPI(stability="beta")
 class BlockColumnAccessor:
     """Provides vendor-neutral interface to apply common operations
     to block's (Pandas/Arrow) columns"""
