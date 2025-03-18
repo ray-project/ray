@@ -1,4 +1,5 @@
 import collections
+import enum
 import logging
 import threading
 import time
@@ -7,7 +8,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 from uuid import uuid4
-import enum
 
 import numpy as np
 
@@ -1301,7 +1301,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round(e.max_uss_bytes / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),
