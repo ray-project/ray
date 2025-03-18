@@ -93,7 +93,7 @@ Click on the Jupyter icon on the workspace page and open the notebook. *Note: Th
 
 The requirements are listed in `dreambooth/requirements.txt`. Feel free to modify this to include more requirements, then follow [this guide](https://docs.anyscale.com/configure/dependency-management/cluster-environments#creating-a-cluster-environment?utm_source=ray_docs&utm_medium=docs&utm_campaign=dreambooth_finetuning) to use the `anyscale` CLI to create a new cluster environment. The requirements should be pasted into the cluster environment yaml.
 
-Finally, update your workspace's cluster environment to this new one after it's done building.
+Finally, update the workspace's cluster environment to this environment after it's done building.
 
 #### Option 2: Build a new docker image with your own infrastructure
 
