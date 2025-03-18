@@ -10,6 +10,7 @@ from ray.util.collective import types
 
 _NCCL_AVAILABLE = True
 _GLOO_AVAILABLE = True
+_HCCL_AVAILABLE = True
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,11 @@ try:
 except ImportError:
     _GLOO_AVAILABLE = False
 
+try:
+    from ray.util.collective.collective_group.hccl_collective_group import HCCLGroup
+except ImportError:
+    _HCCL_AVAILABLE = False
+
 
 def nccl_available():
     return _NCCL_AVAILABLE
@@ -35,6 +41,10 @@ def nccl_available():
 
 def gloo_available():
     return _GLOO_AVAILABLE
+
+
+def hccl_available():
+    return _HCCL_AVAILABLE
 
 
 class GroupManager(object):
@@ -75,6 +85,11 @@ class GroupManager(object):
         elif backend == types.Backend.NCCL:
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
+            self._name_group_map[group_name] = g
+            self._group_name_map[g] = group_name
+        elif backend == types.Backend.HCCL:
+            logger.debug("Creating NCCL group: '{}'...".format(group_name))
+            g = HCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         return self._name_group_map[group_name]
