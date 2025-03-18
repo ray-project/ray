@@ -21,7 +21,6 @@ from typing import (
 import numpy as np
 
 import ray
-from ray import DynamicObjectRefGenerator
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
@@ -52,6 +51,9 @@ AggType = TypeVar("AggType")
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
+# Represents a single column of the ``Block``
+BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
+
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +70,7 @@ DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
 
 # User-facing data column type. This is the data type for data that is supplied to and
 # returned from column UDFs.
-DataBatchColumn = Union[
-    "pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", np.ndarray
-]
+DataBatchColumn = Union[BlockColumn, np.ndarray]
 
 
 # A class type that implements __call__.
@@ -96,11 +96,6 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # The metadata that describes the output of a BlockPartition. This has the
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
-
-# TODO(ekl/chengsu): replace this with just
-# `DynamicObjectRefGenerator` once block splitting
-# is on by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
 
 VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
 DEFAULT_BATCH_FORMAT = "numpy"
@@ -250,7 +245,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def slice(self, start: int, end: int, copy: bool) -> Block:
+    def slice(self, start: int, end: int, copy: bool = False) -> Block:
         """Return a slice of this block.
 
         Args:
@@ -537,7 +532,9 @@ class BlockAccessor:
             entries are 0 and ``len(array)`` respectively.
         """
 
-        if keys:
+        if self.num_rows() == 0:
+            return np.array([], dtype=np.int32)
+        elif keys:
             # Convert key columns to Numpy (to perform vectorized
             # ops on them)
             projected_block = self.to_numpy(keys)
@@ -546,6 +543,71 @@ class BlockAccessor:
 
         # If no keys are specified, whole block is considered a single group
         return np.array([0, self.num_rows()])
+
+
+@DeveloperAPI(stability="beta")
+class BlockColumnAccessor:
+    """Provides vendor-neutral interface to apply common operations
+    to block's (Pandas/Arrow) columns"""
+
+    def __init__(self, col: BlockColumn):
+        self._column = col
+
+    def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a count of the distinct values in the column"""
+        raise NotImplementedError()
+
+    def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a sum of the values in the column"""
+        return NotImplementedError()
+
+    def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a min of the values in the column"""
+        raise NotImplementedError()
+
+    def max(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a max of the values in the column"""
+        raise NotImplementedError()
+
+    def mean(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
+        """Returns a mean of the values in the column"""
+        raise NotImplementedError()
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        *,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+        as_py: bool = True,
+    ) -> Optional[U]:
+        """Returns a sum of diffs (from mean) squared for the column"""
+        raise NotImplementedError()
+
+    def to_pylist(self):
+        """Converts block column to a list of Python native objects"""
+        raise NotImplementedError()
+
+    @staticmethod
+    def for_column(col: BlockColumn) -> "BlockColumnAccessor":
+        """Create a column accessor for the given column"""
+        _check_pyarrow_version()
+
+        import pandas as pd
+        import pyarrow as pa
+
+        if isinstance(col, pa.Array) or isinstance(col, pa.ChunkedArray):
+            from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
+
+            return ArrowBlockColumnAccessor(col)
+        elif isinstance(col, pd.Series):
+            from ray.data._internal.pandas_block import PandasBlockColumnAccessor
+
+            return PandasBlockColumnAccessor(col)
+        else:
+            raise TypeError(
+                f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
+                f"(got {type(col)})"
+            )
 
 
 def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:

@@ -798,14 +798,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to task submission.
   ///
 
-  /// Get the caller ID used to submit tasks from this worker to an actor.
-  ///
-  /// \return The caller ID. For non-actor tasks, this is the current task ID.
-  /// For actors, this is the current actor ID. To make sure that all caller
-  /// IDs have the same type, we embed the actor ID in a TaskID with the rest
-  /// of the bytes zeroed out.
-  TaskID GetCallerId() const ABSL_LOCKS_EXCLUDED(mutex_);
-
   /// Push an error to the relevant driver.
   ///
   /// \param[in] The ID of the job_id that the error is for.
@@ -1684,6 +1676,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status GetObjects(const std::vector<ObjectID> &ids,
                     const int64_t timeout_ms,
                     std::vector<std::shared_ptr<RayObject>> &results);
+
+  /// Get the caller ID used to submit tasks from this worker to an actor.
+  ///
+  /// \return The caller ID. For non-actor tasks, this is the current task ID.
+  /// For actors, this is the current actor ID. To make sure that all caller
+  /// IDs have the same type, we embed the actor ID in a TaskID with the rest
+  /// of the bytes zeroed out.
+  TaskID GetCallerId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Helper for Get, used only to read experimental mutable objects.
   ///

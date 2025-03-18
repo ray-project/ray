@@ -40,6 +40,7 @@ import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
@@ -1392,7 +1393,7 @@ class ResourceKillerActor:
         self.is_running = False
         self.head_node_id = head_node_id
         self.killed = set()
-        self.done = ray._private.utils.get_or_create_event_loop().create_future()
+        self.done = get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
         self.batch_size_to_kill = batch_size_to_kill
         self.kill_filter_fn = kill_filter_fn

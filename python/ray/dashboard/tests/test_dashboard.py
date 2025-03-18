@@ -23,6 +23,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
+from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -38,7 +39,6 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
@@ -813,8 +813,12 @@ def test_immutable_types():
     assert type(deserialized_immutable_dict) is dict
     assert type(deserialized_immutable_dict["list"]) is list
     assert immutable_dict.mutable() == deserialized_immutable_dict
-    dashboard_optional_utils.rest_response(True, "OK", data=immutable_dict)
-    dashboard_optional_utils.rest_response(True, "OK", **immutable_dict)
+    dashboard_optional_utils.rest_response(
+        dashboard_utils.HTTPStatusCode.OK, "OK", data=immutable_dict
+    )
+    dashboard_optional_utils.rest_response(
+        dashboard_utils.HTTPStatusCode.OK, "OK", **immutable_dict
+    )
 
     # Test copy
     copy_of_immutable = copy.copy(immutable_dict)
