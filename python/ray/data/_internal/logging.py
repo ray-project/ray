@@ -35,7 +35,7 @@ DEFAULT_CONFIG = {
             "filters": ["core_context_filter"],
         },
         "console": {
-            "class": "ray._private.log.PlainRayHandler",
+            "class": "ray._private.ray_logging.handlers.PlainRayHandler",
             "formatter": "ray",
             "level": "INFO",
             "filters": ["console_filter"],
