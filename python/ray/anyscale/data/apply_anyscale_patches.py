@@ -12,6 +12,7 @@ from ray.anyscale.data._internal.logical.rules import (
     ProjectionPushdown,
     PushdownCountFiles,
     RedundantMapTransformPruning,
+    FuseRepartitionOutputBlocks,
 )
 from ray.anyscale.data.api.context_mixin import DataContextMixin
 from ray.anyscale.data.api.dataset_mixin import DatasetMixin
@@ -71,5 +72,6 @@ def apply_anyscale_patches():
     op_fusion_idx = _PHYSICAL_RULES.index(OperatorFusionRule)
     register_physical_rule(InsertCheckpointingLayerRule, op_fusion_idx - 1)
     register_physical_rule(RedundantMapTransformPruning)
+    register_physical_rule(FuseRepartitionOutputBlocks)
 
     configure_anyscale_logging()

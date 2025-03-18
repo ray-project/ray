@@ -87,10 +87,6 @@ table Task {
   task_specification: string;
 }
 
-table SubmitTaskRequest {
-  task_spec: string;
-}
-
 // This message describes a given resource that is reserved for a worker.
 table ResourceIdSetInfo {
   // The name of the resource.
@@ -186,11 +182,6 @@ table AnnounceWorkerPortReply {
   failure_reason: string;
 }
 
-table RegisterNodeManagerRequest {
-  // GCS ClientID of the connecting node manager.
-  client_id: string;
-}
-
 // Mimics the Address protobuf.
 table Address {
   raylet_id: string;
@@ -276,15 +267,6 @@ table FreeObjectsRequest {
 table ConnectClient {
   // ID of the connecting client.
   client_id: string;
-}
-
-table SetResourceRequest {
-  // Name of the resource to be set.
-  resource_name: string;
-  // Capacity of the resource to be set.
-  capacity: double;
-  // Node ID where this resource will be set.
-  node_id: string;
 }
 
 table SubscribePlasmaReady {

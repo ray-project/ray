@@ -5,6 +5,7 @@ from ray.anyscale.data._internal.logical.graph_utils import make_copy_of_dag, re
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.map_operator import Project
+import copy
 
 
 class _ProjectOptions:
@@ -174,12 +175,16 @@ class ProjectionPushdown(Rule):
                 else:
                     # Handle column selections
                     if op.cols:
+                        # TODO: In general we need utilities for canonical way of modifying
+                        # the DAG to make sure no operators are modified in-place
+                        # See: https://anyscale1.atlassian.net/browse/DATA-809
                         prev_options = _ProjectOptions(
-                            cols=projecting_op.cols,
-                            cols_rename=projecting_op.cols_rename,
+                            cols=copy.deepcopy(projecting_op.cols),
+                            cols_rename=copy.deepcopy(projecting_op.cols_rename),
                         )
                         cur_options = _ProjectOptions(
-                            cols=op.cols, cols_rename=op.cols_rename
+                            cols=copy.deepcopy(op.cols),
+                            cols_rename=copy.deepcopy(op.cols_rename),
                         )
                         self._handle_select_columns(
                             prev_op=prev_options, cur_op=cur_options
@@ -189,11 +194,12 @@ class ProjectionPushdown(Rule):
                     # Handle column renames
                     if op.cols_rename:
                         prev_options = _ProjectOptions(
-                            cols=projecting_op.cols,
-                            cols_rename=projecting_op.cols_rename,
+                            cols=copy.deepcopy(projecting_op.cols),
+                            cols_rename=copy.deepcopy(projecting_op.cols_rename),
                         )
                         cur_options = _ProjectOptions(
-                            cols=op.cols, cols_rename=op.cols_rename
+                            cols=copy.deepcopy(op.cols),
+                            cols_rename=copy.deepcopy(op.cols_rename),
                         )
                         self._handle_rename_columns(
                             prev_op=prev_options, cur_op=cur_options
@@ -217,6 +223,7 @@ class ProjectionPushdown(Rule):
                 assert not projecting_op
                 projecting_op = op
             elif isinstance(op, ReadFiles) and projecting_op:
+
                 # Push down column selection/renames to ReadFiles
                 readfiles = op
 
@@ -224,12 +231,12 @@ class ProjectionPushdown(Rule):
                     # If readfiles has columns or columns_rename,
                     # then we need to merge these with projecting_op
                     prev_options = _ProjectOptions(
-                        cols=readfiles.columns,
-                        cols_rename=readfiles.columns_rename,
+                        cols=copy.deepcopy(readfiles.columns),
+                        cols_rename=copy.deepcopy(readfiles.columns_rename),
                     )
                     cur_options = _ProjectOptions(
-                        cols=projecting_op.cols,
-                        cols_rename=projecting_op.cols_rename,
+                        cols=copy.deepcopy(projecting_op.cols),
+                        cols_rename=copy.deepcopy(projecting_op.cols_rename),
                     )
                     self._handle_select_columns(
                         prev_op=prev_options, cur_op=cur_options

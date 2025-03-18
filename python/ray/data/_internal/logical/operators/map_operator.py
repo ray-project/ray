@@ -226,6 +226,7 @@ class Filter(AbstractUDFMap):
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         filter_expr: Optional["pa.dataset.Expression"] = None,
+        filter_expr_strs: Optional[List[str]] = None,
         compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -234,7 +235,7 @@ class Filter(AbstractUDFMap):
         if not ((fn is None) ^ (filter_expr is None)):
             raise ValueError("Exactly one of 'fn' or 'filter_expr' must be provided")
         self._filter_expr = filter_expr
-
+        self._filter_expr_strs = filter_expr_strs or []
         super().__init__(
             "Filter",
             input_op,

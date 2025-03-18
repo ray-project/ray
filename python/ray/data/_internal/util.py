@@ -8,6 +8,7 @@ import threading
 import time
 import urllib.parse
 from queue import Empty, Full, Queue
+from packaging.version import parse as parse_version
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
@@ -27,7 +28,7 @@ import numpy as np
 import pyarrow
 
 import ray
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
@@ -110,11 +111,9 @@ def _check_pyarrow_version():
             _VERSION_VALIDATED = True
             return
 
-        version = _get_pyarrow_version()
+        version = get_pyarrow_version()
         if version is not None:
-            from packaging.version import parse as parse_version
-
-            if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
+            if version < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
                     f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
@@ -778,13 +777,14 @@ def find_partition_index(
             # is an index into the ascending order of ``col_vals``, so we need
             # to subtract it from ``len(col_vals)`` to get the index in the
             # original descending order of ``col_vals``.
+            sorter = np.arange(len(col_vals) - 1, -1, -1)
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
                     desired_val,
                     side="right",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
             right = prevleft + (
@@ -793,7 +793,7 @@ def find_partition_index(
                     col_vals,
                     desired_val,
                     side="left",
-                    sorter=np.arange(len(col_vals) - 1, -1, -1),
+                    sorter=sorter,
                 )
             )
         else:
@@ -1483,11 +1483,19 @@ def _validate_rows_per_file_args(
     return min_rows_per_file
 
 
-def is_nan(value):
+def is_nan(value) -> bool:
+    """Returns true if provide value is ``np.nan``"""
+
     try:
         return isinstance(value, float) and np.isnan(value)
     except TypeError:
         return False
+
+
+def is_null(value: Any) -> bool:
+    """This generalization of ``is_nan`` util qualifying both None and np.nan
+    as null values"""
+    return value is None or is_nan(value)
 
 
 def keys_equal(keys1, keys2):

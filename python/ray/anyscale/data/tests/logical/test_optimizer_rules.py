@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 import pandas as pd
 import pyarrow.compute as pc
@@ -7,6 +8,7 @@ import pytest
 import ray
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.data._internal.execution.operators.map_transformer import (
+    MapTransformFn,
     BatchMapTransformFn,
     BlockMapTransformFn,
     BlocksToBatchesMapTransformFn,
@@ -14,6 +16,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
     RowMapTransformFn,
 )
+from ray.data import Dataset
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer, get_execution_plan
 from ray.data.tests.conftest import *  # noqa
@@ -577,7 +580,6 @@ def test_pushdown_divergent_branches(ray_start_regular_shared):
     # Execute ds without projection pushdown
     result = ds.take(1)[0]
     result_keys = list(result.keys())
-    print(result)
     assert all(
         key in result_keys
         for key in [
@@ -589,9 +591,147 @@ def test_pushdown_divergent_branches(ray_start_regular_shared):
     )
 
 
+def match_transform_fns(
+    expected_fns: List[MapTransformFn], got_fns: List[MapTransformFn]
+) -> bool:
+    assert len(expected_fns) == len(
+        got_fns
+    ), f"Expected {len(expected_fns)} functions, but got {len(got_fns)}."
+    for expected_fn, got_fn in zip(expected_fns, got_fns):
+        if not isinstance(got_fn, expected_fn):
+            return False
+    return True
+
+
+def match_ds_result(ds: Dataset, expected_output: List[int]) -> bool:
+    output = [item["id"] for item in ds.take_all()]
+    return output == expected_output
+
+
+def test_pushdown_rename_filter(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a)."""
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+    )
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(expr="sepal.length > 2.0")
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"a": "sepal.length"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    assert read_op.filter_expr.equals(
+        pc.greater(pc.field("sepal.length"), pc.scalar(2.0))
+    )
+
+
+def test_pushdown_rename_filter_rename(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a).rename(a -> b)."""
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+        .rename_columns({"a": "b"})
+    )
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(expr="sepal.length > 2.0")
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"b": "sepal.length"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    assert read_op.filter_expr.equals(
+        pc.greater(pc.field("sepal.length"), pc.scalar(2.0))
+    )
+
+
+def test_pushdown_rename_filter_rename_filter(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b)."""
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+        .rename_columns({"a": "b"})
+        .filter(expr="b < 5.0")
+    )
+
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(
+        expr="sepal.length > 2.0 and sepal.length < 5.0"
+    )
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"b": "sepal.length"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    expected_filter_expr = pc.greater(
+        pc.field("sepal.length"), pc.scalar(2.0)
+    ) & pc.less(pc.field("sepal.length"), pc.scalar(5.0))
+    assert read_op.filter_expr.equals(expected_filter_expr)
+
+
+def test_pushdown_rename_filter_rename_filter_rename(ray_start_regular_shared):
+    """rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b).rename("sepal.width" -> a).
+    Here column a is referred multiple times in rename
+    """
+    path = "example://iris.parquet"
+    ds = (
+        ray.data.read_parquet(path)
+        .rename_columns({"sepal.length": "a"})
+        .filter(expr="a > 2.0")
+        .rename_columns({"a": "b"})
+        .filter(expr="b < 5.0")
+        .rename_columns({"sepal.width": "a"})
+    )
+    ds.take_all()
+    assert (
+        ds._plan._logical_plan.dag.dag_str
+        == "ListFiles[ListFiles] -> ReadFiles[ReadFiles]"
+    )
+    ds1 = ray.data.read_parquet(path).filter(
+        expr="sepal.length > 2.0 and sepal.length < 5.0"
+    )
+    assert ds.count() == ds1.count()
+    df = ds.to_pandas().rename(columns={"b": "sepal.length", "a": "sepal.width"})
+    df1 = ds1.to_pandas()
+    pd.testing.assert_frame_equal(df, df1)
+    expected_filter_expr = pc.greater(
+        pc.field("sepal.length"), pc.scalar(2.0)
+    ) & pc.less(pc.field("sepal.length"), pc.scalar(5.0))
+    logical_plan = ds._plan._logical_plan
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    read_op: ReadFiles = optimized_logical_plan.dag
+    assert read_op.filter_expr.equals(expected_filter_expr)
+
+
 def test_map_batches_transformer_fusion(ray_start_regular_shared):
     """Test removal of redundant Batch to Block transformations."""
-
     ds = (
         ray.data.range(5)
         .map_batches(column_udf("id", lambda x: x + 1))
@@ -600,31 +740,77 @@ def test_map_batches_transformer_fusion(ray_start_regular_shared):
         .map_batches(column_udf("id", lambda x: x + 4))
         .map_batches(column_udf("id", lambda x: x + 5))
     )
-
     plan = get_execution_plan(ds._plan._logical_plan)
     fns = plan.dag.get_map_transformer().get_transform_fns()
-    assert isinstance(
-        fns[1], BlocksToBatchesMapTransformFn
-    ), "First function should be a BlocksToBatchesMapTransformFn."
-    assert isinstance(
-        fns[-1], BuildOutputBlocksMapTransformFn
-    ), "Last function should be a BuildOutputBlocksMapTransformFn."
+    expected_fns = [
+        BlockMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BatchMapTransformFn,
+        BatchMapTransformFn,
+        BatchMapTransformFn,
+        BatchMapTransformFn,
+        BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+    ]
+    assert match_transform_fns(expected_fns, fns)
+    assert match_ds_result(ds, [15, 16, 17, 18, 19])
 
-    # Check that the intermediate transformation functions are BatchMapTransformFn
-    intermediate_fns = fns[2:-1]
-    assert all(
-        isinstance(fn, BatchMapTransformFn) for fn in intermediate_fns
-    ), "All intermediate functions should be BatchMapTransformFn."
-    assert len(fns) == 8, f"Expected 8 transformations, but got {len(fns)}."
 
-    output = [item["id"] for item in ds.take_all()]
-    expected_output = [15, 16, 17, 18, 19]
-    assert output == expected_output, f"Expected {expected_output}, but got {output}."
+def test_repartition_build_output(ray_start_regular_shared):
+    """Test repartition emitting BuildOutputBlocksMapTransformFn with target_num_rows_per_block"""
+    target_num_rows_per_block = 4
+    ds = ray.data.range(20).repartition(
+        target_num_rows_per_block=target_num_rows_per_block
+    )
+    plan = get_execution_plan(ds._plan._logical_plan)
+    fns = plan.dag.get_map_transformer().get_transform_fns()
+    expected_fns = [
+        BlockMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+    ]
+    assert match_transform_fns(expected_fns, fns)
+    repartition_build_output_fn = fns[-1]
+    assert (
+        repartition_build_output_fn.target_num_rows_per_block
+        == target_num_rows_per_block
+    )
+    assert match_ds_result(ds, list(range(20)))
+
+
+def test_repartition_fusion_build_output(ray_start_regular_shared):
+    """Test repartition fusion of BuildOutputBlocksMapTransformFn for target_num_rows_per_block"""
+    target_num_rows_per_block = 20
+    ds = (
+        ray.data.range(20)
+        .map(column_udf("id", lambda x: x))
+        .map_batches(column_udf("id", lambda x: x), batch_size=1)
+        .repartition(target_num_rows_per_block=4)
+        .repartition(target_num_rows_per_block=5)
+        .repartition(target_num_rows_per_block=10)
+        .repartition(target_num_rows_per_block=target_num_rows_per_block)
+    )
+    plan = get_execution_plan(ds._plan._logical_plan)
+    fns = plan.dag.get_map_transformer().get_transform_fns()
+    expected_fns = [
+        BlockMapTransformFn,
+        BlocksToRowsMapTransformFn,
+        RowMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+        BlocksToBatchesMapTransformFn,
+        BatchMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+    ]
+    assert match_transform_fns(expected_fns, fns)
+    repartition_build_output_fn = fns[-1]
+    assert (
+        repartition_build_output_fn.target_num_rows_per_block
+        == target_num_rows_per_block
+    )
+    assert match_ds_result(ds, list(range(20)))
 
 
 def test_map_batches_transformer_non_fusion(ray_start_regular_shared):
     """Test non-removal of redundant Batch to Block transformations."""
-
     ds = (
         ray.data.range(5)
         .map_batches(column_udf("id", lambda x: x + 1), batch_size=1)
@@ -634,7 +820,6 @@ def test_map_batches_transformer_non_fusion(ray_start_regular_shared):
         .map_batches(column_udf("id", lambda x: x + 5), batch_size=1)
         .repartition(num_blocks=None, target_num_rows_per_block=1)
     )
-
     plan = get_execution_plan(ds._plan._logical_plan)
     fns = plan.dag.get_map_transformer().get_transform_fns()
     expected_fns = [
@@ -654,22 +839,9 @@ def test_map_batches_transformer_non_fusion(ray_start_regular_shared):
         BlocksToBatchesMapTransformFn,
         BatchMapTransformFn,
         BuildOutputBlocksMapTransformFn,
-        BuildOutputBlocksMapTransformFn,
     ]
-
-    # Validate the entire list of functions
-    assert len(fns) == len(
-        expected_fns
-    ), f"Expected {len(expected_fns)} functions, but got {len(fns)}."
-    for i, (actual, expected) in enumerate(zip(fns, expected_fns)):
-        # Compare the type of actual with the class type of expected (not an instance)
-        assert isinstance(
-            actual, expected
-        ), f"Function at index {i} does not match type {expected.__name__}."
-
-    output = [item["id"] for item in ds.take_all()]
-    expected_output = [15, 16, 17, 18, 19]
-    assert output == expected_output, f"Expected {expected_output}, but got {output}."
+    assert match_transform_fns(expected_fns, fns)
+    assert match_ds_result(ds, [15, 16, 17, 18, 19])
 
 
 def test_map_rows_transformer_fusion(ray_start_regular_shared):
@@ -686,23 +858,18 @@ def test_map_rows_transformer_fusion(ray_start_regular_shared):
 
     plan = get_execution_plan(ds._plan._logical_plan)
     fns = plan.dag.get_map_transformer().get_transform_fns()
-    assert isinstance(
-        fns[1], BlocksToRowsMapTransformFn
-    ), "First function should be a BlocksToRowsMapTransformFn."
-    assert isinstance(
-        fns[-1], BuildOutputBlocksMapTransformFn
-    ), "Last function should be a BuildOutputBlocksMapTransformFn."
-
-    # Check that the intermediate transformation functions are RowMapTransformFn
-    intermediate_fns = fns[2:-1]
-    assert all(
-        isinstance(fn, RowMapTransformFn) for fn in intermediate_fns
-    ), "All intermediate functions should be RowMapTransformFn."
-    assert len(fns) == 8, f"Expected 8 transformations, but got {len(fns)}."
-
-    output = [item["id"] for item in ds.take_all()]
-    expected_output = [15, 16, 17, 18, 19]
-    assert output == expected_output, f"Expected {expected_output}, but got {output}."
+    expected_fns = [
+        BlockMapTransformFn,
+        BlocksToRowsMapTransformFn,
+        RowMapTransformFn,
+        RowMapTransformFn,
+        RowMapTransformFn,
+        RowMapTransformFn,
+        RowMapTransformFn,
+        BuildOutputBlocksMapTransformFn,
+    ]
+    assert match_transform_fns(expected_fns, fns)
+    assert match_ds_result(ds, [15, 16, 17, 18, 19])
 
 
 if __name__ == "__main__":

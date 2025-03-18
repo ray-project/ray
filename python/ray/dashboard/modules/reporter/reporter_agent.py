@@ -18,6 +18,7 @@ import ray._private.prometheus_exporter as prometheus_exporter
 import ray._private.services
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
@@ -1236,7 +1237,7 @@ class ReporterAgent(
 
     async def _run_loop(self, publisher):
         """Get any changes to the log files and push updates to kv."""
-        loop = utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
 
         while True:
             try:
