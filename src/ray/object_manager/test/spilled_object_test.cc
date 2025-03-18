@@ -354,23 +354,17 @@ TYPED_TEST(ObjectReaderTest, GetDataAndMetadata) {
 
       for (size_t offset = 0; offset <= data.size(); offset++) {
         for (size_t size = offset; size <= data.size() - offset; size++) {
-          std::string result;
-          if (offset + size <= data.size()) {
-            auto cord = reader->ReadFromDataSection(offset, size);
-            std::string result(cord.char_begin(), cord.char_end());
-            ASSERT_EQ(data.substr(offset, size), result);
-          }
+          auto cord = reader->ReadFromDataSection(offset, size);
+          std::string result(cord.char_begin(), cord.char_end());
+          ASSERT_EQ(data.substr(offset, size), result);
         }
       }
 
       for (size_t offset = 0; offset <= metadata.size(); offset++) {
         for (size_t size = offset; size <= metadata.size() - offset; size++) {
-          std::string result;
-          if (offset + size <= metadata.size()) {
-            auto cord = reader->ReadFromMetadataSection(offset, size);
-            std::string result(cord.char_begin(), cord.char_end());
-            ASSERT_EQ(metadata.substr(offset, size), result);
-          }
+          auto cord = reader->ReadFromMetadataSection(offset, size);
+          std::string result(cord.char_begin(), cord.char_end());
+          ASSERT_EQ(metadata.substr(offset, size), result);
         }
       }
     }
