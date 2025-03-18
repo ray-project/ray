@@ -12,9 +12,9 @@ import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import event_pb2, event_pb2_grpc
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
@@ -109,7 +109,7 @@ class EventHead(
 
     async def limit_handler_(self):
         return dashboard_optional_utils.rest_response(
-            success=False,
+            status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
             error_message=(
                 "Max number of in-progress requests="
                 f"{self.max_num_call_} reached. "
@@ -174,12 +174,14 @@ class EventHead(
                 for job_id, job_events in self.events.items()
             }
             return dashboard_optional_utils.rest_response(
-                success=True, message="All events fetched.", events=all_events
+                status_code=dashboard_utils.HTTPStatusCode.OK,
+                message="All events fetched.",
+                events=all_events,
             )
 
         job_events = self.events[job_id]
         return dashboard_optional_utils.rest_response(
-            success=True,
+            status_code=dashboard_utils.HTTPStatusCode.OK,
             message="Job events fetched.",
             job_id=job_id,
             events=list(job_events.values()),
