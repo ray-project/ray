@@ -12,7 +12,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
-from ray.rllib.offline.utils import unflatten_dict
+from ray.rllib.utils import unflatten_dict
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (

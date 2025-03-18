@@ -979,6 +979,8 @@ def check_train_results(train_results: ResultDict):
     return train_results
 
 
+# TODO (simon): Use this function in the `run_rllib_example_experiment` when
+# `no_tune` is `True`.
 def should_stop(
     stop: Dict[str, Any], results: ResultDict, keep_ray_up: bool = False
 ) -> bool:

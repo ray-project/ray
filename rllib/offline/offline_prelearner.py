@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec, MultiRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.utils import flatten_dict
+from ray.rllib.utils import flatten_dict
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
