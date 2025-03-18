@@ -25,13 +25,6 @@ class SGLangTaskType(str, Enum):
     """Generate text."""
     GENERATE = "generate"
 
-    # TODO: Add support for the following tasks.
-    """Generate embeddings."""
-    EMBED = "embed"
-
-    """Classify the quality of pairwise generations."""
-    REWARD = "reward"
-
 
 class SGLangEngineRequest(BaseModel):
     """A request to the SGLang engine."""
@@ -41,11 +34,11 @@ class SGLangEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The input prompt.
-    text: Optional[str]
+    prompt: Optional[str]
     # Alternative to text. Specify the input as token IDs instead of text.
-    input_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]]
     # The sampling parameters (more details can be seen in https://docs.sglang.ai/backend/sampling_params.html).
-    sampling_params: Optional[Dict[str, Any]]
+    params: Optional[Dict[str, Any]]
 
     class Config:
         validate_assignment = True
@@ -70,6 +63,15 @@ class SGLangOutputData(BaseModel):
     @classmethod
     def from_sglang_engine_output(cls, output: Dict[str, Any]) -> "SGLangOutputData":
         """Create a SGLangOutputData from a SGLang engine output."""
+
+        # Set by `_generate_async`.
+        assert "prompt" in output
+        assert "prompt_token_ids" in output
+
+        # Returned in the native output of the SGLang engine.
+        assert "meta_info" in output
+        assert "prompt_tokens" in output["meta_info"]
+        assert "completion_tokens" in output["meta_info"]
 
         data = cls(
             prompt=output["prompt"],
@@ -105,8 +107,12 @@ class SGLangEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task", SGLangTaskType.GENERATE)
-        self.model_path = kwargs.get("model_path", None)
-        assert self.model_path is not None
+        self.model = kwargs.pop("model", None)
+
+        assert self.model is not None
+
+        # We need to rename the `model` to `model_path` for SGLang.
+        kwargs["model_path"] = self.model
 
         if sgl is None:
             raise ImportError(
@@ -134,24 +140,24 @@ class SGLangEngineWrapper:
         Returns:
             A single SGLangEngineRequest.
         """
-        text = row.pop("text")
-        if "input_ids" in row:
-            input_ids = row.pop("input_ids").tolist()
+        prompt = row.pop("prompt")
+        if "prompt_token_ids" in row:
+            prompt_token_ids = row.pop("prompt_token_ids").tolist()
         else:
-            input_ids = None
+            prompt_token_ids = None
 
         # Prepare sampling parameters.
         if self.task_type == SGLangTaskType.GENERATE:
-            sampling_params = row.pop("sampling_params")
+            params = row.pop("params")
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
 
         request = SGLangEngineRequest(
             request_id=self.request_id,
             idx_in_batch=row[self.idx_in_batch_column],
-            text=text,
-            input_ids=input_ids,
-            sampling_params=sampling_params,
+            prompt=prompt,
+            prompt_token_ids=prompt_token_ids,
+            params=params,
         )
         self.request_id += 1
         return request
@@ -186,14 +192,23 @@ class SGLangEngineWrapper:
         """
 
         # Send the request to the LLM engine.
-        output = await self.engine.async_generate(
-            prompt=request.text,
-            sampling_params=request.sampling_params,
-            input_ids=request.input_ids,
+        stream = await self.engine.async_generate(
+            prompt=request.prompt,
+            sampling_params=request.params,
+            input_ids=request.prompt_token_ids,
+            stream=True,
         )
-        output["prompt"] = request.text
-        output["prompt_token_ids"] = request.input_ids
-        return output
+        # Consume the stream until the request is finished.
+        async for output in stream:
+            if output["meta_info"]["finish_reason"] is not None:
+                output["prompt"] = request.prompt
+                output["prompt_token_ids"] = request.prompt_token_ids
+                return output
+
+        raise RuntimeError(
+            "[SGLang] The request is not finished. This should not happen. "
+            "Please report this issue to the Ray team."
+        )
 
     def shutdown(self):
         """Shutdown the SGLang engine."""
@@ -206,7 +221,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
     def __init__(
         self,
         data_column: str,
-        model_path: str,
+        model: str,
         engine_kwargs: Dict[str, Any],
         task_type: SGLangTaskType = SGLangTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
@@ -216,28 +231,28 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
         Args:
             data_column: The data column name.
-            model_path: The path to the model to use for the SGLang engine.
+            model: The path to the model to use for the SGLang engine.
             engine_kwargs: The kwargs to pass to the SGLang engine.
             task_type: The task to use for the SGLang engine (e.g., "generate", "embed", "reward").
             max_pending_requests: The maximum number of pending requests. If None,
                 it will be set to a default value based on engine settings.
         """
         super().__init__(data_column)
-        self.model_path = model_path
+        self.model = model
 
         # Setup SGLang engine kwargs.
         self.task_type = task_type
         self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
 
         # Set up the max pending requests.
-        # Use a reasonable default value if not specified
-        self.max_pending_requests = max_pending_requests or 128
+        # Disable the semaphore if max_pending_requests is not set.
+        self.max_pending_requests = max_pending_requests or -1
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
         # Create an LLM engine.
         self.llm = SGLangEngineWrapper(
-            model_path=self.model_path,
+            model=self.model,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             max_pending_requests=self.max_pending_requests,
             **self.engine_kwargs,
@@ -259,13 +274,13 @@ class SGLangEngineStageUDF(StatefulStageUDF):
             The normalized kwargs.
         """
         # Remove model from engine kwargs if set.
-        model_path = engine_kwargs.pop("model_path", None)
-        if model_path is not None and model_path != self.model_path:
+        model = engine_kwargs.pop("model", None)
+        if model is not None and model != self.model:
             logger.warning(
-                "The model path set in engine kwargs (%s) is different from the "
-                "stage (%s). Please remove 'model_path' from engine kwargs.",
-                model_path,
-                self.model_path,
+                "The model set in engine kwargs (%s) is different from the "
+                "stage (%s). Please remove 'model' from engine kwargs.",
+                model,
+                self.model,
             )
 
         # Override the task if it is different from the stage.
@@ -306,7 +321,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
                 self.IDX_IN_BATCH_COLUMN: request.idx_in_batch,
                 "batch_uuid": batch_uuid.hex,
                 "time_taken_llm": time_taken,
-                "sampling_params": str(request.sampling_params),
+                "params": str(request.params),
             }
 
         logger.info(
@@ -320,9 +335,9 @@ class SGLangEngineStageUDF(StatefulStageUDF):
     def expected_input_keys(self) -> List[str]:
         """The expected input keys."""
 
-        ret = ["text"]
+        ret = ["prompt"]
         if self.task_type == SGLangTaskType.GENERATE:
-            ret.append("sampling_params")
+            ret.append("params")
         return ret
 
     def __del__(self):
