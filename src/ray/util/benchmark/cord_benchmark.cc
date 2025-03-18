@@ -51,7 +51,7 @@ static void UseMemcpy(benchmark::State &state) {
   }
   for (auto _ : state) {
     std::string result;
-    result.resize(str_size);
+    result.reserve(str_size);
     std::memcpy(result.data(), created_string, str_size);
     benchmark::DoNotOptimize(result);
   }
