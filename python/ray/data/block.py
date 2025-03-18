@@ -140,10 +140,9 @@ class BlockExecStats:
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        # The maximum RSS (Resident Set Size) of the process while computing this block.
-        # If the polling interval is `None`, or if the block was computed before the
-        # memory was polled, this might be a underestimate.
-        self.max_rss_bytes: int = 0
+        # An estimate of the maximum amount of physical memory that the process was
+        # using while computing this block.
+        self.max_uss_bytes: int = 0
         self.task_idx: Optional[int] = None
 
     @staticmethod
@@ -172,8 +171,8 @@ class _BlockExecStatsBuilder:
         """
 
         Args:
-            poll_interval_s: The interval to poll the RSS of the process. If `None`,
-                this class won't poll the RSS.
+            poll_interval_s: The interval to poll the USS of the process. If `None`,
+                this class won't poll the USS.
         """
         self._poll_interval_s = poll_interval_s
 
@@ -181,38 +180,36 @@ class _BlockExecStatsBuilder:
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
 
-        # Record initial RSS.
+        # Record initial USS.
         self._process = psutil.Process(os.getpid())
-        self._max_rss = int(self._process.memory_full_info().uss)
-        self._max_rss_lock = threading.Lock()
+        self._max_uss = self._estimate_uss()
+        self._max_uss_lock = threading.Lock()
 
-        # If necessary, start the RSS poll thread.
-        self._rss_poll_thread = None
-        self._stop_rss_poll_event = None
+        # If necessary, start the USS poll thread.
+        self._uss_poll_thread = None
+        self._stop_uss_poll_event = None
 
     def __enter__(self):
         if self._poll_interval_s is not None:
             (
-                self._rss_poll_thread,
-                self._stop_rss_poll_event,
-            ) = self._start_rss_poll_thread()
+                self._uss_poll_thread,
+                self._stop_uss_poll_event,
+            ) = self._start_uss_poll_thread()
 
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._rss_poll_thread is not None:
-            self._stop_rss_poll_thread()
+        if self._uss_poll_thread is not None:
+            self._stop_uss_poll_thread()
 
     def build(self) -> "BlockExecStats":
         # Record end times.
         end_time = time.perf_counter()
         end_cpu = time.process_time()
 
-        # Record max RSS.
-        with self._max_rss_lock:
-            self._max_rss = max(
-                self._max_rss, int(self._process.memory_full_info().uss)
-            )
+        # Record max USS.
+        with self._max_uss_lock:
+            self._max_uss = max(self._max_uss, self._estimate_uss())
 
         # Build the stats.
         stats = BlockExecStats()
@@ -220,37 +217,43 @@ class _BlockExecStatsBuilder:
         stats.end_time_s = end_time
         stats.wall_time_s = end_time - self._start_time
         stats.cpu_time_s = end_cpu - self._start_cpu
-        stats.max_rss_bytes = self._max_rss
+        stats.max_uss_bytes = self._max_uss
 
         return stats
 
     def reset(self):
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
-        with self._max_rss_lock:
-            self._max_rss = int(self._process.memory_full_info().uss)
+        with self._max_uss_lock:
+            self._max_uss = self._estimate_uss()
 
-    def _start_rss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
+    def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         assert self._poll_interval_s is not None
 
         stop_event = threading.Event()
 
-        def poll_rss():
+        def poll_uss():
             while not stop_event.is_set():
-                rss_bytes = int(self._process.memory_full_info().uss)
-                with self._max_rss_lock:
-                    self._max_rss = max(self._max_rss, rss_bytes)
+                with self._max_uss_lock:
+                    self._max_uss = max(self._max_uss, self._estimate_uss())
                 stop_event.wait(self._poll_interval_s)
 
-        thread = threading.Thread(target=poll_rss, daemon=True)
+        thread = threading.Thread(target=poll_uss, daemon=True)
         thread.start()
 
         return thread, stop_event
 
-    def _stop_rss_poll_thread(self):
-        if self._stop_rss_poll_event is not None:
-            self._stop_rss_poll_event.set()
-            self._rss_poll_thread.join()
+    def _stop_uss_poll_thread(self):
+        if self._stop_uss_poll_event is not None:
+            self._stop_uss_poll_event.set()
+            self._uss_poll_thread.join()
+
+    def _estimate_uss(self) -> int:
+        memory_info = self._process.memory_info()
+        # Estimate the USS (the amount of memory that'd be free if we killed the
+        # process right now) as the difference between the RSS (total physical memory)
+        # and amount of shared physical memory.
+        return memory_info.rss - memory_info.shared
 
 
 @DeveloperAPI

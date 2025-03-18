@@ -323,7 +323,7 @@ class DataContext:
             transient errors when reading from remote storage systems.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
-        memory_poll_interval_s: The interval to poll the RSS of map tasks. If `None`,
+        memory_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
             map tasks won't record memory stats.
     """
 

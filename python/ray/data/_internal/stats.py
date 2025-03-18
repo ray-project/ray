@@ -1301,7 +1301,7 @@ class OperatorStatsSummary:
             }
 
             memory_stats_mb = [
-                round(e.max_rss_bytes / (1024 * 1024), 2) for e in exec_stats
+                round(e.max_uss_bytes / (1024 * 1024), 2) for e in exec_stats
             ]
             memory_stats = {
                 "min": min(memory_stats_mb),
