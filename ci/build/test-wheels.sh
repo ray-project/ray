@@ -49,7 +49,7 @@ if [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 
   PY_WHEEL_VERSIONS=("39" "310")
-  PY_MMS=("3.9" "3.10")
+  PY_MMS=("3.9.2" "3.10")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
