@@ -1,15 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
-# -------------------------------------------------------
-# Runs tests against docstrings on all source files.
-# We use a custom conftest, see tests/doctest_conftest.py
-# -------------------------------------------------------
-
+# Export pytest plugin so it can be used in the documentation tests.
 exports_files(
     ["tests/doctest_pytest_plugin.py"],
 )
 
+# Run automatic tests against docstrings on all source files.
 doctest(
     size = "large",
     files = glob(
@@ -19,6 +16,7 @@ doctest(
             "tests/**/*",
         ]),
     ),
+    # Installs data-specific fixtures to run between the doctests.
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
 )
