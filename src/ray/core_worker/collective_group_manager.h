@@ -21,8 +21,8 @@ namespace core {
 
 class CollectiveGroupManager {
  public:
-  CollectiveGroupManager(
-      const std::unordered_map<ActorID, int> &actor_id_to_rank): actor_id_to_rank_(actor_id_to_rank) {}
+  CollectiveGroupManager(const std::unordered_map<ActorID, int> &actor_id_to_rank)
+      : actor_id_to_rank_(actor_id_to_rank) {}
 
  private:
   std::unordered_map<ActorID, int> actor_id_to_rank_;
