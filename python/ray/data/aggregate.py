@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 import numpy as np
 
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.util import is_nan
+from ray.data._internal.util import is_null
 from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
 from ray.util.annotations import PublicAPI, Deprecated
 
@@ -320,7 +320,7 @@ class Mean(AggregateFnV2):
 
         sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
 
-        if _is_null(sum_):
+        if is_null(sum_):
             # In case of ignore_nulls=False and column containing 'null'
             # return as is (to prevent unnecessary type conversions, when, for ex,
             # using Pandas and returning None)
@@ -376,7 +376,7 @@ class Std(AggregateFnV2):
             # Empty or all null.
             return None
         sum_ = block_acc.sum(self._target_col_name, self._ignore_nulls)
-        if _is_null(sum_):
+        if is_null(sum_):
             # In case of ignore_nulls=False and column containing 'null'
             # return as is (to prevent unnecessary type conversions, when, for ex,
             # using Pandas and returning None)
@@ -442,7 +442,7 @@ class AbsMax(AggregateFnV2):
         max_ = block_accessor.max(self._target_col_name, self._ignore_nulls)
         min_ = block_accessor.min(self._target_col_name, self._ignore_nulls)
 
-        if _is_null(max_) or _is_null(min_):
+        if is_null(max_) or is_null(min_):
             return None
 
         return max(
@@ -507,9 +507,9 @@ class Quantile(AggregateFnV2):
 
     def _finalize(self, accumulator: List[Any]) -> Optional[U]:
         if self._ignore_nulls:
-            accumulator = [v for v in accumulator if not _is_null(v)]
+            accumulator = [v for v in accumulator if not is_null(v)]
         else:
-            nulls = [v for v in accumulator if _is_null(v)]
+            nulls = [v for v in accumulator if is_null(v)]
             if len(nulls) > 0:
                 # NOTE: We return the null itself to preserve column type
                 return nulls[0]
@@ -568,10 +568,6 @@ class Unique(AggregateFnV2):
             return {x}
 
 
-def _is_null(a: Optional[AggType]) -> bool:
-    return a is None or is_nan(a)
-
-
 def _null_safe_zero_factory(zero_factory, ignore_nulls: bool):
     """NOTE: PLEASE READ CAREFULLY BEFORE CHANGING
 
@@ -625,7 +621,7 @@ def _null_safe_aggregate(
         result = aggregate(block)
         # NOTE: If `ignore_nulls=True`, aggregation will only be returning
         #       null if the block does NOT contain any non-null elements
-        if _is_null(result) and ignore_nulls:
+        if is_null(result) and ignore_nulls:
             return None
 
         return result
@@ -639,7 +635,7 @@ def _null_safe_finalize(
     def _safe_finalize(acc: Optional[AggType]) -> AggType:
         # If accumulator container is not null, finalize.
         # Otherwise, return as is.
-        return acc if _is_null(acc) else finalize(acc)
+        return acc if is_null(acc) else finalize(acc)
 
     return _safe_finalize
 
@@ -672,9 +668,9 @@ def _null_safe_combine(
             cur: Optional[AggType], new: Optional[AggType]
         ) -> Optional[AggType]:
 
-            if _is_null(cur):
+            if is_null(cur):
                 return new
-            elif _is_null(new):
+            elif is_null(new):
                 return cur
             else:
                 return combine(cur, new)
@@ -685,9 +681,9 @@ def _null_safe_combine(
             cur: Optional[AggType], new: Optional[AggType]
         ) -> Optional[AggType]:
 
-            if _is_null(new):
+            if is_null(new):
                 return new
-            elif _is_null(cur):
+            elif is_null(cur):
                 return cur
             else:
                 return combine(cur, new)
