@@ -190,6 +190,12 @@ class LLMConfig(BaseModelExtended):
         ),
     )
 
+    resources_per_worker: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="This will pass to config like `VLLMEngineConfig` and override "
+        "the resources config for the workers in vLLM engine."
+    )
+
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
