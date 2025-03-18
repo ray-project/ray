@@ -7,12 +7,11 @@ load("//bazel:python.bzl", "doctest", "py_test_module_list")
 # -------------------------------------------------------
 
 exports_files(
-  ["tests/doctest_pytest_plugin.py"],
+    ["tests/doctest_pytest_plugin.py"],
 )
 
 doctest(
     size = "large",
-    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     files = glob(
         ["**/*.py"],
         exclude = glob([
@@ -20,6 +19,7 @@ doctest(
             "tests/**/*",
         ]),
     ),
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
 )
 
