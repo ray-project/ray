@@ -4,6 +4,7 @@ import os
 import pathlib
 import random
 import sys
+import psutil
 import threading
 import time
 import urllib.parse
@@ -1517,3 +1518,90 @@ def get_total_obj_store_mem_on_node() -> int:
         node_id in total_resources_per_node
     ), f"Expected node '{node_id}' to be in resources: {total_resources_per_node}"
     return total_resources_per_node[node_id]["object_store_memory"]
+
+
+class MemoryProfiler:
+    """A context manager that polls the USS of the current process.
+
+    This class approximates the max USS by polling memory and subtracting the amount
+    of shared memory from the resident set size (RSS). It's not a
+    perfect estimate (it can underestimate, e.g., if you use Torch tensors), but
+    estimating the USS is much cheaper than computing the actual USS.
+
+    Example:
+
+        .. testcode::
+
+            with MemoryProfiler(poll_interval_s=1.0) as profiler:
+                for i in range(10):
+                    ...  # Your code here
+                    print(f"Max USS: {profiler.estimate_max_uss()}")
+                    profiler.reset()
+    """
+
+    def __init__(self, poll_interval_s: Optional[float]):
+        """
+
+        Args:
+            poll_interval_s: The interval to poll the USS of the process. If `None`,
+                this class won't poll the USS.
+        """
+        self._poll_interval_s = poll_interval_s
+
+        self._process = psutil.Process(os.getpid())
+        self._max_uss = self._estimate_uss()
+        self._max_uss_lock = threading.Lock()
+
+        self._uss_poll_thread = None
+        self._stop_uss_poll_event = None
+
+    def __repr__(self):
+        return f"MemoryProfiler(poll_interval_s={self._poll_interval_s})"
+
+    def __enter__(self):
+        if self._poll_interval_s is not None:
+            (
+                self._uss_poll_thread,
+                self._stop_uss_poll_event,
+            ) = self._start_uss_poll_thread()
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._uss_poll_thread is not None:
+            self._stop_uss_poll_thread()
+
+    def estimate_max_uss(self) -> int:
+        return self._max_uss
+
+    def reset(self):
+        with self._max_uss_lock:
+            self._max_uss = self._estimate_uss()
+
+    def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
+        assert self._poll_interval_s is not None
+
+        stop_event = threading.Event()
+
+        def poll_uss():
+            while not stop_event.is_set():
+                with self._max_uss_lock:
+                    self._max_uss = max(self._max_uss, self._estimate_uss())
+                stop_event.wait(self._poll_interval_s)
+
+        thread = threading.Thread(target=poll_uss, daemon=True)
+        thread.start()
+
+        return thread, stop_event
+
+    def _stop_uss_poll_thread(self):
+        if self._stop_uss_poll_event is not None:
+            self._stop_uss_poll_event.set()
+            self._uss_poll_thread.join()
+
+    def _estimate_uss(self) -> int:
+        memory_info = self._process.memory_info()
+        # Estimate the USS (the amount of memory that'd be free if we killed the
+        # process right now) as the difference between the RSS (total physical memory)
+        # and amount of shared physical memory.
+        return memory_info.rss - memory_info.shared
