@@ -291,6 +291,14 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
         --cache-test-results --parallelism-per-worker 2
 
+  # cgroup test
+  - label: ":ray: core: cgroup tests"
+    tags: core_cpp
+    instance_type: medium
+    commands:
+      - docker run --security-opt seccomp=unconfined --privileged -it cr.ray.io/rayproject/oss-ci-base_build || true
+      - sleep 3600
+
   - label: ":ray: core: cpp asan tests"
     tags: core_cpp
     instance_type: medium
