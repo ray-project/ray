@@ -29,7 +29,7 @@ class ProcessorConfig(BaseModelExtended):
     resources_per_worker: Optional[Dict[str, float]] = Field(
         default=None,
         description="This will override the default resources config for actors/workers, "
-        "the default resource config for LLM Stage may be something like {'GPU': 1}."
+        "the default resource config for LLM Stage may be something like {'GPU': 1}.",
     )
     accelerator_type: Optional[str] = Field(
         default=None,

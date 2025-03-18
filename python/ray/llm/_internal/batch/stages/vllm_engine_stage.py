@@ -574,7 +574,9 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
 
 def _ray_scheduling_strategy_fn(
-    num_workers_per_instance: int, accelerator_type: str, resources: Optional[Dict[str, float]] = None
+    num_workers_per_instance: int,
+    accelerator_type: str,
+    resources: Optional[Dict[str, float]] = None,
 ):
     """
     Create a Ray scheduling strategy for vLLM engine.
@@ -660,7 +662,8 @@ class vLLMEngineStage(StatefulStage):
             map_batches_kwargs["num_gpus"] = num_mp_workers
         else:
             ray_remote_args["resources"] = {
-                key: value * num_mp_workers for key, value in resources_per_worker.items()
+                key: value * num_mp_workers
+                for key, value in resources_per_worker.items()
             }
 
         map_batches_kwargs.update(ray_remote_args)

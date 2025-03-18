@@ -54,7 +54,7 @@ class VLLMEngineConfig(BaseModelExtended):
     resources_per_worker: Optional[Dict[str, float]] = Field(
         default=None,
         description="This overrides the vLLM engine worker's default resource configuration, "
-        "the number of resources returned by `placement_bundles`."
+        "the number of resources returned by `placement_bundles`.",
     )
     accelerator_type: Optional[GPUType] = Field(
         None,
