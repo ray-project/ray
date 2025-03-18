@@ -145,6 +145,13 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help="Name of the build used to run tests",
 )
 @click.option(
+    "--privileged-container",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Run the test in a privileged Docker container",
+)
+@click.option(
     "--build-type",
     type=click.Choice(
         [
@@ -212,6 +219,7 @@ def main(
     install_mask: Optional[str],
     bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
+    privileged_container: bool,
 ) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
@@ -241,6 +249,7 @@ def main(
         build_type=build_type,
         skip_ray_installation=skip_ray_installation,
         install_mask=install_mask,
+        privileged_container=privileged_container,
     )
     if build_only:
         sys.exit(0)
@@ -291,6 +300,7 @@ def _get_container(
     build_type: Optional[str] = None,
     install_mask: Optional[str] = None,
     skip_ray_installation: bool = False,
+    privileged_container: bool = False,
 ) -> TesterContainer:
     shard_count = workers * parallelism_per_worker
     shard_start = worker_id * parallelism_per_worker
@@ -312,6 +322,7 @@ def _get_container(
             build_type=build_type,
             tmp_filesystem=tmp_filesystem,
             install_mask=install_mask,
+            privileged_container=privileged_container,
         )
 
     if operating_system == "windows":

@@ -3288,3 +3288,9 @@ genrule(
     """,
     local = 1,
 )
+
+sh_test(
+    name = "irabbani_sh_test",
+    tags = ["team:irabbani"],
+    srcs = ["irabbani_shell_test.sh"]
+)

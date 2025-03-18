@@ -18,6 +18,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
         build_type: Optional[str] = None,
         install_mask: Optional[str] = None,
         tmp_filesystem: Optional[str] = None,
+        privileged_container: bool = False,
     ) -> None:
         LinuxContainer.__init__(
             self,
@@ -28,6 +29,7 @@ class LinuxTesterContainer(TesterContainer, LinuxContainer):
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
             tmp_filesystem=tmp_filesystem,
+            privileged_container=privileged_container,
         )
         TesterContainer.__init__(
             self,
