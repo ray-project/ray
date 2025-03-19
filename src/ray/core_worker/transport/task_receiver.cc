@@ -18,6 +18,7 @@
 
 #include "ray/common/task/task.h"
 #include "ray/gcs/pb_util.h"
+#include "scheduling_util.h"
 
 using ray::rpc::ActorTableData;
 using namespace ray::gcs;
@@ -36,6 +37,7 @@ void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
 void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                               rpc::PushTaskReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Received task " << request.task_spec().task_id();
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
   // which doesn't work with std::move.
@@ -79,7 +81,9 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
   auto accept_callback = [this, reply, resource_ids = std::move(resource_ids)](
                              const TaskSpecification &task_spec,
                              rpc::SendReplyCallback send_reply_callback) {
+    RAY_LOG(INFO) << "[myan] Executing task " << task_spec.TaskId();
     if (task_spec.GetMessage().skip_execution()) {
+      RAY_LOG(INFO) << "[myan] Skipping execution of task " << task_spec.TaskId();
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
@@ -224,6 +228,8 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
   auto cancel_callback = [reply](const TaskSpecification &task_spec,
                                  const Status &status,
                                  rpc::SendReplyCallback send_reply_callback) {
+    RAY_LOG(INFO) << "Cancelling task " << task_spec.TaskId() << " with spec "
+                  << task_spec.DebugString();
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
       send_reply_callback(status, nullptr, nullptr);
@@ -236,11 +242,17 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
   };
 
   if (task_spec.IsActorTask()) {
+    RAY_LOG(INFO) << "[myan] 1 Adding task " << task_spec.TaskId()
+                  << " to actor scheduling task queue.";
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
     if (it == actor_scheduling_queues_.end()) {
+      RAY_LOG(INFO) << "[myan] Creating new actor scheduling task queue for actor "
+                    << task_spec.ActorId();
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
       RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       if (execute_out_of_order_) {
+        RAY_LOG(INFO) << "[myan] Creating OutOfOrderActorSchedulingQueue for actor "
+                      << task_spec.ActorId();
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
@@ -254,6 +266,8 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                                                                  cg_it->second)))
                  .first;
       } else {
+        RAY_LOG(INFO) << "[myan] Creating ActorSchedulingQueue for actor "
+                      << task_spec.ActorId();
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(
@@ -269,6 +283,8 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
       }
     }
 
+    RAY_LOG(INFO) << "[myan] 2 Adding task " << task_spec.TaskId()
+                  << " to actor scheduling task queue.";
     it->second->Add(request.sequence_number(),
                     request.client_processed_up_to(),
                     std::move(accept_callback),

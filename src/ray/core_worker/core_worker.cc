@@ -1359,6 +1359,8 @@ void CoreWorker::InternalHeartbeat() {
     }
   }
 
+  RAY_LOG(INFO) << "[myan] Obtained a list of tasks to retry" << tasks_to_resubmit.size();
+
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
@@ -1366,6 +1368,8 @@ void CoreWorker::InternalHeartbeat() {
         auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
         actor_handle->SetResubmittedActorTaskSpec(spec);
       }
+      RAY_LOG(INFO) << "[myan] Resubmitting task " << spec.TaskId() << " for actor "
+                    << spec.ActorId();
       RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
     } else if (spec.IsActorCreationTask()) {
       RAY_CHECK_OK(actor_task_submitter_->SubmitActorCreationTask(spec));
@@ -3252,7 +3256,7 @@ Status CoreWorker::ExecuteTask(
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute
   // tasks anymore.
@@ -3827,7 +3831,7 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+  RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
@@ -3849,6 +3853,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
+    RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+        << "Received Handle Actor Task";
     task_execution_service_.post(
         [this,
          request,
@@ -3866,6 +3872,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
+    RAY_LOG(INFO).WithField(TaskID::FromBinary(request.task_spec().task_id()))
+        << "Received Handle Normal Task";
     // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
     // the task execution service.
     task_receiver_->HandleTask(request, reply, send_reply_callback);
