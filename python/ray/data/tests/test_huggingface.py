@@ -79,19 +79,13 @@ def test_from_huggingface_streaming(batch_format, ray_start_regular_shared):
 def test_from_huggingface_dynamic_generated(ray_start_regular_shared):
     # https://github.com/ray-project/ray/issues/49529
     hfds = datasets.load_dataset(
-        "hotpotqa/hotpot_qa",
-        "fullwiki",
+        "dataset-org/dream",
         split="test",
         streaming=True,
+        trust_remote_code=True,
     )
     ds = ray.data.from_huggingface(hfds)
-    try:
-        ds.take(1)
-    except ModuleNotFoundError:
-        pytest.fail("Should not raise ModuleNotFoundError")
-    except pyarrow.lib.ArrowInvalid:
-        # Raises ArrowInvalid because of the underlying dataset
-        pass
+    ds.take(1)
 
 
 if __name__ == "__main__":

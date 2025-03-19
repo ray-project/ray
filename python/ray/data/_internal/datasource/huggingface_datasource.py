@@ -119,6 +119,9 @@ class HuggingFaceDatasource(Datasource):
         return self._dataset.dataset_size
 
     def _read_dataset(self) -> Iterable[Block]:
+        import numpy as np
+        import pandas as pd
+        import pyarrow
         # Note: we pass `self` here instead of `self._dataset` because
         # we need to trigger the try-import logic at the top of file
         # to avoid import error of dataset_modules.
@@ -157,9 +160,6 @@ class HuggingFaceDatasource(Datasource):
         # Note: `parallelism` arg is currently not used by HuggingFaceDatasource.
         # We always generate a single ReadTask to perform the read.
         _check_pyarrow_version()
-        import numpy as np
-        import pandas as pd
-        import pyarrow
 
         # TODO(scottjlee): IterableDataset doesn't provide APIs
         # for getting number of rows, byte size, etc., so the
