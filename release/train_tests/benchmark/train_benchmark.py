@@ -5,7 +5,7 @@ import os
 import pprint
 import time
 import tempfile
-from typing import Dict, Iterator, Tuple, Optional
+from typing import Dict
 
 import ray.train
 from ray._private.test_utils import safe_write_to_results_json
@@ -29,9 +29,8 @@ class TrainLoopRunner:
 
         model = factory.get_model()
         self.model = ray.train.torch.prepare_model(model)
-        
+
         self.loss_fn = factory.get_loss_fn()
-        
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
         # Training progress state.
@@ -46,11 +45,6 @@ class TrainLoopRunner:
             self.restore_from_checkpoint(checkpoint)
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Restoring from checkpoint: {checkpoint} for worker "
-                f"{ray.train.get_context().get_world_rank()}"
-            )
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
         ) as temp_checkpoint_dir:
@@ -65,15 +59,7 @@ class TrainLoopRunner:
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
 
-        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} waiting at checkpoint restoration barrier")
-        ray.train.report({"checkpoint_restored": True})
-        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} passed checkpoint restoration barrier")
-
     def run(self):
-        logger.info(
-            f"[TrainLoopRunner] Starting training for {self.benchmark_config.num_epochs} "
-            f"epochs for worker {ray.train.get_context().get_world_rank()}"
-        )
         starting_epoch = self._train_epoch_idx
 
         for _ in range(starting_epoch, self.benchmark_config.num_epochs):
@@ -131,9 +117,6 @@ class TrainLoopRunner:
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
-        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} waiting at end-of-epoch barrier")
-        ray.train.report({"epoch_completed": self._train_epoch_idx})
-        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} passed end-of-epoch barrier")
 
     def _should_validate_during_epoch(self) -> bool:
         """Handles the validate_every_n_steps logic."""
@@ -151,22 +134,11 @@ class TrainLoopRunner:
             == 0
         )
 
-    def get_next_batch(self, dataloader: Iterator[Tuple[torch.Tensor, torch.Tensor]]) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
-        """Get the next batch from the dataloader, handling any errors that occur.
-
-        Args:
-            dataloader: The dataloader to get the next batch from
-
-        Returns:
-            Optional[Tuple[torch.Tensor, torch.Tensor]]: The next batch, or None if there are no more batches
-        """
+    def get_next_batch(self, dataloader):
         try:
             return next(dataloader)
         except StopIteration:
             return None
-        except Exception as e:
-            logger.error(f"[DataLoader] Error getting next batch: {str(e)}")
-            raise
 
     def train_step(self, input_batch, labels):
         self.model.train()
@@ -177,11 +149,6 @@ class TrainLoopRunner:
         self.optimizer.zero_grad()
 
     def validate_and_checkpoint(self):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Validation] Starting validation and checkpointing @ epoch="
-                f"{self._train_epoch_idx}, batch={self._train_batch_idx}"
-            )
         with self._metrics["validation/epoch"].timer():
             validation_metrics = self.validate()
 
@@ -227,10 +194,6 @@ class TrainLoopRunner:
             with self._metrics["validation/iter_batch"].timer():
                 batch = self.get_next_batch(val_dataloader)
 
-        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} waiting at validation barrier")
-        ray.train.report({"validation_completed": True})
-        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} passed validation barrier")
-
         return {"validation/loss": total_loss.item() / num_rows}
 
     def validate_step(self, input_batch, labels):
@@ -240,15 +203,9 @@ class TrainLoopRunner:
         return loss
 
     def report_checkpoint(self, metrics, checkpoint):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Reporting checkpoint @ epoch={self._train_epoch_idx}, "
-                f"batch={self._train_batch_idx}"
-            )
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )
-        
         ray.train.report(
             metrics,
             checkpoint=checkpoint,
@@ -256,12 +213,6 @@ class TrainLoopRunner:
         )
 
     def load_checkpoint(self, local_dir: str):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Loading checkpoint from {local_dir} for worker "
-                f"{ray.train.get_context().get_world_rank()}"
-            )
-
         self.model.load_state_dict(
             torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
         )
@@ -287,11 +238,6 @@ class TrainLoopRunner:
             )
 
     def save_checkpoint(self, local_dir: str):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Saving checkpoint to {local_dir} @ epoch="
-                f"{self._train_epoch_idx}, batch={self._train_batch_idx}"
-            )
         train_state = {
             "epoch": self._train_epoch_idx,
             "batch_idx": self._train_batch_idx,

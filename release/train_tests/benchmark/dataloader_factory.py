@@ -27,36 +27,12 @@ logger = logging.getLogger(__name__)
 # Set multiprocessing start method to 'spawn' for CUDA compatibility
 if torch.cuda.is_available():
     try:
-        multiprocessing.set_start_method('spawn', force=True)
-        logger.info("[DataLoader] Set multiprocessing start method to 'spawn' for CUDA compatibility")
+        multiprocessing.set_start_method("spawn", force=True)
+        logger.info(
+            "[DataLoader] Set multiprocessing start method to 'spawn' for CUDA compatibility"
+        )
     except RuntimeError:
         logger.info("[DataLoader] Multiprocessing start method already set")
-
-# Configure logging for worker processes
-def configure_worker_logging():
-    """Configure logging for DataLoader worker processes."""
-    # Get the current worker info
-    worker_info = torch.utils.data.get_worker_info()
-    if worker_info is not None:
-        # Configure logging for this worker
-        worker_id = worker_info.id
-        num_workers = worker_info.num_workers
-        
-        # Create a new logger for this worker
-        worker_logger = logging.getLogger(f"DataLoader.Worker{worker_id}")
-        worker_logger.setLevel(logging.INFO)
-        
-        # Create a handler that includes worker ID in the log message
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            f'%(asctime)s [DataLoader.Worker{worker_id}/{num_workers}] %(levelname)s: %(message)s'
-        )
-        handler.setFormatter(formatter)
-        worker_logger.addHandler(handler)
-        
-        # Return the worker-specific logger
-        return worker_logger
-    return logger
 
 # AWS configuration
 AWS_REGION = "us-west-2"
@@ -88,10 +64,7 @@ class S3Reader:
     def s3_client(self):
         """Lazy initialization of S3 client to avoid serialization issues."""
         if self._s3_client is None:
-            self._s3_client = boto3.client(
-                "s3",
-                region_name=AWS_REGION
-            )
+            self._s3_client = boto3.client("s3", region_name=AWS_REGION)
         return self._s3_client
 
     def _parse_s3_url(self, s3_url: str) -> Tuple[str, str]:
@@ -162,86 +135,30 @@ class S3Reader:
 
             return file_urls
         except NoCredentialsError:
-            raise self.S3CredentialsError("AWS credentials not found. Ensure you have configured them.")
+            raise self.S3CredentialsError(
+                "AWS credentials not found. Ensure you have configured them."
+            )
         except Exception as e:
             raise self.S3FileError(f"Error listing files from {s3_url}: {str(e)}")
 
 
-class S3ParquetReader(S3Reader):
-    """A class to handle reading Parquet files from S3."""
-
-    class S3ParquetError(S3Reader.S3FileError):
-        """Raised when there's an error reading a Parquet file from S3."""
-        pass
-
-    def read_parquet(self, s3_url: str, row_group: Optional[int] = None) -> pd.DataFrame:
-        """Download Parquet file from S3 and return as Pandas DataFrame.
-
-        Args:
-            s3_url: The S3 URL of the Parquet file
-            row_group: Specific row group to read (None reads all groups)
-
-        Returns:
-            pd.DataFrame: The loaded Parquet file as a DataFrame
-
-        Raises:
-            S3CredentialsError: If AWS credentials are not found
-            S3ParquetError: If there's an error reading the Parquet file
-            ValueError: If the S3 URL is invalid
-        """
-        try:
-            import pyarrow.parquet as pq
-            parquet_data = self.read_file(s3_url)
-            parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
-            
-            if row_group is not None:
-                # Read specific row group using PyArrow
-                table = parquet_file.read_row_group(row_group)
-            else:
-                # Read all row groups
-                table = parquet_file.read()
-                
-            # Convert PyArrow table to pandas DataFrame
-            return table.to_pandas()
-            
-        except self.S3FileError as e:
-            raise self.S3ParquetError(str(e))
-        except Exception as e:
-            raise self.S3ParquetError(
-                f"Error loading Parquet file from {s3_url}: {str(e)}"
-            )
-
-    def get_num_row_groups(self, s3_url: str) -> int:
-        """Get the number of row groups in a Parquet file.
-
-        Args:
-            s3_url: The S3 URL of the Parquet file
-
-        Returns:
-            int: Number of row groups in the file
-        """
-        try:
-            import pyarrow.parquet as pq
-            parquet_data = self.read_file(s3_url)
-            parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
-            return parquet_file.num_row_groups
-        except Exception as e:
-            raise self.S3ParquetError(
-                f"Error getting row groups from {s3_url}: {str(e)}"
-            )
-
-
 class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
-    """An iterable dataset that loads images from S3-stored Parquet files."""
+    """An iterable dataset that loads images from S3-stored Parquet files.
 
-    LOG_FREQUENCY = 1000  # Log every 1000 rows
+    This dataset:
+    1. Reads Parquet files from S3 one row group at a time
+    2. Processes images with optional random transforms
+    3. Yields (image, label) tensors
+    4. Supports row limits per worker for controlled data processing
+    """
+
+    LOG_FREQUENCY = 1000  # Log progress every 1000 rows
 
     def __init__(
         self,
         file_urls: List[str],
         random_transforms: bool = True,
         limit_rows_per_worker: Optional[int] = None,
-        device: Optional[torch.device] = None,
     ):
         """Initialize the dataset.
 
@@ -249,176 +166,142 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
             file_urls: List of S3 URLs to load
             random_transforms: Whether to use random transforms for training
             limit_rows_per_worker: Maximum number of rows to process per worker (None for all rows)
-                                 The caller should divide the total desired limit by num_workers
-            device: Device to place tensors on (default: None, stays on CPU)
         """
-        S3Reader.__init__(self)  # Initialize the S3Reader parent class
+        S3Reader.__init__(self)
         self.file_urls = file_urls
         self.limit_rows_per_worker = limit_rows_per_worker
         self.random_transforms = random_transforms
-        self.device = device
-        self.logger = configure_worker_logging()  # Get worker-specific logger
 
     def _read_parquet_file(self, file_url: str) -> Iterator[pd.DataFrame]:
-        """Read a Parquet file from S3 one row group at a time."""
+        """Read a Parquet file from S3 one row group at a time.
+
+        Args:
+            file_url: S3 URL of the Parquet file
+
+        Yields:
+            DataFrame containing one row group at a time
+        """
         try:
             start_time = time.time()
-            self.logger.info(f"[S3ParquetImageIterableDataset] Getting row groups for {file_url}")
-            
-            # Create S3 client inline
-            import boto3
-            s3_client = boto3.client("s3", region_name=AWS_REGION)
-            
+            logger.info(f"[Dataset] Reading Parquet file: {file_url}")
+
             # Get parquet file metadata
             import pyarrow.parquet as pq
+
             bucket, key = self._parse_s3_url(file_url)
-            response = s3_client.get_object(Bucket=bucket, Key=key)
-            parquet_data = response["Body"].read()
-            parquet_file = pq.ParquetFile(io.BytesIO(parquet_data))
+            response = self.s3_client.get_object(Bucket=bucket, Key=key)
+            parquet_file = pq.ParquetFile(io.BytesIO(response["Body"].read()))
             num_row_groups = parquet_file.num_row_groups
-            
-            self.logger.info(f"[S3ParquetImageIterableDataset] Found {num_row_groups} row groups in {file_url}")
-            
+
+            logger.info(f"[Dataset] Found {num_row_groups} row groups in {file_url}")
+
             for row_group in range(num_row_groups):
-                try:
-                    group_start_time = time.time()
-                    # Get row group metadata
-                    row_group_metadata = parquet_file.metadata.row_group(row_group)
-                    num_rows = row_group_metadata.num_rows
-                    
-                    self.logger.info(f"[S3ParquetImageIterableDataset] Reading row group {row_group}/{num_row_groups} ({num_rows} rows) from {file_url}")
-                    
-                    # Read row group and convert to pandas
-                    table = parquet_file.read_row_group(row_group)
-                    df = table.to_pandas()
-                    
-                    group_time = time.time() - group_start_time
-                    self.logger.info(f"[S3ParquetImageIterableDataset] Row group {row_group} read in {group_time:.2f}s ({num_rows/group_time:.2f} rows/sec)")
-                    yield df
-                    
-                except Exception as e:
-                    self.logger.error(f"[S3ParquetImageIterableDataset] Error processing row group {row_group} from {file_url}: {str(e)}")
-                    continue
-                    
+                # Read row group and convert to pandas
+                table = parquet_file.read_row_group(row_group)
+                df = table.to_pandas()
+                yield df
+
             total_time = time.time() - start_time
-            self.logger.info(f"[S3ParquetImageIterableDataset] Completed reading {file_url} in {total_time:.2f}s")
-                    
+            logger.info(f"[Dataset] Completed reading {file_url} in {total_time:.2f}s")
+
         except Exception as e:
-            self.logger.error(f"[S3ParquetImageIterableDataset] Error reading file {file_url}: {str(e)}")
+            logger.error(f"[Dataset] Error reading file {file_url}: {str(e)}")
             raise
 
     def __iter__(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        """Main iteration method that processes files and yields (image, label) tensors.
+
+        This method:
+        1. Distributes files among workers
+        2. Processes rows with image transforms
+        3. Converts to tensors
+        4. Respects row limits per worker
+        """
         try:
+            # Get worker info for file distribution
             worker_info = torch.utils.data.get_worker_info()
             worker_id = worker_info.id if worker_info else 0
             num_workers = worker_info.num_workers if worker_info else 1
-            
-            self.logger.info(
-                f"Starting iteration"
-            )
-            self.logger.info(
-                f"Configuration: random_transforms={self.random_transforms}, "
-                f"limit_rows_per_worker={self.limit_rows_per_worker}, "
-                f"device={self.device}"
-            )
-            rows_processed = 0  # Local to this worker
-            last_log_time = time.time()
-            total_start_time = time.time()
-            last_row_time = time.time()
 
-            try:
-                preprocess_start = time.time()
-                preprocess_fn = get_preprocess_map_fn(
-                    decode_image=True,
-                    random_transforms=self.random_transforms
-                )
-                preprocess_time = time.time() - preprocess_start
-                self.logger.info(f"Created preprocess_fn in {preprocess_time:.2f}s")
-            except Exception as e:
-                self.logger.error(f"Error creating preprocess_fn", exc_info=True)
-                raise
+            logger.info(f"[Dataset] Worker {worker_id}/{num_workers} starting")
 
+            # Initialize preprocessing function
+            preprocess_fn = get_preprocess_map_fn(
+                decode_image=True, random_transforms=self.random_transforms
+            )
+
+            # Distribute files among workers
             if worker_info is None:
                 files_to_read = self.file_urls
             else:
                 per_worker = max(1, len(self.file_urls) // num_workers)
                 start_idx = worker_id * per_worker
-                end_idx = start_idx + per_worker if worker_id < num_workers - 1 else len(self.file_urls)
+                end_idx = (
+                    start_idx + per_worker
+                    if worker_id < num_workers - 1
+                    else len(self.file_urls)
+                )
                 files_to_read = self.file_urls[start_idx:end_idx]
 
-            self.logger.info(
-                f"Processing {len(files_to_read)} files: {files_to_read}"
+            logger.info(
+                f"[Dataset] Worker {worker_id} processing {len(files_to_read)} files"
             )
 
+            # Process files and rows
+            rows_processed = 0
+            last_log_time = time.time()
+            total_start_time = time.time()
+
             for file_url in files_to_read:
-                if self.limit_rows_per_worker is not None and rows_processed >= self.limit_rows_per_worker:
-                    self.logger.info(
-                        f"Reached row limit {self.limit_rows_per_worker}, "
-                        f"processed {rows_processed} rows"
+                # Check row limit before processing each file
+                if (
+                    self.limit_rows_per_worker is not None
+                    and rows_processed >= self.limit_rows_per_worker
+                ):
+                    logger.info(
+                        f"[Dataset] Worker {worker_id} reached row limit: {rows_processed}"
                     )
                     return
 
-                file_start_time = time.time()
-                self.logger.info(
-                    f"Starting to read {file_url}"
-                )
                 for df in self._read_parquet_file(file_url):
-                    if self.limit_rows_per_worker is not None and rows_processed >= self.limit_rows_per_worker:
-                        self.logger.info(
-                            f"Reached row limit {self.limit_rows_per_worker}, "
-                            f"processed {rows_processed} rows"
-                        )
+                    # Check row limit before processing each DataFrame
+                    if (
+                        self.limit_rows_per_worker is not None
+                        and rows_processed >= self.limit_rows_per_worker
+                    ):
                         return
 
                     for _, row in df.iterrows():
-                        if self.limit_rows_per_worker is not None and rows_processed >= self.limit_rows_per_worker:
-                            self.logger.info(
-                                f"Reached row limit {self.limit_rows_per_worker}, "
-                                f"processed {rows_processed} rows"
-                            )
+                        # Check row limit before processing each row
+                        if (
+                            self.limit_rows_per_worker is not None
+                            and rows_processed >= self.limit_rows_per_worker
+                        ):
                             return
 
                         try:
-                            # Check if we're taking too long between rows
-                            current_time = time.time()
-                            time_since_last_row = current_time - last_row_time
-                            if time_since_last_row > 5:  # Log warning if more than 5 seconds between rows
-                                self.logger.warning(
-                                    f"Long delay ({time_since_last_row:.2f}s) between rows {rows_processed-1} and {rows_processed}"
-                                )
-                            
-                            row_start_time = time.time()
+                            # Process row and convert to tensors
                             processed = preprocess_fn(row)
-                            preprocess_time = time.time() - row_start_time
-                            
-                            if preprocess_time > 2:  # Log warning if preprocessing takes too long
-                                self.logger.warning(
-                                    f"Slow preprocessing ({preprocess_time:.2f}s) for row {rows_processed}"
-                                )
-                            
-                            # Convert to tensors and optionally move to device
-                            tensor_start_time = time.time()
-                            image = torch.as_tensor(processed["image"], dtype=torch.float32)
-                            label = torch.as_tensor(processed["label"], dtype=torch.int64)
-                            if self.device is not None:
-                                image = image.to(self.device, non_blocking=True)
-                                label = label.to(self.device, non_blocking=True)
-                            tensor_time = time.time() - tensor_start_time
-                            
-                            if tensor_time > 2:  # Log warning if tensor conversion takes too long
-                                self.logger.warning(
-                                    f"Slow tensor conversion ({tensor_time:.2f}s) for row {rows_processed}"
-                                )
-                            
+                            image = torch.as_tensor(
+                                processed["image"], dtype=torch.float32
+                            )
+                            label = torch.as_tensor(
+                                processed["label"], dtype=torch.int64
+                            )
+
                             rows_processed += 1
-                            last_row_time = time.time()
 
                             # Log progress periodically
                             if rows_processed % self.LOG_FREQUENCY == 0:
                                 current_time = time.time()
                                 elapsed_time = current_time - last_log_time
-                                rows_per_second = self.LOG_FREQUENCY / elapsed_time if elapsed_time > 0 else 0
-                                self.logger.info(
+                                rows_per_second = (
+                                    self.LOG_FREQUENCY / elapsed_time
+                                    if elapsed_time > 0
+                                    else 0
+                                )
+                                logger.info(
+                                    f"[Dataset] Worker {worker_id}: "
                                     f"Processed {rows_processed} rows ({rows_per_second:.2f} rows/sec)"
                                 )
                                 last_log_time = current_time
@@ -426,21 +309,23 @@ class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
                             yield image, label
 
                         except Exception as e:
-                            self.logger.error(f"Error processing row", exc_info=True)
+                            logger.error(
+                                f"[Dataset] Worker {worker_id} error processing row: {str(e)}"
+                            )
                             continue
 
-                file_time = time.time() - file_start_time
-                self.logger.info(
-                    f"Completed file {file_url} in {file_time:.2f}s"
-                )
-
+            # Log final statistics
             total_time = time.time() - total_start_time
-            self.logger.info(
-                f"Finished processing {rows_processed} rows in {total_time:.2f}s "
+            logger.info(
+                f"[Dataset] Worker {worker_id} finished: "
+                f"{rows_processed} rows in {total_time:.2f}s "
                 f"({rows_processed/total_time:.2f} rows/sec)"
             )
+
         except Exception as e:
-            self.logger.error(f"Fatal error", exc_info=True)
+            logger.error(
+                f"[Dataset] Worker {worker_id} fatal error: {str(e)}", exc_info=True
+            )
             raise
 
 
@@ -470,46 +355,61 @@ class BaseDataLoaderFactory(ABC):
         return {}
 
 
-class TorchDataLoaderFactory(BaseDataLoaderFactory):
-    """Factory for creating PyTorch DataLoaders that read from S3 parquet files."""
+class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
+    """Factory for creating PyTorch DataLoaders that read from S3 parquet files.
+
+    This factory:
+    1. Creates DataLoaders that read Parquet files from S3
+    2. Distributes files among Ray workers using round-robin allocation
+    3. Handles device transfer and error handling for batches
+    4. Supports row limits per worker for controlled data processing
+    """
 
     def __init__(
-        self, 
-        benchmark_config: BenchmarkConfig, 
-        train_url: str, 
+        self,
+        benchmark_config: BenchmarkConfig,
+        train_url: str,
         val_url: str,
-        limit_total_rows: Optional[int] = None
+        limit_total_rows: Optional[int] = None,
     ):
-        super().__init__(benchmark_config)
+        """Initialize the factory.
+
+        Args:
+            benchmark_config: Configuration for the benchmark
+            train_url: S3 URL for training data
+            val_url: S3 URL for validation data
+            limit_total_rows: Optional limit on total rows to process
+        """
+        BaseDataLoaderFactory.__init__(self, benchmark_config)
+        S3Reader.__init__(self)
         self.train_url = train_url
         self.val_url = val_url
-        self._iterator = None
-        
-        # Calculate number of torch workers based on CPUs per GPU
+
+        # Get worker configuration
         num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
         num_cpus = os.cpu_count() or 1
-        self.num_torch_workers = max(1, num_cpus // num_gpus)  # At least 1 worker
-        logger.info(
-            f"[DataLoader] Workers: {self.num_torch_workers} per GPU "
-            f"(CPUs: {num_cpus}, GPUs: {num_gpus})"
-        )
-        
-        # Calculate per-worker row limit based on benchmark config workers
+        self.num_torch_workers = benchmark_config.num_torch_workers
         self.num_ray_workers = benchmark_config.num_workers
+
+        # Calculate total workers and row limits
         total_workers = self.num_ray_workers * self.num_torch_workers
         self.limit_rows_per_worker = (
-            max(1, limit_total_rows // total_workers) if limit_total_rows is not None else None
+            max(1, limit_total_rows // total_workers)
+            if limit_total_rows is not None
+            else None
         )
+
+        # Log configuration
         logger.info(
-            f"[DataLoader] Total workers: {total_workers} "
-            f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch)"
+            f"[DataLoader] Configuration: {total_workers} total workers "
+            f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch) "
+            f"across {num_gpus} GPUs"
         )
         if limit_total_rows is not None:
             if limit_total_rows < total_workers:
                 logger.warning(
                     f"[DataLoader] Warning: limit_total_rows ({limit_total_rows}) is less than "
-                    f"total_workers ({total_workers}). This means each worker will process at least "
-                    f"1 row instead of 0."
+                    f"total_workers ({total_workers}). Each worker will process at least 1 row."
                 )
             logger.info(f"[DataLoader] Rows per worker: {self.limit_rows_per_worker}")
 
@@ -519,180 +419,180 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory):
         logger.info(f"[DataLoader] Using Ray Train device: {device}")
         return device
 
-    def _parse_s3_url(self, s3_url: str) -> Tuple[str, str]:
-        """Parse an S3 URL into bucket and key."""
-        if s3_url.startswith("s3://"):
-            s3_parts = s3_url.replace("s3://", "").split("/", 1)
-            return s3_parts[0], s3_parts[1]
-        else:
-            raise ValueError(f"Invalid S3 URL format: {s3_url}")
+    def _get_file_urls(self, url: str) -> List[str]:
+        """Get file URLs from S3 and distribute them among Ray workers.
 
-    def _get_file_urls(self, url: str, max_files_per_worker: Optional[int] = None) -> List[str]:
-        """Get all file URLs from the given S3 URL.
-        
         Args:
             url: The S3 URL to list files from
-            max_files_per_worker: Optional limit on files per worker (applied before distribution)
+
+        Returns:
+            List of S3 URLs assigned to the current Ray worker
         """
         try:
-            # Create S3 client inline
-            import boto3
-            s3_client = boto3.client("s3", region_name=AWS_REGION)
-            
             # Get Ray worker info
             worker_rank = ray.train.get_context().get_world_rank()
-            logger.info(f"[TorchDataLoaderFactory] Ray worker {worker_rank}/{self.num_ray_workers} listing files")
-            
-            # List files
+            logger.info(
+                f"[DataLoader] Ray worker {worker_rank}/{self.num_ray_workers} listing files"
+            )
+
+            # List files from S3
             bucket, prefix = self._parse_s3_url(url)
             file_urls = []
-            response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-            
+            response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
             if "Contents" in response:
                 for file in response["Contents"]:
                     file_urls.append(f"s3://{bucket}/{file['Key']}")
-            
-            # Sort URLs to ensure consistent ordering across workers
+
+            # Sort URLs for consistent distribution
             file_urls.sort()
 
-            # If max_files_per_worker is set, limit total files before distribution
-            if max_files_per_worker is not None:
-                total_files = max_files_per_worker * self.num_ray_workers
-                file_urls = file_urls[:total_files]
-            
-            # True round-robin allocation: each worker gets every Nth file
-            worker_urls = file_urls[worker_rank::self.num_ray_workers]
-            
-            logger.info(f"[TorchDataLoaderFactory] Ray worker {worker_rank} got {len(worker_urls)}/{len(file_urls)} files in round-robin distribution")
+            # Round-robin allocation: each worker gets every Nth file
+            worker_urls = file_urls[worker_rank :: self.num_ray_workers]
+
+            logger.info(
+                f"[DataLoader] Ray worker {worker_rank} assigned {len(worker_urls)}/{len(file_urls)} files"
+            )
             return worker_urls
-            
+
         except Exception as e:
-            logger.error(f"[TorchDataLoaderFactory] Error listing files from {url}: {str(e)}")
+            logger.error(f"[DataLoader] Error listing files from {url}: {str(e)}")
             raise
 
-    def _create_batch_iterator(self, dataloader: torch.utils.data.DataLoader, device: torch.device) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    def _create_batch_iterator(
+        self, dataloader: torch.utils.data.DataLoader, device: torch.device
+    ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
         """Create a safe iterator that handles device transfer and error handling.
-        
+
         Args:
             dataloader: The PyTorch DataLoader to iterate over
             device: The device to move tensors to
-            
+
         Returns:
             An iterator that yields batches moved to the specified device
         """
         worker_rank = ray.train.get_context().get_world_rank()
         logger.info(f"[DataLoader] Worker {worker_rank} starting batch iteration")
-        
+
         try:
             last_batch_time = time.time()
             for batch_idx, batch in enumerate(dataloader):
-                current_time = time.time()
-                time_since_last_batch = current_time - last_batch_time
-                
-                if time_since_last_batch > 10:  # Log warning if more than 10 seconds between batches
-                    logger.warning(
-                        f"[DataLoader] Worker {worker_rank}: "
-                        f"Long delay ({time_since_last_batch:.2f}s) between batches {batch_idx-1} and {batch_idx}"
-                    )
-                
-                logger.info(
-                    f"[DataLoader] Worker {worker_rank} got batch {batch_idx} "
-                    f"(time since last: {time_since_last_batch:.2f}s)"
-                )
-                
                 try:
+                    # Check for delays between batches
+                    current_time = time.time()
+                    time_since_last_batch = current_time - last_batch_time
+                    if time_since_last_batch > 10:
+                        logger.warning(
+                            f"[DataLoader] Worker {worker_rank}: "
+                            f"Long delay ({time_since_last_batch:.2f}s) between batches {batch_idx-1} and {batch_idx}"
+                        )
+
+                    # Move batch to device
                     images, labels = batch
-                    logger.info(f"[DataLoader] Worker {worker_rank} moving batch to {device} (shape: {images.shape})")
-                    
-                    # Add timeout for device transfer
+                    logger.info(
+                        f"[DataLoader] Worker {worker_rank} processing batch {batch_idx} "
+                        f"(shape: {images.shape}, time since last: {time_since_last_batch:.2f}s)"
+                    )
+
                     transfer_start = time.time()
                     images = images.to(device, non_blocking=True)
                     labels = labels.to(device, non_blocking=True)
                     transfer_time = time.time() - transfer_start
-                    
-                    if transfer_time > 5:  # Log warning if transfer takes too long
+
+                    if transfer_time > 5:
                         logger.warning(
                             f"[DataLoader] Worker {worker_rank}: "
                             f"Slow device transfer ({transfer_time:.2f}s) for batch {batch_idx}"
                         )
-                    
+
                     logger.info(
                         f"[DataLoader] Worker {worker_rank} completed device transfer "
                         f"for batch {batch_idx} in {transfer_time:.2f}s"
                     )
-                    
+
                     last_batch_time = time.time()
                     yield images, labels
-                    
+
                 except Exception as e:
                     logger.error(
-                        f"[DataLoader] Worker {worker_rank} error processing batch {batch_idx}: {str(e)}", 
-                        exc_info=True
+                        f"[DataLoader] Worker {worker_rank} error processing batch {batch_idx}: {str(e)}",
+                        exc_info=True,
                     )
                     raise
-                    
+
         except Exception as e:
-            logger.error(f"[DataLoader] Worker {worker_rank} error in batch iterator: {str(e)}", exc_info=True)
+            logger.error(
+                f"[DataLoader] Worker {worker_rank} error in batch iterator: {str(e)}",
+                exc_info=True,
+            )
             raise
 
     def get_train_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        """Create a DataLoader for training data.
+
+        Returns:
+            An iterator that yields (image, label) tensors for training
+        """
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(f"[DataLoader] Worker {worker_rank} starting train dataloader creation")
+        logger.info(f"[DataLoader] Worker {worker_rank} creating train dataloader")
+
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
 
-        logger.info(f"[DataLoader] Worker {worker_rank} getting file URLs")
+        # Create dataset and dataloader
         train_ds = S3ParquetImageIterableDataset(
             file_urls=self._get_file_urls(self.train_url),
             random_transforms=True,
-            limit_rows_per_worker=self.limit_rows_per_worker * 2,
-            device=None,  # Keep tensors on CPU in dataset
+            limit_rows_per_worker=self.limit_rows_per_worker,
         )
 
-        logger.info(f"[DataLoader] Worker {worker_rank} creating DataLoader")
         dataloader = torch.utils.data.DataLoader(
             dataset=train_ds,
             batch_size=dataloader_config.train_batch_size,
             num_workers=self.num_torch_workers,
-            pin_memory=True,  # Enable pinned memory for faster CPU->GPU transfer
+            pin_memory=True,
             persistent_workers=True,
-            multiprocessing_context='spawn',  # Explicitly set spawn context
-            # TODO: Adding prefetch factor causes the dataloader to OOM
-            # prefetch_factor=dataloader_config.prefetch_batches,
-            timeout=30,  # 30 second timeout for collecting batches
+            multiprocessing_context="spawn",
+            prefetch_factor=dataloader_config.prefetch_batches,
+            timeout=self.benchmark_config.torch_dataloader_timeout_seconds,
             drop_last=True,
         )
-        
+
         return self._create_batch_iterator(dataloader, device)
 
     def get_val_dataloader(self) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+        """Create a DataLoader for validation data.
+
+        Returns:
+            An iterator that yields (image, label) tensors for validation
+        """
         worker_rank = ray.train.get_context().get_world_rank()
-        logger.info(f"[DataLoader] Worker {worker_rank} starting validation dataloader creation")
+        logger.info(f"[DataLoader] Worker {worker_rank} creating validation dataloader")
+
         dataloader_config = self.get_dataloader_config()
         device = self._get_device()
 
-        # Limit validation dataset size to prevent timeouts
+        # Create dataset and dataloader with row limits
         val_ds = S3ParquetImageIterableDataset(
-            file_urls=self._get_file_urls(self.val_url, max_files_per_worker=2),  # Limit to 2 files per worker
+            file_urls=self._get_file_urls(self.val_url),
             random_transforms=False,
             limit_rows_per_worker=self.limit_rows_per_worker,
-            device=None,  # Keep tensors on CPU in dataset
         )
 
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
             batch_size=dataloader_config.validation_batch_size,
-            num_workers=min(4, self.num_torch_workers),  # Limit number of workers for validation
-            pin_memory=True,  # Enable pinned memory for faster CPU->GPU transfer
+            num_workers=self.num_torch_workers,
+            pin_memory=True,
             persistent_workers=True,
-            multiprocessing_context='spawn',  # Explicitly set spawn context
-            # TODO: Adding prefetch factor causes the dataloader to OOM
-            # prefetch_factor=dataloader_config.prefetch_batches,
-            timeout=30,  # 30 second timeout for collecting batches
-            drop_last=False,  # Don't drop incomplete batches during validation
+            multiprocessing_context="spawn",
+            prefetch_factor=dataloader_config.prefetch_batches,
+            timeout=self.benchmark_config.torch_dataloader_timeout_seconds,
+            drop_last=False,
         )
-        
+
         return self._create_batch_iterator(dataloader, device)
+
 
 class RayDataLoaderFactory(BaseDataLoaderFactory):
     def __init__(self, benchmark_config: BenchmarkConfig) -> None:
