@@ -7,13 +7,25 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryUsingOutputSize,
+)
+from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from unittest.mock import MagicMock
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+
+from ray.data.context import DataContext
+from ray.util.placement_group import placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+
 import ray
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
     BlockMapTransformFn,
@@ -63,7 +75,6 @@ from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import *  # noqa
@@ -1845,6 +1856,92 @@ def test_insert_physical_optimization_rules():
     register_physical_rule(FakeRule1, 0)
     assert get_physical_rules()[-1] == FakeRule1
     assert get_physical_rules()[0] == FakeRule2
+
+
+@pytest.mark.parametrize(
+    "average_bytes_per_output, ray_remote_args, ray_remote_args_fn, data_context, expected_memory",
+    [
+        # The user hasn't set memory, so the rule should configure it.
+        (1, None, None, DataContext(), 1),
+        # The user has set memory, so the rule shouldn't change it.
+        (1, {"memory": 2}, None, DataContext(), 2),
+        (1, None, lambda: {"memory": 2}, DataContext(), 2),
+        # An estimate isn't available, so the rule shouldn't configure memory.
+        (None, None, None, DataContext(), None),
+        # The user has set a placement group, so the rule shouldn't configure memory.
+        # This is to ensure Ray can schedule tasks even if the placement group doesn't
+        # specify memory.
+        (
+            1,
+            {
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                    placement_group([{"CPU": 1}])
+                )
+            },
+            None,
+            DataContext(),
+            None,
+        ),
+        (
+            1,
+            None,
+            lambda: {
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                    placement_group([{"CPU": 1}])
+                )
+            },
+            DataContext(),
+            None,
+        ),
+        (
+            1,
+            None,
+            None,
+            DataContext(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group([{"CPU": 1}])
+                )
+            ),
+            None,
+        ),
+        (
+            1,
+            None,
+            None,
+            DataContext(
+                scheduling_strategy_large_args=PlacementGroupSchedulingStrategy(
+                    placement_group([{"CPU": 1}])
+                )
+            ),
+            None,
+        ),
+    ],
+)
+def test_configure_map_task_memory_rule(
+    average_bytes_per_output,
+    ray_remote_args,
+    ray_remote_args_fn,
+    data_context,
+    expected_memory,
+):
+    input_op = InputDataBuffer(MagicMock(), [])
+    map_op = MapOperator.create(
+        MagicMock(),
+        input_op=input_op,
+        data_context=data_context,
+        ray_remote_args=ray_remote_args,
+        ray_remote_args_fn=ray_remote_args_fn,
+    )
+    map_op._metrics = MagicMock(
+        spec=OpRuntimeMetrics, average_bytes_per_output=average_bytes_per_output
+    )
+    plan = PhysicalPlan(map_op, op_map=MagicMock(), context=data_context)
+    rule = ConfigureMapTaskMemoryUsingOutputSize()
+
+    new_plan = rule.apply(plan)
+
+    remote_args = new_plan.dag._get_runtime_ray_remote_args()
+    assert remote_args.get("memory") == expected_memory
 
 
 if __name__ == "__main__":
