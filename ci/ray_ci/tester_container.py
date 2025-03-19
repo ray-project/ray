@@ -254,6 +254,8 @@ class TesterContainer(Container):
             test_cmd += "--config=tsan-clang "
         if self.build_type == "--config=cgroup":
             test_cmd += "--config=cgroup"
+        if self.build_type == "--config=cgroupskip":
+            test_cmd += "--config=cgroup"
         for env in test_envs:
             test_cmd += f"--test_env {env} "
         if test_arg:

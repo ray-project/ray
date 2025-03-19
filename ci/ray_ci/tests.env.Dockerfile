@@ -24,7 +24,7 @@ if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
 
-if [[ "$BUILD_TYPE" == "skip" || "${BUILD_TYPE}" == "ubsan" ]]; then
+if [[ "$BUILD_TYPE" == "skip" || "${BUILD_TYPE}" == "ubsan" || "${BUILD_TYPE}" == "cgroupskip" ]]; then
   echo "Skipping building ray package"
   exit 0
 fi
