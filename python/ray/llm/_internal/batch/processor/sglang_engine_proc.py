@@ -129,6 +129,7 @@ def build_sglang_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -143,6 +144,7 @@ def build_sglang_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -182,6 +184,7 @@ def build_sglang_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
