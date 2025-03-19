@@ -44,11 +44,6 @@ class Dashboard:
         serve_frontend: If configured, frontend HTML
             is not served from the dashboard.
         log_dir: Log directory of dashboard.
-        logging_level: The logging level (e.g. logging.INFO, logging.DEBUG)
-        logging_format: The format string for log messages
-        logging_filename: The name of the log file
-        logging_rotate_bytes: Max size in bytes before rotating log file
-        logging_rotate_backup_count: Number of backup files to keep when rotating
     """
 
     def __init__(
@@ -60,12 +55,7 @@ class Dashboard:
         cluster_id_hex: str,
         grpc_port: int,
         node_ip_address: str,
-        log_dir: str,
-        logging_level: int,
-        logging_format: str,
-        logging_filename: str,
-        logging_rotate_bytes: int,
-        logging_rotate_backup_count: int,
+        log_dir: str = None,
         temp_dir: str = None,
         session_dir: str = None,
         minimal: bool = False,
@@ -81,11 +71,6 @@ class Dashboard:
             node_ip_address=node_ip_address,
             grpc_port=grpc_port,
             log_dir=log_dir,
-            logging_level=logging_level,
-            logging_format=logging_format,
-            logging_filename=logging_filename,
-            logging_rotate_bytes=logging_rotate_bytes,
-            logging_rotate_backup_count=logging_rotate_backup_count,
             temp_dir=temp_dir,
             session_dir=session_dir,
             minimal=minimal,
@@ -251,11 +236,6 @@ if __name__ == "__main__":
             grpc_port=args.grpc_port,
             node_ip_address=args.node_ip_address,
             log_dir=args.log_dir,
-            logging_level=args.logging_level,
-            logging_format=args.logging_format,
-            logging_filename=args.logging_filename,
-            logging_rotate_bytes=args.logging_rotate_bytes,
-            logging_rotate_backup_count=args.logging_rotate_backup_count,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             minimal=args.minimal,
