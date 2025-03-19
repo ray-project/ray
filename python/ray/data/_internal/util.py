@@ -5,6 +5,7 @@ import pathlib
 import random
 import sys
 import psutil
+import platform
 import threading
 import time
 import urllib.parse
@@ -1528,6 +1529,11 @@ class MemoryProfiler:
     perfect estimate (it can underestimate, e.g., if you use Torch tensors), but
     estimating the USS is much cheaper than computing the actual USS.
 
+    .. warning::
+
+        This class only works with Linux. If you use it on another platform,
+        `estimate_max_uss` always returns ``None``.
+
     Example:
 
         .. testcode::
@@ -1549,7 +1555,7 @@ class MemoryProfiler:
         self._poll_interval_s = poll_interval_s
 
         self._process = psutil.Process(os.getpid())
-        self._max_uss = self._estimate_uss()
+        self._max_uss = None
         self._max_uss_lock = threading.Lock()
 
         self._uss_poll_thread = None
@@ -1559,7 +1565,7 @@ class MemoryProfiler:
         return f"MemoryProfiler(poll_interval_s={self._poll_interval_s})"
 
     def __enter__(self):
-        if self._poll_interval_s is not None:
+        if self._can_estimate_uss() and self._poll_interval_s is not None:
             (
                 self._uss_poll_thread,
                 self._stop_uss_poll_event,
@@ -1571,12 +1577,18 @@ class MemoryProfiler:
         if self._uss_poll_thread is not None:
             self._stop_uss_poll_thread()
 
-    def estimate_max_uss(self) -> int:
+    def estimate_max_uss(self) -> Optional[int]:
+        """Get an estimate of the max USS of the current process.
+
+        Returns:
+            An estimate of the max USS of the process in bytes, or ``None`` if an
+            estimate isn't available.
+        """
         return self._max_uss
 
     def reset(self):
         with self._max_uss_lock:
-            self._max_uss = self._estimate_uss()
+            self._max_uss = None
 
     def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         assert self._poll_interval_s is not None
@@ -1605,3 +1617,7 @@ class MemoryProfiler:
         # process right now) as the difference between the RSS (total physical memory)
         # and amount of shared physical memory.
         return memory_info.rss - memory_info.shared
+
+    def _can_estimate_uss(self) -> bool:
+        # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
+        return platform.system() == "Linux"

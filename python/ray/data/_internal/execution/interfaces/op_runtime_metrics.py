@@ -644,8 +644,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                     self._cum_max_uss_bytes = meta.exec_stats.max_uss_bytes
                 else:
                     self._cum_max_uss_bytes += meta.exec_stats.max_uss_bytes
-            else:
-                assert not self._is_map, "Map operators should collect memory metrics"
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
