@@ -563,6 +563,100 @@ def test_max_workers_per_type():
     )
 
 
+def test_terminate_max_allocated_workers_per_type():
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=2,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+    )
+
+    reply = scheduler.schedule(request)
+
+    # No instances created, no-op.
+    expected_to_terminate = []
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert sorted(actual_to_terminate) == sorted(expected_to_terminate)
+
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_0",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r0",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.ALLOCATED,
+                instance_id="0",
+                node_id="r0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.ALLOCATED,
+                instance_id="1",
+                node_id="r1",
+            ),
+        ),
+    ]
+
+    # 2 nodes in allocated state with max of 2 allowed for type 1.
+    # Scheduler should leave all of the allocated instances.
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+    )
+
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert actual_to_terminate == []
+
+    # Max nodes is now 0 for type 1, scheduler should terminate
+    # both allocated instances to conform with max num nodes per type.
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=0,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+    )
+
+    reply = scheduler.schedule(request)
+    _, actual_to_terminate = _launch_and_terminate(reply)
+    assert sorted(actual_to_terminate) == sorted(
+        [
+            (
+                "0",
+                "",
+                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+            ),  # allocated instance
+            ("1", "", TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE),
+        ]
+    )
+
+
 def test_max_num_nodes():
     scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
