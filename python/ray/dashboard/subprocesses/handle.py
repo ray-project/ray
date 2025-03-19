@@ -16,7 +16,6 @@ from ray.dashboard.subprocesses.module import (
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
     ResponseType,
-    get_socket_path,
 )
 
 """
@@ -117,18 +116,14 @@ class SubprocessModuleHandle:
         """
         Start the module. Should be non-blocking.
         """
-        if not os.path.exists(self.config.socket_dir):
-            os.makedirs(self.config.socket_dir)
         self.process = self.mp_context.Process(
             target=run_module,
             args=(
                 self.module_cls,
                 self.config,
-                self.incarnation,
                 self.process_ready_event,
             ),
             daemon=True,
-            name=f"{self.module_cls.__name__}-{self.incarnation}",
         )
         self.process.start()
 
@@ -139,7 +134,9 @@ class SubprocessModuleHandle:
         """
         self.process_ready_event.wait()
 
-        socket_path = get_socket_path(self.config.socket_dir, self.module_cls.__name__)
+        socket_path = os.path.join(
+            self.config.socket_dir, "dashboard_" + self.module_cls.__name__
+        )
         if sys.platform == "win32":
             connector = aiohttp.NamedPipeConnector(socket_path)
         else:
