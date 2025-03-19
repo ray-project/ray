@@ -20,19 +20,10 @@ namespace ray::internal {
 
 namespace {
 
-// Testing scenario: cgroup setup doesn't work for non-linux platforms.
-#ifndef __linux__
-TEST(CgroupV2UtilsTest, SetupCgroupsTest) {
-  EXPECT_FALSE(IsCgroupV2Prepared("/sys/fs/cgroup"));
-}
-#else
-
 TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) {
   // Error case: cgroup directory exists, but not not writable.
   EXPECT_FALSE(IsCgroupV2Prepared("/sys/fs/cgroup"));
 }
-
-#endif  // __linux__
 
 }  // namespace
 
