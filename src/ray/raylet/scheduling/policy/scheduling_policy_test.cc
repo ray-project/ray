@@ -227,6 +227,18 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsAvailable(task_req1));
   ASSERT_TRUE(resources.IsAvailable(task_req2));
+
+  auto task_req3 = ResourceMapToResourceRequest({{"GPU", 0.5}}, false);
+  auto task_req4 = ResourceMapToResourceRequest({{"GPU", 1}}, false);
+
+  std::vector<FixedPoint> available_set;
+  available_set.push_back(FixedPoint(0.5));
+  available_set.push_back(FixedPoint(0.5));
+  resources.available.Set(ResourceID::GPU(), 1.0);
+  resources.total.Set(ResourceID::GPU(), 1.0);
+  resources.available_resources_instance_set.Set(ResourceID::GPU(), available_set);
+  ASSERT_TRUE(resources.IsAvailable(task_req3));
+  ASSERT_FALSE(resources.IsAvailable(task_req4));
 }
 
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
