@@ -626,6 +626,7 @@ class IMPALA(Algorithm):
                 num_agg = self.config.num_aggregator_actors_per_learner * (
                     self.config.num_learners or 1
                 )
+
                 packs, data_packages_for_aggregators = (
                     data_packages_for_aggregators[:num_agg],
                     data_packages_for_aggregators[num_agg:],
