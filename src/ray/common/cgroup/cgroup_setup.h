@@ -22,8 +22,8 @@ namespace ray {
 
 namespace internal {
 
-// Return whether cgroupv2 is properly setup for read-write operations in the given
-// [directory]. For example, whether the it's mounted as read-write mode, etc.
+// Return whether cgroupv2 is properly mounted for read-write operations in the given
+// [directory]. Also checks that cgroupv1 is not mounted.
 // If not, InvalidArgument status is returned.
 //
 // This function is exposed in header file for unit test purpose.
