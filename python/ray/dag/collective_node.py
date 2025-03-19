@@ -10,7 +10,6 @@ from ray.dag import (
 )
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.torch_tensor_nccl_channel import _init_communicator
 from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
@@ -87,22 +86,6 @@ class _CollectiveOperation:
     @property
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
-
-    def init_communicator(self, communicator_id: Optional[str] = None) -> str:
-        """
-        Initialize the communicator if it has not been initialized yet. If
-        `communicator_id` is provided, it means the communicator has already
-        been initialized.
-        """
-        type_hint = self._type_hint
-        if type_hint.communicator_id is not None:
-            return type_hint.communicator_id
-        if communicator_id is None:
-            communicator_id = _init_communicator(
-                self._actor_handles, type_hint.get_custom_communicator()
-            )
-        type_hint.set_communicator_id(communicator_id)
-        return communicator_id
 
     def get_communicator(self) -> Communicator:
         if self._type_hint.communicator_id is not None:

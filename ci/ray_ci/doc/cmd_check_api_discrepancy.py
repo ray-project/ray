@@ -45,7 +45,13 @@ TEAM_API_CONFIGS = {
     "train": {
         "head_modules": {"ray.train"},
         "head_doc_file": "doc/source/train/api/api.rst",
-        "white_list_apis": {},
+        "white_list_apis": {
+            # NOTE: These APIs are documented in a separate file (deprecated.rst).
+            # These are deprecated APIs, so just white-listing them here for CI.
+            "ray.train.error.SessionMisuseError",
+            "ray.train.base_trainer.TrainingFailedError",
+            "ray.train.context.TrainContext",
+        },
     },
     "tune": {
         "head_modules": {"ray.tune"},
@@ -65,15 +71,7 @@ TEAM_API_CONFIGS = {
 }
 
 
-@click.command()
-@click.argument("ray_checkout_dir", required=True, type=str)
-@click.argument("team", required=True, type=click.Choice(list(TEAM_API_CONFIGS.keys())))
-def main(ray_checkout_dir: str, team: str) -> None:
-    """
-    This script checks for annotated classes and functions in a module, and finds
-    discrepancies between the annotations and the documentation.
-    """
-
+def _check_team(ray_checkout_dir: str, team: str) -> bool:
     # Load all APIs from the codebase
     api_in_codes = {}
     for module in TEAM_API_CONFIGS[team]["head_modules"]:
@@ -90,22 +88,56 @@ def main(ray_checkout_dir: str, team: str) -> None:
     white_list_apis = TEAM_API_CONFIGS[team]["white_list_apis"]
 
     # Policy 01: all public APIs should be documented
-    logger.info("Validating that public APIs should be documented...")
+    logger.info(f"Validating that public {team} APIs should be documented...")
     good_apis, bad_apis = API.split_good_and_bad_apis(
         api_in_codes, api_in_docs, white_list_apis
     )
 
-    logger.info("Public APIs that are documented:")
-    for api in good_apis:
-        logger.info(f"\t{api}")
+    if good_apis:
+        logger.info("Public APIs that are documented:")
+        for api in good_apis:
+            logger.info(f"\t{api}")
 
-    logger.info("Public APIs that are NOT documented:")
-    for api in bad_apis:
-        logger.info(f"\t{api}")
+    if bad_apis:
+        logger.info("Public APIs that are NOT documented:")
+        for api in bad_apis:
+            logger.info(f"\t{api}")
 
-    assert not bad_apis, "Some public APIs are not documented. Please document them."
+    if bad_apis:
+        logger.info(
+            f"Some public {team} APIs are not documented. Please document them."
+        )
+        return False
+    return True
 
-    return
+
+@click.command()
+@click.argument("ray_checkout_dir", required=True, type=str)
+@click.argument(
+    "team", default="ALL", type=click.Choice(list(TEAM_API_CONFIGS.keys()) + ["ALL"])
+)
+def main(ray_checkout_dir: str, team: str) -> None:
+    """
+    This script checks for annotated classes and functions in a module, and finds
+    discrepancies between the annotations and the documentation.
+    """
+    if team != "ALL":
+        if not _check_team(ray_checkout_dir, team):
+            exit(1)
+        return
+
+    all_pass = True
+    # Needs to do core first, otherwise, the APIs in other teams may be covered by core.
+    # This is due to the side effect of "importlib" and walking through the modules.
+    if not _check_team(ray_checkout_dir, "core"):
+        all_pass = False
+    for team in TEAM_API_CONFIGS:
+        if team == "core":
+            continue
+        if not _check_team(ray_checkout_dir, team):
+            all_pass = False
+    if not all_pass:
+        exit(1)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,14 @@
 # If want to use checkpointing with a custom training function (not a Ray
 # integration like PyTorch or Tensorflow), your function can read/write
-# checkpoint through the ``ray.train.report(metrics, checkpoint=...)`` API.
+# checkpoint through the ``ray.tune.report(metrics, checkpoint=...)`` API.
 import argparse
 import json
 import os
 import tempfile
 import time
 
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 
 
 def evaluation_fn(step, width, height):
@@ -20,7 +20,7 @@ def train_func(config):
     step = 0
     width, height = config["width"], config["height"]
 
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "checkpoint.json")) as f:
@@ -33,7 +33,7 @@ def train_func(config):
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             with open(os.path.join(temp_checkpoint_dir, "checkpoint.json"), "w") as f:
                 json.dump({"step": current_step}, f)
-            train.report(
+            tune.report(
                 {"iterations": current_step, "mean_loss": intermediate_score},
                 checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
             )
@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         train_func,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 1 if args.smoke_test else 10},
         ),

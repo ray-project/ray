@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
@@ -64,7 +65,6 @@ class ExponentialBackoff {
 
   void Reset() { curr_value_ = initial_value_; }
 
- private:
  private:
   uint64_t curr_value_;
   uint64_t initial_value_;

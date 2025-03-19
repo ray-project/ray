@@ -51,14 +51,14 @@ class TestHead(dashboard_utils.DashboardHeadModule):
                 if not k.startswith("_")
             }
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Fetch all data from datacenter success.",
                 **all_data,
             )
         else:
             data = dict(DataSource.__dict__.get(key))
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message=f"Fetch {key} from datacenter success.",
                 **{key: data},
             )
@@ -74,7 +74,10 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     async def test_aiohttp_cache(self, req) -> aiohttp.web.Response:
         value = req.query["value"]
         return dashboard_optional_utils.rest_response(
-            success=True, message="OK", value=value, timestamp=time.time()
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="OK",
+            value=value,
+            timestamp=time.time(),
         )
 
     @routes.get("/test/aiohttp_cache_lru/{sub_path}")
@@ -82,7 +85,10 @@ class TestHead(dashboard_utils.DashboardHeadModule):
     async def test_aiohttp_cache_lru(self, req) -> aiohttp.web.Response:
         value = req.query.get("value")
         return dashboard_optional_utils.rest_response(
-            success=True, message="OK", value=value, timestamp=time.time()
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="OK",
+            value=value,
+            timestamp=time.time(),
         )
 
     @routes.get("/test/file")
@@ -101,7 +107,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         time.sleep(seconds)
 
         return dashboard_optional_utils.rest_response(
-            success=True,
+            status_code=dashboard_utils.HTTPStatusCode.OK,
             message=f"Blocked event loop for {seconds} seconds",
             timestamp=time.time(),
         )

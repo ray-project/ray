@@ -16,9 +16,15 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <deque>
 #include <fstream>
+#include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -36,7 +42,7 @@
 DEFINE_stats(worker_register_time_ms,
              "end to end latency of register a worker process.",
              (),
-             ({1, 10, 100, 1000, 10000}, ),
+             ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 
 namespace {
@@ -47,6 +53,17 @@ std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::shared_ptr<ray::ClientConnection> &connection) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->Connection() == connection) {
+      return (*it);
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
+    const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
+    const WorkerID &worker_id) {
+  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
+    if ((*it)->WorkerId() == worker_id) {
       return (*it);
     }
   }
@@ -924,12 +941,10 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
     const WorkerID &worker_id) const {
-  for (const auto &[_, state] : states_by_lang_) {
-    for (auto it = state.registered_workers.begin(); it != state.registered_workers.end();
-         it++) {
-      if ((*it)->WorkerId() == worker_id) {
-        return (*it);
-      }
+  for (const auto &entry : states_by_lang_) {
+    auto worker = GetWorker(entry.second.registered_workers, worker_id);
+    if (worker != nullptr) {
+      return worker;
     }
   }
   return nullptr;
@@ -941,6 +956,17 @@ std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
     auto worker = GetWorker(entry.second.registered_workers, connection);
     if (worker != nullptr) {
       return worker;
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredDriver(
+    const WorkerID &worker_id) const {
+  for (const auto &entry : states_by_lang_) {
+    auto driver = GetWorker(entry.second.registered_drivers, worker_id);
+    if (driver != nullptr) {
+      return driver;
     }
   }
   return nullptr;
@@ -1215,7 +1241,7 @@ void WorkerPool::KillIdleWorker(const IdleWorkerEntry &entry) {
         }
 
         // In case of failed to send request, we remove it from pool as well
-        // TODO (iycheng): We should handle the grpc failure in better way.
+        // TODO(iycheng): We should handle the grpc failure in better way.
         if (!status.ok() || r.success()) {
           RAY_LOG(DEBUG) << "Removed worker " << idle_worker->WorkerId();
           auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());

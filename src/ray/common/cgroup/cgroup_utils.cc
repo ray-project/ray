@@ -16,11 +16,11 @@
 
 #ifndef __linux__
 namespace ray {
-bool CgroupV2Setup::SetupCgroupV2ForContext(const PhysicalModeExecutionContext &ctx) {
+bool CgroupV2Setup::SetupCgroupV2ForContext(const AppProcCgroupMetadata &ctx) {
   return false;
 }
 /*static*/ bool CgroupV2Setup::CleanupCgroupV2ForContext(
-    const PhysicalModeExecutionContext &ctx) {
+    const AppProcCgroupMetadata &ctx) {
   return false;
 }
 }  // namespace ray
@@ -55,7 +55,7 @@ bool OpenCgroupV2FileAndAppend(std::string_view path, std::string_view content) 
   return out.good();
 }
 
-bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
+bool CreateNewCgroupV2(const AppProcCgroupMetadata &ctx) {
   // Sanity check.
   RAY_CHECK(!ctx.id.empty());
   RAY_CHECK_NE(ctx.id, kDefaultCgroupV2Id);
@@ -83,7 +83,7 @@ bool CreateNewCgroupV2(const PhysicalModeExecutionContext &ctx) {
   return true;
 }
 
-bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
+bool UpdateDefaultCgroupV2(const AppProcCgroupMetadata &ctx) {
   // Sanity check.
   RAY_CHECK(!ctx.id.empty());
   RAY_CHECK_EQ(ctx.id, kDefaultCgroupV2Id);
@@ -108,7 +108,7 @@ bool UpdateDefaultCgroupV2(const PhysicalModeExecutionContext &ctx) {
   return true;
 }
 
-bool DeleteCgroupV2(const PhysicalModeExecutionContext &ctx) {
+bool DeleteCgroupV2(const AppProcCgroupMetadata &ctx) {
   // Sanity check.
   RAY_CHECK(!ctx.id.empty());
   RAY_CHECK_NE(ctx.id, kDefaultCgroupV2Id);
@@ -119,7 +119,7 @@ bool DeleteCgroupV2(const PhysicalModeExecutionContext &ctx) {
   return rmdir(cgroup_folder.data()) == 0;
 }
 
-void PlaceProcessIntoDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
+void PlaceProcessIntoDefaultCgroup(const AppProcCgroupMetadata &ctx) {
   const std::string procs_path =
       absl::StrFormat("%s/%s/cgroup.procs", ctx.cgroup_directory, kDefaultCgroupV2Id);
   {
@@ -132,8 +132,7 @@ void PlaceProcessIntoDefaultCgroup(const PhysicalModeExecutionContext &ctx) {
 
 }  // namespace
 
-/*static*/ std::unique_ptr<CgroupV2Setup> CgroupV2Setup::New(
-    PhysicalModeExecutionContext ctx) {
+/*static*/ std::unique_ptr<CgroupV2Setup> CgroupV2Setup::New(AppProcCgroupMetadata ctx) {
   if (!CgroupV2Setup::SetupCgroupV2ForContext(ctx)) {
     return nullptr;
   }
@@ -146,8 +145,7 @@ CgroupV2Setup::~CgroupV2Setup() {
   }
 }
 
-/*static*/ bool CgroupV2Setup::SetupCgroupV2ForContext(
-    const PhysicalModeExecutionContext &ctx) {
+/*static*/ bool CgroupV2Setup::SetupCgroupV2ForContext(const AppProcCgroupMetadata &ctx) {
   // Create a new cgroup if max memory specified.
   if (ctx.max_memory > 0) {
     return CreateNewCgroupV2(ctx);
@@ -158,7 +156,7 @@ CgroupV2Setup::~CgroupV2Setup() {
 }
 
 /*static*/ bool CgroupV2Setup::CleanupCgroupV2ForContext(
-    const PhysicalModeExecutionContext &ctx) {
+    const AppProcCgroupMetadata &ctx) {
   // Delete the dedicated cgroup if max memory specified.
   if (ctx.max_memory > 0) {
     PlaceProcessIntoDefaultCgroup(ctx);

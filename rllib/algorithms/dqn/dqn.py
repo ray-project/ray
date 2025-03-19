@@ -95,7 +95,6 @@ class DQNConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        from ray import air
         from ray import tune
 
         config = (
@@ -107,7 +106,7 @@ class DQNConfig(AlgorithmConfig):
         )
         tune.Tuner(
             "DQN",
-            run_config=air.RunConfig(stop={"training_iteration":1}),
+            run_config=tune.RunConfig(stop={"training_iteration":1}),
             param_space=config,
         ).fit()
 
@@ -698,7 +697,7 @@ class DQN(Algorithm):
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_episodes(
+                    learner_results = self.learner_group.update(
                         episodes=episodes,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: (

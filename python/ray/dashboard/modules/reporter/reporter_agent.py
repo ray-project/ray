@@ -16,9 +16,9 @@ from prometheus_client.core import REGISTRY
 import ray
 import ray._private.prometheus_exporter as prometheus_exporter
 import ray._private.services
-import ray._private.utils
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
@@ -350,9 +350,7 @@ class ReporterAgent(
             # psutil does not give a meaningful logical cpu count when in a K8s pod, or
             # in a container in general.
             # Use ray._private.utils for this instead.
-            logical_cpu_count = ray._private.utils.get_num_cpus(
-                override_docker_cpu_warning=True
-            )
+            logical_cpu_count = utils.get_num_cpus(override_docker_cpu_warning=True)
             # (Override the docker warning to avoid dashboard log spam.)
 
             # The dashboard expects a physical CPU count as well.
@@ -580,8 +578,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = ray._private.utils.get_system_memory()
-        used = ray._private.utils.get_used_memory()
+        total = utils.get_system_memory()
+        used = utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
         return total, available, percent, used
@@ -597,7 +595,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = ray._private.utils.get_user_temp_dir()
+        tmp = utils.get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
@@ -1239,7 +1237,7 @@ class ReporterAgent(
 
     async def _run_loop(self, publisher):
         """Get any changes to the log files and push updates to kv."""
-        loop = utils.get_or_create_event_loop()
+        loop = get_or_create_event_loop()
 
         while True:
             try:

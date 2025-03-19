@@ -688,6 +688,7 @@ class TestLoggingConfig:
         assert schema.encoding == "JSON"
         assert schema.logs_dir == "/my_dir"
         assert schema.enable_access_log
+        assert schema.additional_log_standard_attrs == []
 
         # Test string values for log_level.
         schema = LoggingConfig.parse_obj(
@@ -714,6 +715,22 @@ class TestLoggingConfig:
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
         assert schema.enable_access_log
+        assert schema.additional_log_standard_attrs == []
+
+    def test_additional_log_standard_attrs_type(self):
+        schema = LoggingConfig.parse_obj({"additional_log_standard_attrs": ["name"]})
+        assert isinstance(schema.additional_log_standard_attrs, list)
+        assert schema.additional_log_standard_attrs == ["name"]
+
+    def test_additional_log_standard_attrs_type_error(self):
+        with pytest.raises(ValidationError):
+            LoggingConfig.parse_obj({"additional_log_standard_attrs": "name"})
+
+    def test_additional_log_standard_attrs_deduplicate(self):
+        schema = LoggingConfig.parse_obj(
+            {"additional_log_standard_attrs": ["name", "name"]}
+        )
+        assert schema.additional_log_standard_attrs == ["name"]
 
 
 # This function is defined globally to be accessible via import path
