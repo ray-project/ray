@@ -139,7 +139,6 @@ def test_default_sigchld_handler(enable_subreaper, shutdown_only):
             pid = process.pid
             time.sleep(1)  # wait for the process to exit.
 
-            process.wait()
             # after reaping, it's gone.
             with pytest.raises(psutil.NoSuchProcess):
                 psutil.Process(pid)
