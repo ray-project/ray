@@ -97,9 +97,7 @@ def add_build_tag_to_wheel(wheel_path: str, build_tag: str) -> None:
     Add build tag to the wheel.
     """
     wheel_name = os.path.basename(wheel_path)
-    print("Wheel name: ", wheel_name)
     directory_path = os.path.dirname(wheel_path)
-    print("Directory path: ", directory_path)
     ray_type, ray_version, python_version, python_version_duplicate, platform = wheel_name.split("-")
     new_wheel_name = f"{ray_type}-{ray_version}-{build_tag}-{python_version}-{python_version_duplicate}-{platform}"
     new_wheel_path = os.path.join(directory_path, new_wheel_name)
