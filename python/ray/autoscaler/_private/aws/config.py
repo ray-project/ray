@@ -40,21 +40,21 @@ DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V61.0"
 # TODO(alex) : write a unit test to make sure we update AMI version used in
 # ray/autoscaler/aws/example-full.yaml whenever we update this dict.
 DEFAULT_AMI = {
-    "us-east-1": "ami-0f2b22c3144288c40",  # US East (N. Virginia)
-    "us-east-2": "ami-05883383eec513504",  # US East (Ohio)
-    "us-west-1": "ami-082e09219e7a6635e",  # US West (N. California)
-    "us-west-2": "ami-0d8b66a93e34cf311",  # US West (Oregon)
-    "ca-central-1": "ami-0cb1b9526f6709463",  # Canada (Central)
-    "eu-central-1": "ami-0fa0f6c1dd324bba6",  # EU (Frankfurt)
-    "eu-west-1": "ami-04b6e086a5e2a5895",  # EU (Ireland)
-    "eu-west-2": "ami-0603aa699f40e9621",  # EU (London)
-    "eu-west-3": "ami-0caac48ecda8a814b",  # EU (Paris)
-    "sa-east-1": "ami-02e0e85cef91948f4",  # SA (Sao Paulo)
-    "ap-northeast-1": "ami-0da90df48e2470563",  # Asia Pacific (Tokyo)
-    "ap-northeast-2": "ami-0ab18f910ebbe39c8",  # Asia Pacific (Seoul)
-    "ap-northeast-3": "ami-0c9d787e70d20bea0",  # Asia Pacific (Osaka)
-    "ap-southeast-1": "ami-0b03415fb4dac6489",  # Asia Pacific (Singapore)
-    "ap-southeast-2": "ami-0ffbfe0c9ef4d62c4",  # Asia Pacific (Sydney)
+    "us-east-1": "ami-052c6353a5e5bc8a0",  # US East (N. Virginia)
+    "us-east-2": "ami-06a6e5ba35fb10195",  # US East (Ohio)
+    "us-west-1": "ami-01f4231bddbd3f02d",  # US West (N. California)
+    "us-west-2": "ami-0122024eb82690a10",  # US West (Oregon)
+    "ca-central-1": "ami-04b133dbe6b6dd5fa",  # Canada (Central)
+    "eu-central-1": "ami-07bb55c8e51ca0e1a",  # EU (Frankfurt)
+    "eu-west-1": "ami-0ba30a95934d2d24b",  # EU (Ireland)
+    "eu-west-2": "ami-02671d135b94c3eae",  # EU (London)
+    "eu-west-3": "ami-0d243952631656f48",  # EU (Paris)
+    "sa-east-1": "ami-0fb25d839afe30ff1",  # SA (Sao Paulo)
+    "ap-northeast-1": "ami-06693a5177a8e855a",  # Asia Pacific (Tokyo)
+    "ap-northeast-2": "ami-02ffe31674b40c5f4",  # Asia Pacific (Seoul)
+    "ap-northeast-3": "ami-0f59668cb966b7ebb",  # Asia Pacific (Osaka)
+    "ap-southeast-1": "ami-0c69822a62365df57",  # Asia Pacific (Singapore)
+    "ap-southeast-2": "ami-09a3801dc7a8acd57",  # Asia Pacific (Sydney)
 }
 
 # todo: cli_logger should handle this assert properly
