@@ -29,14 +29,9 @@ class TrainLoopRunner:
 
         model = factory.get_model()
         self.model = ray.train.torch.prepare_model(model)
-
-        # Ensure model is on the correct device
-        device = ray.train.torch.get_device()
-        self.model = self.model.to(device)
-
+        
         self.loss_fn = factory.get_loss_fn()
-        self.loss_fn = self.loss_fn.to(device)
-
+        
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
         # Training progress state.
@@ -69,6 +64,10 @@ class TrainLoopRunner:
 
             self._metrics["checkpoint/download"].add(download_time)
             self._metrics["checkpoint/load"].add(load_time)
+
+        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} waiting at checkpoint restoration barrier")
+        ray.train.report({"checkpoint_restored": True})
+        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} passed checkpoint restoration barrier")
 
     def run(self):
         logger.info(
@@ -132,6 +131,9 @@ class TrainLoopRunner:
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
+        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} waiting at end-of-epoch barrier")
+        ray.train.report({"epoch_completed": self._train_epoch_idx})
+        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} passed end-of-epoch barrier")
 
     def _should_validate_during_epoch(self) -> bool:
         """Handles the validate_every_n_steps logic."""
@@ -149,9 +151,7 @@ class TrainLoopRunner:
             == 0
         )
 
-    def get_next_batch(
-        self, dataloader: Iterator[Tuple[torch.Tensor, torch.Tensor]]
-    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+    def get_next_batch(self, dataloader: Iterator[Tuple[torch.Tensor, torch.Tensor]]) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
         """Get the next batch from the dataloader, handling any errors that occur.
 
         Args:
@@ -166,15 +166,9 @@ class TrainLoopRunner:
             return None
         except Exception as e:
             logger.error(f"[DataLoader] Error getting next batch: {str(e)}")
-            return None
+            raise
 
     def train_step(self, input_batch, labels):
-        device = next(self.model.parameters()).device  # Get model's device
-
-        # Move input and labels to the same device as the model
-        input_batch = input_batch.to(device)
-        labels = labels.to(device)
-
         self.model.train()
         out = self.model(input_batch)
         loss = self.loss_fn(out, labels)
@@ -217,44 +211,29 @@ class TrainLoopRunner:
         total_loss = torch.tensor(0.0).to(ray.train.torch.get_device())
         num_rows = 0
 
-        try:
-            with self._metrics["validation/iter_first_batch"].timer():
+        with self._metrics["validation/iter_first_batch"].timer():
+            batch = self.get_next_batch(val_dataloader)
+
+        while batch:
+            input_batch, labels = batch
+
+            with self._metrics["validation/step"].timer():
+                if not self.benchmark_config.skip_validation_step:
+                    total_loss += self.validate_step(input_batch, labels)
+
+            num_rows += len(labels)
+            self._metrics["validation/rows_processed"].add(len(labels))
+
+            with self._metrics["validation/iter_batch"].timer():
                 batch = self.get_next_batch(val_dataloader)
 
-            while batch:
-                input_batch, labels = batch
+        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} waiting at validation barrier")
+        ray.train.report({"validation_completed": True})
+        logger.info(f"[TrainLoopRunner] Worker {ray.train.get_context().get_world_rank()} passed validation barrier")
 
-                with self._metrics["validation/step"].timer():
-                    if not self.benchmark_config.skip_validation_step:
-                        total_loss += self.validate_step(input_batch, labels)
-
-                num_rows += len(labels)
-                self._metrics["validation/rows_processed"].add(len(labels))
-
-                with self._metrics["validation/iter_batch"].timer():
-                    batch = self.get_next_batch(val_dataloader)
-
-            if num_rows == 0:
-                logger.warning("[Validation] No rows were processed during validation")
-                return {
-                    "validation/loss": float("inf")
-                }  # Return infinity to indicate invalid validation
-
-            return {"validation/loss": total_loss.item() / num_rows}
-
-        except Exception as e:
-            logger.error(f"[Validation] Error during validation: {str(e)}")
-            return {
-                "validation/loss": float("inf")
-            }  # Return infinity to indicate invalid validation
+        return {"validation/loss": total_loss.item() / num_rows}
 
     def validate_step(self, input_batch, labels):
-        device = next(self.model.parameters()).device  # Ensure we get model's device
-
-        # Move input and labels to the same device as the model
-        input_batch = input_batch.to(device)
-        labels = labels.to(device)
-
         with torch.no_grad():
             out = self.model(input_batch)
             loss = self.loss_fn(out, labels)
@@ -269,11 +248,7 @@ class TrainLoopRunner:
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )
-
-        # Only rank 0 should report the checkpoint, but all workers need to participate in the report call
-        if ray.train.get_context().get_world_rank() != 0:
-            checkpoint = None  # Other ranks should not report checkpoints
-
+        
         ray.train.report(
             metrics,
             checkpoint=checkpoint,
@@ -286,22 +261,13 @@ class TrainLoopRunner:
                 f"[Checkpoint] Loading checkpoint from {local_dir} for worker "
                 f"{ray.train.get_context().get_world_rank()}"
             )
-        device = ray.train.torch.get_device()
 
-        # Load state dicts
-        model_state = torch.load(
-            os.path.join(local_dir, "model.pt"), map_location="cpu"
+        self.model.load_state_dict(
+            torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
         )
-        optimizer_state = torch.load(
-            os.path.join(local_dir, "optimizer.pt"), map_location="cpu"
+        self.optimizer.load_state_dict(
+            torch.load(os.path.join(local_dir, "optimizer.pt"), map_location="cpu")
         )
-
-        # Load model state and move to device
-        self.model.load_state_dict(model_state)
-        self.model = self.model.to(device)
-
-        # Load optimizer state
-        self.optimizer.load_state_dict(optimizer_state)
 
         train_state = torch.load(os.path.join(local_dir, "train_state.pt"))
         self._train_epoch_idx = train_state["epoch"]
