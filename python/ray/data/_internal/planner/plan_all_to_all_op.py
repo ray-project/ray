@@ -1,11 +1,5 @@
 from typing import List
 
-from ray.anyscale.data._internal.execution.operators.hash_aggregate import (
-    HashAggregateOperator,
-)
-from ray.anyscale.data._internal.execution.operators.hash_shuffle import (
-    HashShuffleOperator,
-)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -32,6 +26,9 @@ def _plan_hash_shuffle_repartition(
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.anyscale.data._internal.execution.operators.hash_shuffle import (
+        HashShuffleOperator,
+    )
 
     normalized_key_columns = SortKey(logical_op._keys).get_columns()
 
@@ -55,6 +52,9 @@ def _plan_hash_shuffle_aggregate(
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.anyscale.data._internal.execution.operators.hash_aggregate import (
+        HashAggregateOperator,
+    )
 
     normalized_key_columns = SortKey(logical_op._key).get_columns()
 

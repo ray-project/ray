@@ -28,7 +28,11 @@ def test_default_shuffle_aggregator_args():
         partition_size_hint=None,
     )
 
-    assert {"num_cpus": 0.025, "memory": 268435456} == args
+    assert {
+        "num_cpus": 0.025,
+        "memory": 268435456,
+        "scheduling_strategy": "SPREAD",
+    } == args
 
     # - 4 partitions per aggregator
     # - No partition size hint
@@ -38,7 +42,11 @@ def test_default_shuffle_aggregator_args():
         partition_size_hint=None,
     )
 
-    assert {"num_cpus": 0.1, "memory": 671088640} == args
+    assert {
+        "num_cpus": 0.1,
+        "memory": 671088640,
+        "scheduling_strategy": "SPREAD",
+    } == args
 
     # - 4 partitions per aggregator
     # - No partition size hint
@@ -48,4 +56,8 @@ def test_default_shuffle_aggregator_args():
         partition_size_hint=1 * GiB,
     )
 
-    assert {"num_cpus": 0.1, "memory": 5368709120} == args
+    assert {
+        "num_cpus": 0.1,
+        "memory": 5368709120,
+        "scheduling_strategy": "SPREAD",
+    } == args
