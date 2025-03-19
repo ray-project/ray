@@ -9,8 +9,8 @@ import aiohttp.web
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
@@ -264,7 +264,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     async def get_all_actors(self, req) -> aiohttp.web.Response:
         actors = await DataOrganizer.get_actor_infos()
         return dashboard_optional_utils.rest_response(
-            success=True,
+            status_code=dashboard_utils.HTTPStatusCode.OK,
             message="All actors fetched.",
             actors=actors,
             # False to avoid converting Ray resource name to google style.
@@ -279,7 +279,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         actor_id = req.match_info.get("actor_id")
         actors = await DataOrganizer.get_actor_infos(actor_ids=[actor_id])
         return dashboard_optional_utils.rest_response(
-            success=True, message="Actor details fetched.", detail=actors[actor_id]
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="Actor details fetched.",
+            detail=actors[actor_id],
         )
 
     async def run(self, server):

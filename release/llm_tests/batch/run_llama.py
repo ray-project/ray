@@ -27,6 +27,31 @@ def parse_args():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--model-source",
+        type=str,
+        default="unsloth/Llama-3.1-8B-Instruct",
+        help="Model source.",
+    )
+    parser.add_argument(
+        "--dynamic-lora-loading-path",
+        type=str,
+        default=None,
+        help="Path to the dynamic lora loading.",
+    )
+    parser.add_argument(
+        "--lora-name",
+        type=str,
+        default=None,
+        help="Name of the lora to load.",
+    )
+    parser.add_argument(
+        "--max-lora-rank",
+        type=int,
+        default=None,
+        help="Max lora rank.",
+    )
+
     return parser.parse_args()
 
 
@@ -52,8 +77,8 @@ def main(args):
         tokenize = True
         detokenize = True
 
-    processor_config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.1-8B-Instruct",
+    process_config_dict = dict(
+        model_source=args.model_source,
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
@@ -69,9 +94,29 @@ def main(args):
         concurrency=concurrency,
     )
 
+    # Enable LoRA.
+    if args.dynamic_lora_loading_path:
+        if args.lora_name is None:
+            raise ValueError(
+                "lora_name must be specified if dynamic_lora_loading_path is provided"
+            )
+        if args.max_lora_rank is None:
+            raise ValueError(
+                "max_lora_rank must be specified if dynamic_lora_loading_path is provided"
+            )
+
+        process_config_dict[
+            "dynamic_lora_loading_path"
+        ] = args.dynamic_lora_loading_path
+        process_config_dict["engine_kwargs"]["enable_lora"] = True
+        process_config_dict["engine_kwargs"]["max_lora_rank"] = args.max_lora_rank
+
+    processor_config = vLLMEngineProcessorConfig(**process_config_dict)
+
     processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
+            model=args.model_source if args.lora_name is None else args.lora_name,
             messages=[
                 {"role": "system", "content": "You are a calculator"},
                 {"role": "user", "content": f"{row['id']} ** 3 = ?"},

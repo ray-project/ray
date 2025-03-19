@@ -14,7 +14,11 @@
 
 #include "ray/gcs/redis_context.h"
 
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/stats/metric_defs.h"
@@ -563,7 +567,7 @@ Status ConnectRedisSentinel(RedisContext &context,
 std::vector<std::string> ResolveDNS(instrumented_io_context &io_service,
                                     const std::string &address,
                                     int port) {
-  using namespace boost::asio;
+  using namespace boost::asio;  // NOLINT
   ip::tcp::resolver resolver(io_service);
   ip::tcp::resolver::iterator iter = resolver.resolve(address, std::to_string(port));
   ip::tcp::resolver::iterator end;

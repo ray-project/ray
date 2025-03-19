@@ -1,11 +1,23 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
 
+def _convert_target_to_import_path(t):
+    """Get a Python import path for the provided bazel file target."""
+    if not t.startswith("//"):
+      fail("Must be an absolute target starting in '//'.")
+    if not t.endswith(".py"):
+      fail("Must end in '.py'.")
 
-def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=[], size="medium", tags=[], conftest_file="//bazel:default_doctest_conftest.py", **kwargs):
+    # 1) Strip known prefix and suffix (validated above).
+    t = t[len("//"):-len(".py")]
+    # 2) Normalize separators to '/'.
+    t = t.replace(":", "/")
+    # 3) Replace '/' with '.' to form an import path.
+    return t.replace("/", ".")
+
+def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=[], size="medium", tags=[], pytest_plugin_file="//bazel:default_doctest_pytest_plugin.py", **kwargs):
     # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
     # package. We don't want that, so we exclude it from the list of input files.
     files = native.glob(include=files, exclude=["__init__.py"])
@@ -15,6 +27,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
     else:
         tags = tags + ["cpu"]
 
+
     native.py_test(
         name = name,
         srcs = ["//bazel:pytest_wrapper.py"] + srcs,
@@ -23,11 +36,14 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
         args = [
             "--doctest-modules",
             "--doctest-glob='*.md'",
-            "-c=$(location %s)" % conftest_file,
             "--disable-warnings",
-            "-v"
+            "-v",
+            # Don't pick up the global pytest.ini for doctests.
+            "-c", "NO_PYTEST_CONFIG",
+            # Pass the provided pytest plugin as a Python import path.
+            "-p", _convert_target_to_import_path(pytest_plugin_file),
         ] + args + ["$(location :%s)" % file for file in files],
-        data = [conftest_file] + files + data,
+        data = [pytest_plugin_file] + files + data,
         python_version = "PY3",
         srcs_version = "PY3",
         tags = ["doctest"] + tags,

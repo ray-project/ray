@@ -5,7 +5,7 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.ray_constants import env_integer
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
@@ -206,7 +206,7 @@ def unify_schemas(
         schemas_to_unify = schemas
 
     try:
-        if parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION:
+        if get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION:
             return pyarrow.unify_schemas(schemas_to_unify)
 
         # NOTE: By default type promotion (from "smaller" to "larger" types) is disabled,
@@ -454,7 +454,7 @@ def concat(
 
     if not blocks:
         # Short-circuit on empty list of blocks.
-        return blocks
+        return pa.table([])
 
     if len(blocks) == 1:
         return blocks[0]
@@ -554,7 +554,7 @@ def concat(
         # to vary b/w blocks
         #
         # NOTE: Type promotions aren't available in Arrow < 14.0
-        if parse_version(_get_pyarrow_version()) < parse_version("14.0.0"):
+        if get_pyarrow_version() < parse_version("14.0.0"):
             table = pyarrow.concat_tables(blocks, promote=True)
         else:
             arrow_promote_types_mode = "permissive" if promote_types else "default"
@@ -566,12 +566,20 @@ def concat(
 
 
 def concat_and_sort(
-    blocks: List["pyarrow.Table"], sort_key: "SortKey"
+    blocks: List["pyarrow.Table"],
+    sort_key: "SortKey",
+    *,
+    promote_types: bool = False,
 ) -> "pyarrow.Table":
+    import pyarrow as pa
     import pyarrow.compute as pac
 
-    ret = concat(blocks, promote_types=True)
+    if len(blocks) == 0:
+        return pa.table([])
+
+    ret = concat(blocks, promote_types=promote_types)
     indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
+
     return take_table(ret, indices)
 
 

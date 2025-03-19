@@ -135,13 +135,13 @@
     timeout: 3600
 
   variations:
-    - __suffix__: few_groups (sort_shuffle_pull_based)
+    - __suffix__: few_groups__sort_shuffle_pull_based
       run:
         script: >
           python groupby_benchmark.py --sf 10 --aggregate --group-by column08 column13 column14
           --shuffle-strategy sort_shuffle_pull_based
 
-    - __suffix__: many_groups (sort_shuffle_pull_based)
+    - __suffix__: many_groups__sort_shuffle_pull_based
       run:
         script: >
           python groupby_benchmark.py --sf 10 --aggregate --group-by column02 column14
@@ -156,13 +156,13 @@
     timeout: 3600
 
   variations:
-    - __suffix__: few_groups (sort_shuffle_pull_based)
+    - __suffix__: few_groups__sort_shuffle_pull_based
       run:
         script: >
           python groupby_benchmark.py --sf 10 --map-groups --group-by column08 column13 column14
           --shuffle-strategy sort_shuffle_pull_based
 
-    - __suffix__: many_groups (sort_shuffle_pull_based)
+    - __suffix__: many_groups__sort_shuffle_pull_based
       run:
         script: >
           python groupby_benchmark.py --sf 10 --map-groups --group-by column02 column14
@@ -379,6 +379,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
   variations:
+    - __suffix__: autoscaling_compute
     - __suffix__: fixed_size_compute
       cluster:
         cluster_compute: fixed_size_gpu_compute.yaml

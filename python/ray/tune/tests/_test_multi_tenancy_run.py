@@ -51,37 +51,38 @@ def train_func(config):
     train.report({"param": config["param"], "fixed": config["fixed"]})
 
 
-trainer = DataParallelTrainer(
-    train_loop_per_worker=train_func,
-    train_loop_config={
-        "fixed": FIXED_VAL,
-    },
-    scaling_config=train.ScalingConfig(
-        num_workers=1, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 2}
-    ),
-)
+if __name__ == "__main__":
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config={
+            "fixed": FIXED_VAL,
+        },
+        scaling_config=train.ScalingConfig(
+            num_workers=1, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 2}
+        ),
+    )
 
-tuner = tune.Tuner(
-    trainer,
-    param_space={
-        "train_loop_config": {
-            "param": tune.grid_search(VALS),
-            "delete_marker": DELETE_TRIAL_MARKER,
-            "hang_marker": HANG_TRIAL_MARKER,
-        }
-    },
-    tune_config=tune.TuneConfig(search_alg=BasicVariantGenerator(max_concurrent=1)),
-)
-results = tuner.fit()
+    tuner = tune.Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "param": tune.grid_search(VALS),
+                "delete_marker": DELETE_TRIAL_MARKER,
+                "hang_marker": HANG_TRIAL_MARKER,
+            }
+        },
+        tune_config=tune.TuneConfig(search_alg=BasicVariantGenerator(max_concurrent=1)),
+    )
+    results = tuner.fit()
 
-# Delete DELETE_RUN_MARKER
-if DELETE_RUN_MARKER and Path(DELETE_RUN_MARKER).exists():
-    Path(DELETE_RUN_MARKER).unlink()
+    # Delete DELETE_RUN_MARKER
+    if DELETE_RUN_MARKER and Path(DELETE_RUN_MARKER).exists():
+        Path(DELETE_RUN_MARKER).unlink()
 
-# Wait for HANG_END_MARKER
-while HANG_END_MARKER and Path(HANG_END_MARKER).exists():
-    time.sleep(0.1)
+    # Wait for HANG_END_MARKER
+    while HANG_END_MARKER and Path(HANG_END_MARKER).exists():
+        time.sleep(0.1)
 
-# Put assertions last, so we don't finish early because of failures
-assert sorted([result.metrics["param"] for result in results]) == VALS
-assert [result.metrics["fixed"] for result in results] == [FIXED_VAL, FIXED_VAL]
+    # Put assertions last, so we don't finish early because of failures
+    assert sorted([result.metrics["param"] for result in results]) == VALS
+    assert [result.metrics["fixed"] for result in results] == [FIXED_VAL, FIXED_VAL]
