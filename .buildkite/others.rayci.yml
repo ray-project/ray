@@ -10,7 +10,7 @@ steps:
       # uncomment the following line to update the pinned versions of pip dependencies
       # to the latest versions; otherwise, the pinned versions will be re-used as much
       # as possible
-      # - rm ./python/requirements_compiled.txt
+      - rm ./python/requirements_compiled.txt
       - cp ./python/requirements_compiled.txt requirements_compiled_backup.txt
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
