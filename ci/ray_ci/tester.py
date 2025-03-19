@@ -259,7 +259,7 @@ def main(
             or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
         )
 
-    print("Test targets:")
+    print(f"Test targets: {len(test_targets)}")
     for target in test_targets:
         print(f"- {target}")
 
@@ -392,6 +392,7 @@ def _get_test_targets(
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
+    print("bazel query: ", query)
     test_targets = {
         target
         for target in container.run_script_with_output(
