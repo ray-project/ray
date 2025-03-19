@@ -1,6 +1,6 @@
 import abc
 import copy
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces import Rule
@@ -43,9 +43,9 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
                         )
                     )
                 ):
-                    dynamic_ray_remote_args[
-                        "memory"
-                    ] = self.estimate_per_task_memory_requirement(op)
+                    memory = self.estimate_per_task_memory_requirement(op)
+                    if memory is not None:
+                        dynamic_ray_remote_args["memory"] = memory
 
                 return dynamic_ray_remote_args
 
@@ -54,7 +54,7 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
         return plan
 
     @abc.abstractmethod
-    def estimate_per_task_memory_requirement(self, op: MapOperator) -> int:
+    def estimate_per_task_memory_requirement(self, op: MapOperator) -> Optional[int]:
         """Estimate the per-task memory requirement for the given map operator.
 
         This is used to configure the `memory` argument in `ray.remote`.
@@ -63,7 +63,7 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
 
 
 class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
-    def estimate_per_task_memory_requirement(self, op: MapOperator) -> int:
+    def estimate_per_task_memory_requirement(self, op: MapOperator) -> Optional[int]:
         # Typically, this configuration won't make a difference because
         # `average_bytes_per_output` is usually ~128 MiB and each core usually has
         # 4 GiB of memory. However, if `num_cpus` is small (e.g., 0.01) or

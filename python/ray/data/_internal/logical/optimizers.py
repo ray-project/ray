@@ -6,6 +6,9 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
     Rule,
 )
+from ray.data._internal.logical.rules.configure_map_task_memory import (
+    ConfigureMapTaskMemoryUsingOutputSize,
+)
 from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
 from ray.data._internal.logical.rules.inherit_target_max_block_size import (
     InheritTargetMaxBlockSizeRule,
@@ -29,6 +32,7 @@ _PHYSICAL_RULES = [
     SetReadParallelismRule,
     OperatorFusionRule,
     EliminateBuildOutputBlocks,
+    ConfigureMapTaskMemoryUsingOutputSize,
 ]
 
 
