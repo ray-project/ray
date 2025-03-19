@@ -8,7 +8,7 @@ from ray._private.runtime_env.utils import check_output_cmd
 import ray
 from ray._private.runtime_env.archive import get_context as get_archives_context
 from ray._private.test_utils import wait_for_condition
-from ray._private.runtime_env.packaging import get_local_dir_from_uri
+from ray._private.runtime_env.packaging import get_local_dir_from_uri, is_tar_uri
 
 ARCHIVE_PLUGIN_CLASS_PATH = (
     "ray._private.runtime_env.archive.DownloadAndUnpackArchivePlugin"  # noqa: E501
@@ -129,6 +129,74 @@ def test_archive_plugin_with_mutiple_packages(set_runtime_env_plugins, start_clu
             ).remote()
         )
         assert output
+
+
+test_local_dir = None
+
+
+@pytest.mark.parametrize(
+    "set_url",
+    [
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar",  # noqa: E501
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar.bz",  # noqa: E501
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar.gz",  # noqa: E501
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar.xz",  # noqa: E501
+    ],
+)
+def test_get_local_dir_from_tar_url(set_url):
+    url = set_url
+    assert is_tar_uri(url)
+    per_local_dir = get_local_dir_from_uri(url, "/tmp/ray/runtime_resources")
+    global test_local_dir
+    if test_local_dir is None:
+        test_local_dir = per_local_dir
+    else:
+        assert test_local_dir == per_local_dir
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + ARCHIVE_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "set_url",
+    [
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar",  # noqa: E501
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar.bz",  # noqa: E501
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar.gz",  # noqa: E501
+        "https://github.com/antgroup/ant-ray/raw/refs/heads/ci_deps/runtime_env/test_internal_native_libraries.tar.xz",  # noqa: E501
+    ],
+)
+def test_tar_package_for_runtime_env(
+    set_runtime_env_plugins, set_url, ray_start_regular
+):
+    @ray.remote
+    class Test_Actor:
+        def __init__(self):
+            self._count = 0
+
+        def get_count(self):
+            return self._count
+
+        def get_archive_path(self):
+            return get_archives_context()
+
+    session_dir = ray_start_regular.address_info["session_dir"]
+    url = set_url
+    a = Test_Actor.options(
+        runtime_env={
+            ARCHIVE_PLUGIN_NAME: set_url,
+        }
+    ).remote()
+    assert ray.get(a.get_count.remote()) == 0
+    archive_path = ray.get(a.get_archive_path.remote())
+    archive_file_dir = os.path.join(session_dir, "runtime_resources/archive_files")
+    local_dir = get_local_dir_from_uri(url, archive_file_dir)
+    assert os.path.exists(local_dir), local_dir
+    assert str(local_dir) == archive_path
 
 
 if __name__ == "__main__":

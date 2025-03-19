@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import shutil
+import tarfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
@@ -222,7 +223,16 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
             # Remove all periods except the last, which is part of the
             # file extension
-            package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+            if is_tar_file(package_name):
+                suffix_index = package_name.rfind(".tar")
+                package_name = (
+                    package_name[:suffix_index].replace(".", "_")
+                    + package_name[suffix_index:]
+                )
+            else:
+                package_name = package_name.replace(
+                    ".", "_", package_name.count(".") - 1
+                )
     else:
         package_name = uri.netloc
 
@@ -254,6 +264,35 @@ def is_jar_uri(uri: str) -> bool:
         return False
 
     return Path(path).suffix == ".jar"
+
+
+def is_tar_uri(uri: str) -> bool:
+    try:
+        _, path = parse_uri(uri)
+    except ValueError:
+        return False
+    return is_tar_file(path)
+
+
+def is_tar_file(path: str) -> bool:
+    """Determine if the given local file path represents a compressed tar archive.
+
+    This function checks if the provided path string ends with any of the
+    common tar file extensions including .tar, .tar.gz, .tar.bz, or .tar.xz.
+
+    Args:
+        path: A string representing the local file path to be checked.
+
+    Returns:
+        bool: Returns True if the path ends with a recognized tar file extension,
+              otherwise returns False.
+    """
+    return (
+        path.endswith(".tar")
+        or path.endswith(".tar.gz")
+        or path.endswith(".tar.bz")
+        or path.endswith(".tar.xz")
+    )
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -649,6 +688,11 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     """Return the local directory corresponding to this URI."""
     pkg_file = Path(_get_local_path(base_directory, uri))
     local_dir = pkg_file.with_suffix("")
+    # NOTE(Jacky): If the URls have.tar.gz, .tar.bz, or.tar.xz suffixes,
+    # then the URIs have double suffixes,
+    # which needs to be removed twice to get local_dir
+    if local_dir.suffix == ".tar":
+        local_dir = local_dir.with_suffix("")
     return local_dir
 
 
@@ -762,6 +806,13 @@ async def download_and_unpack_package(
                         target_dir=local_dir,
                         remove_top_level_directory=True,
                         unlink_zip=True,
+                        logger=logger,
+                    )
+                elif is_tar_uri(pkg_uri):
+                    untar_package(
+                        file_path=str(pkg_file),
+                        target_dir=str(local_dir),
+                        unlink_tar=True,
                         logger=logger,
                     )
                 elif pkg_file.suffix == ".whl":
@@ -896,6 +947,42 @@ def unzip_package(
 
     if unlink_zip:
         Path(package_path).unlink()
+
+
+def untar_package(
+    file_path: str,
+    target_dir: str,
+    unlink_tar: bool,
+    logger: Optional[logging.Logger] = default_logger,
+):
+    """Unpacks a tar package into a specified directory and optionally removes the tar file after extraction.
+
+    This function takes a file path to a tar archive and unpacks its contents into the specified target
+    directory. If the directory does not exist, it will be created. It also supports logging of the process
+    and optionally deletes the tar file upon successful extraction.
+
+    Args:
+        file_path: The path to the tar file that is to be extracted.
+        target_dir: The directory where the contents of the tar file will be extracted.
+        unlink_tar: A flag indicating whether the tar file should be deleted after extraction.
+        logger: Logger instance used to log information and debug messages. Defaults to 'default_logger'.
+
+    Raises:
+        FileNotFoundError: If the tar file does not exist.
+
+        FileExistsError: If the target directory cannot be created and does not already exist.
+    """
+    try:
+        os.mkdir(target_dir)
+    except FileExistsError:
+        logger.info(f"Directory at {target_dir} already exists")
+
+    logger.info(f"Unpacking {file_path} to {target_dir}")
+    with tarfile.open(file_path, "r") as tar:
+        tar.extractall(path=target_dir)
+
+    if unlink_tar:
+        Path(file_path).unlink()
 
 
 def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
