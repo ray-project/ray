@@ -134,7 +134,7 @@ class SGLangEngineWrapper:
         if self.max_pending_requests > 0:
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
-            # Use contextlib.nullcontext which works for both sync and async contexts
+            # Use contextlib.nullcontext which works for both sync and async contexts.
             self.semaphore = nullcontext()
 
     async def _prepare_llm_request(self, row: Dict[str, Any]) -> SGLangEngineRequest:

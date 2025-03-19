@@ -67,8 +67,6 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
 
 
 def test_generation_model(gpu_type):
-    # OPT models don't have chat template, so we use ChatML template
-    # here to demonstrate the usage of custom chat template.
     chat_template = """
 {% if messages[0]['role'] == 'system' %}
     {% set offset = 1 %}
