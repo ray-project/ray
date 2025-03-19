@@ -13,6 +13,7 @@ from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
     get_socket_path,
+    get_named_pipe_path,
 )
 from ray._private.ray_logging import setup_component_logger
 
@@ -116,13 +117,16 @@ class SubprocessModule(abc.ABC):
         runner = aiohttp.web.AppRunner(app, access_log=None)
         await runner.setup()
 
-        socket_path = get_socket_path(self._config.socket_dir, self.__class__.__name__)
+        module_name = self.__class__.__name__
         if sys.platform == "win32":
-            site = aiohttp.web.NamedPipeSite(runner, socket_path)
+            named_pipe_path = get_named_pipe_path(module_name)
+            site = aiohttp.web.NamedPipeSite(runner, named_pipe_path)
+            logger.info(f"Started aiohttp server over {named_pipe_path}.")
         else:
+            socket_path = get_socket_path(self._config.socket_dir, module_name)
             site = aiohttp.web.UnixSite(runner, socket_path)
+            logger.info(f"Started aiohttp server over {socket_path}.")
         await site.start()
-        logger.info(f"Started aiohttp server over {socket_path}.")
 
     @property
     def gcs_aio_client(self):

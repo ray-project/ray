@@ -37,3 +37,7 @@ def get_socket_path(socket_dir: str, module_name: str) -> str:
     socket_path = os.path.join(socket_dir, "dash_" + module_name)
     validate_socket_filepath(socket_path)
     return socket_path
+
+
+def get_named_pipe_path(module_name: str) -> str:
+    return r"\\.\pipe\dash_" + module_name

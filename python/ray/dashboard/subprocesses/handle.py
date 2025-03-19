@@ -17,6 +17,7 @@ from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
     ResponseType,
     get_socket_path,
+    get_named_pipe_path,
 )
 
 """
@@ -139,10 +140,12 @@ class SubprocessModuleHandle:
         """
         self.process_ready_event.wait()
 
-        socket_path = get_socket_path(self.config.socket_dir, self.module_cls.__name__)
+        module_name = self.module_cls.__name__
         if sys.platform == "win32":
-            connector = aiohttp.NamedPipeConnector(socket_path)
+            named_pipe_path = get_named_pipe_path(module_name)
+            connector = aiohttp.NamedPipeConnector(named_pipe_path)
         else:
+            socket_path = get_socket_path(self.config.socket_dir, module_name)
             connector = aiohttp.UnixConnector(socket_path)
         self.http_client_session = aiohttp.ClientSession(connector=connector)
 
