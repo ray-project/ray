@@ -15,7 +15,9 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ray/gcs/store_client/store_client.h"
 

@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <list>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -70,7 +74,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
+  explicit MockWorkerClient(instrumented_io_context &io_service)
+      : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
       const rpc::WaitForActorRefDeletedRequest &request,
