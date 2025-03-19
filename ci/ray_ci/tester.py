@@ -401,6 +401,7 @@ def _get_test_targets(
         if target
     }
     flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
+    print(f"flaky tests: {flaky_tests}")
 
     if get_flaky_tests:
         # run flaky test cases, so we include flaky tests in the list of targets
