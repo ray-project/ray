@@ -129,6 +129,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -143,6 +144,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -183,6 +185,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )

@@ -52,6 +52,15 @@ def main(args):
         tokenize = True
         detokenize = True
 
+    runtime_env.update(
+        dict(
+            env_vars=dict(
+                # Add your HF token here if you want to use a gated model e.g.
+                # meta-llama/Llama-3.1-8B-Instruct
+                # HF_TOKEN="hf_xxxxxxxxx",
+            ),
+        )
+    )
     processor_config = vLLMEngineProcessorConfig(
         model_source="unsloth/Llama-3.1-8B-Instruct",
         engine_kwargs=dict(
