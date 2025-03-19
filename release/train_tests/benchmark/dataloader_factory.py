@@ -110,22 +110,24 @@ class S3Reader:
         except Exception as e:
             raise self.S3FileError(f"Error reading file from {s3_url}: {str(e)}")
 
-    def list_files(self, s3_url: str) -> List[str]:
-        """List all files in the S3 bucket with a specific prefix.
+    def _get_file_urls(self, url: str) -> List[str]:
+        """Get file URLs from S3 and distribute them among Ray workers.
 
         Args:
-            s3_url: The S3 URL to list files from
+            url: The S3 URL to list files from
 
         Returns:
-            List[str]: List of S3 URLs for all files found
-
-        Raises:
-            S3CredentialsError: If AWS credentials are not found
-            S3FileError: If there's an error listing files
-            ValueError: If the S3 URL is invalid
+            List of S3 URLs assigned to the current Ray worker
         """
         try:
-            bucket, prefix = self._parse_s3_url(s3_url)
+            # Get Ray worker info
+            worker_rank = ray.train.get_context().get_world_rank()
+            logger.info(
+                f"[DataLoader] Ray worker {worker_rank}/{self.num_ray_workers} listing files"
+            )
+
+            # List files from S3
+            bucket, prefix = self._parse_s3_url(url)
             file_urls = []
             response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
 
@@ -133,13 +135,23 @@ class S3Reader:
                 for file in response["Contents"]:
                     file_urls.append(f"s3://{bucket}/{file['Key']}")
 
-            return file_urls
+            # Sort URLs for consistent distribution
+            file_urls.sort()
+
+            # Round-robin allocation: each worker gets every Nth file
+            worker_urls = file_urls[worker_rank :: self.num_ray_workers]
+
+            logger.info(
+                f"[DataLoader] Ray worker {worker_rank} assigned {len(worker_urls)}/{len(file_urls)} files"
+            )
+            return worker_urls
+
         except NoCredentialsError:
             raise self.S3CredentialsError(
                 "AWS credentials not found. Ensure you have configured them."
             )
         except Exception as e:
-            raise self.S3FileError(f"Error listing files from {s3_url}: {str(e)}")
+            raise self.S3FileError(f"Error listing files from {url}: {str(e)}")
 
 
 class S3ParquetImageIterableDataset(S3Reader, IterableDataset):
@@ -418,46 +430,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
         device = ray.train.torch.get_device()
         logger.info(f"[DataLoader] Using Ray Train device: {device}")
         return device
-
-    def _get_file_urls(self, url: str) -> List[str]:
-        """Get file URLs from S3 and distribute them among Ray workers.
-
-        Args:
-            url: The S3 URL to list files from
-
-        Returns:
-            List of S3 URLs assigned to the current Ray worker
-        """
-        try:
-            # Get Ray worker info
-            worker_rank = ray.train.get_context().get_world_rank()
-            logger.info(
-                f"[DataLoader] Ray worker {worker_rank}/{self.num_ray_workers} listing files"
-            )
-
-            # List files from S3
-            bucket, prefix = self._parse_s3_url(url)
-            file_urls = []
-            response = self.s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-
-            if "Contents" in response:
-                for file in response["Contents"]:
-                    file_urls.append(f"s3://{bucket}/{file['Key']}")
-
-            # Sort URLs for consistent distribution
-            file_urls.sort()
-
-            # Round-robin allocation: each worker gets every Nth file
-            worker_urls = file_urls[worker_rank :: self.num_ray_workers]
-
-            logger.info(
-                f"[DataLoader] Ray worker {worker_rank} assigned {len(worker_urls)}/{len(file_urls)} files"
-            )
-            return worker_urls
-
-        except Exception as e:
-            logger.error(f"[DataLoader] Error listing files from {url}: {str(e)}")
-            raise
 
     def _create_batch_iterator(
         self, dataloader: torch.utils.data.DataLoader, device: torch.device
