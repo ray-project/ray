@@ -66,7 +66,7 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
     }
 
 
-def test_generation_model(gpu_type):
+def test_generation_model(gpu_type, model_llama_3_2_1B_instruct):
     chat_template = """
 {% if messages[0]['role'] == 'system' %}
     {% set offset = 1 %}
@@ -89,7 +89,7 @@ def test_generation_model(gpu_type):
     """
 
     processor_config = SGLangEngineProcessorConfig(
-        model_source="meta-llama/Llama-3.2-1B-Instruct",
+        model_source=model_llama_3_2_1B_instruct,
         engine_kwargs=dict(
             context_length=2048,
             disable_cuda_graph=True,
