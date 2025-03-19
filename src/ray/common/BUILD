@@ -161,6 +161,7 @@ ray_cc_library(
         "scheduling/scheduling_ids.cc",
         "task/task.cc",
         "task/task_spec.cc",
+        "task/task_util.cc",
     ],
     hdrs = [
         "bundle_location_index.h",
