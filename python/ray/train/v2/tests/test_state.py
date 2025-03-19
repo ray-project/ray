@@ -303,6 +303,8 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     attempt = attempts["test_run"]["attempt_1"]
     assert attempt.status == RunAttemptStatus.FINISHED
     assert attempt.end_time_ns is not None
+    assert len(attempt.workers) == 2
+    assert all(w.status == ActorStatus.DEAD for w in attempt.workers)
 
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
