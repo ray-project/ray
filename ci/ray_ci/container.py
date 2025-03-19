@@ -63,8 +63,10 @@ class Container(abc.ABC):
         Run a script in container and returns output
         """
         # CUDA image comes with a license header that we need to remove
+        cmd_args = self.get_run_command(script)
+        print("full docker run command: ", cmd_args)
         return (
-            subprocess.check_output(self.get_run_command(script))
+            subprocess.check_output(cmd_args)
             .decode("utf-8")
             .replace(_CUDA_COPYRIGHT, "")
         )
