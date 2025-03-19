@@ -1,5 +1,5 @@
 import boto3
-from typing import List
+from typing import List, Optional
 import os
 
 from ci.ray_ci.utils import logger
@@ -82,6 +82,7 @@ def download_ray_wheels_from_s3(
         commit_hash: The commit hash of the green commit.
         ray_version: The version of Ray.
         directory_path: The directory to download the wheels to.
+        build_tag: The build tag to add to the downloaded wheels.
     """
     full_directory_path = os.path.join(bazel_workspace_dir, directory_path)
     wheels = _get_wheel_names(ray_version=ray_version)
@@ -90,3 +91,24 @@ def download_ray_wheels_from_s3(
         download_wheel_from_s3(s3_key, full_directory_path)
 
     _check_downloaded_wheels(full_directory_path, wheels)
+
+def add_build_tag_to_wheel(wheel_path: str, build_tag: str) -> None:
+    """
+    Add build tag to the wheel.
+    """
+    wheel_name = os.path.basename(wheel_path)
+    print("Wheel name: ", wheel_name)
+    directory_path = os.path.dirname(wheel_path)
+    print("Directory path: ", directory_path)
+    ray_type, ray_version, python_version, python_version_duplicate, platform = wheel_name.split("-")
+    new_wheel_name = f"{ray_type}-{ray_version}-{build_tag}-{python_version}-{python_version_duplicate}-{platform}"
+    new_wheel_path = os.path.join(directory_path, new_wheel_name)
+    os.rename(wheel_path, new_wheel_path)
+
+def add_build_tag_to_wheels(directory_path: str, build_tag: str) -> None:
+    """
+    Add build tag to all wheels in the given directory.
+    """
+    for wheel in os.listdir(directory_path):
+        wheel_path = os.path.join(directory_path, wheel)
+        add_build_tag_to_wheel(wheel_path=wheel_path, build_tag=build_tag)
