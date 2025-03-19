@@ -217,8 +217,7 @@ py_test(
     size = "small",
     srcs = ["test_privileged.py"],
     tags = [
-        "team:ci",
-        "privileged"
+        "team:ci"
     ],
     deps = [ci_require("pytest")],
 )
