@@ -24,25 +24,12 @@ def register_starlette_serializer(serialization_context):
     )
 
 
-def _register_numpy_serializer(serialization_context):
-
-    try:
-        import numpy  # noqa:F401
-    except ModuleNotFoundError:
-        return
-
-    from ray._private.numpy_serialization import _register_numpy_ndarray_data_serializer
-
-    _register_numpy_ndarray_data_serializer(serialization_context)
-
-
 @DeveloperAPI
 def apply(serialization_context):
     from ray._private.pydantic_compat import register_pydantic_serializers
 
     register_pydantic_serializers(serialization_context)
     register_starlette_serializer(serialization_context)
-    _register_numpy_serializer(serialization_context)
 
     if sys.platform != "win32":
         from ray._private.arrow_serialization import (

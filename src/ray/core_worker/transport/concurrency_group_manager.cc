@@ -14,7 +14,11 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/transport/thread_pool.h"
@@ -71,7 +75,7 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor
         << "the concurrency group " << concurrency_group_name;
     return it->second;
   }
-  /// Code path of that this task wasn't specified in a concurrency group addtionally.
+  /// Code path of that this task wasn't specified in a concurrency group additionally.
   /// Use the predefined concurrency group.
   if (functions_to_executor_index_.find(fd->ToString()) !=
       functions_to_executor_index_.end()) {

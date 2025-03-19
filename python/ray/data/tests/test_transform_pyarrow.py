@@ -6,7 +6,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import parse as parse_version
-from ray._private.utils import _get_pyarrow_version
+from ray._private.arrow_utils import get_pyarrow_version
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
@@ -16,6 +16,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     try_combine_chunked_columns,
     unify_schemas,
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    shuffle,
 )
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -46,9 +47,23 @@ def test_try_defragment_table():
     assert dt == t
 
 
+def test_shuffle():
+    t = pa.Table.from_pydict(
+        {
+            "index": pa.array(list(range(10))),
+        }
+    )
+
+    shuffled = shuffle(t, seed=0xDEED)
+
+    assert shuffled == pa.Table.from_pydict(
+        {"index": pa.array([4, 3, 6, 8, 7, 1, 5, 2, 9, 0])}
+    )
+
+
 def test_arrow_concat_empty():
     # Test empty.
-    assert concat([]) == []
+    assert concat([]) == pa.table([])
 
 
 def test_arrow_concat_single_block():
@@ -236,7 +251,7 @@ def test_arrow_concat_with_objects():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("17.0.0"),
+    get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
 )
 def test_struct_with_different_field_names():
@@ -298,7 +313,7 @@ def test_struct_with_different_field_names():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("17.0.0"),
+    get_pyarrow_version() < parse_version("17.0.0"),
     reason="Requires PyArrow version 17 or higher",
 )
 def test_nested_structs():
@@ -733,7 +748,7 @@ def test_unify_schemas():
 
 
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
 )
 def test_unify_schemas_type_promotion():
@@ -954,7 +969,7 @@ def test_fallback_to_pandas_on_incompatible_data(
 
 
 _PYARROW_SUPPORTS_TYPE_PROMOTION = (
-    parse_version(_get_pyarrow_version()) >= MIN_PYARROW_VERSION_TYPE_PROMOTION
+    get_pyarrow_version() >= MIN_PYARROW_VERSION_TYPE_PROMOTION
 )
 
 

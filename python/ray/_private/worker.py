@@ -1412,17 +1412,14 @@ def init(
         namespace: A namespace is a logical grouping of jobs and named actors.
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
-        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
-            This storage path must be accessible by all nodes of the cluster, otherwise
-            an error will be raised. This option can also be specified as the
-            RAY_STORAGE env var.
+        storage: [DEPRECATED] Cluster-wide storage configuration is deprecated and will
+            be removed in a future version of Ray.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
-        _redis_max_memory: Redis max memory.
         _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
@@ -1481,7 +1478,6 @@ def init(
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
-    _redis_max_memory: Optional[int] = kwargs.pop("_redis_max_memory", None)
     _plasma_directory: Optional[str] = kwargs.pop("_plasma_directory", None)
     _node_ip_address: str = kwargs.pop("_node_ip_address", None)
     _driver_object_store_memory: Optional[int] = kwargs.pop(
@@ -1675,6 +1671,12 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
+    if storage is not None:
+        warnings.warn(
+            "Cluster-wide storage configuration is deprecated and will be removed in a "
+            "future version of Ray."
+        )
+
     global _global_node
 
     if global_worker.connected:
@@ -1726,7 +1728,6 @@ def init(
             dashboard_port=dashboard_port,
             memory=_memory,
             object_store_memory=object_store_memory,
-            redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
             storage=storage,
@@ -2238,7 +2239,7 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] not in [
+            if error_data["job_id"] is not None and error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:

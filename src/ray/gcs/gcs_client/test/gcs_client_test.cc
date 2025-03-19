@@ -14,6 +14,11 @@
 
 #include "ray/gcs/gcs_client/gcs_client.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -24,7 +29,7 @@
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/util.h"
 
-using namespace std::chrono_literals;
+using namespace std::chrono_literals;  // NOLINT
 
 namespace ray {
 
@@ -356,13 +361,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return nodes;
   }
 
-  bool DrainNode(const NodeID &node_id) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDrainNode(
-        node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
@@ -411,18 +409,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   void CheckActorData(const rpc::ActorTableData &actor,
                       rpc::ActorTableData_ActorState expected_state) {
     ASSERT_TRUE(actor.state() == expected_state);
-  }
-
-  absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
-    absl::flat_hash_set<NodeID> node_ids;
-    for (int index = 0; index < node_count; ++index) {
-      auto node_info = Mocker::GenNodeInfo();
-      auto node_id = NodeID::FromBinary(node_info->node_id());
-      EXPECT_TRUE(RegisterNode(*node_info));
-      EXPECT_TRUE(DrainNode(node_id));
-      node_ids.insert(node_id);
-    }
-    return node_ids;
   }
 
   // Test parameter, whether to use GCS without redis.
@@ -590,20 +576,8 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
   EXPECT_EQ(node_list.size(), 2);
   ASSERT_TRUE(gcs_client_->Nodes().Get(node1_id));
+  ASSERT_TRUE(gcs_client_->Nodes().Get(node2_id));
   EXPECT_EQ(gcs_client_->Nodes().GetAll().size(), 2);
-
-  // Cancel registration of both nodes to GCS.
-  ASSERT_TRUE(DrainNode(node1_id));
-  ASSERT_TRUE(DrainNode(node2_id));
-  WaitForExpectedCount(unregister_count, 2);
-
-  // Get information of all nodes from GCS.
-  node_list = GetNodeInfoList();
-  EXPECT_EQ(node_list.size(), 2);
-  EXPECT_EQ(node_list[0].state(), rpc::GcsNodeInfo::DEAD);
-  EXPECT_EQ(node_list[1].state(), rpc::GcsNodeInfo::DEAD);
-  ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node1_id));
-  ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
 TEST_P(GcsClientTest, TestUnregisterNode) {
@@ -691,7 +665,7 @@ TEST_P(GcsClientTest, TestErrorInfo) {
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the job table can still work when GCS server restarts.
@@ -718,7 +692,7 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the actor table can still work when GCS server restarts.
@@ -775,7 +749,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Test that subscription of the node table can still work when GCS server restarts.
@@ -805,7 +779,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
+  // TODO(mwtian): Support resubscribing with GCS pubsub.
   GTEST_SKIP();
 
   // Subscribe to all unexpected failure of workers from GCS.
@@ -907,7 +881,7 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
 
   // Get all actors.
   auto condition = [this, actor_count]() {
-    return (int)GetAllActors().size() == actor_count;
+    return static_cast<int>(GetAllActors().size()) == actor_count;
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
@@ -994,32 +968,6 @@ TEST_P(GcsClientTest, TestGcsAuth) {
   EXPECT_TRUE(RegisterNode(*node_info));
 }
 
-TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
-  RayConfig::instance().initialize(R"({"enable_cluster_auth": true})");
-  // Restart GCS.
-  RestartGcsServer();
-  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
-    ReconnectClient();
-  }
-
-  // Simulate the scenario of node dead.
-  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
-
-  const auto &node_ids = RegisterNodeAndMarkDead(node_count);
-
-  // Get all nodes.
-  auto condition = [this]() {
-    return GetNodeInfoList().size() ==
-           RayConfig::instance().maximum_gcs_dead_node_cached_count();
-  };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-
-  auto nodes = GetNodeInfoList();
-  for (const auto &node : nodes) {
-    EXPECT_TRUE(node_ids.contains(NodeID::FromBinary(node.node_id())));
-  }
-}
-
 TEST_P(GcsClientTest, TestRegisterHeadNode) {
   // Test at most only one head node is alive in GCS server
   auto head_node_info = Mocker::GenNodeInfo(1);
@@ -1080,8 +1028,6 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
       gcs_client_->InternalKV().Get("test_ns", "other_key", /*timeout_ms=*/-1, value));
   ASSERT_EQ(value, "test_value3");
 }
-
-// TODO(sang): Add tests after adding asyncAdd
 
 }  // namespace ray
 

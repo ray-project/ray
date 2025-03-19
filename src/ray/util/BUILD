@@ -299,6 +299,7 @@ ray_cc_library(
     hdrs = ["stream_redirection_utils.h"],
     deps = [
         ":pipe_logger",
+        ":scoped_dup2_wrapper",
         ":stream_redirection_options",
         ":util",
     ],
@@ -359,8 +360,17 @@ ray_cc_library(
     name = "process_cleaner",
     srcs = ["process_cleaner.cc"],
     hdrs = ["process_cleaner.h"],
-    deps = select({
-        "@platforms//os:windows": [],
-        "//conditions:default": ["//src/ray/util:logging"],
-    }),
+    deps = [":invoke_once_token"] +
+           select({
+               "@platforms//os:windows": [],
+               "//conditions:default": ["//src/ray/util:logging"],
+           }),
+)
+
+ray_cc_library(
+    name = "invoke_once_token",
+    hdrs = ["invoke_once_token.h"],
+    deps = [
+        ":logging",
+    ],
 )
