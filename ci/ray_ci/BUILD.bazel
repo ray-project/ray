@@ -210,7 +210,7 @@ py_test(
 )
 
 # This test is only run on linux machines
-# with docker containers that have --privilege
+# with docker containers that have --privileged
 # enabled.
 py_test(
     name = "test_privileged_container",

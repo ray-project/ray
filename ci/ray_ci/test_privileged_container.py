@@ -20,9 +20,6 @@ def test_only_cgroupv2_mounted_rw():
     with open(Path(MOUNT_FILE_PATH)) as f:
         for line in f:
             c = line.split()
-            print(c[0], c[1], c[3])
-            print(c[0] == "cgroup2" and c[1] == CGROUP2_PATH)
-
             found_cgroupv2 = found_cgroupv2 or (
                 "cgroup2" and c[1] == CGROUP2_PATH and "rw" in c[3]
             )
