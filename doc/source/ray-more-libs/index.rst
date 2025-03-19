@@ -27,7 +27,7 @@ Ray has a variety of additional integrations with ecosystem libraries.
 - :ref:`spark-on-ray`
 - :ref:`mars-on-ray`
 - :ref:`modin-on-ray`
-- :ref:`daft`
+- `daft <https://www.getdaft.io>`_
 
 .. _air-ecosystem-map:
 
