@@ -22,3 +22,6 @@ steps:
           --build-type cgroup
           --privileged-container
     instance_type: small
+    depends_on:
+      - oss-ci-base_test
+      - forge
