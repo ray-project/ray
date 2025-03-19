@@ -20,11 +20,7 @@ ray_cc_test(
     name = "cgroup_v2_utils_unprivileged_test",
     size = "small",
     srcs = ["cgroup_v2_utils_unprivileged_test.cc"],
-    tags = [
-        # TODO(hjiang, ibrahim, lonnie): Setup CI for cgroup testing environment.
-        "manual",
-        "team:core",
-    ],
+    tags = ["team:core"],
     deps = [
         "//src/ray/common/cgroup:cgroup_setup",
         "//src/ray/common/test:testing",

@@ -13,8 +13,9 @@
 // limitations under the License.
 
 // Precondition for the test suite:
-// - If run on local dev environment, don't run with `sudo`;
-// - If run on remote CI, run in non-privileged container mode.
+// - If run on local dev environment, don't mount cgroupv2 as rw mode.
+// - If run on remote CI, run in non-privileged container mode (where cgroup is mounted as
+// read-only mode).
 
 #include <gtest/gtest.h>
 
