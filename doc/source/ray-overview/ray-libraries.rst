@@ -83,7 +83,7 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/daft.png
+        .. figure:: ../images/daft.webp
             :class: card-figure
 
         .. div::
