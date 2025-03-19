@@ -11,7 +11,8 @@ steps:
       # to the latest versions; otherwise, the pinned versions will be re-used as much
       # as possible
       - rm ./python/requirements_compiled.txt
-      - cp ./python/requirements_compiled.txt requirements_compiled_backup.txt
+      - touch requirements_compiled_backup.txt
+      # - cp ./python/requirements_compiled.txt requirements_compiled_backup.txt
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
       - diff ./python/requirements_compiled.txt requirements_compiled_backup.txt || (echo "requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
