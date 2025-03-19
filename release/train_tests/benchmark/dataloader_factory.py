@@ -3,24 +3,21 @@ from typing import Any, Dict, Iterator, Tuple, List, Optional
 import time
 import multiprocessing
 import logging
+import io
+import os
 
 import torch
 import boto3
 import pandas as pd
 from botocore.exceptions import NoCredentialsError
-import io
-import os
 from torch.utils.data import IterableDataset
 
-import ray.data
 import ray.train
 from ray.train import torch as ray_train_torch
 from ray.data import Dataset
 
 from config import BenchmarkConfig, DataLoaderConfig, RayDataConfig
-from image_classification.imagenet import (
-    get_preprocess_map_fn,
-)
+from image_classification.imagenet import get_preprocess_map_fn
 
 logger = logging.getLogger(__name__)
 

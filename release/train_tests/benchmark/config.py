@@ -25,7 +25,7 @@ class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
     num_torch_workers: int = 2
-    torch_dataloader_timeout_seconds: int = 30
+    torch_dataloader_timeout_seconds: int = 300
 
     # Run CPU training where train workers request a `MOCK_GPU` resource instead.
     mock_gpu: bool = False
