@@ -51,6 +51,18 @@ steps:
         RAYCI_RELEASE: 1
         RAYCI_SCHEDULE: "nightly"
 
+  - label: "Trigger :kubernetes: Kuberay CI Tests"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    trigger: "Ray ecosystem CI: Kuberay CI"
+    key: trigger-kuberay
+    depends_on: trigger-postmerge-nightly
+    build:
+      commit: "HEAD"
+      branch: "release-1.3"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        KUBERAY_TEST_RAY_IMAGE: "rayproject/ray:nightly"
+
   - label: "Trigger Postmerge MacOS test"
     key: trigger-postmerge-macos
     trigger: "postmerge-macos"
