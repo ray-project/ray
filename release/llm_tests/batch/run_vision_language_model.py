@@ -1,3 +1,10 @@
+"""
+Runs a vision language model with image inputs.
+
+Usage:
+python run_vision_language_model.py --tp-size 1 --pp-size 1 --concurrency 1
+"""
+
 import ray
 from ray.data.llm import build_llm_processor, vLLMEngineProcessorConfig
 from args_utils import get_parser
@@ -25,54 +32,47 @@ def main(args):
         tokenize = True
         detokenize = True
 
-    process_config_dict = dict(
-        model_source=args.model_source,
+    processor_config = vLLMEngineProcessorConfig(
+        model_source="llava-hf/llava-1.5-7b-hf",
+        task_type="generate",
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
-            max_model_len=16384,
+            max_model_len=4096,
             enable_chunked_prefill=True,
-            max_num_batched_tokens=2048,
         ),
+        apply_chat_template=True,
         runtime_env=runtime_env,
         tokenize=tokenize,
         detokenize=detokenize,
         batch_size=16,
         accelerator_type=None,
         concurrency=concurrency,
+        has_image=True,
     )
-
-    # Enable LoRA.
-    if args.dynamic_lora_loading_path:
-        if args.lora_name is None:
-            raise ValueError(
-                "lora_name must be specified if dynamic_lora_loading_path is provided"
-            )
-        if args.max_lora_rank is None:
-            raise ValueError(
-                "max_lora_rank must be specified if dynamic_lora_loading_path is provided"
-            )
-
-        process_config_dict[
-            "dynamic_lora_loading_path"
-        ] = args.dynamic_lora_loading_path
-        process_config_dict["engine_kwargs"]["enable_lora"] = True
-        process_config_dict["engine_kwargs"]["max_lora_rank"] = args.max_lora_rank
-
-    processor_config = vLLMEngineProcessorConfig(**process_config_dict)
 
     processor = build_llm_processor(
         processor_config,
         preprocess=lambda row: dict(
-            model=args.model_source if args.lora_name is None else args.lora_name,
             messages=[
-                {"role": "system", "content": "You are a calculator"},
-                {"role": "user", "content": f"{row['id']} ** 3 = ?"},
+                {"role": "system", "content": "You are an assistant"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Say {row['id']} words about this image.",
+                        },
+                        {
+                            "type": "image",
+                            "image": "https://vllm-public-assets.s3.us-west-2.amazonaws.com/vision_model_images/cherry_blossom.jpg",
+                        },
+                    ],
+                },
             ],
             sampling_params=dict(
                 temperature=0.3,
                 max_tokens=50,
-                detokenize=False,
             ),
         ),
         postprocess=lambda row: {
@@ -90,5 +90,5 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = get_parser().parse_args()
-    main(args)
+    parser = get_parser()
+    main(parser.parse_args())

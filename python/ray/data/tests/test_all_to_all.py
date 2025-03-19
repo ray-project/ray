@@ -1589,6 +1589,31 @@ def test_groupby_map_groups_multiple_batch_formats(
     ]
 
 
+def test_groupby_map_groups_ray_remote_args_fn(
+    ray_start_regular_shared_2_cpus, configure_shuffle_method
+):
+    ds = ray.data.from_items(
+        [
+            {"group": 1, "value": 1},
+            {"group": 1, "value": 2},
+            {"group": 2, "value": 3},
+            {"group": 2, "value": 4},
+        ]
+    )
+
+    def func(df):
+        import os
+
+        df["value"] = int(os.environ["__MY_TEST__"])
+        return df
+
+    ds = ds.groupby("group").map_groups(
+        func,
+        ray_remote_args_fn=lambda: {"runtime_env": {"env_vars": {"__MY_TEST__": "69"}}},
+    )
+    assert sorted([x["value"] for x in ds.take()]) == [69, 69, 69, 69]
+
+
 def test_groupby_map_groups_extra_args(
     ray_start_regular_shared_2_cpus, configure_shuffle_method
 ):
