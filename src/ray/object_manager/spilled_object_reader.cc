@@ -178,7 +178,7 @@ std::optional<absl::Cord> SpilledObjectReader::ReadFromDataSection(uint64_t offs
     absl::Span<char> span = buffer.available_up_to(size);
     is.read(span.data(), span.size());
     // We reached the end of the file before reading the expected number of bytes.
-    if (is.gcount() != span.size()) {
+    if (static_cast<size_t>(is.gcount()) != span.size()) {
       RAY_LOG(WARNING) << "Failed to read from data section in spilled file";
       return std::nullopt;
     }
@@ -199,7 +199,7 @@ std::optional<absl::Cord> SpilledObjectReader::ReadFromMetadataSection(
     absl::Span<char> span = buffer.available_up_to(size);
     is.read(span.data(), span.size());
     // We reached the end of the file before reading the expected number of bytes.
-    if (is.gcount() != span.size()) {
+    if (static_cast<size_t>(is.gcount()) != span.size()) {
       RAY_LOG(WARNING) << "Failed to read from metadata section in spilled file";
       return std::nullopt;
     }
