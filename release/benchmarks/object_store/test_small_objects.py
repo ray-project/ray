@@ -40,7 +40,7 @@ def test_small_objects_broadcast():
 
     num_messages = 0
     start_time = time.time()
-    for idx, actor in actors:
+    for idx, actor in enumerate(actors):
         not_ready.append(actor.receive.remote(numpy_arr_ref, idx))
     while time.time() - start_time < 60:
         ready, not_ready = ray.wait(not_ready, num_returns=10)
