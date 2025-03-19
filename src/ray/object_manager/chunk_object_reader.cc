@@ -42,17 +42,16 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
       std::min(chunk_size_,
                object_->GetDataSize() + object_->GetMetadataSize() - cur_chunk_offset);
 
-  std::string result(cur_chunk_size, '\0');
-  size_t result_offset = 0;
+  std::string result;
+  result.reserve(cur_chunk_size);
 
   if (cur_chunk_offset < object_->GetDataSize()) {
     // read from data section.
     auto offset = cur_chunk_offset;
-    auto size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
-    if (!object_->ReadFromDataSection(offset, size, &result[result_offset])) {
+    auto data_size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
+    if (!object_->ReadFromDataSection(offset, data_size, result)) {
       return absl::optional<std::string>();
     }
-    result_offset = size;
   }
 
   if (cur_chunk_offset + cur_chunk_size > object_->GetDataSize()) {
@@ -61,7 +60,7 @@ absl::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) co
         std::max(cur_chunk_offset, object_->GetDataSize()) - object_->GetDataSize();
     auto size = std::min(cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
                          cur_chunk_size);
-    if (!object_->ReadFromMetadataSection(offset, size, &result[result_offset])) {
+    if (!object_->ReadFromMetadataSection(offset, size, result)) {
       return absl::optional<std::string>();
     }
   }

@@ -746,6 +746,20 @@ py_test(
 )
 
 py_test(
+    name = "test_state_export",
+    size = "small",
+    srcs = ["tests/test_state_export.py"],
+    tags = [
+        "exclusive",
+        "team:ml",
+    ],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
+)
+
+py_test(
     name = "test_tensorflow_checkpoint",
     size = "small",
     srcs = ["tests/test_tensorflow_checkpoint.py"],

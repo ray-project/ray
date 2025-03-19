@@ -11,7 +11,7 @@ from ray.train.v2._internal.state.schema import (
     ActorStatus,
 )
 
-TRAIN_SCHEMA_VERSION = 0
+TRAIN_SCHEMA_VERSION = 1
 
 # Status mapping dictionaries
 _ACTOR_STATUS_MAP = {

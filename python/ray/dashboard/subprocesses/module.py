@@ -5,12 +5,14 @@ import inspect
 import logging
 import sys
 from dataclasses import dataclass
-import os
+import setproctitle
 import multiprocessing
 
 import ray
+from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
+    get_socket_path,
 )
 from ray._private.ray_logging import setup_component_logger
 
@@ -24,6 +26,8 @@ class SubprocessModuleConfig:
     Pickleable.
     """
 
+    cluster_id_hex: str
+    gcs_address: str
     # Logger configs. Will be set up in subprocess entrypoint `run_module`.
     logging_level: str
     logging_format: str
@@ -53,6 +57,22 @@ class SubprocessModule(abc.ABC):
         :param dashboard_head: The DashboardHead instance.
         """
         self._config = config
+        self._parent_process = multiprocessing.parent_process()
+        # Lazy init
+        self._gcs_aio_client = None
+        self._parent_process_death_detection_task = None
+
+    async def _detect_parent_process_death(self):
+        """
+        Detect parent process liveness. If parent process dies, exit the subprocess.
+        """
+        while True:
+            if not self._parent_process.is_alive():
+                logger.warning(
+                    f"Parent process {self._parent_process.pid} died. Exiting..."
+                )
+                sys.exit()
+            await asyncio.sleep(1)
 
     @staticmethod
     def is_minimal_module():
@@ -67,20 +87,10 @@ class SubprocessModule(abc.ABC):
         """
         return False
 
-    @abc.abstractmethod
-    async def init(self):
+    async def run(self):
         """
-        Run the module in an asyncio loop. A head module can provide
-        servicers to the server.
-
-        Only after this method is returned, the module will start receiving messages
-        from the parent queue.
-        """
-        pass
-
-    async def start_server(self):
-        """
-        Start the aiohttp server.
+        Start running the module.
+        This method should be called first before the module starts receiving requests.
         """
         app = aiohttp.web.Application()
         routes: list[aiohttp.web.RouteDef] = [
@@ -106,15 +116,22 @@ class SubprocessModule(abc.ABC):
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
 
-        socket_path = os.path.join(
-            self._config.socket_dir, "dashboard_" + self.__class__.__name__
-        )
+        socket_path = get_socket_path(self._config.socket_dir, self.__class__.__name__)
         if sys.platform == "win32":
             site = aiohttp.web.NamedPipeSite(runner, socket_path)
         else:
             site = aiohttp.web.UnixSite(runner, socket_path)
         await site.start()
         logger.info(f"Started aiohttp server over {socket_path}.")
+
+    @property
+    def gcs_aio_client(self):
+        if self._gcs_aio_client is None:
+            self._gcs_aio_client = GcsAioClient(
+                address=self._config.gcs_address,
+                cluster_id=self._config.cluster_id_hex,
+            )
+        return self._gcs_aio_client
 
     async def _internal_module_health_check(self, request):
         return aiohttp.web.Response(
@@ -126,18 +143,22 @@ class SubprocessModule(abc.ABC):
 async def run_module_inner(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
+    incarnation: int,
     ready_event: multiprocessing.Event,
 ):
 
     module_name = cls.__name__
 
-    logger.info(f"Starting module {module_name} with config {config}")
+    logger.info(
+        f"Starting module {module_name} with incarnation {incarnation} and config {config}"
+    )
 
     try:
         module = cls(config)
-        # First init the module, then start the aiohttp server.
-        await module.init()
-        await module.start_server()
+        module._parent_process_death_detection_task = asyncio.create_task(
+            module._detect_parent_process_death()
+        )
+        await module.run()
         ready_event.set()
         logger.info(f"Module {module_name} initialized, receiving messages...")
     except Exception as e:
@@ -148,12 +169,17 @@ async def run_module_inner(
 def run_module(
     cls: type[SubprocessModule],
     config: SubprocessModuleConfig,
+    incarnation: int,
     ready_event: multiprocessing.Event,
 ):
     """
     Entrypoint for a subprocess module.
     """
     module_name = cls.__name__
+    current_proctitle = setproctitle.getproctitle()
+    setproctitle.setproctitle(
+        f"ray-dashboard-{module_name}-{incarnation} ({current_proctitle})"
+    )
     logging_filename = module_logging_filename(module_name, config.logging_filename)
     setup_component_logger(
         logging_level=config.logging_level,
@@ -169,6 +195,7 @@ def run_module(
         run_module_inner(
             cls,
             config,
+            incarnation,
             ready_event,
         )
     )

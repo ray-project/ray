@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
