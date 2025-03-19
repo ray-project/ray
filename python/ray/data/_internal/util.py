@@ -8,6 +8,7 @@ import psutil
 import platform
 import threading
 import time
+import functools
 import urllib.parse
 from queue import Empty, Full, Queue
 from packaging.version import parse as parse_version
@@ -1584,6 +1585,17 @@ class MemoryProfiler:
             An estimate of the max USS of the process in bytes, or ``None`` if an
             estimate isn't available.
         """
+        if not self._can_estimate_uss():
+            assert self._max_uss is None
+            return None
+
+        with self._max_uss_lock:
+            if self._max_uss is None:
+                self._max_uss = self._estimate_uss()
+            else:
+                self._max_uss = max(self._max_uss, self._estimate_uss())
+
+        assert self._max_uss is not None
         return self._max_uss
 
     def reset(self):
@@ -1592,6 +1604,7 @@ class MemoryProfiler:
 
     def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         assert self._poll_interval_s is not None
+        assert self._can_estimate_uss()
 
         stop_event = threading.Event()
 
@@ -1615,12 +1628,15 @@ class MemoryProfiler:
             self._uss_poll_thread.join()
 
     def _estimate_uss(self) -> int:
+        assert self._can_estimate_uss()
         memory_info = self._process.memory_info()
         # Estimate the USS (the amount of memory that'd be free if we killed the
         # process right now) as the difference between the RSS (total physical memory)
         # and amount of shared physical memory.
         return memory_info.rss - memory_info.shared
 
-    def _can_estimate_uss(self) -> bool:
+    @staticmethod
+    @functools.cache
+    def _can_estimate_uss() -> bool:
         # MacOS and Windows don't have the 'shared' attribute of `memory_info()`.
         return platform.system() == "Linux"

@@ -59,7 +59,7 @@ def test_block_exec_stats_max_uss_bytes_with_polling(ray_start_regular_shared):
 )
 def test_block_exec_stats_max_uss_bytes_without_polling(ray_start_regular_shared):
     array_nbytes = 1024**3  # 1 GiB
-    with MemoryProfiler() as profiler:
+    with MemoryProfiler(poll_interval_s=None) as profiler:
         _ = np.random.randint(0, 256, size=(array_nbytes,), dtype=np.uint8)
 
         assert profiler.estimate_max_uss() > array_nbytes
