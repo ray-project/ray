@@ -1598,7 +1598,10 @@ class MemoryProfiler:
         def poll_uss():
             while not stop_event.is_set():
                 with self._max_uss_lock:
-                    self._max_uss = max(self._max_uss, self._estimate_uss())
+                    if self._max_uss is None:
+                        self._max_uss = self._estimate_uss()
+                    else:
+                        self._max_uss = max(self._max_uss, self._estimate_uss())
                 stop_event.wait(self._poll_interval_s)
 
         thread = threading.Thread(target=poll_uss, daemon=True)
