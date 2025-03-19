@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import pathlib
 import sys
@@ -7,7 +8,6 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
-from ray._raylet import GcsClient
 
 import requests
 import pytest
@@ -15,6 +15,7 @@ from jsonschema import validate
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import ray
+from ray._raylet import GcsClient
 import ray._private.usage.usage_constants as usage_constants
 import ray._private.usage.usage_lib as ray_usage_lib
 from ray._private.test_utils import (
@@ -488,11 +489,9 @@ def test_set_usage_stats_enabled_via_config(monkeypatch, tmp_path, reset_usage_s
 
 
 @pytest.fixture
-def clear_loggers():
+def remove_all_logger_handlers():
     """Remove handlers from all loggers"""
     yield
-    import logging
-
     loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
     for logger in loggers:
         handlers = getattr(logger, "handlers", [])
@@ -510,7 +509,7 @@ def test_usage_stats_prompt(
     tmp_path,
     reset_usage_stats,
     shutdown_only,
-    clear_loggers,
+    remove_all_logger_handlers,
     reset_ray_version_commit,
 ):
     """
