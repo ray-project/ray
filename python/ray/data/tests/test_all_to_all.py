@@ -2096,7 +2096,9 @@ def test_random_shuffle_with_custom_resource(
     assert "2 nodes used" not in ds.stats()
 
 
-def test_random_shuffle_spread(ray_start_cluster, configure_shuffle_method, disable_fallback_to_object_extension):
+def test_random_shuffle_spread(
+    ray_start_cluster, configure_shuffle_method, disable_fallback_to_object_extension
+):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
