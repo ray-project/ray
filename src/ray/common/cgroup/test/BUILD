@@ -1,11 +1,27 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
-    name = "cgroup_v2_utils_test",
+    name = "cgroup_v2_utils_privileged_test",
     size = "small",
-    srcs = ["cgroup_v2_utils_test.cc"],
+    srcs = ["cgroup_v2_utils_privileged_test.cc"],
     tags = [
-        "manual",  # Expect cgroupv2 mount, not intended for unit test and CI.
+        # TODO(hjiang, ibrahim, lonnie): Setup CI for cgroup testing environment.
+        "manual",
+        "team:core",
+    ],
+    deps = [
+        "//src/ray/common/cgroup:cgroup_setup",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "cgroup_v2_utils_unprivileged_test",
+    size = "small",
+    srcs = ["cgroup_v2_utils_unprivileged_test.cc"],
+    tags = [
+        # TODO(hjiang, ibrahim, lonnie): Setup CI for cgroup testing environment.
+        "manual",
         "team:core",
     ],
     deps = [

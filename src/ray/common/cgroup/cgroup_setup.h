@@ -20,12 +20,13 @@ namespace ray {
 
 namespace internal {
 
-// Return whether current user could write to cgroupv2.
-bool CanCurrenUserWriteCgroupV2();
-
-// Return whether cgroup V2 is mounted in read and write mode exclusively on the given
-// [path] (with no cgroupv1 meanwhile).
-bool IsCgroupV2MountedAsRw(const std::string &path);
+// Return whether cgroupv2 is properly setup for read-write operations in the given
+// [directory]. For example, whether the it's mounted as read-write mode, etc.
+//
+// This function is exposed in header file for unit test purpose.
+//
+// \param directory: user provided mounted cgroupv2 directory.
+bool IsCgroupV2Prepared(const std::string &directory);
 
 }  // namespace internal
 

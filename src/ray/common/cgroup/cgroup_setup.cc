@@ -18,8 +18,7 @@
 namespace ray {
 bool SetupCgroupsPreparation(const std::string &node_id /*unused*/) { return false; }
 namespace internal {
-bool CanCurrenUserWriteCgroupV2() { return false; }
-bool IsCgroupV2MountedAsRw(const std::string &path) { return false; }
+bool IsCgroupV2Prepared(const std::string &directory) { return false; }
 }  // namespace internal
 }  // namespace ray
 #else  // __linux__
@@ -54,8 +53,8 @@ namespace {
 std::string cgroup_v2_app_folder;
 std::string cgroup_v2_system_folder;
 
-// Directory where cgroup mounts at.
-constexpr std::string_view kCgroupDirectory = "/sys/fs/cgroup";
+// TODO(hjiang): Cleanup all constants in the followup PR.
+//
 // Parent cgroup path.
 constexpr std::string_view kRtootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
 // Cgroup subtree control path.
@@ -90,10 +89,6 @@ bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
 
 namespace internal {
 
-bool CanCurrenUserWriteCgroupV2() {
-  return access(kCgroupDirectory.data(), W_OK | X_OK) == 0;
-}
-
 bool IsCgroupV2MountedAsRw(const std::string &path) {
   // Check whether cgroupv2 is mounted solely at `/sys/fs/cgroup`.
   struct statfs fs_stats;
@@ -113,9 +108,16 @@ bool IsCgroupV2MountedAsRw(const std::string &path) {
   return (vfs_stats.f_flag & ST_RDONLY) == 0;
 }
 
+bool IsCgroupV2Prepared(const std::string &directory) {
+  if (!internal::IsCgroupV2MountedAsRw(directory)) {
+    return false;
+  }
+  return true;
+}
+
 }  // namespace internal
 
-bool SetupCgroupsPreparation(const std::string &node_id) {
+bool SetupCgroupsPreparation(const std::string &directory, const std::string &node_id) {
   RAY_CHECK(cgroup_v2_app_folder.empty())
       << "Cgroup v2 for raylet should be only initialized once.";
 
@@ -124,12 +126,7 @@ bool SetupCgroupsPreparation(const std::string &node_id) {
       absl::StrFormat("/sys/fs/cgroup/ray_node_%s", node_id);
 
   // Check cgroup accessibility before setup.
-  if (!internal::CanCurrenUserWriteCgroupV2()) {
-    RAY_LOG(ERROR) << "Current user doesn't have the permission to update cgroup v2.";
-    return false;
-  }
-  if (!internal::IsCgroupV2MountedAsRw("/sys/fs/cgroup")) {
-    RAY_LOG(ERROR) << "Cgroup v2 is not mounted in read-write mode.";
+  if (!internal::IsCgroupV2Prepared(directory)) {
     return false;
   }
 

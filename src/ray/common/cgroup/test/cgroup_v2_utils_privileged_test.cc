@@ -25,17 +25,21 @@ namespace {
 // Setup command:
 // sudo umount /sys/fs/cgroup/unified
 // sudo mount -t cgroup2 cgroup2 /sys/fs/cgroup/unified -o rw
-TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) {
-  EXPECT_TRUE(IsCgroupV2MountedAsRw("/sys/fs/cgroup"));
-  EXPECT_FALSE(IsCgroupV2MountedAsRw("/tmp/non_existent_folder"));
+TEST(CgroupV2UtilsTest, CgroupV2MountPrepared) {
+  // Happy path.
+  EXPECT_TRUE(IsCgroupV2Prepared("/sys/fs/cgroup"));
 }
 
-TEST(CgroupV2UtilsTest, CgroupV2Permission) {
-  if (getuid() == 0) {
-    EXPECT_TRUE(CanCurrenUserWriteCgroupV2());
-    return;
-  }
-  EXPECT_FALSE(CanCurrenUserWriteCgroupV2());
+TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotExist) {
+  EXPECT_FALSE(IsCgroupV2Prepared("/tmp/non_existent_folder"));
+}
+
+TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotWritable) {
+  EXPECT_FALSE(IsCgroupV2Prepared("/"));
+}
+
+TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotOfCgroupV2Type) {
+  EXPECT_FALSE(IsCgroupV2Prepared("/tmp"));
 }
 
 }  // namespace
