@@ -19,7 +19,7 @@ class LinuxContainer(Container):
         volumes: Optional[List[str]] = None,
         envs: Optional[List[str]] = None,
         tmp_filesystem: Optional[str] = None,
-        privileged_container: bool = False,
+        privileged: bool = False,
     ) -> None:
         super().__init__(docker_tag, volumes, envs)
 
@@ -27,7 +27,7 @@ class LinuxContainer(Container):
             if tmp_filesystem != "tmpfs":
                 raise ValueError("Only tmpfs is supported for tmp filesystem")
         self.tmp_filesystem = tmp_filesystem
-        self.privileged_container = privileged_container
+        self.privileged = privileged
 
     def install_ray(
         self, build_type: Optional[str] = None, mask: Optional[str] = None
@@ -80,7 +80,7 @@ class LinuxContainer(Container):
                 "--mount",
                 f"type={self.tmp_filesystem},destination=/tmp",
             ]
-        if self.privileged_container:
+        if self.privileged:
             extra_args += ["--privileged"]
         else:
             for cap in _DOCKER_CAP_ADD:

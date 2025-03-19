@@ -213,12 +213,12 @@ py_test(
 # with docker containers that have --privileged
 # enabled.
 py_test(
-    name = "test_privileged_container",
+    name = "test_privileged",
     size = "small",
-    srcs = ["test_privileged_container.py"],
+    srcs = ["test_privileged.py"],
     tags = [
         "team:ci",
-        "privileged_container"
+        "privileged"
     ],
     deps = [ci_require("pytest")],
 )

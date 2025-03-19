@@ -15,13 +15,13 @@ steps:
       - forge
   - label: ":coral: reef: privileged container tests"
     commands:
-      - bazel run //ci/ray_ci:test_in_docker --
+      - bazel run //ci/ray_ci:test_privileged --
           //ci/ray_ci/...  ci
-          --only-tags=privilged_container
+          --only-tags=privileged
           --cache-test-results --parallelism-per-worker 2
           --build-name oss-ci-base_test
           --build-type cgroup
-          --privileged-container
+          --privileged
     instance_type: small
     depends_on:
       - oss-ci-base_test
