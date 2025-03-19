@@ -1298,8 +1298,8 @@ def test_groupby_arrow_multi_agg(
 
     expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)
 
-    agg_df["unique_b"] = _sort_series_of_lists_elements(agg_df["unique_b"])
-    expected_df["unique_b"] = _sort_series_of_lists_elements(expected_df["unique_b"])
+    agg_df["unique(B)"] = _sort_series_of_lists_elements(agg_df["unique(B)"])
+    expected_df["unique(B)"] = _sort_series_of_lists_elements(expected_df["unique(B)"])
 
     print(f"Expected: {expected_df}")
     print(f"Result: {agg_df}")
@@ -1427,8 +1427,8 @@ def test_groupby_multi_agg_with_nans(
 
     expected_df = grouped_df.sort_values(by="A").reset_index(drop=True)
 
-    agg_df["unique(B)"] = _sort_series_of_lists_elements(agg_df["unique(B)"])
-    expected_df["unique(B)"] = _sort_series_of_lists_elements(expected_df["unique(B)"])
+    agg_df["unique_b"] = _sort_series_of_lists_elements(agg_df["unique_b"])
+    expected_df["unique_b"] = _sort_series_of_lists_elements(expected_df["unique_b"])
 
     print(f"Expected: {expected_df}")
     print(f"Result: {agg_df}")
