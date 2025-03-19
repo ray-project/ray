@@ -1,6 +1,7 @@
 import os
 import pytest
 import sys
+import time
 
 
 from pathlib import Path
@@ -24,6 +25,7 @@ def test_only_cgroupv2_mounted_rw():
                 "cgroup2" and c[1] == CGROUP2_PATH and "rw" in c[3]
             )
             found_cgroupv1 = found_cgroupv1 or (c[0] == "cgroup")
+    time.sleep(3600)
     assert found_cgroupv2 and not found_cgroupv1
 
 
