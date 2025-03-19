@@ -402,8 +402,9 @@ class TableBlockAccessor(BlockAccessor):
 
         return builder.build()
 
-    @staticmethod
+    @classmethod
     def _combine_aggregated_blocks(
+        cls,
         blocks: List[Block],
         sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],

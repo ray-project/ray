@@ -225,6 +225,14 @@ def _convert_to_pyarrow_native_array(
             f"Inferred dtype of '{pa_type}' for column '{column_name}'",
         )
 
+        # NOTE: Pyarrow 19.0 is not able to properly handle `ListScalar(None)` when
+        #       creating native array and hence we have to manually replace any such
+        #       cases w/ an explicit null value
+        #
+        # See for more details https://github.com/apache/arrow/issues/45682
+        if len(column_values) > 0 and isinstance(column_values[0], pa.ListScalar):
+            column_values = [v if v.is_valid else None for v in column_values]
+
         return pa.array(column_values, type=pa_type)
     except Exception as e:
         raise ArrowConversionError(str(column_values)) from e

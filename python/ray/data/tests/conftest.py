@@ -263,6 +263,14 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
+@pytest.fixture
+def disable_fallback_to_object_extension(request, restore_data_context):
+    """Disables fallback to ArrowPythonObjectType"""
+    ray.data.context.DataContext.get_current().enable_fallback_to_arrow_object_ext_type = (
+        False
+    )
+
+
 @pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
 def configure_shuffle_method(request):
     shuffle_strategy = request.param

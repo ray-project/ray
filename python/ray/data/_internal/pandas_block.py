@@ -17,6 +17,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
+from ray.anyscale.data._internal.block import OptimizedTableBlockMixin
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
@@ -229,7 +230,7 @@ class PandasBlockBuilder(TableBlockBuilder):
 PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
 
 
-class PandasBlockAccessor(TableBlockAccessor):
+class PandasBlockAccessor(OptimizedTableBlockMixin, TableBlockAccessor):
     ROW_TYPE = PandasRow
 
     def __init__(self, table: "pandas.DataFrame"):
