@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 import uuid
+from contextlib import nullcontext
 from enum import Enum
 from pydantic import BaseModel, root_validator
 from typing import Any, Dict, AsyncIterator, Optional, List, Tuple, Type
@@ -108,11 +109,15 @@ class SGLangEngineWrapper:
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task", SGLangTaskType.GENERATE)
         self.model = kwargs.pop("model", None)
-
         assert self.model is not None
-
         # We need to rename the `model` to `model_path` for SGLang.
         kwargs["model_path"] = self.model
+
+        # Set the skip_tokenizer_init to True by default for SGLang engine
+        # because we will not use the tokenizer/detokenizer in SGLang engine
+        # by default.
+        self.skip_tokenizer_init = kwargs.pop("skip_tokenizer_init", True)
+        kwargs["skip_tokenizer_init"] = self.skip_tokenizer_init
 
         if sgl is None:
             raise ImportError(
@@ -129,7 +134,8 @@ class SGLangEngineWrapper:
         if self.max_pending_requests > 0:
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
-            self.semaphore = asyncio.NullContext()
+            # Use contextlib.nullcontext which works for both sync and async contexts
+            self.semaphore = nullcontext()
 
     async def _prepare_llm_request(self, row: Dict[str, Any]) -> SGLangEngineRequest:
         """Prepare the inputs for LLM inference.
@@ -141,22 +147,29 @@ class SGLangEngineWrapper:
             A single SGLangEngineRequest.
         """
         prompt = row.pop("prompt")
-        if "prompt_token_ids" in row:
-            prompt_token_ids = row.pop("prompt_token_ids").tolist()
+
+        if "tokenized_prompt" in row:
+            tokenized_prompt = row.pop("tokenized_prompt").tolist()
         else:
-            prompt_token_ids = None
+            tokenized_prompt = None
 
         # Prepare sampling parameters.
         if self.task_type == SGLangTaskType.GENERATE:
-            params = row.pop("params")
+            params = row.pop("sampling_params")
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
+
+        if tokenized_prompt is not None and not self.skip_tokenizer_init:
+            raise ValueError(
+                "To use a token-in-token-out mode of SGLang Engine, "
+                "please set engine_kwargs['skip_tokenizer_init'] to True."
+            )
 
         request = SGLangEngineRequest(
             request_id=self.request_id,
             idx_in_batch=row[self.idx_in_batch_column],
             prompt=prompt,
-            prompt_token_ids=prompt_token_ids,
+            prompt_token_ids=tokenized_prompt,
             params=params,
         )
         self.request_id += 1
@@ -194,10 +207,11 @@ class SGLangEngineWrapper:
         # Send the request to the LLM engine.
         stream = await self.engine.async_generate(
             prompt=request.prompt,
-            sampling_params=request.params,
             input_ids=request.prompt_token_ids,
+            sampling_params=request.params,
             stream=True,
         )
+
         # Consume the stream until the request is finished.
         async for output in stream:
             if output["meta_info"]["finish_reason"] is not None:
@@ -337,7 +351,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
         ret = ["prompt"]
         if self.task_type == SGLangTaskType.GENERATE:
-            ret.append("params")
+            ret.append("sampling_params")
         return ret
 
     def __del__(self):
@@ -373,8 +387,8 @@ class SGLangEngineStage(StatefulStage):
             ray_remote_args["accelerator_type"] = accelerator_type
 
         # Setup num_gpus required per SGLang engine.
-        tp_size = engine_kwargs.get("tp", 1)
-        dp_size = engine_kwargs.get("dp", 1)
+        tp_size = engine_kwargs.get("tp_size", 1)
+        dp_size = engine_kwargs.get("dp_size", 1)
         num_gpus = tp_size * dp_size
 
         map_batches_kwargs["num_gpus"] = num_gpus

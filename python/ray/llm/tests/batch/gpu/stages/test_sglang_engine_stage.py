@@ -29,7 +29,7 @@ def mock_sglang_wrapper():
                     request_id=0,
                     prompt=row["prompt"],
                     prompt_token_ids=None,
-                    params=row["params"],
+                    params=row["sampling_params"],
                     idx_in_batch=row["__idx_in_batch"],
                 ),
                 {
@@ -54,8 +54,8 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         fn_constructor_kwargs=dict(
             model=model_llama_3_2_216M,
             engine_kwargs=dict(
-                tp=2,
-                dp=2,
+                tp_size=2,
+                dp_size=2,
             ),
             task_type=SGLangTaskType.GENERATE,
             max_pending_requests=10,
@@ -73,8 +73,8 @@ def test_sglang_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
         "task_type": SGLangTaskType.GENERATE,
         "max_pending_requests": 10,
         "engine_kwargs": {
-            "tp": 2,
-            "dp": 2,
+            "tp_size": 2,
+            "dp_size": 2,
         },
     }
     assert stage.map_batches_kwargs == {
@@ -107,8 +107,8 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper, model_llama_3_2_216M
     # Test batch processing
     batch = {
         "__data": [
-            {"prompt": "Hello", "params": {"temperature": 0.7}},
-            {"prompt": "World", "params": {"temperature": 0.7}},
+            {"prompt": "Hello", "sampling_params": {"temperature": 0.7}},
+            {"prompt": "World", "sampling_params": {"temperature": 0.7}},
         ]
     }
 
@@ -178,11 +178,12 @@ async def test_sglang_wrapper_semaphore(model_llama_3_2_216M):
             model=model_llama_3_2_216M,
             idx_in_batch_column="__idx_in_batch",
             max_pending_requests=max_pending_requests,
+            skip_tokenizer_init=False,
         )
 
         # Create 10 requests
         batch = [
-            {"__idx_in_batch": i, "prompt": f"Test {i}", "params": {}}
+            {"__idx_in_batch": i, "prompt": f"Test {i}", "sampling_params": {}}
             for i in range(10)
         ]
 
@@ -198,20 +199,21 @@ async def test_sglang_wrapper_generate(model_llama_3_2_216M):
     wrapper = SGLangEngineWrapper(
         model=model_llama_3_2_216M,
         idx_in_batch_column="__idx_in_batch",
-        max_pending_requests=10,
+        max_pending_requests=-1,
         # Skip CUDA graph capturing to reduce the start time.
         disable_cuda_graph=True,
         context_length=2048,
         task=SGLangTaskType.GENERATE,
         # Older GPUs (e.g. T4) don't support bfloat16.
         dtype="half",
+        skip_tokenizer_init=False,
     )
 
     batch = [
         {
             "__idx_in_batch": 0,
             "prompt": "Hello",
-            "params": {
+            "sampling_params": {
                 "max_new_tokens": 10,
                 "temperature": 0.7,
             },
@@ -219,7 +221,7 @@ async def test_sglang_wrapper_generate(model_llama_3_2_216M):
         {
             "__idx_in_batch": 1,
             "prompt": "World",
-            "params": {
+            "sampling_params": {
                 "max_new_tokens": 5,
                 "temperature": 0.7,
             },
