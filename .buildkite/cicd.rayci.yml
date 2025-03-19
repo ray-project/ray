@@ -20,7 +20,7 @@ steps:
           --only-tags=privilged_container
           --cache-test-results --parallelism-per-worker 2
           --build-name oss-ci-base_test
-          --build-type cgroupskip
+          --build-type cgroup
           --privileged-container
     instance_type: small
     depends_on:
