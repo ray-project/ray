@@ -169,6 +169,12 @@ steps:
         --except-tags gpu,post_wheel_build,mem_pressure,doctest,multi_gpu
         --parallelism-per-worker 3
         --skip-ray-installation
+      # doc memory pressure example
+      - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
+        --build-name doctestbuild
+        --only-tags mem_pressure
+        --except-tags gpu
+        --skip-ray-installation
 
   - label: ":ray: core: data tests"
     tags: python
