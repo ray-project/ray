@@ -409,8 +409,8 @@ doctest(
             "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
-            "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst",
+            "source/data/**/*.rst",
+            "source/data/**/*.md",
             "source/train/**/*.rst",
             "source/train/**/*.md",
             "source/workflows/**/*.rst",
@@ -489,10 +489,39 @@ doctest(
 )
 
 doctest(
+    name = "doctest[data]",
+    files = glob(
+        include = [
+            "source/data/**/*.rst",
+            "source/data/**/*.md",
+        ],
+        exclude = [
+            # These tests run on GPU (see below).
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst",
+            # These tests are currently failing.
+            "source/data/loading-data.rst",
+            "source/data/data-internals.rst",
+            "source/data/inspecting-data.rst",
+            "source/data/loading-data.rst",
+            "source/data/performance-tips.rst",
+            "source/data/saving-data.rst",
+            "source/data/working-with-images.rst",
+            "source/data/working-with-llms.rst",
+            "source/data/working-with-pytorch.rst",
+        ],
+    ),
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
+    tags = ["team:data"],
+)
+
+doctest(
+    name = "doctest[data-gpu]",
     files = [
         "source/data/batch_inference.rst",
         "source/data/transforming-data.rst",
     ],
-    gpu = True,
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
+    gpu = True,
 )
