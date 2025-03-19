@@ -916,11 +916,17 @@ RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 // Costs an extra RPC.
 // TODO(vitsai): Remove this flag
 RAY_CONFIG(bool, enable_reap_actor_death, true)
-// The number of sockets between object manager.
-// The higher the number the higher throughput of the data
-// transfer it'll be, but it'll also user more sockets and
-// more CPU resources.
+
+// The number of grpc clients between object managers.
 RAY_CONFIG(int, object_manager_client_connection_num, 4)
+
+// Whether object manager creates separate grpc channel for each grpc stub.
+// The total TCP connection number for each object manager pair is:
+// - if not create separate channel for each stub, there's only one TCP connection created
+// and shared among all stubs;
+// - if separate channels are created, connection number =
+// object_manager_client_connection_num
+RAY_CONFIG(bool, object_manager_create_separate_channel_for_stub, false);
 
 // The number of object manager thread. By default, it's
 //     std::min(std::max(2, num_cpus / 4), 8)
