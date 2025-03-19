@@ -177,6 +177,9 @@ absl::Cord SpilledObjectReader::ReadFromDataSection(uint64_t offset,
     auto buffer = cord.GetAppendBuffer(size);
     absl::Span<char> span = buffer.available_up_to(size);
     is.read(span.data(), span.size());
+    // Read will only read up to end of file, so we need to check if we read the expected
+    // number of bytes.
+    RAY_CHECK_EQ(span.size(), is.gcount());
     buffer.IncreaseLengthBy(span.size());
     cord.Append(std::move(buffer));
     size -= span.size();
