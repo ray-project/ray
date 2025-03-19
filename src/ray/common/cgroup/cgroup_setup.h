@@ -16,17 +16,20 @@
 
 #include <string>
 
+#include "ray/common/status.h"
+
 namespace ray {
 
 namespace internal {
 
 // Return whether cgroupv2 is properly setup for read-write operations in the given
 // [directory]. For example, whether the it's mounted as read-write mode, etc.
+// If not, InvalidArgument status is returned.
 //
 // This function is exposed in header file for unit test purpose.
 //
 // \param directory: user provided mounted cgroupv2 directory.
-bool IsCgroupV2Prepared(const std::string &directory);
+Status IsCgroupV2Prepared(const std::string &directory);
 
 }  // namespace internal
 
@@ -37,7 +40,7 @@ bool IsCgroupV2Prepared(const std::string &directory);
 // Cgroup is not supported on non-linux platforms.
 //
 // NOTICE: This function is expected to be called once for eacy raylet instance.
-bool SetupCgroupsPreparation(const std::string &node_id);
+Status SetupCgroupsPreparation(const std::string &node_id);
 
 // Get folder name for application cgroup v2 for current raylet instance.
 const std::string &GetCgroupV2AppFolder();

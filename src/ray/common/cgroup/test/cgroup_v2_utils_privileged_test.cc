@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "ray/common/cgroup/cgroup_setup.h"
+#include "ray/common/test/testing.h"
 
 namespace ray::internal {
 
@@ -27,19 +28,19 @@ namespace {
 // sudo mount -t cgroup2 cgroup2 /sys/fs/cgroup/unified -o rw
 TEST(CgroupV2UtilsTest, CgroupV2MountPrepared) {
   // Happy path.
-  EXPECT_TRUE(IsCgroupV2Prepared("/sys/fs/cgroup"));
+  RAY_ASSERT_OK(IsCgroupV2Prepared("/sys/fs/cgroup"));
 }
 
 TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotExist) {
-  EXPECT_FALSE(IsCgroupV2Prepared("/tmp/non_existent_folder"));
+  EXPECT_FALSE(IsCgroupV2Prepared("/tmp/non_existent_folder").ok());
 }
 
 TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotWritable) {
-  EXPECT_FALSE(IsCgroupV2Prepared("/"));
+  EXPECT_FALSE(IsCgroupV2Prepared("/").ok());
 }
 
 TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotOfCgroupV2Type) {
-  EXPECT_FALSE(IsCgroupV2Prepared("/tmp"));
+  EXPECT_FALSE(IsCgroupV2Prepared("/tmp").ok());
 }
 
 }  // namespace

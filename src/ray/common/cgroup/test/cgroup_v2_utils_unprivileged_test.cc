@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "ray/common/cgroup/cgroup_setup.h"
+#include "ray/common/test/testing.h"
 
 namespace ray::internal {
 
@@ -22,7 +23,7 @@ namespace {
 
 TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) {
   // Error case: cgroup directory exists, but not not writable.
-  EXPECT_FALSE(IsCgroupV2Prepared("/sys/fs/cgroup"));
+  EXPECT_FALSE(IsCgroupV2Prepared("/sys/fs/cgroup").ok());
 }
 
 }  // namespace
