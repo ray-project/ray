@@ -76,7 +76,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
