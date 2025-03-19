@@ -26,6 +26,7 @@ steps:
 
   - label: doc tests
     instance_type: large
+    key: none_doc_tests
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/... //doc/... none

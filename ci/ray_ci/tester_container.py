@@ -93,6 +93,8 @@ class TesterContainer(Container):
         if not chunks:
             # no tests to run
             return True
+        for i, chunk in enumerate(chunks):
+            logger.info(f"Shard {i}: {chunk}")
 
         # divide gpus evenly among chunks
         gpu_ids = chunk_into_n(list(range(self.gpus)), len(chunks))

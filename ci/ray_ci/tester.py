@@ -258,6 +258,11 @@ def main(
             get_high_impact_tests=run_high_impact_tests
             or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
         )
+
+    print("Test targets:")
+    for target in test_targets:
+        print(f"- {target}")
+
     success = container.run_tests(
         team,
         test_targets,
