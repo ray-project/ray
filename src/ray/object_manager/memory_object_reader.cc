@@ -32,17 +32,24 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
-absl::Cord MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size) const {
-  RAY_CHECK_LE(offset + size, GetDataSize());
+std::optional<absl::Cord> MemoryObjectReader::ReadFromDataSection(uint64_t offset,
+                                                                  uint64_t size) const {
+  if (offset + size > GetDataSize()) {
+    RAY_LOG(WARNING) << "Failed to read from data section in shared memory";
+    return std::nullopt;
+  }
   return absl::MakeCordFromExternal(
       absl::string_view{reinterpret_cast<char *>(object_buffer_.data->Data() + offset),
                         size},
       []() {});
 }
 
-absl::Cord MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
-                                                       uint64_t size) const {
-  RAY_CHECK_LE(offset + size, GetMetadataSize());
+std::optional<absl::Cord> MemoryObjectReader::ReadFromMetadataSection(
+    uint64_t offset, uint64_t size) const {
+  if (offset + size > GetDataSize()) {
+    RAY_LOG(WARNING) << "Failed to read from metadata section in shared memory.";
+    return std::nullopt;
+  }
   return absl::MakeCordFromExternal(
       absl::string_view{
           reinterpret_cast<char *>(object_buffer_.metadata->Data() + offset), size},

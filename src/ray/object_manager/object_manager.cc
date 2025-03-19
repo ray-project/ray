@@ -501,7 +501,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   node_id,
                   chunk_id,
                   rpc_client,
-                  [=](const Status &status) {
+                  [=]() {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
                     main_service_->post(
@@ -522,7 +522,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
                                     const NodeID &node_id,
                                     uint64_t chunk_index,
                                     std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-                                    std::function<void(const Status &)> on_complete,
+                                    std::function<void()> on_complete,
                                     std::shared_ptr<ChunkObjectReader> chunk_reader,
                                     bool from_disk) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
@@ -538,8 +538,14 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   push_request.set_chunk_index(chunk_index);
 
   // read a chunk into push_request and handle errors.
-  auto cord = chunk_reader->GetChunk(chunk_index);
-  push_request.set_data(cord);
+  if (auto cord = chunk_reader->GetChunk(chunk_index)) {
+    push_request.set_data(*cord);
+  } else {
+    RAY_LOG(WARNING) << "Failed to read chunk_index " << chunk_index << " of object "
+                     << object_id;
+    on_complete();
+    return;
+  }
 
   if (from_disk) {
     num_bytes_pushed_from_disk_ += push_request.data().size();
@@ -559,7 +565,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
         }
         double end_time = absl::GetCurrentTimeNanos() / 1e9;
         HandleSendFinished(object_id, node_id, chunk_index, start_time, end_time, status);
-        on_complete(status);
+        on_complete();
       };
 
   rpc_client->Push(push_request, callback);

@@ -168,8 +168,8 @@ uint64_t SpilledObjectReader::ToUINT64(const std::string &s) {
   return result;
 }
 
-absl::Cord SpilledObjectReader::ReadFromDataSection(uint64_t offset,
-                                                    uint64_t size) const {
+std::optional<absl::Cord> SpilledObjectReader::ReadFromDataSection(uint64_t offset,
+                                                                   uint64_t size) const {
   std::ifstream is(file_path_, std::ios::binary);
   absl::Cord cord;
   is.seekg(data_offset_ + offset);
@@ -177,9 +177,11 @@ absl::Cord SpilledObjectReader::ReadFromDataSection(uint64_t offset,
     auto buffer = cord.GetAppendBuffer(size);
     absl::Span<char> span = buffer.available_up_to(size);
     is.read(span.data(), span.size());
-    // Read will only read up to end of file, so we need to check if we read the expected
-    // number of bytes.
-    RAY_CHECK_EQ(span.size(), is.gcount());
+    // We reached the end of the file before reading the expected number of bytes.
+    if (is.gcount() != span.size()) {
+      RAY_LOG(WARNING) << "Failed to read from data section in spilled file";
+      return std::nullopt;
+    }
     buffer.IncreaseLengthBy(span.size());
     cord.Append(std::move(buffer));
     size -= span.size();
@@ -187,8 +189,8 @@ absl::Cord SpilledObjectReader::ReadFromDataSection(uint64_t offset,
   return cord;
 }
 
-absl::Cord SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
-                                                        uint64_t size) const {
+std::optional<absl::Cord> SpilledObjectReader::ReadFromMetadataSection(
+    uint64_t offset, uint64_t size) const {
   std::ifstream is(file_path_, std::ios::binary);
   absl::Cord cord;
   is.seekg(metadata_offset_ + offset);
@@ -196,6 +198,11 @@ absl::Cord SpilledObjectReader::ReadFromMetadataSection(uint64_t offset,
     auto buffer = cord.GetAppendBuffer(size);
     absl::Span<char> span = buffer.available_up_to(size);
     is.read(span.data(), span.size());
+    // We reached the end of the file before reading the expected number of bytes.
+    if (is.gcount() != span.size()) {
+      RAY_LOG(WARNING) << "Failed to read from metadata section in spilled file";
+      return std::nullopt;
+    }
     buffer.IncreaseLengthBy(span.size());
     cord.Append(std::move(buffer));
     size -= span.size();

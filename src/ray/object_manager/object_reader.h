@@ -40,16 +40,16 @@ class IObjectReader {
   ///
   /// \param offset offset to the data section to copy from.
   /// \param size number of bytes to copy.
-  /// \param output string that the data will be appended to.
-  /// \return bool.
-  virtual absl::Cord ReadFromDataSection(uint64_t offset, uint64_t size) const = 0;
+  /// \return optional cord that will hold view or copy of data section
+  virtual std::optional<absl::Cord> ReadFromDataSection(uint64_t offset,
+                                                        uint64_t size) const = 0;
   /// Read from metadata sections into output.
   /// Return false if the object is corrupted or size/offset is invalid.
   ///
   /// \param offset offset to the metadata section to copy from.
   /// \param size number of bytes to copy.
-  /// \param output string that the metadata will be appended to.
-  /// \return bool.
-  virtual absl::Cord ReadFromMetadataSection(uint64_t offset, uint64_t size) const = 0;
+  /// \return optional cord that will hold view or copy of metadata section
+  virtual std::optional<absl::Cord> ReadFromMetadataSection(uint64_t offset,
+                                                            uint64_t size) const = 0;
 };
 }  // namespace ray

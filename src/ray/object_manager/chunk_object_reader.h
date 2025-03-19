@@ -33,11 +33,12 @@ class ChunkObjectReader {
   uint64_t GetNumChunks() const;
 
   /// Return the value in a given chunk, identified by chunk_index.
-  /// It migh return an empty optional if the file is deleted.
+  /// It migh return an empty optional if we can't read the correct amount from the file
+  /// or shm.
   ///
   /// \param chunk_index the index of chunk to return. index greater or
   ///                    equal to GetNumChunks() yields undefined behavior.
-  absl::Cord GetChunk(uint64_t chunk_index) const;
+  std::optional<absl::Cord> GetChunk(uint64_t chunk_index) const;
 
   const IObjectReader &GetObject() const { return *object_; }
 

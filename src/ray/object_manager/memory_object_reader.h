@@ -33,8 +33,10 @@ class MemoryObjectReader : public IObjectReader {
 
   const rpc::Address &GetOwnerAddress() const override;
 
-  absl::Cord ReadFromDataSection(uint64_t offset, uint64_t size) const override;
-  absl::Cord ReadFromMetadataSection(uint64_t offset, uint64_t size) const override;
+  std::optional<absl::Cord> ReadFromDataSection(uint64_t offset,
+                                                uint64_t size) const override;
+  std::optional<absl::Cord> ReadFromMetadataSection(uint64_t offset,
+                                                    uint64_t size) const override;
 
  private:
   const plasma::ObjectBuffer object_buffer_;

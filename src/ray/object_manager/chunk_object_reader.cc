@@ -33,7 +33,7 @@ uint64_t ChunkObjectReader::GetNumChunks() const {
          chunk_size_;
 }
 
-absl::Cord ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
+std::optional<absl::Cord> ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
   // The spilled file stores metadata before data. But the GetChunk needs to
   // return data before metadata. We achieve by first read from data section,
   // then read from metadata section.
@@ -41,13 +41,17 @@ absl::Cord ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
   const auto cur_chunk_size =
       std::min(chunk_size_,
                object_->GetDataSize() + object_->GetMetadataSize() - cur_chunk_offset);
-  absl::Cord cord;
+  absl::Cord result;
 
   if (cur_chunk_offset < object_->GetDataSize()) {
     // read from data section.
     auto offset = cur_chunk_offset;
     auto size = std::min(object_->GetDataSize() - cur_chunk_offset, cur_chunk_size);
-    cord.Append(object_->ReadFromDataSection(offset, size));
+    if (auto data = object_->ReadFromDataSection(offset, size)) {
+      result.Append(std::move(*data));
+    } else {
+      return std::nullopt;
+    }
   }
 
   if (cur_chunk_offset + cur_chunk_size > object_->GetDataSize()) {
@@ -56,8 +60,12 @@ absl::Cord ChunkObjectReader::GetChunk(uint64_t chunk_index) const {
         std::max(cur_chunk_offset, object_->GetDataSize()) - object_->GetDataSize();
     auto size = std::min(cur_chunk_offset + cur_chunk_size - object_->GetDataSize(),
                          cur_chunk_size);
-    cord.Append(object_->ReadFromMetadataSection(offset, size));
+    if (auto metadata = object_->ReadFromMetadataSection(offset, size)) {
+      result.Append(std::move(*metadata));
+    } else {
+      return std::nullopt;
+    }
   }
-  return cord;
+  return result;
 }
 };  // namespace ray
