@@ -9,15 +9,15 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data.block import BlockExecStats, BlockMetadata
 
 
-def test_average_memory_usage_per_task():
+def test_average_max_uss_per_task():
     # No tasks submitted yet.
     metrics = OpRuntimeMetrics(MagicMock())
-    assert metrics.average_memory_usage_per_task is None
+    assert metrics.average_max_uss_per_task is None
 
-    def create_bundle(rss_bytes: int):
+    def create_bundle(uss_bytes: int):
         block = ray.put(pa.Table.from_pydict({}))
         stats = BlockExecStats()
-        stats.rss_bytes = rss_bytes
+        stats.max_uss_bytes = uss_bytes
         stats.wall_time_s = 0
         metadata = BlockMetadata(
             num_rows=0,
@@ -29,20 +29,20 @@ def test_average_memory_usage_per_task():
         return RefBundle([(block, metadata)], owns_blocks=False)
 
     # Submit two tasks.
-    bundle = create_bundle(rss_bytes=0)
+    bundle = create_bundle(uss_bytes=0)
     metrics.on_task_submitted(0, bundle)
     metrics.on_task_submitted(1, bundle)
-    assert metrics.average_memory_usage_per_task is None
+    assert metrics.average_max_uss_per_task is None
 
     # Generate one output for the first task.
-    bundle = create_bundle(rss_bytes=1)
+    bundle = create_bundle(uss_bytes=1)
     metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_memory_usage_per_task == 1
+    assert metrics.average_max_uss_per_task == 1
 
     # Generate one output for the second task.
-    bundle = create_bundle(rss_bytes=3)
+    bundle = create_bundle(uss_bytes=3)
     metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_memory_usage_per_task == 2  # (1 + 3) / 2 = 2
+    assert metrics.average_max_uss_per_task == 2  # (1 + 3) / 2 = 2
 
 
 if __name__ == "__main__":

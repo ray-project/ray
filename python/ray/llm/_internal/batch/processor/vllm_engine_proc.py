@@ -92,6 +92,15 @@ class vLLMEngineProcessorConfig(ProcessorConfig):
         description="Whether the input messages have images.",
     )
 
+    # LoRA configurations.
+    dynamic_lora_loading_path: Optional[str] = Field(
+        default=None,
+        description="The path to the dynamic LoRA adapter. It is expected "
+        "to hold subfolders each for a different lora checkpoint. If not "
+        "specified and LoRA is enabled, then the 'model' in LoRA "
+        "requests will be interpreted as model ID used by HF transformers.",
+    )
+
     @root_validator(pre=True)
     def validate_task_type(cls, values):
         task_type_str = values.get("task_type", "generate")
@@ -142,6 +151,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -156,6 +166,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )
@@ -169,6 +180,7 @@ def build_vllm_engine_processor(
                 engine_kwargs=config.engine_kwargs,
                 task_type=config.task_type,
                 max_pending_requests=config.max_pending_requests,
+                dynamic_lora_loading_path=config.dynamic_lora_loading_path,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
@@ -196,6 +208,7 @@ def build_vllm_engine_processor(
                     zero_copy_batch=True,
                     concurrency=(1, config.concurrency),
                     batch_size=config.batch_size,
+                    runtime_env=config.runtime_env,
                 ),
             )
         )

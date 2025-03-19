@@ -292,7 +292,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             )
 
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Node summary fetched.",
                 summary=all_node_summary,
                 node_logical_resources=nodes_logical_resources,
@@ -303,13 +303,14 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 if node["state"] == "ALIVE":
                     alive_hostnames.add(node["nodeManagerHostname"])
             return dashboard_optional_utils.rest_response(
-                success=True,
+                status_code=dashboard_utils.HTTPStatusCode.OK,
                 message="Node hostname list fetched.",
                 host_name_list=list(alive_hostnames),
             )
         else:
             return dashboard_optional_utils.rest_response(
-                success=False, message=f"Unknown view {view}"
+                status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                message=f"Unknown view {view}",
             )
 
     @routes.get("/nodes/{node_id}")
@@ -318,7 +319,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         node_id = req.match_info.get("node_id")
         node_info = await DataOrganizer.get_node_info(node_id)
         return dashboard_optional_utils.rest_response(
-            success=True, message="Node details fetched.", detail=node_info
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="Node details fetched.",
+            detail=node_info,
         )
 
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
