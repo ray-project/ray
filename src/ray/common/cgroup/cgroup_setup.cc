@@ -90,7 +90,6 @@ bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
 namespace internal {
 
 bool IsCgroupV2MountedAsRw(const std::string &path) {
-  // Check whether cgroupv2 is mounted solely at `/sys/fs/cgroup`.
   struct statfs fs_stats;
   if (statfs(path.data(), &fs_stats) != 0) {
     return false;
