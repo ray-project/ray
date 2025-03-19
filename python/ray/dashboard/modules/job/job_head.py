@@ -21,13 +21,13 @@ from ray.dashboard.consts import (
 )
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import env_bool, KV_NAMESPACE_DASHBOARD
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     JobInfoStorageClient,

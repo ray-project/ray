@@ -14,6 +14,10 @@
 
 #include "ray/gcs/redis_async_context.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 extern "C" {
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
