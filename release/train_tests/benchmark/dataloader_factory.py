@@ -4,7 +4,6 @@ import time
 import multiprocessing
 import logging
 import io
-import os
 
 import torch
 import boto3
@@ -13,7 +12,6 @@ from botocore.exceptions import NoCredentialsError
 from torch.utils.data import IterableDataset
 
 import ray.train
-from ray.train import torch as ray_train_torch
 from ray.data import Dataset
 
 from config import BenchmarkConfig, DataLoaderConfig, RayDataConfig
@@ -396,7 +394,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
 
         # Get worker configuration
         num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
-        num_cpus = os.cpu_count() or 1
         self.num_torch_workers = benchmark_config.num_torch_workers
         self.num_ray_workers = benchmark_config.num_workers
 

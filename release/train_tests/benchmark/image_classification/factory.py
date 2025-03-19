@@ -5,7 +5,6 @@ import torch
 import torchvision
 
 import ray.train
-from ray.data import Dataset
 
 from config import DataloaderType, BenchmarkConfig
 from factory import BenchmarkFactory
