@@ -24,4 +24,28 @@ def get_parser():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--model-source",
+        type=str,
+        default="unsloth/Llama-3.1-8B-Instruct",
+        help="Model source.",
+    )
+    parser.add_argument(
+        "--dynamic-lora-loading-path",
+        type=str,
+        default=None,
+        help="Path to the dynamic lora loading.",
+    )
+    parser.add_argument(
+        "--lora-name",
+        type=str,
+        default=None,
+        help="Name of the lora to load.",
+    )
+    parser.add_argument(
+        "--max-lora-rank",
+        type=int,
+        default=None,
+        help="Max lora rank.",
+    )
     return parser

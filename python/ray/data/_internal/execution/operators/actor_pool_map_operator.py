@@ -386,6 +386,10 @@ class ActorPoolMapOperator(MapOperator):
         """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
         return self._actor_pool.actor_info_progress_str()
 
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors."""
+        return self._actor_pool.actor_info_counts()
+
 
 class _MapWorker:
     """An actor worker for MapOperator."""
@@ -780,11 +784,16 @@ class _ActorPool(AutoscalingActorPool):
         """
         return bundle.get_cached_location()
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+    def actor_info_counts(self) -> Tuple[int, int, int]:
+        """Returns Actor counts for Alive, Restarting and Pending Actors."""
         alive = self.num_alive_actors()
         pending = self.num_pending_actors()
         restarting = self.num_restarting_actors()
+        return alive, pending, restarting
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+        alive, pending, restarting = self.actor_info_counts()
         total = alive + pending + restarting
         if total == alive:
             return f"; Actors: {total}"

@@ -17,6 +17,11 @@ from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
 )
+from ray.llm._internal.batch.utils import (
+    download_lora_adapter,
+    download_hf_model,
+)
+from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.utils import try_import
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -119,6 +124,7 @@ class vLLMEngineWrapper:
     Args:
         *args: The positional arguments for the engine.
         max_pending_requests: The maximum number of pending requests in the queue.
+        dynamic_lora_loading_path: The S3 path to the dynamic LoRA adapter.
         **kwargs: The keyword arguments for the engine.
     """
 
@@ -126,15 +132,22 @@ class vLLMEngineWrapper:
         self,
         idx_in_batch_column: str,
         max_pending_requests: int = -1,
+        dynamic_lora_loading_path: Optional[str] = None,
         **kwargs,
     ):
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.get("task", vLLMTaskType.GENERATE)
-        self.model = kwargs.get("model", None)
-        assert self.model is not None
+
+        # Use model_source in kwargs["model"] because "model" is actually
+        # the model source in vLLM.
+        self.model = kwargs.pop("model", None)
+        self.model_source = kwargs.pop("model_source", None)
+        assert self.model is not None and self.model_source is not None
+        kwargs["model"] = self.model_source
 
         # LoRA related.
+        self.dynamic_lora_loading_path = dynamic_lora_loading_path
         self.lora_lock = asyncio.Lock()
         self.lora_name_to_request = {}
 
@@ -198,6 +211,55 @@ class vLLMEngineWrapper:
             return params.tolist()
         return params
 
+    async def _maybe_get_lora_request(
+        self,
+        row: Dict[str, Any],
+    ) -> Optional[Any]:
+        """Get the LoRA request for the given row.
+        Specifically, if the model name is given and is different from the model
+        set in the config, then this request has LoRA.
+
+        Args:
+            row: The row.
+
+        Returns:
+            The LoRA request (vllm.lora.request.LoRARequest),
+            or None if there is no LoRA. We use Any in type hint to
+            pass doc build in the environment without vLLM.
+        """
+        lora_request = None
+        if "model" in row and row["model"] != self.model:
+            if self.vllm_use_v1:
+                raise ValueError("LoRA is only supported with vLLM v0")
+
+            lora_name = row["model"]
+            if lora_name not in self.lora_name_to_request:
+                if is_remote_path(lora_name):
+                    raise ValueError(
+                        "LoRA name cannot be a remote path (s3:// or gs://). "
+                        "Please specify dynamic_lora_loading_path in the processor config."
+                    )
+
+                async with self.lora_lock:
+                    if lora_name not in self.lora_name_to_request:
+                        # Load a new LoRA adapter if it is not loaded yet.
+                        lora_path = download_lora_adapter(
+                            lora_name,
+                            remote_path=self.dynamic_lora_loading_path,
+                        )
+                        logger.info(
+                            "Downloaded LoRA adapter for %s to %s", lora_name, lora_path
+                        )
+                        lora_request = vllm.lora.request.LoRARequest(
+                            lora_name=lora_name,
+                            # LoRA ID starts from 1.
+                            lora_int_id=len(self.lora_name_to_request) + 1,
+                            lora_path=lora_path,
+                        )
+                        self.lora_name_to_request[lora_name] = lora_request
+            lora_request = self.lora_name_to_request[lora_name]
+        return lora_request
+
     async def _prepare_llm_request(self, row: Dict[str, Any]) -> vLLMEngineRequest:
         """Prepare the inputs for LLM inference.
 
@@ -221,26 +283,7 @@ class vLLMEngineWrapper:
         else:
             image = []
 
-        # If the model name is given and is different from the model
-        # set in the config, then this is a LoRA.
-        lora_request = None
-        if "model" in row and row["model"] != self.model:
-            if self.vllm_use_v1:
-                raise ValueError("LoRA is only supported with vLLM v0")
-
-            lora_name = row["model"]
-            if lora_name not in self.lora_name_to_request:
-                async with self.lora_lock:
-                    if lora_name not in self.lora_name_to_request:
-                        # Load a new LoRA adapter if it is not loaded yet.
-                        lora_request = vllm.lora.request.LoRARequest(
-                            lora_name=lora_name,
-                            # LoRA ID starts from 1.
-                            lora_int_id=len(self.lora_name_to_request) + 1,
-                            lora_path=lora_name,
-                        )
-                        self.lora_name_to_request[lora_name] = lora_request
-            lora_request = self.lora_name_to_request[lora_name]
+        lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
         if self.task_type == vLLMTaskType.GENERATE:
@@ -400,6 +443,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         engine_kwargs: Dict[str, Any],
         task_type: vLLMTaskType = vLLMTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
+        dynamic_lora_loading_path: Optional[str] = None,
     ):
         """
         Initialize the vLLMEngineStageUDF.
@@ -411,6 +455,8 @@ class vLLMEngineStageUDF(StatefulStageUDF):
             task_type: The task to use for the vLLM engine (e.g., "generate", "embed", etc).
             max_pending_requests: The maximum number of pending requests. If None,
                 it will be set to 1.1 * max_num_seqs * pipeline_parallel_size.
+            dynamic_lora_loading_path: The path to the dynamic LoRA adapter. It is expected
+                to hold subfolders each for a different lora checkpoint.
         """
         super().__init__(data_column)
         self.model = model
@@ -427,12 +473,17 @@ class vLLMEngineStageUDF(StatefulStageUDF):
         if self.max_pending_requests > 0:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
 
+        # Download the model if needed.
+        model_source = download_hf_model(self.model, tokenizer_only=False)
+
         # Create an LLM engine.
         self.llm = vLLMEngineWrapper(
             model=self.model,
+            model_source=model_source,
             idx_in_batch_column=self.IDX_IN_BATCH_COLUMN,
             disable_log_stats=False,
             max_pending_requests=self.max_pending_requests,
+            dynamic_lora_loading_path=dynamic_lora_loading_path,
             **self.engine_kwargs,
         )
 
@@ -522,6 +573,7 @@ class vLLMEngineStageUDF(StatefulStageUDF):
 
     def __del__(self):
         if hasattr(self, "llm"):
+            # Kill the engine processes.
             self.llm.shutdown()
 
 

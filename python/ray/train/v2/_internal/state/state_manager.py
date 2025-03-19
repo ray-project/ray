@@ -1,10 +1,13 @@
 import logging
 import time
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray.actor import ActorHandle
 from ray.train.v2._internal.execution.context import DistributedContext
+from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
+    ResizeDecision,
+)
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, Worker
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
@@ -59,10 +62,18 @@ class TrainStateManager:
     def update_train_run_scheduling(
         self,
         run_id: str,
+        resize_decision: Optional[ResizeDecision] = None,
     ) -> None:
+        if resize_decision is not None:
+            status_detail = _get_scheduling_status_detail(
+                resize_decision.num_workers, resize_decision.resources_per_worker
+            )
+        else:
+            status_detail = None
+
         run = self._runs[run_id]
         run.status = RunStatus.SCHEDULING
-        run.status_detail = None
+        run.status_detail = status_detail
         self._create_or_update_train_run(run)
 
     def update_train_run_running(
@@ -131,17 +142,16 @@ class TrainStateManager:
         num_workers: int,
         resources_per_worker: Dict[str, float],
     ) -> None:
-
+        status_detail = _get_scheduling_status_detail(num_workers, resources_per_worker)
         resources = [
             TrainResources(resources=resources_per_worker) for _ in range(num_workers)
         ]
-
         run_attempt = TrainRunAttempt(
             run_id=run_id,
             attempt_id=attempt_id,
             start_time_ns=_current_time_ns(),
             status=RunAttemptStatus.PENDING,
-            status_detail=None,
+            status_detail=status_detail,
             resources=resources,
             workers=[],  # Not started yet.
         )
@@ -219,3 +229,9 @@ class TrainStateManager:
 
     def _create_or_update_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
         self._state_actor.create_or_update_train_run_attempt.remote(run_attempt)
+
+
+def _get_scheduling_status_detail(
+    num_workers: int, resources_per_worker: Dict[str, float]
+) -> str:
+    return f"Scheduling {num_workers} workers, each requiring: {resources_per_worker}."

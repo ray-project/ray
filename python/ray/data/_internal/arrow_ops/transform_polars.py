@@ -30,7 +30,7 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
 
 
 def concat_and_sort(
-    blocks: List["pyarrow.Table"], sort_key: "SortKey"
+    blocks: List["pyarrow.Table"], sort_key: "SortKey", *, promote_types: bool = False
 ) -> "pyarrow.Table":
     check_polars_installed()
     blocks = [pl.from_arrow(block) for block in blocks]
