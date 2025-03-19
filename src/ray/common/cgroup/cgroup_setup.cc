@@ -16,9 +16,13 @@
 
 #ifndef __linux__
 namespace ray {
-bool SetupCgroupsPreparation(const std::string &node_id /*unused*/) { return false; }
+Status InitializeCgroupv2Directory(const std::string &node_id /*unused*/) {
+  return Status::Invalid("cgroupv2 operations only support linux platform.");
+}
 namespace internal {
-bool IsCgroupV2Prepared(const std::string &directory) { return false; }
+Status CheckCgroupV2MountedRW(const std::string &directory) {
+  return Status::Invalid("cgroupv2 operations only support linux platform.");
+}
 }  // namespace internal
 }  // namespace ray
 #else  // __linux__
@@ -56,19 +60,19 @@ std::string cgroup_v2_system_folder;
 // TODO(hjiang): Cleanup all constants in the followup PR.
 //
 // Parent cgroup path.
-constexpr std::string_view kRtootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
+constexpr std::string_view kRootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
 // Cgroup subtree control path.
 constexpr std::string_view kRootCgroupSubtreeControl =
     "/sys/fs/cgroup/cgroup.subtree_control";
 // Owner can read and write.
-constexpr int kCgroupFilePerm = 0600;
+constexpr int kReadWritePerm = 0600;
 
 // If system processes are running in the container, all processes will be placed in the
 // root cgroup. This function will move all PIDs under root cgroup into system cgroup.
 //
 // Return whether the PIDs move successfully.
 bool MoveProcsInSystemCgroup() {
-  std::ifstream in_file(kRtootCgroupProcs.data());
+  std::ifstream in_file(kRootCgroupProcs.data());
   std::ofstream out_file(cgroup_v2_system_folder.data());
   int pid = 0;
   while (in_file >> pid) {
@@ -89,21 +93,23 @@ bool EnableCgroupSubtreeControl(const char *subtree_control_path) {
 
 namespace internal {
 
-Status IsCgroupV2MountedAsRw(const std::string &path) {
+Status CheckCgroupV2MountedRW(const std::string &path) {
   struct statfs fs_stats;
   if (statfs(path.data(), &fs_stats) != 0) {
     return Status::InvalidArgument("")
-           << "Fails to stats file " << path << " because " << strerror(errno);
+           << "Failed to stat file " << path << " because " << strerror(errno);
   }
   if (fs_stats.f_type != CGROUP2_SUPER_MAGIC) {
-    return Status::InvalidArgument("") << "File " << path << " is not of type cgroupv2.";
+    return Status::InvalidArgument("")
+           << "File " << path << " is not of type cgroupv2, which is "
+           << static_cast<int>(fs_stats.f_type);
   }
 
   // Check whether cgroupv2 is mounted in rw mode.
   struct statvfs vfs_stats;
   if (statvfs(path.data(), &vfs_stats) != 0) {
     return Status::InvalidArgument("")
-           << "Fails to stats filesystem for " << path << " because " << strerror(errno);
+           << "Failed to stat filesystem for " << path << " because " << strerror(errno);
   }
   // There're only two possible modes, either rw mode or read-only mode.
   if ((vfs_stats.f_flag & ST_RDONLY) != 0) {
@@ -114,13 +120,10 @@ Status IsCgroupV2MountedAsRw(const std::string &path) {
   return Status::OK();
 }
 
-Status IsCgroupV2Prepared(const std::string &directory) {
-  return internal::IsCgroupV2MountedAsRw(directory);
-}
-
 }  // namespace internal
 
-Status SetupCgroupsPreparation(const std::string &directory, const std::string &node_id) {
+Status InitializeCgroupV2Directory(const std::string &directory,
+                                   const std::string &node_id) {
   RAY_CHECK(cgroup_v2_app_folder.empty())
       << "Cgroup v2 for raylet should be only initialized once.";
 
@@ -129,7 +132,7 @@ Status SetupCgroupsPreparation(const std::string &directory, const std::string &
       absl::StrFormat("/sys/fs/cgroup/ray_node_%s", node_id);
 
   // Check cgroup accessibility before setup.
-  if (Status s = internal::IsCgroupV2Prepared(directory); !s.ok()) {
+  if (Status s = internal::CheckCgroupV2MountedRW(directory); !s.ok()) {
     return s;
   }
 
@@ -143,31 +146,31 @@ Status SetupCgroupsPreparation(const std::string &directory, const std::string &
       ray::JoinPaths(cgroup_v2_system_folder, "cgroup.procs");
 
   // Create the system cgroup.
-  int ret_code = mkdir(cgroup_v2_system_folder.data(), kCgroupFilePerm);
+  int ret_code = mkdir(cgroup_v2_system_folder.data(), kReadWritePerm);
   if (ret_code != 0) {
     return Status::InvalidArgument("")
-           << "Fails to make directory " << cgroup_v2_system_folder << " because "
+           << "Failed to make directory " << cgroup_v2_system_folder << " because "
            << strerror(errno);
   }
 
   if (!MoveProcsInSystemCgroup()) {
-    return Status::UnknownError("") << "Fails to move processes into system cgroup";
+    return Status::UnknownError("") << "Failed to move processes into system cgroup";
   }
   if (!EnableCgroupSubtreeControl(kRootCgroupSubtreeControl.data())) {
     return Status::UnknownError("")
-           << "Fails to enable subtree control for cgroup " << kRootCgroupSubtreeControl;
+           << "Failed to enable subtree control for cgroup " << kRootCgroupSubtreeControl;
   }
 
   // Setup application cgroup.
-  ret_code = mkdir(cgroup_v2_app_folder.data(), kCgroupFilePerm);
+  ret_code = mkdir(cgroup_v2_app_folder.data(), kReadWritePerm);
   if (ret_code != 0) {
     return Status::InvalidArgument("")
-           << "Fails to make directory " << cgroup_v2_app_folder << " because "
+           << "Failed to make directory " << cgroup_v2_app_folder << " because "
            << strerror(errno);
   }
   if (!EnableCgroupSubtreeControl(cgroup_v2_app_subtree_control.data())) {
     return Status::UnknownError("")
-           << "Fails to enable subtree control for " << cgroup_v2_app_subtree_control;
+           << "Failed to enable subtree control for " << cgroup_v2_app_subtree_control;
   }
 
   return Status::OK();

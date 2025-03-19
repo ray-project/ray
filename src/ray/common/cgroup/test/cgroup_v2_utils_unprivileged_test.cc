@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Precondition for the test suite:
+// - If run on local dev environment, don't run with `sudo`;
+// - If run on remote CI, run in non-privileged container mode.
+
 #include <gtest/gtest.h>
 
 #include "ray/common/cgroup/cgroup_setup.h"
@@ -22,7 +26,7 @@ namespace ray::internal {
 namespace {
 
 TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) {
-  // Error case: cgroup directory exists, but not not writable.
+  // Error case: cgroup directory exists, but not writable.
   EXPECT_FALSE(IsCgroupV2Prepared("/sys/fs/cgroup").ok());
 }
 
