@@ -28,11 +28,12 @@ class ProtocolsProvider:
             "gs",
             # File storage path, assumes everything packed in one zip file.
             "file",
+            "http",
         }
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"https", "s3", "gs", "file"}
+        return {"https", "s3", "gs", "file", "http"}
 
     @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):

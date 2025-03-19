@@ -400,7 +400,7 @@ class RtEnvAgentSlowStartupPlugin(RuntimeEnvPlugin):
 
     name = RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME
 
-    def __init__(self):
+    def __init__(self, runtime_env_dir):
         # This happens in Runtime Env Agent start up process. Make it slow.
         import time
 

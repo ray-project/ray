@@ -562,6 +562,36 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}``
 
+- ``archives`` (Dict[str, str] | str): Specifies the packages or files for the Ray workers. This must either be (1) a URI to a remotely-stored zip or tar file (no file size limit if enforced by Ray).
+  See :ref:`remote-uris` for details, (2) a Dict which containing a user-defined key and a remote-stored zip or tar file.
+
+  - Example: ``"https://bucket/my_project.zip"``
+
+  - Example: ``{"url1": "https://bucket/my_project.zip", "url2": "https://bucket/my_project_2.zip"}``
+
+  Note: ``archives`` plugin is not a built-in plugin of Runtime Env Agent. if users need to use this plugin, you need to specify environment variables 
+  `RAY_RUNTIME_ENV_PLUGINS='[{"class": "ray._private.runtime_env.archive.DownloadAndUnpackArchivePlugin"}]'`
+
+  Note: ``archives`` plugin provides a user interface that can get the path of the file downloaded by the corresponding archives plugin.
+  user can use `get_context` interface to get archives path, the test code is like the following.
+
+  .. testcode::
+    import ray
+    from ray._private.runtime_env.archive import get_context
+
+    # This example runs on a local machine, but you can also do
+    # ray.init(address=..., runtime_env=...) to connect to a cluster.
+    ray.init()
+
+    @ray.remote
+    def get_archives_context():
+        archive_path = get_context()
+        return archive_path
+    
+    # This exmaple just show the archives plugin is instance of dict, but you can also set
+    # archives plugin a instance of str, like runtime_env = {"archives": "https://bucket/my_project.zip"}
+    ray.get(get_archives_context.options(runtime_env={"archives": {"url1": "https://bucket/my_project.zip", "url2": "https://bucket/my_project.zip"}))
+
 - ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
   - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
 

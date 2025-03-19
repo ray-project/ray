@@ -411,6 +411,12 @@ class RuntimeEnv(dict):
                     f"Specified fields: {invalid_keys}"
                 )
 
+        if self.get("archives") and self.env_vars().get("RAY_ARCHIVE_PATH"):
+            raise ValueError(
+                f"'RAY_ARCHIVE_PATH' can not be set in env_vars {self.env_vars()}, "
+                "this is not allowed, please check your env_vars in runtime_env."
+            )
+
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = self.get(option)
             if option_val is not None:

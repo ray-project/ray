@@ -880,7 +880,7 @@ def unzip_package(
     except FileExistsError:
         logger.info(f"Directory at {target_dir} already exists")
 
-    logger.debug(f"Unpacking {package_path} to {target_dir}")
+    logger.info(f"Unpacking {package_path} to {target_dir}")
 
     with ZipFile(str(package_path), "r") as zip_ref:
         zip_ref.extractall(target_dir)

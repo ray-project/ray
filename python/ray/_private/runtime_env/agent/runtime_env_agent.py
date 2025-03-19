@@ -247,7 +247,7 @@ class RuntimeEnvAgent:
             self._mpi_plugin,
             self._image_uri_plugin,
         ]
-        self._plugin_manager = RuntimeEnvPluginManager()
+        self._plugin_manager = RuntimeEnvPluginManager(self._runtime_env_dir)
         for plugin in self._base_plugins:
             self._plugin_manager.add_plugin(plugin)
 

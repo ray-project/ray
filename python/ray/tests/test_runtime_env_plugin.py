@@ -576,7 +576,7 @@ class UriCachingTestPlugin(RuntimeEnvPlugin):
 
     name = URI_CACHING_TEST_PLUGIN_NAME
 
-    def __init__(self):
+    def __init__(self, runtime_env_dir):
         # Keeps track of the "disk space" each URI takes up for the
         # UriCachingTestPlugin.
         self.uris_to_sizes = {}

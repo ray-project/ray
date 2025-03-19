@@ -419,7 +419,7 @@ class HangOnSecondWorkerPlugin(RuntimeEnvPlugin):
 
     name = MyPlugin
 
-    def __init__(self):
+    def __init__(self, runtime_env_dir: str):
         # Each URI has a temp dir, a counter file, and a hang.sh script.
         self.uris = collections.defaultdict(dict)
 

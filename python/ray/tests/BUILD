@@ -550,6 +550,7 @@ py_test_module_list(
     "test_runtime_env_working_dir_4.py",
     "test_runtime_env_working_dir_remote_uri.py",
     "test_runtime_env_profiler.py",
+    "test_runtime_env_internal_plugins.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_2", "team:core"],

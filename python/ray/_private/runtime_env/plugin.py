@@ -118,8 +118,9 @@ class PluginSetupContext:
 class RuntimeEnvPluginManager:
     """This manager is used to load plugins in runtime env agent."""
 
-    def __init__(self):
+    def __init__(self, runtime_env_dir: str):
         self.plugins: Dict[str, PluginSetupContext] = {}
+        self._runtime_env_dir = runtime_env_dir
         plugin_config_str = os.environ.get(RAY_RUNTIME_ENV_PLUGINS_ENV_VAR)
         if plugin_config_str:
             plugin_configs = json.loads(plugin_config_str)
@@ -177,7 +178,7 @@ class RuntimeEnvPluginManager:
                 priority = plugin_class.priority
             self.validate_priority(priority)
 
-            class_instance = plugin_class()
+            class_instance = plugin_class(self._runtime_env_dir)
             self.plugins[plugin_class.name] = PluginSetupContext(
                 plugin_class.name,
                 class_instance,
