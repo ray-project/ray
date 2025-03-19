@@ -119,12 +119,12 @@ class HuggingFaceDatasource(Datasource):
         return self._dataset.dataset_size
 
     def _read_dataset(self) -> Iterable[Block]:
+        # Note: This is a method instead of a higher level function because
+        # we need to capture `self`. This will trigger the try-import logic at 
+        # the top of file to avoid import error of dataset_modules.
         import numpy as np
         import pandas as pd
         import pyarrow
-        # Note: we pass `self` here instead of `self._dataset` because
-        # we need to trigger the try-import logic at the top of file
-        # to avoid import error of dataset_modules.
         for batch in self._dataset.with_format("arrow").iter(
             batch_size=self._batch_size
         ):
