@@ -491,6 +491,7 @@ doctest(
             "source/rllib/getting-started.rst",
         ],
     ),
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:rllib"],
 )
 
@@ -500,6 +501,7 @@ doctest(
     files = [
         "source/rllib/getting-started.rst",
     ],
+    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:rllib"],
 )
 
@@ -508,7 +510,7 @@ doctest(
     files = glob(
         include = [
             "source/data/**/*.rst",
-            "source/data/**/*.rst",
+            "source/data/**/*.md",
         ],
         exclude = [
             # These tests run on GPU (see below).
