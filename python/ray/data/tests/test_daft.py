@@ -39,7 +39,9 @@ def test_daft_round_trip(ray_start):
         # Hence the Pandas representation of `df1` is "just" an object column, but
         # `df2` knows that this is actually a numpy fixed shaped tensor column
         if c == "tensor_col":
-            np.testing.assert_equal(np.array(list(df_pandas[c])), df2_pandas[c].to_numpy())
+            np.testing.assert_equal(
+                np.array(list(df_pandas[c])), df2_pandas[c].to_numpy()
+            )
         else:
             pd.testing.assert_series_equal(df_pandas[c], df2_pandas[c])
 

@@ -4653,9 +4653,7 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     @PublicAPI(api_group=IOC_API_GROUP)
-    def to_daft(
-        self
-    ) -> "daft.DataFrame":
+    def to_daft(self) -> "daft.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Daft DataFrame <https://www.getdaft.io/projects/docs/en/stable/api_docs/dataframe.html>`_.
 
