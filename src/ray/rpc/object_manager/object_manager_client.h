@@ -26,7 +26,6 @@
 #include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
-#include "ray/util/size_literals.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
 
@@ -53,7 +52,7 @@ class ObjectManagerClient {
     grpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
       grpc::ChannelArguments args;
-      args.SetInt(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, 10_MiB);
+      args.SetInt(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, 10 * 1024 * 1024 /*10MiB*/);
       grpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(
           address, port, client_call_manager, std::move(args)));
     }
