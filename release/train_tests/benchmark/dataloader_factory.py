@@ -515,7 +515,6 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
         train_ds = S3ParquetImageIterableDataset(
             file_urls=self._get_file_urls(self.train_url),
             random_transforms=True,
-            limit_rows_per_worker=self.limit_rows_per_worker,
         )
 
         dataloader = torch.utils.data.DataLoader(

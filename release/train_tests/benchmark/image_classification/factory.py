@@ -1,4 +1,4 @@
-from typing import Dict, Type, List, Iterator, Tuple
+from typing import Dict
 import logging
 
 import torch
@@ -57,7 +57,7 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
             ray.data.read_parquet(
                 IMAGENET_PARQUET_SPLIT_S3_DIRS["train"], columns=["image", "label"]
             )
-            .limit(50000)
+            .limit(self.benchmark_config.limit_validation_rows)
             .map(get_preprocess_map_fn(decode_image=True, random_transforms=False))
         )
 
@@ -98,7 +98,12 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
     def __init__(self, benchmark_config: BenchmarkConfig):
         train_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
         val_urls = IMAGENET_PARQUET_SPLIT_S3_DIRS["train"]
-        super().__init__(benchmark_config, train_urls, val_urls, limit_total_rows=50000)
+        super().__init__(
+            benchmark_config,
+            train_urls,
+            val_urls,
+            limit_total_rows=benchmark_config.limit_validation_rows,
+        )
 
 
 class ImageClassificationFactory(BenchmarkFactory):

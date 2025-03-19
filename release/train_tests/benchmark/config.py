@@ -49,6 +49,7 @@ class BenchmarkConfig(BaseModel):
     validate_every_n_steps: int = -1
     skip_validation_step: bool = False
     skip_validation_at_epoch_end: bool = False
+    limit_validation_rows: int = 50000
 
     # Logging
     log_metrics_every_n_steps: int = 512
