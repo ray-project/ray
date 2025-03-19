@@ -1,5 +1,4 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
 # py_test_module_list creates a py_test target for each
 # Python file in `files`
@@ -39,6 +38,9 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
             "--doctest-glob='*.md'",
             "--disable-warnings",
             "-v",
+            # Don't pick up the global pytest.ini for doctests.
+            "-c", "NO_PYTEST_CONFIG",
+            # Pass the provided pytest plugin as a Python import path.
             "-p", _convert_target_to_import_path(pytest_plugin_file),
         ] + args + ["$(location :%s)" % file for file in files],
         data = [pytest_plugin_file] + files + data,

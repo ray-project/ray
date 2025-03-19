@@ -491,7 +491,6 @@ doctest(
             "source/rllib/getting-started.rst",
         ],
     ),
-    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:rllib"],
 )
 
@@ -503,7 +502,6 @@ doctest(
             "source/rllib/getting-started.rst",
         ],
     ),
-    pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:rllib"],
 )
 
