@@ -337,7 +337,7 @@ class VLLMEngine:
         args: InitializeNodeOutput = await self.initialize_node(self.llm_config)
         engine_args, engine_config = _get_vllm_engine_config(self.llm_config)
 
-        if MQLLMEngineClient.is_unsupported_config(engine_args):
+        if MQLLMEngineClient.is_unsupported_config(engine_config):
             # If the engine is not supported, we fall back to the legacy async engine.
             #
             # Note (genesu): as of 2025-02-11, this code path is only triggered when
