@@ -14,6 +14,10 @@
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace ray::gcs {
 
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
