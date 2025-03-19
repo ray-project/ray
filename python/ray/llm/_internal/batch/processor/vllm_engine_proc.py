@@ -11,6 +11,7 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorConfig,
     ProcessorBuilder,
 )
+from ray.llm._internal.batch.utils import download_hf_model
 from ray.llm._internal.batch.stages import (
     vLLMEngineStage,
     ChatTemplateStage,
@@ -213,7 +214,8 @@ def build_vllm_engine_processor(
             )
         )
 
-    hf_config = transformers.AutoConfig.from_pretrained(config.model_source)
+    model_path = download_hf_model(config.model_source, tokenizer_only=True)
+    hf_config = transformers.AutoConfig.from_pretrained(model_path)
     architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
 
     telemetry_agent = get_or_create_telemetry_agent()
