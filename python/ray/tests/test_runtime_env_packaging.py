@@ -737,6 +737,16 @@ class TestDownloadAndUnpackPackage:
 
         assert "Invalid package URI" in str(excinfo.value)
 
+    async def test_download_and_unpack_package_without_unpack(self):
+        with tempfile.TemporaryDirectory() as temp_dest_dir:
+            local_dir = await download_and_unpack_package(
+                pkg_uri=HTTPS_PACKAGE_URI,
+                base_directory=temp_dest_dir,
+                unpack=False,
+            )
+            package_name = Path(local_dir).name + ".zip"
+            assert (Path(local_dir) / package_name).exists()
+
 
 def test_get_gitignore(tmp_path):
     gitignore_path = tmp_path / ".gitignore"

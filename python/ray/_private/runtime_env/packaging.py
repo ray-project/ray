@@ -702,12 +702,17 @@ async def download_and_unpack_package(
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
+    unpack: bool = True,
     overwrite: bool = False,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
 
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
+    Target_dir refers to the directory to unpack to,
+    specified by {base_directory}/{uri}
+    If unpack is True, we do decompress the downloaded file into target_dir,
+    otherwise, we just move the file to target_dir and do not decompress.
 
     Args:
         pkg_uri: URI of the package to download.
@@ -715,6 +720,7 @@ async def download_and_unpack_package(
             directory for the unpacked files.
         gcs_aio_client: Client to use for downloading from the GCS.
         logger: The logger to use.
+        unpack: Whether to decompress the file into target_dir.
         overwrite: If True, overwrite the existing package.
 
     Returns:
@@ -799,6 +805,20 @@ async def download_and_unpack_package(
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
                 protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
+                # NOTE(Jacky): Assuming `base_directory` is "/tmp", `pkg_uri` is https://xxx.zip,
+                # then the generated `local_dir` is /tmp/https_xxx.
+                # If `unpack` is False, we just put file into `local_dir`, the absolute path is
+                # /tmp/https_xxx/https_xxx.zip.
+                if not unpack:
+                    try:
+                        os.mkdir(local_dir)
+                    except FileExistsError:
+                        logger.info(f"Directory at {local_dir} already exists")
+                    os.rename(
+                        pkg_file,
+                        os.path.join(local_dir, os.path.basename(pkg_file)),
+                    )
+                    return str(local_dir)
 
                 if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(
