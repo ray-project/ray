@@ -46,7 +46,7 @@ def test_small_objects_broadcast():
         ready, not_ready = ray.wait(not_ready, num_returns=10)
         actor_idxs = ray.get(ready)
         for actor_idx in actor_idxs:
-            not_ready.append(actors[actor_idx].receive.remote(numpy_arr_ref))
+            not_ready.append(actors[actor_idx].receive.remote(numpy_arr_ref, actor_idx))
         num_messages += 10
     return num_messages / 60
 
