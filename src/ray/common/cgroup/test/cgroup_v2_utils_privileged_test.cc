@@ -28,19 +28,20 @@ namespace {
 // sudo mount -t cgroup2 cgroup2 /sys/fs/cgroup/unified -o rw
 TEST(CgroupV2UtilsTest, CgroupV2MountPrepared) {
   // Happy path.
-  RAY_ASSERT_OK(IsCgroupV2Prepared("/sys/fs/cgroup"));
+  RAY_ASSERT_OK(CheckCgroupV2MountedRW("/sys/fs/cgroup"));
 }
 
 TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotExist) {
-  EXPECT_FALSE(IsCgroupV2Prepared("/tmp/non_existent_folder").ok());
+  EXPECT_EQ(CheckCgroupV2MountedRW("/tmp/non_existent_folder").code(),
+            StatusCode::InvalidArgument);
 }
 
 TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotWritable) {
-  EXPECT_FALSE(IsCgroupV2Prepared("/").ok());
+  EXPECT_EQ(CheckCgroupV2MountedRW("/").code(), StatusCode::InvalidArgument);
 }
 
 TEST(CgroupV2UtilsTest, CgroupV2DirectoryNotOfCgroupV2Type) {
-  EXPECT_FALSE(IsCgroupV2Prepared("/tmp").ok());
+  EXPECT_EQ(CheckCgroupV2MountedRW("/tmp").code(), StatusCode::InvalidArgument);
 }
 
 }  // namespace

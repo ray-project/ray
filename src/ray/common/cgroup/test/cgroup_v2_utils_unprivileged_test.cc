@@ -27,7 +27,7 @@ namespace {
 
 TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) {
   // Error case: cgroup directory exists, but not writable.
-  EXPECT_FALSE(IsCgroupV2Prepared("/sys/fs/cgroup").ok());
+  EXPECT_EQ(CheckCgroupV2MountedRW("/sys/fs/cgroup").code(), StatusCode::InvalidArgument);
 }
 
 }  // namespace
