@@ -1,0 +1,310 @@
+from collections import deque
+import numpy as np
+import pytest
+from ray.rllib.utils.metrics.stats import Stats
+from ray.rllib.utils.test_utils import check
+
+
+def test_init():
+    """Test initialization of Stats objects with different parameters."""
+    # Test default initialization (mean with EMA)
+    stats = Stats()
+    assert stats._reduce_method == "mean"
+    assert stats._ema_coeff == 0.01
+    assert stats._window is None
+    assert len(stats) == 0
+
+    # Test initialization with initial value
+    stats = Stats(init_value=1.0)
+    assert len(stats) == 1
+    assert stats.peek() == 1.0
+
+    # Test initialization with custom EMA coefficient
+    stats = Stats(ema_coeff=0.1)
+    assert stats._ema_coeff == 0.1
+
+    # Test initialization with window
+    stats = Stats(window=3)
+    assert stats._window == 3
+    assert isinstance(stats.values, deque)
+
+    # Test initialization with different reduce methods
+    for reduce_method in ["mean", "min", "max", "sum", None]:
+        stats = Stats(reduce=reduce_method)
+        assert stats._reduce_method == reduce_method
+
+    # Test invalid initialization parameters
+    with pytest.raises(ValueError):
+        Stats(reduce="invalid")
+    with pytest.raises(ValueError):
+        Stats(window=3, ema_coeff=0.1)
+    with pytest.raises(ValueError):
+        Stats(reduce="sum", ema_coeff=0.1)
+
+
+def test_push_and_peek():
+    """Test pushing values and peeking at results."""
+    # Test with mean reduction (default)
+    stats = Stats()
+    stats.push(1.0)
+    stats.push(2.0)
+    # EMA formula: t1 = (1.0 - ema_coeff) * t0 + ema_coeff * new_val
+    expected = 1.0 * (1.0 - 0.01) + 2.0 * 0.01
+    assert abs(stats.peek() - expected) < 1e-6
+
+    # Test with window
+    stats = Stats(window=2)
+    stats.push(1.0)
+    stats.push(2.0)
+    stats.push(3.0)
+    assert stats.peek() == 2.5  # mean of last 2 values
+
+    # Test with sum reduction
+    stats = Stats(reduce="sum")
+    stats.push(1)
+    stats.push(2)
+    stats.push(3)
+    assert stats.peek() == 6
+
+    # Test with min reduction
+    stats = Stats(reduce="min")
+    stats.push(10)
+    stats.push(20)
+    stats.push(5)
+    stats.push(100)
+    assert stats.peek() == 5
+
+    # Test with max reduction
+    stats = Stats(reduce="max")
+    stats.push(1)
+    stats.push(3)
+    stats.push(2)
+    stats.push(4)
+    assert stats.peek() == 4
+
+
+def test_window_behavior():
+    """Test behavior with different window sizes."""
+    # Test with finite window
+    stats = Stats(window=2)
+    stats.push(1.0)
+    stats.push(2.0)
+    stats.push(3.0)
+    assert len(stats) == 2  # Only keeps last 2 values
+    assert stats.peek() == 2.5  # mean of [2.0, 3.0]
+
+    # Test with infinite window
+    stats = Stats(window=None)
+    stats.push(1.0)
+    stats.push(2.0)
+    assert len(stats) == 1  # We reduce for every push
+    check(stats.peek(), 1.01)  # ema coeff 0.01
+
+    # Test with max reduction and window
+    stats = Stats(reduce="max", window=2)
+    stats.push(2)
+    stats.push(3)
+    stats.push(1)
+    stats.push(-1)
+    assert stats.peek() == 1  # max of last 2 values [1, -1]
+
+
+def test_ema_behavior():
+    """Test behavior with EMA reduction."""
+    # Test with custom EMA coefficient
+    stats = Stats(ema_coeff=0.1)
+    stats.push(1.0)
+    stats.push(2.0)
+    stats.push(3.0)
+    # EMA calculation:
+    # t1 = 1.0
+    # t2 = 0.9 * 1.0 + 0.1 * 2.0 = 1.1
+    # t3 = 0.9 * 1.1 + 0.1 * 3.0 = 1.29
+    assert abs(stats.peek() - 1.29) < 1e-6
+
+    # Test that EMA and window cannot be used together
+    with pytest.raises(ValueError):
+        Stats(window=3, ema_coeff=0.1)
+
+
+def test_reduce():
+    """Test the reduce method."""
+    # Test with sum reduction
+    stats = Stats(reduce="sum")
+    stats.push(1)
+    stats.push(2)
+    stats.push(3)
+    reduced_stats = stats.reduce()
+    assert reduced_stats.peek() == 6
+    assert len(reduced_stats) == 1  # Should keep only the reduced value
+
+    # Test with clear_on_reduce
+    stats = Stats(reduce="sum", clear_on_reduce=True)
+    stats.push(1)
+    stats.push(2)
+    reduced_stats = stats.reduce()
+    assert reduced_stats.peek() == 3
+    assert len(stats) == 0  # Original stats should be cleared
+    assert len(reduced_stats) == 1  # New stats should have the reduced value
+
+
+def test_merge_operations():
+    """Test merging operations between Stats objects."""
+    # Test merge_on_time_axis
+    stats1 = Stats(reduce="sum")
+    stats1.push(1)
+    stats1.push(2)
+    stats2 = Stats(reduce="sum")
+    stats2.push(3)
+    stats2.push(4)
+    stats1.merge_on_time_axis(stats2)
+    assert stats1.peek() == 10  # sum of all values
+
+    # Test merge_in_parallel
+    stats1 = Stats(reduce="mean", window=3)
+    stats1.push(1)
+    stats1.push(2)
+    stats1.push(3)
+    stats2 = Stats(reduce="mean", window=3)
+    stats2.push(4)
+    stats2.push(5)
+    stats2.push(6)
+    stats = Stats(reduce="mean", window=3)
+    stats.merge_in_parallel(stats1, stats2)
+    assert abs(stats.peek() - 4.1666667) < 1e-6  # mean of last values
+
+
+def test_context_manager():
+    """Test using Stats as a context manager for timing."""
+    stats = Stats(reduce="sum")
+    with stats:
+        import time
+
+        time.sleep(0.1)
+    assert len(stats) == 1
+    assert 0.1 < stats.peek() < 0.2  # Should measure ~0.1 seconds
+
+
+def test_numeric_operations():
+    """Test numeric operations on Stats objects."""
+    stats = Stats()
+    stats.push(2.0)
+
+    # Test basic arithmetic operations
+    assert float(stats) == 2.0
+    assert int(stats) == 2
+    assert stats + 1 == 3.0
+    assert stats - 1 == 1.0
+    assert stats * 2 == 4.0
+
+    # Test comparison operations
+    assert stats == 2.0
+    assert stats <= 3.0
+    assert stats >= 1.0
+    assert stats < 3.0
+    assert stats > 1.0
+
+
+def test_state_serialization():
+    """Test saving and loading Stats state."""
+    stats = Stats(reduce="sum", window=3)
+    stats.push(1)
+    stats.push(2)
+    stats.push(3)
+
+    state = stats.get_state()
+    loaded_stats = Stats.from_state(state)
+
+    assert loaded_stats._reduce_method == stats._reduce_method
+    assert loaded_stats._window == stats._window
+    assert loaded_stats.peek() == stats.peek()
+    assert len(loaded_stats) == len(stats)
+
+
+def test_similar_to():
+    """Test creating similar Stats objects."""
+    original = Stats(reduce="sum", window=3)
+    original.push(1)
+    original.push(2)
+
+    similar = Stats.similar_to(original)
+    assert similar._reduce_method == original._reduce_method
+    assert similar._window == original._window
+    assert len(similar) == 0  # Should start empty
+
+    similar_with_value = Stats.similar_to(original, init_value=[1, 2])
+    assert len(similar_with_value) == 2
+    assert similar_with_value.peek() == 3  # sum of [1, 2]
+
+
+def test_throughput_without_reduce():
+    """Test that throughput is tracked correctly without explicit reduce() calls."""
+    # Create a Stats object that tracks throughput
+    stats = Stats(reduce="sum", window=None, throughput=True)
+
+    # Push some values with time delays to simulate real usage
+    import time
+
+    # First push - throughput should be 0 initially
+    stats.push(1)
+    throughput = stats.peek(throughput=True)
+    assert stats.peek() == 1
+    assert throughput == 0.0  # No throughput yet as we only have one value
+
+    # Push second value after a delay
+    time.sleep(0.1)  # 100ms delay
+    stats.push(2)
+    throughput = stats.peek(throughput=True)
+    assert stats.peek() == 3  # sum of 1 + 2
+    assert 15 < throughput < 25  # 2/0.1 = 20 values per second
+
+    # Push third value after another delay
+    time.sleep(0.2)  # 200ms delay
+    stats.push(3)
+    throughput = stats.peek(throughput=True)
+    assert stats.peek() == 6  # sum of 1 + 2 + 3
+    assert 10 < throughput < 20  # 3/0.3 = 10 values per second
+
+    # Test that throughput is only available when requested
+    assert stats.peek() == 6  # Regular peek returns just the value
+    assert (
+        stats.peek(throughput=True) == throughput
+    )  # Throughput peek returns just throughput
+
+    # Test that throughput is 0 when no values are pushed
+    empty_stats = Stats(reduce="sum", window=None, throughput=True)
+    throughput = empty_stats.peek(throughput=True)
+    assert empty_stats.peek() == 0
+    assert throughput == 0.0
+
+    # Test that throughput tracking requires sum reduction
+    with pytest.raises(ValueError):
+        Stats(reduce="mean", window=None, throughput=True)
+
+    # Test that throughput tracking requires infinite window
+    with pytest.raises(ValueError):
+        Stats(reduce="sum", window=10, throughput=True)
+
+    # Test that _last_push_time is properly initialized to -1
+    assert stats._last_push_time >= 0  # Should be set after pushes
+    new_stats = Stats(reduce="sum", window=None, throughput=True)
+    assert new_stats._last_push_time == -1  # Should be -1 for new instances
+
+    # Test throughput tracking after loading stats
+    state = stats.get_state()
+    loaded_stats = Stats.from_state(state)
+    assert loaded_stats._last_push_time == -1  # Should be -1 after loading
+    assert loaded_stats.peek() == 6  # Value should be preserved
+    assert loaded_stats.peek(throughput=True) == stats.peek(
+        throughput=True
+    )  # Throughput should be preserved
+
+    # Test that throughput tracking works after loading
+    throughput_before = stats.peek(throughput=True)
+    loaded_stats.push(2)
+    time.sleep(0.1)  # 100ms delay
+    loaded_stats.push(4)
+    throughput = loaded_stats.peek(throughput=True)
+
+    assert loaded_stats.peek() == 12  # sum of 6 + 4
+    assert 30 < throughput < 50  # 4/0.1 = 40 values per second

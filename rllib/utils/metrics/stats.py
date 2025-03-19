@@ -192,8 +192,8 @@ class Stats:
                 `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
                 then keeps track of the time passed between two consecutive calls to
                 `reduce()` and update its throughput estimate. The current throughput
-                estimate of a key can be obtained through:
-                `peeked_val, throughput_per_sec = Stats.peek([key], throughput=True)`.
+                estimate can be obtained through:
+                `throughput_per_sec = Stats.peek(throughput=True)`.
                 If a float, track throughput and also set current throughput estimate
                 to the given value.
         """
@@ -246,25 +246,42 @@ class Stats:
                     "reduce='sum', window=None)`."
                 )
             self._throughput_last_time = -1
+            self._last_push_time = -1  # Track last push time for throughput calculation
 
         # The actual, underlying data in this Stats object.
         self.values: Union[List, Deque] = None
         self._set_values(force_list(init_value))
 
-    def push(self, value) -> None:
-        """Appends a new value into the internal values list.
+    def push(self, value: Any) -> None:
+        """Pushes a value into this Stats object.
 
         Args:
-            value: The value item to be appended to the internal values list
-                (`self.values`).
+            value: The value to be pushed. Can be of any type.
         """
-        self.values.append(value)
-        # For inf-windows + [EMA or sum/min/max], always reduce right away, b/c it's
-        # cheap and avoids long lists, which would be expensive to reduce.
-        if self._inf_window and (
-            self._ema_coeff is not None or self._reduce_method != "mean"
-        ):
-            self._set_values(self._reduced_values()[1])
+        current_time = time.time()
+
+        # If throughput tracking is enabled, calculate it based on time between pushes
+        if self._throughput is not False:
+            if self._last_push_time >= 0:
+                time_diff = current_time - self._last_push_time
+                if time_diff > 0:  # Avoid division by zero
+                    self._throughput = value / time_diff
+            self._last_push_time = current_time
+
+        # Handle different reduction methods
+        if self._window is not None:
+            # For windowed operations, append to values and trim if needed
+            self.values.append(value)
+            if len(self.values) > self._window:
+                self.values.popleft()
+        else:
+            # For non-windowed operations, use _reduced_values
+            if len(self.values) == 0:
+                self._set_values([value])
+            else:
+                self.values.append(value)
+                reduced, values = self._reduced_values()
+                self._set_values(values)
 
     def __enter__(self) -> "Stats":
         """Called when entering a context (with which users can measure a time delta).
@@ -303,6 +320,8 @@ class Stats:
             previous: If provided (int), returns that previously (reduced) result of
                 this `Stats` object, which was generated `previous` number of `reduce()`
                 calls ago). If None (default), returns the current (reduced) value.
+            throughput: If True and throughput tracking is enabled, returns only the
+                throughput value per second.
 
         Returns:
             The result of reducing the internal values list (or the previously computed
@@ -635,6 +654,7 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
+            "throughput": self._throughput,
             "_hist": list(self._hist),
         }
 
@@ -645,6 +665,7 @@ class Stats:
             reduce=state["reduce"],
             window=state["window"],
             ema_coeff=state["ema_coeff"],
+            throughput=state["throughput"],
             clear_on_reduce=state["clear_on_reduce"],
         )
         stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
