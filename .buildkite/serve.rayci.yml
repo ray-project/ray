@@ -190,3 +190,22 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
     depends_on: servebuild
+
+  - label: ":ray-serve: serve: container tests"
+    tags:
+      - serve
+      - python
+      - docker
+      - oss
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
+        --canonical-tag test_image_uri
+      - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_image_uri"
+        -t rayproject/ray:runtime_env_image_uri -f ci/docker/runtime_env_image_uri/Dockerfile .
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve --only-tags container --install-mask llm,rllib,serve,train,tune,workflow
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubase
+      - corebuild

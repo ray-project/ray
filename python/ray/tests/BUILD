@@ -896,9 +896,9 @@ py_test(
 )
 
 py_test(
-    name = "test_runtime_env_container",
+    name = "test_runtime_env_image_uri",
     size = "large",
-    srcs = ["test_runtime_env_container.py"],
+    srcs = ["test_runtime_env_image_uri.py"],
     tags = [
         "container",
         "exclusive",
