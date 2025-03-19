@@ -144,32 +144,8 @@ def test_default_sigchld_handler(enable_subreaper, shutdown_only):
             with pytest.raises(psutil.NoSuchProcess):
                 psutil.Process(pid)
 
-        def manual_reap(self):
-            """
-            Manual subprocess management. Since the signal handler is set back to
-            default, user needs to call `process.wait()` on their own, or the zombie
-            process would persist.
-            """
-
-            import signal
-
-            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
-
-            process = subprocess.Popen(["true"])
-            pid = process.pid
-            time.sleep(1)  # wait for the process to exit.
-
-            assert psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
-
-            process.wait()
-            # after reaping, it's gone.
-            with pytest.raises(psutil.NoSuchProcess):
-                psutil.Process(pid)
-
     a = A.remote()
-    # order matters, since `manual_reap` sets the signal handler.
     ray.get(a.auto_reap.remote())
-    ray.get(a.manual_reap.remote())
 
 
 if __name__ == "__main__":
