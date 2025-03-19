@@ -1,11 +1,11 @@
-from ray.data._internal.logical.interfaces import Rule
 import abc
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
-from typing import Dict, Any
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
 import copy
+from typing import Any, Dict
+
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.logical.interfaces import Rule
+from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
