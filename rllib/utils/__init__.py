@@ -122,6 +122,7 @@ def flatten_dict(nested: Dict[str, Any], sep="/", env_steps=0) -> Dict[str, Any]
     return flat
 
 
+@DeveloperAPI
 def unflatten_dict(flat: Dict[str, Any], sep="/") -> Dict[str, Any]:
     """
     Reconstructs a nested dict from a flat dict with joined keys.
