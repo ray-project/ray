@@ -20,4 +20,5 @@ steps:
           --only-tags=privilged_container
           --cache-test-results --parallelism-per-worker 2
           --build-type cgroup
+          --privileged-container
     instance_type: small
