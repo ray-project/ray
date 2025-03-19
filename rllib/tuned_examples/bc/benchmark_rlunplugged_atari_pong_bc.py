@@ -143,20 +143,6 @@ def _make_learner_connector(observation_space, action_space):
     return DecodeObservations()
 
 
-# Wrap the environment used in evalaution into `RLlib`'s Atari Wrapper
-# that automatically stacks frames and converts to the dimension used
-# in the collection of the `rl_unplugged` data.
-def _env_creator(cfg):
-    return wrap_atari_for_new_api_stack(
-        gym.make("ale_py:ALE/Pong-v5", **cfg),
-        framestack=4,
-        dim=64,
-    )
-
-
-# Register the wrapped environment to `tune`.
-tune.register_env("WrappedALE/Pong-v5", _env_creator)
-
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 parser = add_rllib_example_script_args(
@@ -191,15 +177,28 @@ if args.num_learners and args.num_learners > 1:
             "Using a 'PACK' scheduling strategy for learners"
             "to support data locality."
         )
+
+# Wrap the environment used in evalaution into `RLlib`'s Atari Wrapper
+# that automatically stacks frames and converts to the dimension used
+# in the collection of the `rl_unplugged` data.
+def _env_creator(cfg):
+    return wrap_atari_for_new_api_stack(
+        gym.make("ale_py:ALE/Pong-v5", **cfg),
+        framestack=4,
+        dim=64,
+    )
+
+
+# Register the wrapped environment to `tune`. Note, environment registration
+# to Ray Tune must happen after checking the number of nodes, otherwise the
+# registration is removed.
+tune.register_env("WrappedALE/Pong-v5", _env_creator)
+
 # Anyscale RLUnplugged storage bucket. The bucket contains from the
 # original `RLUnplugged` bucket only the first `atari/Pong` run.
 # TODO (simon, artur): Create an extra bucket for the data and do not
 # use the `ANYSCALE_ARTIFACT_STORAGE`.
-anyscale_storage_bucket = (
-    "s3://anyscale-customer-dataplane-data-staging/artifact_storage/"
-    "anyscale_storage_bucketorg_7c1Kalm9WcX2bNIjW53GUT/cld_kf64x96s2u94pxyyxkzwx6tsxs"
-)
-# anyscale_storage_bucket = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
+anyscale_storage_bucket = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
 anyscale_rlunplugged_atari_path = anyscale_storage_bucket + "/rllib/rl_unplugged/atari"
 
 # We only use the Atari game `Pong` here. Users can choose other Atari
@@ -280,7 +279,7 @@ config = (
         # Increase the parallelism in transforming batches, such that while
         # training, new batches are transformed while others are used in updating.
         map_batches_kwargs={
-            "concurrency": 80,
+            "concurrency": 40 * (max(args.num_learners, 1) or 1),
             "num_cpus": 1,
         },
         # When iterating over batches in the dataset, prefetch at least 4
@@ -288,7 +287,7 @@ config = (
         iter_batches_kwargs={
             "prefetch_batches": 10,
         },
-        # Iterate over 10 batches per RLlib iteration if multiple learners
+        # Iterate over 200 batches per RLlib iteration if multiple learners
         # are used.
         dataset_num_iters_per_learner=200,
     )
