@@ -402,7 +402,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
         benchmark_config: BenchmarkConfig,
         train_url: str,
         val_url: str,
-        limit_total_rows: Optional[int] = None,
+        limit_validation_rows: Optional[int] = None,
     ):
         """Initialize the factory.
 
@@ -410,7 +410,7 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
             benchmark_config: Configuration for the benchmark
             train_url: S3 URL for training data
             val_url: S3 URL for validation data
-            limit_total_rows: Optional limit on total rows to process
+            limit_validation_rows: Optional limit on total validation rows to process
         """
         BaseDataLoaderFactory.__init__(self, benchmark_config)
         S3Reader.__init__(self)
@@ -424,14 +424,16 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
 
         # Calculate total workers and row limits
         total_workers = self.num_ray_workers * self.num_torch_workers
-        if limit_total_rows is not None:
+        if limit_validation_rows is not None:
             if total_workers > 0:
-                self.limit_rows_per_worker = max(1, limit_total_rows // total_workers)
+                self.limit_validation_rows_per_worker = max(
+                    1, limit_validation_rows // total_workers
+                )
             else:
                 # When no workers, apply limit directly to the dataset
-                self.limit_rows_per_worker = limit_total_rows
+                self.limit_validation_rows_per_worker = limit_validation_rows
         else:
-            self.limit_rows_per_worker = None
+            self.limit_validation_rows_per_worker = None
 
         # Log configuration
         logger.info(
@@ -439,13 +441,15 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
             f"({self.num_ray_workers} Ray × {self.num_torch_workers} Torch) "
             f"across {num_gpus} GPUs"
         )
-        if limit_total_rows is not None:
-            if total_workers > 0 and limit_total_rows < total_workers:
+        if limit_validation_rows is not None:
+            if total_workers > 0 and limit_validation_rows < total_workers:
                 logger.warning(
-                    f"[DataLoader] Warning: limit_total_rows ({limit_total_rows}) is less than "
+                    f"[DataLoader] Warning: limit_validation_rows ({limit_validation_rows}) is less than "
                     f"total_workers ({total_workers}). Each worker will process at least 1 row."
                 )
-            logger.info(f"[DataLoader] Rows per worker: {self.limit_rows_per_worker}")
+            logger.info(
+                f"[DataLoader] Validation rows per worker: {self.limit_validation_rows_per_worker}"
+            )
 
     def _get_device(self) -> torch.device:
         """Get the device for the current worker using Ray Train's device management."""
@@ -542,7 +546,19 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
         persistent_workers = num_workers > 0
-        pin_memory = torch.cuda.is_available()  # Always pin memory if CUDA is available
+        pin_memory = (
+            torch.cuda.is_available()
+        )  # Always pin memory if CUDA is available for non-blocking transfers
+
+        # Only set prefetch_factor and timeout when using workers
+        prefetch_factor = (
+            dataloader_config.prefetch_batches if num_workers > 0 else None
+        )
+        timeout = (
+            self.benchmark_config.torch_dataloader_timeout_seconds
+            if num_workers > 0
+            else 0
+        )
 
         dataloader = torch.utils.data.DataLoader(
             dataset=train_ds,
@@ -550,10 +566,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=persistent_workers,
-            prefetch_factor=dataloader_config.prefetch_batches
-            if num_workers > 0
-            else 2,
-            timeout=self.benchmark_config.torch_dataloader_timeout_seconds,
+            prefetch_factor=prefetch_factor,
+            timeout=timeout,
             drop_last=True,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )
@@ -576,13 +590,25 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
         val_ds = S3ParquetImageIterableDataset(
             file_urls=self._get_file_urls(self.val_url),
             random_transforms=False,
-            limit_rows_per_worker=self.limit_rows_per_worker,
+            limit_rows_per_worker=self.limit_validation_rows_per_worker,
         )
 
         # Adjust worker settings for 0 workers case
         num_workers = max(0, self.num_torch_workers)
         persistent_workers = num_workers > 0
-        pin_memory = torch.cuda.is_available()  # Always pin memory if CUDA is available
+        pin_memory = (
+            torch.cuda.is_available()
+        )  # Always pin memory if CUDA is available for non-blocking transfers
+
+        # Only set prefetch_factor and timeout when using workers
+        prefetch_factor = (
+            dataloader_config.prefetch_batches if num_workers > 0 else None
+        )
+        timeout = (
+            self.benchmark_config.torch_dataloader_timeout_seconds
+            if num_workers > 0
+            else 0
+        )
 
         dataloader = torch.utils.data.DataLoader(
             dataset=val_ds,
@@ -590,10 +616,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=persistent_workers,
-            prefetch_factor=dataloader_config.prefetch_batches
-            if num_workers > 0
-            else 2,
-            timeout=self.benchmark_config.torch_dataloader_timeout_seconds,
+            prefetch_factor=prefetch_factor,
+            timeout=timeout,
             drop_last=False,
             worker_init_fn=self.worker_init_fn if num_workers > 0 else None,
         )

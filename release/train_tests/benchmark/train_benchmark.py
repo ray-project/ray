@@ -46,11 +46,10 @@ class TrainLoopRunner:
             self.restore_from_checkpoint(checkpoint)
 
     def restore_from_checkpoint(self, checkpoint: ray.train.Checkpoint):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Restoring from checkpoint: {checkpoint} for worker "
-                f"{ray.train.get_context().get_world_rank()}"
-            )
+        logger.info(
+            f"[Checkpoint] Restoring from checkpoint: {checkpoint} for worker "
+            f"{ray.train.get_context().get_world_rank()}"
+        )
         with tempfile.TemporaryDirectory(
             dir="/mnt/local_storage"
         ) as temp_checkpoint_dir:
@@ -86,8 +85,7 @@ class TrainLoopRunner:
             self._train_epoch()
 
     def _train_epoch(self):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
+        logger.info(f"[Train] Starting @ epoch={self._train_epoch_idx}")
 
         train_dataloader = self.factory.get_train_dataloader()
 
@@ -165,18 +163,18 @@ class TrainLoopRunner:
 
     def train_step(self, input_batch, labels):
         self.model.train()
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad()  # 1. Clear FIRST
         out = self.model(input_batch)
         loss = self.loss_fn(out, labels)
-        loss.backward()
-        self.optimizer.step()
+
+        # Use detect_anomaly to catch any issues during the backward pass
+        with torch.autograd.detect_anomaly():
+            loss.backward()  # 2. Compute gradients
+
+        self.optimizer.step()  # 3. Update parameters
+        return loss
 
     def validate_and_checkpoint(self):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Validation] Starting validation and checkpointing @ epoch="
-                f"{self._train_epoch_idx}, batch={self._train_batch_idx}"
-            )
         with self._metrics["validation/epoch"].timer():
             validation_metrics = self.validate()
 
@@ -193,12 +191,6 @@ class TrainLoopRunner:
                 )
 
     def validate(self) -> Dict[str, float]:
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Validation] Starting @ epoch={self._train_epoch_idx}, "
-                f"batch={self._train_batch_idx}"
-            )
-
         val_dataloader = self.factory.get_val_dataloader()
 
         self.model.eval()
@@ -231,11 +223,6 @@ class TrainLoopRunner:
         return loss
 
     def report_checkpoint(self, metrics, checkpoint):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Reporting checkpoint @ epoch={self._train_epoch_idx}, "
-                f"batch={self._train_batch_idx}"
-            )
         checkpoint_dir_name = (
             f"checkpoint_epoch={self._train_epoch_idx}_batch={self._train_batch_idx}"
         )
@@ -247,11 +234,10 @@ class TrainLoopRunner:
         )
 
     def load_checkpoint(self, local_dir: str):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Loading checkpoint from {local_dir} for worker "
-                f"{ray.train.get_context().get_world_rank()}"
-            )
+        logger.info(
+            f"[Checkpoint] Loading checkpoint from {local_dir} for worker "
+            f"{ray.train.get_context().get_world_rank()}"
+        )
 
         self.model.load_state_dict(
             torch.load(os.path.join(local_dir, "model.pt"), map_location="cpu")
@@ -270,19 +256,13 @@ class TrainLoopRunner:
         for k, v in metrics_json.items():
             self._metrics[k].__dict__.update(v)
 
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx} from checkpoint: "
-                f"{ray.train.get_checkpoint()}"
-            )
+        logger.info(
+            f"[Checkpoint] Restored to epoch={self._train_epoch_idx}, "
+            f"train_batch_idx={self._train_batch_idx} from checkpoint: "
+            f"{ray.train.get_checkpoint()}"
+        )
 
     def save_checkpoint(self, local_dir: str):
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Saving checkpoint to {local_dir} @ epoch="
-                f"{self._train_epoch_idx}, batch={self._train_batch_idx}"
-            )
         train_state = {
             "epoch": self._train_epoch_idx,
             "batch_idx": self._train_batch_idx,
@@ -294,12 +274,6 @@ class TrainLoopRunner:
         metrics_json = {k: v.__dict__.copy() for k, v in self._metrics.items()}
         with open(os.path.join(local_dir, "metrics.json"), "w") as f:
             json.dump(metrics_json, f)
-
-        if ray.train.get_context().get_world_rank() == 0:
-            logger.info(
-                f"[Checkpoint] Saved @ epoch={self._train_epoch_idx}, "
-                f"train_batch_idx={self._train_batch_idx}"
-            )
 
     def get_metrics(self) -> Dict[str, float]:
         # TODO: These metrics should be aggregated across training workers.

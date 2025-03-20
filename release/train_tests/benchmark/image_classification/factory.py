@@ -101,7 +101,7 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
             benchmark_config,
             train_urls,
             val_urls,
-            limit_total_rows=benchmark_config.limit_validation_rows,
+            limit_validation_rows=benchmark_config.limit_validation_rows,
         )
 
 

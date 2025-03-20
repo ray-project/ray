@@ -13,7 +13,7 @@ class DataloaderType(enum.Enum):
 class DataLoaderConfig(BaseModel):
     train_batch_size: int = 32
     validation_batch_size: int = 256
-    prefetch_batches: int = 1
+    prefetch_batches: int = 0
 
 
 class RayDataConfig(DataLoaderConfig):
@@ -24,7 +24,7 @@ class RayDataConfig(DataLoaderConfig):
 class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
-    num_torch_workers: int = 1
+    num_torch_workers: int = 0
     torch_dataloader_timeout_seconds: int = 300
 
     # Run CPU training where train workers request a `MOCK_GPU` resource instead.
