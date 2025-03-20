@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <boost/thread.hpp>
 #include <memory>
 #include <vector>
 

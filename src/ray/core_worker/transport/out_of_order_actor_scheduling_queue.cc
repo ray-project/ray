@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"
 
+#include <boost/thread.hpp>
 #include <memory>
 #include <utility>
 #include <vector>
