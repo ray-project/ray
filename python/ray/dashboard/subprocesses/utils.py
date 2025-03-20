@@ -1,3 +1,5 @@
+import sys
+import io
 import os
 import enum
 from typing import TypeVar
@@ -13,12 +15,14 @@ class ResponseType(enum.Enum):
     WEBSOCKET = "websocket"
 
 
-def module_logging_filename(module_name: str, logging_filename: str) -> str:
+def module_logging_filename(
+    module_name: str, logging_filename: str, is_stderr=False
+) -> str:
     """
     Parse logging_filename = STEM EXTENSION,
     return STEM _ MODULE_NAME _ EXTENSION
 
-    If logging_filename is empty, return "stderr"
+    If is_stderr is True, EXTENSION is ".err"
 
     Example:
     module_name = "TestModule"
@@ -27,10 +31,27 @@ def module_logging_filename(module_name: str, logging_filename: str) -> str:
     EXTENSION = ".log"
     return "dashboard_TestModule.log"
     """
-    if not logging_filename:
-        return "stderr"
     stem, extension = os.path.splitext(logging_filename)
+    if is_stderr:
+        extension = ".err"
     return f"{stem}_{module_name}{extension}"
+
+
+def setup_err_logging(module_name: str, log_dir: str, logging_filename: str):
+    """
+    Redirect stdout and stderr to a file in log_dir with the name
+    """
+    stderr_filename = module_logging_filename(
+        module_name, logging_filename, is_stderr=True
+    )
+    err_file = open(os.path.join(log_dir, stderr_filename), "wb", buffering=0)
+    err_file_io_wrapper = io.TextIOWrapper(err_file, write_through=True)
+    orig_stdout_fileno = sys.stdout.fileno()
+    orig_stderr_fileno = sys.stderr.fileno()
+    sys.stdout = err_file_io_wrapper
+    os.dup2(err_file.fileno(), orig_stdout_fileno)
+    sys.stderr = err_file_io_wrapper
+    os.dup2(err_file.fileno(), orig_stderr_fileno)
 
 
 def get_socket_path(socket_dir: str, module_name: str) -> str:

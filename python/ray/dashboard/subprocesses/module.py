@@ -12,6 +12,7 @@ import ray
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.subprocesses.utils import (
     module_logging_filename,
+    setup_err_logging,
     get_socket_path,
     get_named_pipe_path,
 )
@@ -197,8 +198,10 @@ def run_module(
         backup_count=config.logging_rotate_backup_count,
     )
 
+    setup_err_logging(module_name, config.log_dir, config.logging_filename)
+
     loop = asyncio.new_event_loop()
-    loop.create_task(
+    task = loop.create_task(
         run_module_inner(
             cls,
             config,
@@ -217,4 +220,5 @@ def run_module(
 
     ray._private.utils.set_sigterm_handler(sigterm_handler)
 
+    loop.run_until_complete(task)
     loop.run_forever()
