@@ -37,7 +37,6 @@ if TYPE_CHECKING:
 
     from ray.data.aggregate import AggregateFn
 
-
 T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
@@ -181,7 +180,7 @@ class TableBlockAccessor(BlockAccessor):
 
     @staticmethod
     def _munge_conflict(name, count):
-        return f"{name}_{count+1}"
+        return f"{name}_{count + 1}"
 
     @staticmethod
     def _build_tensor_row(row: TableRow) -> np.ndarray:
