@@ -127,7 +127,8 @@ class Container(abc.ABC):
         if self.privileged:
             command.append("--privileged")
         command += [
-            "--rm" "--volume",
+            "--rm",
+            "--volume",
             f"{artifact_mount_host}:{artifact_mount_container}",
         ]
         for env in self.envs:
