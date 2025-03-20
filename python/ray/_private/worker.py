@@ -1416,13 +1416,15 @@ def init(
             This storage path must be accessible by all nodes of the cluster, otherwise
             an error will be raised. This option can also be specified as the
             RAY_STORAGE env var.
-        object_spilling_storage_path:
+        object_spilling_storage_path: The path to spill objects to. The same path will
+            be used as the object store fallback directory as well.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
+        _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address: The IP address of the node that we are on.
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
