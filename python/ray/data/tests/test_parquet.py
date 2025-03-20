@@ -128,7 +128,9 @@ def test_parquet_deserialize_fragments_with_retry(
 
     dataset_kwargs = {}
     pq_ds = pq.ParquetDataset(
-        data_path, **dataset_kwargs, filesystem=fs,
+        data_path,
+        **dataset_kwargs,
+        filesystem=fs,
     )
     serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
@@ -546,7 +548,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"],
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
     )
 
     # 2 partitions, 1 empty partition, 1 block/read task
@@ -708,7 +712,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": one_data, "two": 2 * ["a"] + 2 * ["b"] + 2 * ["c"]})
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["two"],
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["two"],
     )
 
     def _block_udf(block: pa.Table):
@@ -909,7 +915,9 @@ def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
     )
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"],
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
     )
     # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
 
