@@ -25,6 +25,14 @@ struct RedirectionHandleWrapper {
   RedirectionHandleWrapper(MEMFD_TYPE_NON_UNIQUE stream_fd,
                            const StreamRedirectionOption &opt);
 
+  RedirectionHandleWrapper(const RedirectionHandleWrapper &) = delete;
+  RedirectionHandleWrapper &operator=(const RedirectionHandleWrapper &) = delete;
+  RedirectionHandleWrapper(RedirectionHandleWrapper &&) = default;
+  RedirectionHandleWrapper &operator=(RedirectionHandleWrapper &&) = default;
+
+  // Flush buffered output and restore stream redirection.
+  ~RedirectionHandleWrapper();
+
   // Synchronizes any buffered output indicated by the redirection handle wrapper in
   // blocking style, and restore the stream redirection.
   void SyncOnStreamRedirection();
