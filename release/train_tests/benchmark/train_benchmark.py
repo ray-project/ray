@@ -156,7 +156,10 @@ class TrainLoopRunner:
         loss = self.loss_fn(out, labels)
 
         # Use detect_anomaly to catch any issues during the backward pass
-        with torch.autograd.detect_anomaly():
+        if self.benchmark_config.train_step_anomaly_detection:
+            with torch.autograd.detect_anomaly():
+                loss.backward()  # 2. Compute gradients
+        else:
             loss.backward()  # 2. Compute gradients
 
         self.optimizer.step()  # 3. Update parameters
