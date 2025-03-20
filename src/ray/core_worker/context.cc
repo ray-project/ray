@@ -16,6 +16,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <string>
+
 #include "ray/common/runtime_env_common.h"
 
 namespace ray {

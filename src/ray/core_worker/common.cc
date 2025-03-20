@@ -14,6 +14,11 @@
 
 #include "ray/core_worker/common.h"
 
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 namespace ray {
 namespace core {
 

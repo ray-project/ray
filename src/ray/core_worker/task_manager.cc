@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"

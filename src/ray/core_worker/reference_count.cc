@@ -14,6 +14,12 @@
 
 #include "ray/core_worker/reference_count.h"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 #define PRINT_REF_COUNT(it) \
   RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
