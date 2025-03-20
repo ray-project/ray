@@ -220,5 +220,4 @@ py_test(
         "team:ci"
     ],
     deps = [ci_require("pytest")],
-    timeout = "eternal",
 )

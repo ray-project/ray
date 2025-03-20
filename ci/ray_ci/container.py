@@ -2,11 +2,9 @@ import abc
 import os
 import subprocess
 import sys
-import logging
 
 from typing import List, Tuple, Optional
 
-logger = logging.getLogger(__name__)
 
 _CUDA_COPYRIGHT = """
 ==========
@@ -67,8 +65,6 @@ class Container(abc.ABC):
         Run a script in container and returns output
         """
         # CUDA image comes with a license header that we need to remove
-        logger.info(f"irabbani: starting container with script \n{script}")
-        logger.info(f"israbbani: the run command is: {self.get_run_command(script)}")
         return (
             subprocess.check_output(self.get_run_command(script))
             .decode("utf-8")
@@ -115,14 +111,6 @@ class Container(abc.ABC):
         :param gpu_ids: ids of gpus on the host machine
         """
         artifact_mount_host, artifact_mount_container = self.get_artifact_mount()
-        # command = [
-        #     "docker",
-        #     "run",
-        #     "-i",
-        #     "--rm",
-        #     "--volume",
-        #     f"{artifact_mount_host}:{artifact_mount_container}",
-        # ]
         command = ["docker", "run", "-i"]
         if self.privileged:
             command.append("--privileged")
