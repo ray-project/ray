@@ -27,8 +27,13 @@ namespace ray::internal {
 namespace {
 
 TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) {
+#ifndef __linux__
+  // Error case: cgroup feature is not supported on non-linux platforms.
+  EXPECT_EQ(CheckCgroupV2MountedRW("/sys/fs/cgroup").code(), StatusCode::Invalid);
+#else
   // Error case: cgroup directory exists, but not writable.
   EXPECT_EQ(CheckCgroupV2MountedRW("/sys/fs/cgroup").code(), StatusCode::InvalidArgument);
+#endif  // __linux__
 }
 
 }  // namespace
