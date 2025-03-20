@@ -24,8 +24,6 @@ class RayDataConfig(DataLoaderConfig):
 class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
-    num_torch_workers: int = 0
-    torch_dataloader_timeout_seconds: int = 300
 
     # Run CPU training where train workers request a `MOCK_GPU` resource instead.
     mock_gpu: bool = False
@@ -40,6 +38,10 @@ class BenchmarkConfig(BaseModel):
     dataloader_config: DataLoaderConfig = Field(
         default_factory=lambda: DataLoaderConfig(),
     )
+    num_torch_workers: int = 0
+    torch_dataloader_timeout_seconds: int = 300
+    torch_pin_memory: bool = True
+    torch_non_blocking: bool = True
 
     # Training
     num_epochs: int = 1

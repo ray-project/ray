@@ -645,8 +645,12 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
                     )
 
                     transfer_start = time.time()
-                    images = images.to(device, non_blocking=True)
-                    labels = labels.to(device, non_blocking=True)
+                    images = images.to(
+                        device, non_blocking=self.benchmark_config.torch_non_blocking
+                    )
+                    labels = labels.to(
+                        device, non_blocking=self.benchmark_config.torch_non_blocking
+                    )
                     transfer_time = time.time() - transfer_start
 
                     if transfer_time > 5:
@@ -699,8 +703,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
         num_workers = max(0, self.num_torch_workers)
         persistent_workers = num_workers > 0
         pin_memory = (
-            torch.cuda.is_available()
-        )  # Always pin memory if CUDA is available for non-blocking transfers
+            self.benchmark_config.torch_pin_memory and torch.cuda.is_available()
+        )  # Use config setting
 
         # Only set prefetch_factor and timeout when using workers
         prefetch_factor = (
@@ -749,8 +753,8 @@ class TorchDataLoaderFactory(BaseDataLoaderFactory, S3Reader):
         num_workers = max(0, self.num_torch_workers)
         persistent_workers = num_workers > 0
         pin_memory = (
-            torch.cuda.is_available()
-        )  # Always pin memory if CUDA is available for non-blocking transfers
+            self.benchmark_config.torch_pin_memory and torch.cuda.is_available()
+        )  # Use config setting
 
         # Only set prefetch_factor and timeout when using workers
         prefetch_factor = (
